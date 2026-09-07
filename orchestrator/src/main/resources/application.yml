@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: ai-team-orchestrator
+  main:
+    # Socket Mode 走對外 WebSocket，不需要內建 HTTP 伺服器
+    web-application-type: none
+    banner-mode: off
+  datasource:
+    url: jdbc:sqlite:${AI_TEAM_HOME}/ai-team.db
+    driver-class-name: org.sqlite.JDBC
+    hikari:
+      # SQLite 單寫入者，連線池維持 1 避免寫入衝突
+      maximum-pool-size: 1
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+      continue-on-error: false
+
+logging:
+  level:
+    root: INFO
+    com.zipe.aiteam: DEBUG
+    com.slack.api: WARN
+  pattern:
+    console: "%d{HH:mm:ss} %-5level %-28logger{0} %msg%n"

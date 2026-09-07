@@ -1,0 +1,30 @@
+display_information:
+  name: Backend Agent
+  description: 程式碼實作與品質 Gate
+  background_color: "#d98b4a"
+  long_description: >-
+    這是 zipe-spring-boot-starters 專案 AI 軟體團隊中的「Backend Agent」角色，
+    以 workspace 內獨立使用者的身分存在，讓每個角色的發言在討論串中可以被清楚區分，
+    也能被個別 @ 提及與查看個人檔案。它負責在隔離的工作區中實作程式碼、撰寫單元測試、執行本地品質 Gate，並建立 commit。
+    本 App 會接收允許頻道內直接 @本角色的訊息，只有中央白名單內的真實使用者可以提出請求。
+    一般提問採唯讀對話，明確的執行請求仍交由中央 orchestrator 管理排程、驗收與審批。
+    Agent 彼此的交接訊息不會觸發工作。聊天不能取代 QA 或 Code Review，推分支與開 PR
+    仍須人工核准。請將本 App 邀請進 AI 團隊所在的頻道，並設定它自己的 Socket Mode Token。
+features:
+  bot_user:
+    display_name: Backend Agent
+    always_online: false
+oauth_config:
+  scopes:
+    bot:
+      - chat:write
+      - app_mentions:read
+settings:
+  event_subscriptions:
+    bot_events:
+      - app_mention
+  interactivity:
+    is_enabled: false
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false

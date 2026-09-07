@@ -1,0 +1,249 @@
+package com.zipe.aiteam.slack;
+
+import com.slack.api.bolt.App;
+import com.slack.api.bolt.AppConfig;
+import com.slack.api.bolt.socket_mode.SocketModeApp;
+import com.slack.api.model.event.AppMentionEvent;
+import com.zipe.aiteam.config.AiTeamProperties;
+import com.zipe.aiteam.store.AuditLog;
+import com.zipe.aiteam.store.TaskStore;
+import com.zipe.aiteam.task.Task;
+import com.zipe.aiteam.task.TaskOrchestrator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+
+import java.util.Optional;
+import java.util.regex.Pattern;
+
+/**
+ * Slack 事件入口。
+ *
+ * 最重要的規則：handler 內只做去重、授權、入佇列，然後立刻 ack。
+ * Slack 要求 3 秒內回應，逾時會重送 3 次 —— 若在 handler 裡跑 Claude Code，
+ * 同一個需求會被執行四次。見 docs/architecture-review.md B1。
+ */
+@Component
+public class SlackListener {
+
+    private static final Logger log = LoggerFactory.getLogger(SlackListener.class);
+    private static final Pattern MENTION = Pattern.compile("<@[A-Z0-9]+>");
+
+    private final AiTeamProperties props;
+    private final TaskOrchestrator orchestrator;
+    private final SlackNotifier notifier;
+    private final TaskStore store;
+    private final AuditLog audit;
+
+    private SocketModeApp socketApp;
+    private final java.util.List<SocketModeApp> roleSockets = new java.util.ArrayList<>();
+    private final java.util.concurrent.ExecutorService ingress = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "slack-ingress"); thread.setDaemon(true); return thread;
+    });
+
+    private void enqueueMention(String eventId, AppMentionEvent event, SlackNotifier.Identity role) {
+        ingress.execute(() -> {
+            try { handleMention(eventId, event, role); }
+            catch (Exception e) { log.error("處理角色 {} 的事件失敗：{}", role, com.zipe.aiteam.runtime.Diagnostics.describe(e)); }
+        });
+    }
+
+    public SlackListener(AiTeamProperties props, TaskOrchestrator orchestrator,
+                         SlackNotifier notifier, TaskStore store, AuditLog audit) {
+        this.props = props;
+        this.orchestrator = orchestrator;
+        this.notifier = notifier;
+        this.store = store;
+        this.audit = audit;
+    }
+
+    public void start() throws Exception {
+        App app = new App(AppConfig.builder()
+                .singleTeamBotToken(props.slackBotToken())
+                .build());
+
+        app.event(AppMentionEvent.class, (payload, ctx) -> {
+            try {
+                enqueueMention(payload.getEventId(), payload.getEvent(), SlackNotifier.Identity.SYSTEM);
+            } catch (Exception e) {
+                log.error("處理 app_mention 時發生例外", e);
+            }
+            return ctx.ack();   // 一定要在 3 秒內走到這裡
+        });
+
+        for (String action : new String[]{
+                SlackBlocks.ACTION_APPROVE, SlackBlocks.ACTION_REDO, SlackBlocks.ACTION_ABORT,
+                SlackBlocks.ACTION_CONTINUE}) {
+            app.blockAction(action, (req, ctx) -> {
+                try {
+                    handleButton(req.getPayload().getUser().getId(),
+                                 req.getPayload().getActions().get(0).getValue(),
+                                 action);
+                } catch (Exception e) {
+                    log.error("處理按鈕 {} 時發生例外", action, e);
+                }
+                return ctx.ack();
+            });
+        }
+
+        socketApp = new SocketModeApp(props.slackAppToken(), app);
+        log.info("Socket Mode 連線中…（白名單 {} 人，並行上限 {}）",
+                props.allowedUsers().size(), props.maxConcurrency());
+        try {
+            for (SlackNotifier.Identity role : props.identities()) {
+                if (role == SlackNotifier.Identity.SYSTEM) continue;
+                String token = props.roleAppToken(role.name());
+                if (token.isEmpty()) {
+                    log.info("{} 直接對話未啟用：尚未設定角色 App-Level Token", role);
+                    continue;
+                }
+                if (props.roleBotToken(role.name()).isEmpty()) throw new IllegalStateException(role + " 有 App Token 但缺少專屬 Bot Token");
+                if (!notifier.isMentionable(role)) throw new IllegalStateException(role + " 無法核實 bot user ID，拒絕啟用直接對話");
+                App roleApp = new App(AppConfig.builder().singleTeamBotToken(props.roleBotToken(role.name())).build());
+                roleApp.event(AppMentionEvent.class, (payload, ctx) -> {
+                    enqueueMention(payload.getEventId(), payload.getEvent(), role);
+                    return ctx.ack();
+                });
+                SocketModeApp socket = new SocketModeApp(token, roleApp);
+                roleSockets.add(socket);
+                socket.startAsync();
+                log.info("{} 直接對話 Socket Mode 已啟動（仍需實測事件送達）", role);
+            }
+            socketApp.start();   // 主連線阻塞
+        } catch (Exception e) {
+            stop();
+            throw e;
+        }
+    }
+
+    // ------------------------------------------------------------------
+
+    private void handleMention(String eventId, AppMentionEvent e) {
+        handleMention(eventId, e, SlackNotifier.Identity.SYSTEM);
+    }
+
+    void handleMention(String eventId, AppMentionEvent e, SlackNotifier.Identity role) {
+
+        // 即使有人誤將 bot 加進白名單，agent 交接也不能反向触發任務。
+        if (e.getUser() == null || e.getBotId() != null || e.getAppId() != null
+                || e.getBotProfile() != null || Boolean.TRUE.equals(e.getDisplayAsBot())
+                || "bot_message".equals(e.getSubtype()) || notifier.isAgentUser(e.getUser())) return;
+        if (eventId == null || eventId.isBlank()) return; // 缺去重鍵時拒絕執行
+        if (e.getEdited() != null) return;
+        if (role != SlackNotifier.Identity.SYSTEM) {
+            String target = notifier.mention(role);
+            if (target == null || !target.startsWith("<@") || e.getText() == null || !e.getText().contains(target)) return;
+        }
+
+        // 去重表已持久化，服務重啟後 Slack 的重送仍會被正確擋下
+        if (!store.markEventSeen(role == SlackNotifier.Identity.SYSTEM ? eventId : role.name() + ":" + eventId)) {
+            log.info("忽略重複事件 {}", eventId);
+            return;
+        }
+
+        String threadTs = e.getThreadTs() != null ? e.getThreadTs() : e.getTs();
+
+        if (!props.allowedUsers().contains(e.getUser())) {
+            log.warn("拒絕未授權使用者 {}", e.getUser());
+            audit.record(null, e.getUser(), AuditLog.ACTION_REJECTED, "不在觸發者白名單中");
+            notifier.post(SlackNotifier.Identity.SYSTEM, e.getChannel(), threadTs,
+                    "🚫 <@" + e.getUser() + "> 目前不在允許清單中，無法觸發任務。\n"
+                  + "這個 bot 具備修改程式碼的能力，因此採白名單管控。請聯絡管理者。");
+            return;
+        }
+
+        String allowedChannel = props.channelId();
+        if (allowedChannel != null && !allowedChannel.isBlank()
+                && !allowedChannel.equals(e.getChannel())) {
+            log.warn("忽略非指定頻道 {} 的訊息（設定值為 {}）", e.getChannel(), allowedChannel);
+            return;
+        }
+
+        String text = MENTION.matcher(e.getText() == null ? "" : e.getText()).replaceAll("").trim();
+        // 一則訊息只允許一個團隊目標，避免多個 App 各自建立實作。
+        long targets = (props.identities().isEmpty() ? java.util.List.of(SlackNotifier.Identity.values()) : props.identities()).stream()
+                .map(notifier::mention).filter(java.util.Objects::nonNull)
+                .filter(m -> m.startsWith("<@") && (e.getText() == null ? "" : e.getText()).contains(m)).count();
+        if (targets > 1) {
+            notifier.post(role, e.getChannel(), threadTs, "請一次只 @一個團隊角色，未建立任務。");
+            return;
+        }
+        if (text.isEmpty()) {
+            notifier.post(SlackNotifier.Identity.SYSTEM, e.getChannel(), threadTs,
+                    "請在提及我的時候一併說明需求，例如：\n"
+                  + "`@zipe-ai-team 分析 db-spring-boot-starter`");
+            return;
+        }
+
+        var triage = Pattern.compile("^(處理|補充)\\s+#(\\d+)(?:\\s+([\\s\\S]+))?$").matcher(text);
+        if (triage.matches()) {
+            Task existing = orchestrator.lookup(triage.group(2)).orElse(null);
+            if (existing == null || !existing.slackChannel().equals(e.getChannel()) || !existing.slackThreadTs().equals(threadTs)) {
+                notifier.post(SlackNotifier.Identity.SYSTEM, e.getChannel(), threadTs, "請在該任務原討論串送出處理／補充指令，未建立或變更任務。");
+                return;
+            }
+            if ("補充".equals(triage.group(1)) && triage.group(3) == null) {
+                notifier.post(SlackNotifier.Identity.SYSTEM, e.getChannel(), threadTs, "補充指令需要實際答案，未新增派工。");
+                return;
+            }
+            orchestrator.requestTriage(existing, triage.group(3) == null ? "請 PM 分析並處理 QA 的阻礙。" : triage.group(3), e.getUser());
+            return;
+        }
+        if (role == SlackNotifier.Identity.SYSTEM) orchestrator.createAndSubmit(e.getChannel(), threadTs, e.getUser(), text);
+        else orchestrator.requestRole(role, e.getChannel(), threadTs, e.getUser(), text);
+    }
+
+    private void handleButton(String userId, String taskId, String action) {
+        Optional<Task> found = orchestrator.lookup(taskId);
+        if (found.isEmpty()) {
+            log.warn("按鈕指向不存在的任務 {}", taskId);
+            return;
+        }
+        Task task = found.get();
+
+        // 按鈕權限與觸發權限用同一份白名單，否則前面的權限設計形同虛設
+        if (!props.allowedUsers().contains(userId)) {
+            audit.record(taskId, userId, AuditLog.ACTION_REJECTED, "非白名單使用者嘗試操作按鈕 " + action);
+            notifier.post(SlackNotifier.Identity.SYSTEM,
+                    task.slackChannel(), task.slackThreadTs(),
+                    "🚫 <@" + userId + "> 不在允許清單中，無法審批任務 #" + taskId + "。");
+            return;
+        }
+
+        if (task.state().isTerminal()) {
+            notifier.post(SlackNotifier.Identity.SYSTEM,
+                    task.slackChannel(), task.slackThreadTs(),
+                    "ℹ️ 任務 #" + taskId + " 已經是 " + task.state() + " 狀態，這個按鈕不再有作用。");
+            return;
+        }
+
+        switch (action) {
+            case SlackBlocks.ACTION_CONTINUE -> orchestrator.continueTask(task, userId);
+            case SlackBlocks.ACTION_APPROVE -> orchestrator.approvePr(task, userId);
+            case SlackBlocks.ACTION_REDO -> {
+                notifier.post(SlackNotifier.Identity.SYSTEM,
+                        task.slackChannel(), task.slackThreadTs(),
+                        "🔄 <@" + userId + "> 要求重做任務 #" + taskId + "（第 "
+                      + (task.redoCount() + 1) + " 次）。");
+                orchestrator.redo(task,
+                        "請重新檢視先前的分析，特別注意人類審核者在討論串中提出的疑慮。",
+                        userId);
+            }
+            case SlackBlocks.ACTION_ABORT -> orchestrator.abort(task, userId);
+            default -> log.warn("未知的 action：{}", action);
+        }
+    }
+
+    @jakarta.annotation.PreDestroy
+    public void stop() {
+        ingress.shutdown();
+        for (SocketModeApp socket : roleSockets) {
+            try { socket.stop(); } catch (Exception e) { log.warn("關閉角色連線失敗"); }
+        }
+        try {
+            if (socketApp != null) socketApp.stop();
+        } catch (Exception e) {
+            log.warn("關閉 Socket Mode 時發生例外", e);
+        }
+    }
+}

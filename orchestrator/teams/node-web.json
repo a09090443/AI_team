@@ -1,0 +1,289 @@
+{
+  "version": 2,
+  "id": "node-web",
+  "project": {
+    "requiredTools": [
+      "node",
+      "npm",
+      "git"
+    ],
+    "name": "Node Web 專案",
+    "repositoryEnv": "AI_TEAM_NODE_REPO",
+    "baseBranch": "main",
+    "buildInstructions": "使用 repo 自己的 AGENTS.md 與 lockfile；依規範安裝依賴並執行 npm run build。",
+    "testInstructions": "依專案規範執行 npm test，並逐條對照情境測試計畫。",
+    "protectedPaths": [
+      "src/**",
+      "package.json",
+      "package-lock.json"
+    ],
+    "cachePaths": [
+      ".npm"
+    ],
+    "verification": {
+      "commands": [
+        [
+          "npm",
+          "ci"
+        ],
+        [
+          "npm",
+          "test"
+        ],
+        [
+          "npm",
+          "run",
+          "build"
+        ]
+      ],
+      "timeoutSeconds": 1800
+    }
+  },
+  "roles": {
+    "coordinator": {
+      "name": "PM Agent",
+      "runtime": "claude-code",
+      "model": "opus",
+      "prompt": "prompts/intake.md",
+      "botTokenEnv": "SLACK_BOT_TOKEN_PM",
+      "appTokenEnv": "SLACK_APP_TOKEN_PM",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob"
+      ]
+    },
+    "builder": {
+      "name": "Backend Agent",
+      "runtime": "claude-code",
+      "model": "sonnet",
+      "prompt": "prompts/implement.md",
+      "botTokenEnv": "SLACK_BOT_TOKEN_BACKEND",
+      "appTokenEnv": "SLACK_APP_TOKEN_BACKEND",
+      "tools": [
+        "Read",
+        "Write",
+        "Edit",
+        "Grep",
+        "Glob",
+        "Bash(npm *)",
+        "Bash(git *)",
+        "Bash(ls *)"
+      ]
+    },
+    "tester": {
+      "name": "QA Agent",
+      "runtime": "claude-code",
+      "model": "sonnet",
+      "prompt": "prompts/verify.md",
+      "botTokenEnv": "SLACK_BOT_TOKEN_QA",
+      "appTokenEnv": "SLACK_APP_TOKEN_QA",
+      "tools": [
+        "Read",
+        "Write",
+        "Edit",
+        "Grep",
+        "Glob",
+        "Bash(npm *)",
+        "Bash(git *)",
+        "Bash(ls *)"
+      ]
+    },
+    "security_auditor": {
+      "name": "Security Reviewer",
+      "runtime": "claude-code",
+      "model": "sonnet",
+      "prompt": "prompts/review.md",
+      "botTokenEnv": "SLACK_BOT_TOKEN_SECURITY_AUDITOR",
+      "appTokenEnv": "SLACK_APP_TOKEN_SECURITY_AUDITOR",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash(git diff *)",
+        "Bash(git log *)",
+        "Bash(git show *)"
+      ]
+    },
+    "frontend": {
+      "name": "Frontend Agent",
+      "runtime": "claude-code",
+      "model": "sonnet",
+      "prompt": "prompts/implement.md",
+      "botTokenEnv": "SLACK_BOT_TOKEN_FRONTEND",
+      "appTokenEnv": "SLACK_APP_TOKEN_FRONTEND",
+      "tools": [
+        "Read",
+        "Write",
+        "Edit",
+        "Grep",
+        "Glob",
+        "Bash(npm *)",
+        "Bash(git *)",
+        "Bash(ls *)"
+      ]
+    }
+  },
+  "entry": "intake",
+  "maxTransitions": 24,
+  "nodes": {
+    "intake": {
+      "kind": "AGENT",
+      "role": "coordinator",
+      "schema": "schemas/requirements.json",
+      "scope": "READ_ONLY",
+      "gate": "REQUIREMENTS",
+      "workspace": false,
+      "writablePaths": [],
+      "plan": null,
+      "next": "plan",
+      "blocked": "human",
+      "routes": {
+        "question": "end",
+        "implementation": "plan",
+        "human": "human"
+      },
+      "requires": [],
+      "maxVisits": 3,
+      "timeoutSeconds": 900,
+      "maxTurns": 40
+    },
+    "plan": {
+      "kind": "AGENT",
+      "role": "tester",
+      "schema": "schemas/plan.json",
+      "scope": "READ_ONLY",
+      "gate": "TEST_PLAN",
+      "workspace": false,
+      "writablePaths": [],
+      "plan": null,
+      "next": "implementation",
+      "blocked": "human",
+      "routes": {},
+      "requires": [
+        "intake"
+      ],
+      "maxVisits": 3,
+      "timeoutSeconds": 900,
+      "maxTurns": 40,
+      "instructions": "prompts/plan.md"
+    },
+    "implementation": {
+      "kind": "AGENT",
+      "role": "builder",
+      "schema": "schemas/implementation.json",
+      "scope": "WORKSPACE",
+      "gate": "IMPLEMENTATION",
+      "workspace": true,
+      "writablePaths": [],
+      "plan": null,
+      "next": "frontend",
+      "blocked": "triage",
+      "routes": {},
+      "requires": [
+        "plan"
+      ],
+      "maxVisits": 3,
+      "timeoutSeconds": 1800,
+      "maxTurns": 80
+    },
+    "verification": {
+      "kind": "AGENT",
+      "role": "tester",
+      "schema": "schemas/verification.json",
+      "scope": "LIMITED",
+      "gate": "VERIFICATION",
+      "workspace": true,
+      "writablePaths": [
+        "tests/**",
+        "coverage/**",
+        "dist/**"
+      ],
+      "plan": "plan",
+      "next": "review",
+      "blocked": "triage",
+      "routes": {},
+      "requires": [
+        "plan",
+        "frontend"
+      ],
+      "maxVisits": 3,
+      "timeoutSeconds": 1800,
+      "maxTurns": 60
+    },
+    "review": {
+      "kind": "AGENT",
+      "role": "security_auditor",
+      "schema": "schemas/review.json",
+      "scope": "READ_ONLY",
+      "gate": "REVIEW",
+      "workspace": true,
+      "writablePaths": [],
+      "plan": null,
+      "next": "approval",
+      "blocked": "triage",
+      "routes": {},
+      "requires": [
+        "verification"
+      ],
+      "maxVisits": 3,
+      "timeoutSeconds": 900,
+      "maxTurns": 40
+    },
+    "triage": {
+      "kind": "AGENT",
+      "role": "coordinator",
+      "schema": "schemas/analysis.json",
+      "scope": "READ_ONLY",
+      "gate": "REPORT",
+      "workspace": false,
+      "writablePaths": [],
+      "plan": null,
+      "next": "human",
+      "blocked": "human",
+      "routes": {
+        "implementation": "implementation",
+        "verification": "verification",
+        "human": "human",
+        "requirements": "intake",
+        "plan": "plan"
+      },
+      "requires": [],
+      "maxVisits": 3,
+      "timeoutSeconds": 900,
+      "maxTurns": 40,
+      "instructions": "prompts/triage.md"
+    },
+    "approval": {
+      "kind": "APPROVAL",
+      "requires": [
+        "intake",
+        "implementation",
+        "plan",
+        "verification",
+        "review",
+        "frontend"
+      ]
+    },
+    "frontend": {
+      "kind": "AGENT",
+      "role": "frontend",
+      "schema": "schemas/implementation.json",
+      "scope": "WORKSPACE",
+      "gate": "IMPLEMENTATION",
+      "workspace": true,
+      "writablePaths": [],
+      "plan": null,
+      "next": "verification",
+      "blocked": "triage",
+      "routes": {},
+      "requires": [
+        "implementation",
+        "plan"
+      ],
+      "maxVisits": 3,
+      "timeoutSeconds": 1800,
+      "maxTurns": 80
+    }
+  }
+}

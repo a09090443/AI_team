@@ -1,0 +1,162 @@
+{
+  "$comment": "QA 依實作前保存的 qa_plan 逐情境執行，scenario_results 由發布閘門核對完整性。共用失敗契約由 StageRunner 附加。",
+  "type": "object",
+  "required": [
+    "verdict",
+    "summary",
+    "verify_passed",
+    "scenario_results"
+  ],
+  "properties": {
+    "scenario_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["scenario_id", "status", "actual_result", "command", "evidence"],
+        "properties": {
+          "scenario_id": {"type": "string", "minLength": 1},
+          "status": {"type": "string", "enum": ["PASS", "FAIL", "BLOCKED", "NOT_RUN"]},
+          "actual_result": {"type": "string", "minLength": 1},
+          "command": {"type": "string", "minLength": 1},
+          "evidence": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "PASS",
+        "PASS_WITH_CONCERNS",
+        "FAIL"
+      ],
+      "description": "PASS 表示驗收條件都被有效覆蓋且建置通過。PASS_WITH_CONCERNS 表示可以往下走但有需要人知道的問題。FAIL 表示不該進入 PR。"
+    },
+    "summary": {
+      "type": "string",
+      "description": "用繁體中文說明驗收結論，一到三句。會直接顯示在 Slack 上。"
+    },
+    "criteria_results": {
+      "type": "array",
+      "description": "依已保存 QA 測試計畫與 PM／Architecture 驗收條件彙整覆蓋狀態，不得從實作反推預期結果。",
+      "items": {
+        "type": "object",
+        "required": [
+          "criterion",
+          "status"
+        ],
+        "properties": {
+          "criterion": {
+            "type": "string",
+            "description": "驗收條件原文。"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "COVERED",
+              "PARTIAL",
+              "NOT_COVERED"
+            ],
+            "description": "COVERED 表示有測試真的驗證了這條。測試存在但只驗到表面（例如只用 ASCII 輸入就宣稱支援任意字串）算 PARTIAL。"
+          },
+          "evidence": {
+            "type": "string",
+            "description": "指出是哪個測試方法覆蓋了它。status 非 COVERED 時，說明缺什麼。"
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "description": "在 Backend 的實作或測試中發現的問題。沒發現就留空陣列，不要為了交差硬湊。",
+      "items": {
+        "type": "object",
+        "required": [
+          "severity",
+          "detail"
+        ],
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": [
+              "HIGH",
+              "MEDIUM",
+              "LOW"
+            ],
+            "description": "HIGH 表示不修正就不該合併。"
+          },
+          "path": {
+            "type": "string",
+            "description": "相關檔案路徑，可省略。"
+          },
+          "detail": {
+            "type": "string",
+            "description": "問題是什麼、為什麼是問題。要具體到可以據此修正。"
+          }
+        }
+      }
+    },
+    "tests_added": {
+      "type": "array",
+      "description": "你補上的回歸測試。你只能新增測試，不能修改產品程式碼——沙箱會擋，那不是 bug。",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "covers"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "covers": {
+            "type": "string",
+            "description": "補這個測試是為了覆蓋哪一條原本沒被覆蓋的條件。"
+          }
+        }
+      }
+    },
+    "commits": {
+      "type": "array",
+      "description": "你為新增測試建立的 commit。沒有新增測試時為空陣列。",
+      "items": {
+        "type": "object",
+        "required": [
+          "sha",
+          "message"
+        ],
+        "properties": {
+          "sha": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "verify_passed": {
+      "type": "boolean",
+      "description": "含你新增的測試在內，mvn -B verify 是否 BUILD SUCCESS。false 時 verdict 不得為 PASS。"
+    },
+    "verify_detail": {
+      "type": "string",
+      "description": "verify 失敗時貼上關鍵錯誤訊息，不要只寫「失敗」。"
+    },
+    "confidence": {
+      "type": "string",
+      "enum": [
+        "HIGH",
+        "MEDIUM",
+        "LOW"
+      ],
+      "description": "對這次驗收判斷的把握程度。"
+    },
+    "uncertainties": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "無法驗證或無法判斷的事項。寧可列出來讓人決定，也不要假裝驗過了。"
+    }
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "type": "object",
+  "required": ["verdict", "summary", "findings", "checked", "confidence", "verification_status", "blockers"],
+  "additionalProperties": false,
+  "properties": {
+    "verification_status": {
+      "type": "string",
+      "enum": ["VERIFIED", "UNVERIFIED"],
+      "description": "只有獨立讀取 commit、diff、相關程式碼及規範並完成核實才可 VERIFIED。"
+    },
+    "blockers": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "無法核實的操作、實際錯誤、影響範圍及解除方式。非空就禁止發布。"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["APPROVE", "COMMENT", "REQUEST_CHANGES"],
+      "description": "REQUEST_CHANGES 阻斷發布；APPROVE／COMMENT 仍須通過核實檢查。"
+    },
+    "summary": {
+      "type": "string",
+      "description": "兩三句話說明這次改動做了什麼、你的整體看法。"
+    },
+    "findings": {
+      "type": "array",
+      "description": "具體的 review 意見。沒有意見就給空陣列，不要湊數。",
+      "items": {
+        "type": "object",
+        "required": ["severity", "file", "line", "issue", "suggestion"],
+        "additionalProperties": false,
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": ["HIGH", "MEDIUM", "LOW"]
+          },
+          "file": {
+            "type": "string",
+            "description": "相對於工作目錄根目錄的路徑。"
+          },
+          "line": {
+            "type": "integer",
+            "description": "行號。不適用時給 0。"
+          },
+          "issue": {
+            "type": "string",
+            "description": "問題是什麼、會造成什麼後果。要具體到能讓人判斷要不要現在處理。"
+          },
+          "suggestion": {
+            "type": "string",
+            "description": "建議怎麼改。沒有具體建議就留空字串。"
+          }
+        }
+      }
+    },
+    "checked": {
+      "type": "array",
+      "description": "你實際看過的面向，供人判斷這次 review 的涵蓋範圍。",
+      "items": { "type": "string" }
+    },
+    "confidence": {
+      "type": "string",
+      "enum": ["HIGH", "MEDIUM", "LOW"],
+      "description": "對這次 review 完整度的把握。看不到關鍵脈絡時要誠實給 LOW。"
+    }
+  }
+}

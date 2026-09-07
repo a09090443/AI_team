@@ -1,0 +1,67 @@
+{
+  "$comment": "Architecture Agent 的輸出 schema。內容即 ADR 本體，落檔由 Orchestrator 負責。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "adr_title",
+    "current_architecture",
+    "problem",
+    "proposal",
+    "affected_modules",
+    "backward_compatibility",
+    "risk_level",
+    "implementation_boundary",
+    "qa_criteria"
+  ],
+  "properties": {
+    "adr_title": {
+      "type": "string",
+      "description": "一句話的決策標題，例如「引入可設定的 DataSource provider 以支援 PostgreSQL」。"
+    },
+    "current_architecture": {
+      "type": "string",
+      "description": "現況描述。必須引用實際看過的 class 與檔案路徑，不要憑推測。"
+    },
+    "problem": {
+      "type": "string",
+      "description": "為什麼現況無法滿足需求。"
+    },
+    "proposal": {
+      "type": "string",
+      "description": "提案的架構變更。"
+    },
+    "affected_modules": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "實際會被改動的模組，必須是 repository 中存在的模組。"
+    },
+    "backward_compatibility": {
+      "type": "string",
+      "description": "既有使用者升級後會受到什麼影響。若完全相容也要明說理由。"
+    },
+    "risk_level": {
+      "type": "string",
+      "enum": ["LOW", "MEDIUM", "HIGH"]
+    },
+    "risks": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "具體風險，每條說明可能出錯的情境。"
+    },
+    "implementation_boundary": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "給 Backend 的指令。每條都要能直接對應到動作，明確說出什麼可以改、什麼不能動。"
+    },
+    "qa_criteria": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "給 QA 的驗收條件。每條都要能被實際驗證。"
+    },
+    "uncertainties": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "無法確定的事項，以及需求與相容性衝突之處。寧可列出來也不要猜。"
+    }
+  }
+}

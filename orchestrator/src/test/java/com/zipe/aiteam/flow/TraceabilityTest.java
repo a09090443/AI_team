@@ -1,0 +1,82 @@
+package com.zipe.aiteam.flow;
+
+import com.fasterxml.jackson.databind.*;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.io.TempDir;
+import java.nio.file.*;
+import static org.assertj.core.api.Assertions.*;
+
+class TraceabilityTest {
+    @TempDir Path tmp;
+    ObjectMapper mapper = new ObjectMapper();
+    FlowRun flow;
+    ObjectNode baseline, plan, result;
+    @BeforeEach void setup() throws Exception {
+        Files.createDirectory(tmp.resolve(".git"));
+        flow = new FlowRun(TeamCatalog.load(Path.of("teams/node-web.json"), key -> tmp.toString()));
+        baseline = json("""
+                {"summary":"mail","route":"implementation","requirements":[
+                  {"id":"R1","kind":"FUNCTIONAL","description":"寄信","acceptance":"正確送達","source":"使用者原文"},
+                  {"id":"R2","kind":"NON_FUNCTIONAL","description":"不洩漏密碼","acceptance":"log 不含密碼","source":"專案安全規範"}
+                ],"out_of_scope":["郵件行銷"],"open_questions":[]}
+                """);
+        flow.receipts.put("intake", baseline); flow.baselineRevision = Traceability.digest(baseline);
+        plan = json("""
+                {"status":"READY","scenarios":[{"id":"S1","requirement_ids":["R1","R2"],"criterion":"送達且log無密碼",
+                  "preconditions":"SMTP","test_data":"信件","method":"整合測試","steps":"寄送並查log","expected_result":"送達且密碼未出現","environment":"測試SMTP"}]}
+                """);
+        plan.put("baseline_revision", flow.baselineRevision); flow.receipts.put("plan", plan);
+        result = json("""
+                {"scenario_results":[{"scenario_id":"S1","status":"PASS","actual_result":"送達","evidence":"log:12","command":"test"}],"uncertainties":[],"findings":[]}
+                """);
+        result.put("baseline_revision", flow.baselineRevision); result.put("plan_revision", Traceability.digest(plan));
+    }
+    ObjectNode json(String text) throws Exception { return (ObjectNode)mapper.readTree(text); }
+    @Test void completeTraceabilityPasses() {
+        assertThat(Traceability.requirementsReason(baseline)).isNull();
+        assertThat(Traceability.planReason(plan, flow)).isNull();
+        assertThat(Traceability.executionReason(flow.snapshot.definition().nodes().get("verification"), result, flow)).isNull();
+    }
+    @Test void openProductQuestionCannotBecomeBaseline() {
+        baseline.withArray("open_questions").add("逾時後是否允許重複寄信？");
+        assertThat(Traceability.requirementsReason(baseline)).contains("真人");
+    }
+    @Test void duplicateRequirementAndMissingAcceptanceAreRejected() {
+        baseline.withArray("requirements").add(baseline.path("requirements").get(0).deepCopy());
+        assertThat(Traceability.requirementsReason(baseline)).contains("重複");
+        baseline.withArray("requirements").remove(2);
+        ((ObjectNode)baseline.path("requirements").get(0)).put("acceptance", " ");
+        assertThat(Traceability.requirementsReason(baseline)).contains("acceptance");
+    }
+    @Test void uncoveredRequirementNamesExactMissingId() {
+        ((ObjectNode)plan.path("scenarios").get(0)).putArray("requirement_ids").add("R1");
+        assertThat(Traceability.planReason(plan, flow)).contains("遺漏需求", "R2");
+    }
+    @Test void inventedOrDuplicateRequirementLinkIsRejected() {
+        ((ObjectNode)plan.path("scenarios").get(0)).putArray("requirement_ids").add("R9");
+        assertThat(Traceability.planReason(plan, flow)).contains("未知", "R9");
+    }
+    @Test void staleBaselineCannotBeUsedByPlan() {
+        plan.put("baseline_revision", "old");
+        assertThat(Traceability.planReason(plan, flow)).contains("版本不符");
+    }
+    @Test void sameScenarioIdWithChangedExpectationInvalidatesOldResult() {
+        ((ObjectNode)plan.path("scenarios").get(0)).put("expected_result", "不同預期");
+        assertThat(Traceability.executionReason(flow.snapshot.definition().nodes().get("verification"), result, flow)).contains("舊測試計畫");
+    }
+    @Test void replanningInvalidatesAllDependentWorkButRetainsBaseline() {
+        for (String id : new String[]{"implementation", "frontend", "verification", "review"}) {
+            flow.receipts.put(id, result); flow.heads.put(id, "head");
+        }
+        flow.approvalHead = "head";
+        Traceability.invalidate(flow, "plan");
+        assertThat(flow.receipts).containsOnlyKeys("intake"); assertThat(flow.heads).isEmpty();
+        assertThat(flow.approvalHead).isNull();
+    }
+    @Test void qaRerunInvalidatesReviewWithoutDiscardingImplementation() {
+        flow.receipts.put("implementation", result); flow.receipts.put("verification", result); flow.receipts.put("review", result);
+        Traceability.invalidate(flow, "verification");
+        assertThat(flow.receipts).containsKeys("intake", "plan", "implementation").doesNotContainKeys("verification", "review");
+    }
+}

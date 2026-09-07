@@ -1,0 +1,42 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "status",
+    "summary",
+    "quality_gate",
+    "boundary_conflict"
+  ],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "SUCCESS",
+        "FAILED",
+        "PARTIAL"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "quality_gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verify_passed"
+      ],
+      "properties": {
+        "verify_passed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "boundary_conflict": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

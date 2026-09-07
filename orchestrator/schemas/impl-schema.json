@@ -1,0 +1,162 @@
+{
+  "$comment": "Backend Agent 的輸出 schema。四項決策的落點：status/blockers 對應「誠實回報失敗」，boundary_conflict 對應「越界要停下來回報」，quality_gate 對應「Backend 自己要讓 mvn verify 過」。見 docs/backend-qa-decisions.md。 刻意不使用 additionalProperties:false，且 required 只留真正會被程式讀取的欄位。實測 #1004：Backend 已完成實作並 commit，卻因為最終結構化輸出連續五次未通過驗證而整輪被標成 FAILED（error_max_structured_output_retries）。多餘欄位無害，驗證失敗卻會讓一整輪工作報廢。",
+  "type": "object",
+  "required": [
+    "status",
+    "summary",
+    "quality_gate"
+  ],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "SUCCESS",
+        "PARTIAL",
+        "FAILED"
+      ],
+      "description": "SUCCESS 表示實作完成且 mvn verify 通過。PARTIAL 表示做了一部分但未達成完整目標。FAILED 表示無法完成。回報 FAILED 不會被視為失職；交出編譯不過或被閹割過的測試才是最糟的結果。"
+    },
+    "summary": {
+      "type": "string",
+      "description": "用繁體中文說明實際做了什麼，一到三句。會直接顯示在 Slack 上。"
+    },
+    "changed_files": {
+      "type": "array",
+      "description": "本次異動的檔案。未列出的檔案不應該有變更。",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "change",
+          "reason"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "相對於 repository 根目錄的路徑。"
+          },
+          "change": {
+            "type": "string",
+            "enum": [
+              "ADDED",
+              "MODIFIED",
+              "DELETED"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "description": "為什麼需要動這個檔案，一句話。"
+          }
+        }
+      }
+    },
+    "commits": {
+      "type": "array",
+      "description": "本次建立的 commit。必須實際 commit，否則 QA 與後續的 PR 步驟拿不到東西。",
+      "items": {
+        "type": "object",
+        "required": [
+          "sha",
+          "message"
+        ],
+        "properties": {
+          "sha": {
+            "type": "string",
+            "description": "短 SHA。"
+          },
+          "message": {
+            "type": "string",
+            "description": "commit 主旨。格式依 repository 的 git-commit-message skill。"
+          }
+        }
+      }
+    },
+    "tests": {
+      "type": "array",
+      "description": "本次新增或修改的測試。實作沒有對應測試時要在 uncertainties 說明原因。",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "covers"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "covers": {
+            "type": "string",
+            "description": "這個測試驗證的是哪一條行為或驗收條件。"
+          }
+        }
+      }
+    },
+    "quality_gate": {
+      "type": "object",
+      "required": [
+        "spotless_applied",
+        "verify_passed"
+      ],
+      "description": "repository 的 local-quality-gate skill 的執行結果。verify_passed 為 false 時 status 不得為 SUCCESS。",
+      "properties": {
+        "spotless_applied": {
+          "type": "boolean",
+          "description": "是否已執行 mvn -B spotless:apply。"
+        },
+        "verify_passed": {
+          "type": "boolean",
+          "description": "mvn -B verify 是否 BUILD SUCCESS。"
+        },
+        "failure_detail": {
+          "type": "string",
+          "description": "verify 失敗時，貼上關鍵的錯誤訊息，不要只寫「失敗」。"
+        },
+        "docs_synced": {
+          "type": "boolean",
+          "description": "變更涉及對外 API／設定屬性／行為改變時，是否已依 doc-sync 規則同步文件。不涉及時填 true 並在 summary 說明。"
+        }
+      }
+    },
+    "boundary_conflict": {
+      "type": "object",
+      "required": [
+        "needed",
+        "why"
+      ],
+      "description": "只有在 Architecture 給的 implementation_boundary 不足以完成任務時才填。填了這個欄位就代表你選擇停下來回報而不是自行擴大範圍，status 應為 PARTIAL 或 FAILED。",
+      "properties": {
+        "needed": {
+          "type": "string",
+          "description": "需要動到邊界外的什麼，具體到檔案或類別。"
+        },
+        "why": {
+          "type": "string",
+          "description": "為什麼不動它就完成不了。"
+        }
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "擋住你的具體障礙。status 非 SUCCESS 時必須至少有一項。"
+    },
+    "confidence": {
+      "type": "string",
+      "enum": [
+        "HIGH",
+        "MEDIUM",
+        "LOW"
+      ],
+      "description": "對這次實作正確性的把握程度。"
+    },
+    "uncertainties": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "不確定的地方。寧可列出來讓 QA 重點檢查，也不要假裝沒問題。"
+    }
+  }
+}

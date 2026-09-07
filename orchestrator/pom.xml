@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.5.3</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.zipe</groupId>
+    <artifactId>ai-team-orchestrator</artifactId>
+    <version>0.1.0</version>
+    <name>ai-team-orchestrator</name>
+    <description>Slack 介面的 AI 軟體團隊協調器</description>
+
+    <properties>
+        <java.version>21</java.version>
+        <slack.bolt.version>1.45.3</slack.bolt.version>
+        <tyrus.version>1.22</tyrus.version>
+        <sqlite.version>3.49.1.0</sqlite.version>
+    </properties>
+
+    <dependencies>
+        <!-- 刻意不用 spring-boot-starter-web：Socket Mode 走 WebSocket 對外連線，
+             不需要對外開 HTTP port（見 docs/slack-options.md 的 C 節）。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-json</artifactId>
+        </dependency>
+
+        <!-- 任務狀態、去重表、稽核紀錄的持久化。
+             SQLite 選用理由：單一檔案、無需伺服器、可用 sqlite3 直接查詢稽核紀錄。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.xerial</groupId>
+            <artifactId>sqlite-jdbc</artifactId>
+            <version>${sqlite.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.slack.api</groupId>
+            <artifactId>bolt-socket-mode</artifactId>
+            <version>${slack.bolt.version}</version>
+        </dependency>
+
+        <!-- 測試：WorkspaceManager 會做 rm -rf 與 git 操作，需要真的驗證過 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.glassfish.tyrus.bundles</groupId>
+            <artifactId>tyrus-standalone-client</artifactId>
+            <version>${tyrus.version}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

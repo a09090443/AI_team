@@ -1,0 +1,12 @@
+env.sh
+*.db
+*.db-wal
+*.db-shm
+*.tar
+*.tar.gz
+artifacts/
+releases/
+backups/
+orchestrator/target/
+.build-m2/
+*.tgz

@@ -1,0 +1,5 @@
+# 名稱<TAB>HTTPS URL<TAB>SHA256（必須先從供應者核實）
+# 解壓後須有單一頂層目錄；請另存為 toolchain.tsv，不可填假 checksum。
+# node https://nodejs.org/dist/v22.21.1/node-v22.21.1-linux-x64.tar.xz <官方SHA256>
+# java <核實過的固定 Temurin JDK 21 release URL> <官方SHA256>
+# maven <核實過的固定 Apache Maven release archive URL> <官方SHA256>

@@ -1,0 +1,278 @@
+{
+  "version": 2,
+  "id": "spring-starters",
+  "project": {
+    "requiredTools": [
+      "java",
+      "mvn",
+      "git"
+    ],
+    "name": "zipe-spring-boot-starters",
+    "repositoryEnv": "AI_TEAM_REPO",
+    "baseBranch": "develop",
+    "buildInstructions": "依 AGENTS.md 與專案 skills；mvn -B verify。需生成的文件必須依規定產生，未完成不能宣稱通過。",
+    "testInstructions": "先制定情境測試計畫，再驗收；不得只看程式或單元測試數量。",
+    "protectedPaths": [
+      "**/src/main/**",
+      "**/pom.xml"
+    ],
+    "cachePaths": [
+      ".m2/repository"
+    ],
+    "verification": {
+      "commands": [
+        [
+          "mvn",
+          "-B",
+          "clean",
+          "verify"
+        ]
+      ],
+      "timeoutSeconds": 1800
+    }
+  },
+  "roles": {
+    "coordinator": {
+      "name": "PM Agent",
+      "runtime": "claude-code",
+      "model": "opus",
+      "prompt": "prompts/intake.md",
+      "botTokenEnv": "SLACK_BOT_TOKEN_PM",
+      "appTokenEnv": "SLACK_APP_TOKEN_PM",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob"
+      ]
+    },
+    "architect": {
+      "name": "Architecture Agent",
+      "runtime": "claude-code",
+      "model": "opus",
+      "prompt": "prompts/design.md",
+      "botTokenEnv": "SLACK_BOT_TOKEN_ARCHITECTURE",
+      "appTokenEnv": "SLACK_APP_TOKEN_ARCHITECTURE",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob"
+      ]
+    },
+    "builder": {
+      "name": "Backend Agent",
+      "runtime": "claude-code",
+      "model": "sonnet",
+      "prompt": "prompts/implement.md",
+      "botTokenEnv": "SLACK_BOT_TOKEN_BACKEND",
+      "appTokenEnv": "SLACK_APP_TOKEN_BACKEND",
+      "tools": [
+        "Read",
+        "Write",
+        "Edit",
+        "Grep",
+        "Glob",
+        "Bash(mvn *)",
+        "Bash(git *)",
+        "Bash(ls *)"
+      ]
+    },
+    "tester": {
+      "name": "QA Agent",
+      "runtime": "claude-code",
+      "model": "sonnet",
+      "prompt": "prompts/verify.md",
+      "botTokenEnv": "SLACK_BOT_TOKEN_QA",
+      "appTokenEnv": "SLACK_APP_TOKEN_QA",
+      "tools": [
+        "Read",
+        "Write",
+        "Edit",
+        "Grep",
+        "Glob",
+        "Bash(mvn *)",
+        "Bash(git *)",
+        "Bash(ls *)"
+      ]
+    },
+    "inspector": {
+      "name": "Code Reviewer",
+      "runtime": "codex",
+      "model": "",
+      "prompt": "prompts/review.md",
+      "botTokenEnv": "SLACK_BOT_TOKEN_CODE_REVIEW",
+      "appTokenEnv": "SLACK_APP_TOKEN_CODE_REVIEW",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash(git diff *)",
+        "Bash(git log *)",
+        "Bash(git show *)"
+      ]
+    }
+  },
+  "entry": "intake",
+  "maxTransitions": 24,
+  "nodes": {
+    "intake": {
+      "kind": "AGENT",
+      "role": "coordinator",
+      "schema": "schemas/requirements.json",
+      "scope": "READ_ONLY",
+      "gate": "REQUIREMENTS",
+      "workspace": false,
+      "writablePaths": [],
+      "plan": null,
+      "next": "design",
+      "blocked": "human",
+      "routes": {
+        "question": "end",
+        "implementation": "design",
+        "human": "human"
+      },
+      "requires": [],
+      "maxVisits": 3,
+      "timeoutSeconds": 900,
+      "maxTurns": 40
+    },
+    "design": {
+      "kind": "AGENT",
+      "role": "architect",
+      "schema": "schemas/analysis.json",
+      "scope": "READ_ONLY",
+      "gate": "REPORT",
+      "workspace": false,
+      "writablePaths": [],
+      "plan": null,
+      "next": "plan",
+      "blocked": "human",
+      "routes": {
+        "ready": "plan",
+        "human": "human"
+      },
+      "requires": [
+        "intake"
+      ],
+      "maxVisits": 3,
+      "timeoutSeconds": 900,
+      "maxTurns": 40
+    },
+    "plan": {
+      "instructions": "prompts/plan.md",
+      "kind": "AGENT",
+      "role": "tester",
+      "schema": "schemas/plan.json",
+      "scope": "READ_ONLY",
+      "gate": "TEST_PLAN",
+      "workspace": false,
+      "writablePaths": [],
+      "plan": null,
+      "next": "implementation",
+      "blocked": "human",
+      "routes": {},
+      "requires": [
+        "design"
+      ],
+      "maxVisits": 3,
+      "timeoutSeconds": 900,
+      "maxTurns": 40
+    },
+    "implementation": {
+      "kind": "AGENT",
+      "role": "builder",
+      "schema": "schemas/implementation.json",
+      "scope": "WORKSPACE",
+      "gate": "IMPLEMENTATION",
+      "workspace": true,
+      "writablePaths": [],
+      "plan": null,
+      "next": "verification",
+      "blocked": "triage",
+      "routes": {},
+      "requires": [
+        "plan"
+      ],
+      "maxVisits": 3,
+      "timeoutSeconds": 1800,
+      "maxTurns": 80
+    },
+    "verification": {
+      "kind": "AGENT",
+      "role": "tester",
+      "schema": "schemas/verification.json",
+      "scope": "LIMITED",
+      "gate": "VERIFICATION",
+      "workspace": true,
+      "writablePaths": [
+        "**/src/test/**",
+        "**/target/**"
+      ],
+      "plan": "plan",
+      "next": "review",
+      "blocked": "triage",
+      "routes": {},
+      "requires": [
+        "plan",
+        "implementation"
+      ],
+      "maxVisits": 3,
+      "timeoutSeconds": 1800,
+      "maxTurns": 60
+    },
+    "review": {
+      "kind": "AGENT",
+      "role": "inspector",
+      "schema": "schemas/review.json",
+      "scope": "READ_ONLY",
+      "gate": "REVIEW",
+      "workspace": true,
+      "writablePaths": [],
+      "plan": null,
+      "next": "approval",
+      "blocked": "triage",
+      "routes": {},
+      "requires": [
+        "verification"
+      ],
+      "maxVisits": 3,
+      "timeoutSeconds": 900,
+      "maxTurns": 40
+    },
+    "triage": {
+      "instructions": "prompts/triage.md",
+      "kind": "AGENT",
+      "role": "coordinator",
+      "schema": "schemas/analysis.json",
+      "scope": "READ_ONLY",
+      "gate": "REPORT",
+      "workspace": false,
+      "writablePaths": [],
+      "plan": null,
+      "next": "human",
+      "blocked": "human",
+      "routes": {
+        "implementation": "implementation",
+        "verification": "verification",
+        "human": "human",
+        "requirements": "intake",
+        "plan": "plan",
+        "design": "design"
+      },
+      "requires": [],
+      "maxVisits": 3,
+      "timeoutSeconds": 900,
+      "maxTurns": 40
+    },
+    "approval": {
+      "kind": "APPROVAL",
+      "requires": [
+        "intake",
+        "implementation",
+        "plan",
+        "verification",
+        "review",
+        "design"
+      ]
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "type": "object",
+  "required": ["status", "summary", "scenarios"],
+  "properties": {
+    "status": {"type": "string", "enum": ["READY", "BLOCKED"]},
+    "summary": {"type": "string"},
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "criterion", "preconditions", "test_data", "method", "steps", "expected_result", "environment"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "criterion": {"type": "string", "minLength": 1},
+          "preconditions": {"type": "string", "minLength": 1},
+          "test_data": {"type": "string", "minLength": 1},
+          "method": {"type": "string", "minLength": 1},
+          "steps": {"type": "string", "minLength": 1},
+          "expected_result": {"type": "string", "minLength": 1},
+          "environment": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}
