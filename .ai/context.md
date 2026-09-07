@@ -13,7 +13,7 @@
 
 - `AGENTS.md` 為專案規範單一事實來源；`CLAUDE.md` 以 `@AGENTS.md` import 之。
 - `.ai/context.md`／`decisions.md`／`progress.md` 建立完成，兩邊 agent 皆需讀寫。
-- 專案本身尚未 git init，`.ai/` 目前只存在於本機工作目錄。
+- 專案已 git init 並推上 GitHub（https://github.com/a09090443/AI_team ，private，分支 `main`）。
 
 ## 已知阻礙
 
