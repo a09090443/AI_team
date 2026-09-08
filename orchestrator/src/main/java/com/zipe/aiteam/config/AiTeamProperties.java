@@ -155,6 +155,11 @@ public class AiTeamProperties {
     @Value("${AI_TEAM_TASK_TIMEOUT_SECONDS:0}")
     private long taskTimeoutSeconds;
 
+    @Value("${AI_TEAM_PROGRESS_INTERVAL_SECONDS:300}")
+    private long progressIntervalSeconds = 300;
+
+    public long progressIntervalSeconds() { return Math.max(30, progressIntervalSeconds); }
+
     @Value("${AI_TEAM_GIT_TIMEOUT_SECONDS:300}")
     private long gitTimeoutSeconds;
 

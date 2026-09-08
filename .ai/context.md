@@ -3,7 +3,15 @@
 > 換手前務必更新這份檔案。內容只寫「現在正在做什麼、卡在哪」，
 > 長期結論寫 `decisions.md`，已完成的寫 `progress.md`。
 
-最後更新：2026-09-07（Claude Code）
+最後更新：2026-09-08（Codex）
+
+## 最新交接
+
+Slack 定期回報已於 2026-09-08 22:23 台北時間部署，PID 80214，啟動檢查通過。
+備份 progress-backup.oFdYpg；詳見 progress.md 與 docs/slack-progress.md。
+尚未執行真實 Slack 五分鐘更新驗收，等待使用者續跑任務。
+#1014 為 implementation 的 Claude session limit，但辨識漏掉措辭而停在 AWAIT_HUMAN；
+checkpoint 與未提交實作仍保留，額度回報修正尚未實作。下方保留先前交接脈絡。
 
 ## 目標
 

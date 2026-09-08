@@ -130,7 +130,7 @@ public class StageRunner {
                 resolveTimeout(stage),
                 policy,
                 checkpoint.model());
-        try {
+        try (var progress = new com.zipe.aiteam.slack.StageProgress(slack, store, task, stage.displayName(), props.progressIntervalSeconds())) {
             return runtime.execute(request, sessionStarted);
         } catch (AgentRuntime.RuntimeExecutionException e) {
             String detail = com.zipe.aiteam.runtime.Diagnostics.describe(e);
@@ -148,9 +148,11 @@ public class StageRunner {
             AgentRuntime.RuntimeRequest fresh = new AgentRuntime.RuntimeRequest(request.taskId(), request.role(),
                     request.workingDirectory(), request.systemPromptFile(), request.prompt(), request.allowedTools(),
                     request.jsonSchema(), null, request.maxTurns(), request.timeout(), request.sandboxPolicy(), request.model());
-            return runtime.execute(fresh, session -> {
+            try (var progress = new com.zipe.aiteam.slack.StageProgress(slack, store, task, stage.displayName() + "／新 session 接手", props.progressIntervalSeconds())) {
+              return runtime.execute(fresh, session -> {
                 if (store != null) store.saveCheckpoint(fallback.withSession(session));
-            });
+              });
+            }
         }
     }
 

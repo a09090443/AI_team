@@ -145,7 +145,10 @@ public class FlowEngine {
                 if (node.gate() == Gate.REVIEW && flow.snapshot.definition().version() >= 2) {
                     if (flow.independentEvidence == null) {
                         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id() + " 正由系統在全新 clone 執行獨立驗證；通過後才交審查角色。");
-                        flow.independentEvidence = verifier.verify(task, flow); store.saveFlow(task.id(), flow);
+                        try (var progress = new StageProgress(slack, store, task, "系統獨立驗證", props.progressIntervalSeconds())) {
+                            flow.independentEvidence = verifier.verify(task, flow);
+                        }
+                        store.saveFlow(task.id(), flow);
                         audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "獨立驗證收據：" + flow.independentEvidence);
                     }
                     String invalid = verifier.blockingReason(flow, workspaces.headSha(task.id()));
@@ -153,7 +156,10 @@ public class FlowEngine {
                 }
                 AgentRuntime.RuntimeResult result;
                 long started = System.nanoTime();
-                try { result = executor.execute(task, flow, node); }
+                try (var progress = new StageProgress(slack, store, task,
+                        flow.snapshot.definition().roles().get(node.role()).name() + "／" + flow.node, props.progressIntervalSeconds())) {
+                    result = executor.execute(task, flow, node);
+                }
                 catch (Exception e) { auditScope(task, flow, node); throw e; }
                 if (aborted(task)) return;
                 auditScope(task, flow, node);
@@ -275,7 +281,10 @@ public class FlowEngine {
                 "end", "human", Map.of(), List.of(), 1, 900, 20, null);
         state(task, Task.State.STAGE_RUNNING, role.name() + " 唯讀對話處理中");
         task.continuation(store.checkpoint(task.id()).filter(c -> c.role().equals(flow.node)).orElse(null));
-        var result = executor.execute(task, flow, node);
+        AgentRuntime.RuntimeResult result;
+        try (var progress = new StageProgress(slack, store, task, role.name() + "／唯讀對話", props.progressIntervalSeconds())) {
+            result = executor.execute(task, flow, node);
+        }
         if (aborted(task)) return;
         String block = FailureReport.blockingReason("generic", result.structuredOutput());
         store.saveStage(task.id(), new StageOutcome(flow.node, result.sessionId(), result.structuredOutput(), result.costEstimate(), 0));
