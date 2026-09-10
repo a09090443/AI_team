@@ -21,6 +21,173 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 
 class FlowEngineTest {
+    @Test void migratedConfigurationNeedsExplicitSingleRecoveryAndFreshPlanApproval() throws Exception {
+        var initial=store.flow(task.id()).orElseThrow();
+        ObjectNode def=mapper.valueToTree(initial.snapshot.definition());
+        ((ObjectNode)def.path("project")).put("requirePlanApproval",true);
+        initial.snapshot=new TeamDefinition.Snapshot("before",mapper.treeToValue(def,TeamDefinition.class),initial.snapshot.repository(),initial.snapshot.assets());
+        store.saveFlow(task.id(),initial);engine.run(task);
+        var flow=store.flow(task.id()).orElseThrow();
+        ((ObjectNode)def.path("project")).put("testInstructions","fixed capability instructions");
+        var target=new TeamDefinition.Snapshot("after",mapper.treeToValue(def,TeamDefinition.class),flow.snapshot.repository(),flow.snapshot.assets());
+        flow.node="triage";flow.visits.put("verification",3);
+        TeamMigration.apply(flow,target,TeamMigration.preview(flow.snapshot,target).token());store.saveFlow(task.id(),flow);
+        List<Runnable> jobs=new ArrayList<>();
+        engine.resume(task,"核准恢復驗收 verification wrong","u",jobs::add);
+        assertThat(store.flow(task.id()).orElseThrow().recoveryGrants).isEmpty();
+        engine.resume(task,"核准恢復驗收 verification after","u",jobs::add);
+        var pending=store.flow(task.id()).orElseThrow();
+        assertThat(pending.recoveryGrants).containsEntry("verification","after");
+        assertThat(pending.planApprovals).isEmpty();assertThat(jobs).isEmpty();
+        int before=pending.transitions;
+        engine.resume(task,"核准測試計畫 plan "+Traceability.digest(pending.receipts.get("plan")),"u",jobs::add);
+        assertThat(jobs).hasSize(1);jobs.getFirst().run();
+        var completed=store.flow(task.id()).orElseThrow();
+        assertThat(completed.visits.get("verification")).isEqualTo(4);
+        assertThat(completed.recoveryGrants).isEmpty();
+        assertThat(completed.recoveryRevisions).containsExactly("after");
+        assertThat(completed.transitions).isGreaterThan(before);
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        verifyNoInteractions(publisher);
+        completed.activeNode=null;
+        assertThatThrownBy(()->VerificationRecovery.authorize(completed,"verification","after","u")).hasMessageContaining("已使用");
+    }
+    /** 參數被 CLI 拒絕時模型完全沒跑，計數與一次性授權必須原樣還原（#1014）。 */
+    @Test void cliUsageErrorRestoresVisitAndRecoveryGrantBecauseNoModelRan() throws Exception {
+        var initial=store.flow(task.id()).orElseThrow();
+        ObjectNode def=mapper.valueToTree(initial.snapshot.definition());
+        ((ObjectNode)def.path("project")).put("requirePlanApproval",true);
+        initial.snapshot=new TeamDefinition.Snapshot("before",mapper.treeToValue(def,TeamDefinition.class),initial.snapshot.repository(),initial.snapshot.assets());
+        store.saveFlow(task.id(),initial);engine.run(task);
+        var flow=store.flow(task.id()).orElseThrow();
+        ((ObjectNode)def.path("project")).put("testInstructions","fixed capability instructions");
+        var target=new TeamDefinition.Snapshot("after",mapper.treeToValue(def,TeamDefinition.class),flow.snapshot.repository(),flow.snapshot.assets());
+        flow.node="triage";flow.visits.put("verification",3);
+        TeamMigration.apply(flow,target,TeamMigration.preview(flow.snapshot,target).token());store.saveFlow(task.id(),flow);
+        List<Runnable> jobs=new ArrayList<>();
+        engine.resume(task,"核准恢復驗收 verification after","u",jobs::add);
+        var pending=store.flow(task.id()).orElseThrow();
+        int transitionsBefore=pending.transitions;
+        engine.resume(task,"核准測試計畫 plan "+Traceability.digest(pending.receipts.get("plan")),"u",jobs::add);
+        mode="usage";
+        assertThat(jobs).hasSize(1);jobs.getFirst().run();
+
+        var saved=store.flow(task.id()).orElseThrow();
+        assertThat(saved.visits.get("verification")).isEqualTo(3);
+        assertThat(saved.transitions).isEqualTo(transitionsBefore);
+        assertThat(saved.recoveryGrants).containsEntry("verification","after");
+        assertThat(saved.recoveryRevisions).doesNotContain("after");
+        assertThat(saved.activeNode).isNull();
+        assertThat(saved.planApprovals).containsKey("plan");
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        verify(slack).post(any(),any(),any(),argThat((String t)->t.contains("本次未呼叫任何模型")&&t.contains("已還原")));
+        verifyNoInteractions(publisher);
+    }
+    @Test void retryCapDoesNotConsumeAnotherVisitOrHideOriginalFailure() {
+        var flow = store.flow(task.id()).orElseThrow();
+        int limit = flow.snapshot.definition().nodes().get(flow.node).maxVisits();
+        flow.visits.put(flow.node, limit); flow.transitions = 9;
+        flow.lastBlockReason = "QA bwrap: Can't mkdir .agents: Read-only file system";
+        store.saveFlow(task.id(), flow);
+        engine.run(task); engine.run(task);
+        var saved = store.flow(task.id()).orElseThrow();
+        assertThat(saved.transitions).isEqualTo(9);
+        assertThat(saved.visits.get(flow.node)).isEqualTo(limit);
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        verifyNoInteractions(executor, publisher);
+        verify(slack, times(2)).post(any(), any(), any(), argThat((String text) ->
+                text.contains("不是 token 額度") && text.contains("QA bwrap:")
+                && text.contains("本次未啟動 agent") && !text.contains("具體答案")));
+    }
+    @Test void totalCapDoesNotIncrementNodeVisit() {
+        var flow = store.flow(task.id()).orElseThrow();
+        flow.transitions = flow.snapshot.definition().maxTransitions();
+        store.saveFlow(task.id(), flow); engine.run(task);
+        var saved = store.flow(task.id()).orElseThrow();
+        assertThat(saved.transitions).isEqualTo(flow.transitions);
+        assertThat(saved.visits).isEmpty();
+        verifyNoInteractions(executor, publisher);
+    }
+    @Test void migrationRequiresExactApprovalAndPersistsHistoryWithoutEnqueue() throws Exception {
+        task.state(Task.State.AWAIT_HUMAN); store.save(task);
+        var old = catalog.snapshot(); ObjectNode definition = mapper.valueToTree(old.definition());
+        ((ObjectNode)definition.path("project")).put("buildInstructions", "reviewed build instructions");
+        var next = new TeamDefinition.Snapshot("next", mapper.treeToValue(definition, TeamDefinition.class), old.repository(), old.assets());
+        when(catalog.snapshot()).thenReturn(next);
+        List<Runnable> jobs = new ArrayList<>();
+        engine.resume(task, "檢視配置更新", "u", jobs::add);
+        assertThat(store.flow(task.id()).orElseThrow().snapshot).isEqualTo(old);
+        engine.resume(task, "核准配置更新 wrong", "u", jobs::add);
+        assertThat(store.flow(task.id()).orElseThrow().snapshot).isEqualTo(old);
+        engine.resume(task, "核准配置更新 " + TeamMigration.preview(old, next).token(), "u", jobs::add);
+        var saved = store.flow(task.id()).orElseThrow();
+        assertThat(saved.snapshot).isEqualTo(next); assertThat(saved.migrationHistory).containsExactly(old);
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        assertThat(jobs).isEmpty(); verifyNoInteractions(executor, publisher);
+    }
+    @Test void planApprovalQueuesExactlyOnceButDoesNotPublish() throws Exception {
+        var flow = store.flow(task.id()).orElseThrow();
+        ObjectNode definition = mapper.valueToTree(flow.snapshot.definition());
+        ((ObjectNode)definition.path("project")).put("requirePlanApproval", true);
+        flow.snapshot = new TeamDefinition.Snapshot(flow.snapshot.revision(), mapper.treeToValue(definition, TeamDefinition.class), flow.snapshot.repository(), flow.snapshot.assets());
+        store.saveFlow(task.id(), flow);
+        engine.run(task);
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        assertThat(calls).doesNotContain("verification:tester", "review:security_auditor");
+        var waiting = store.flow(task.id()).orElseThrow();
+        waiting.visits.put("triage", 3); store.saveFlow(task.id(), waiting);
+        when(slack.post(any(), any(), any(), anyString())).thenReturn("sent");
+        List<Runnable> displayJobs = new ArrayList<>();
+        engine.resume(task, "檢視測試計畫", "u", displayJobs::add);
+        assertThat(displayJobs).isEmpty();
+        verify(slack).post(any(), any(), any(), contains("測試計畫已完整列出"), anyList());
+        assertThat(store.flow(task.id()).orElseThrow().visits.get("triage")).isEqualTo(3);
+        String digest = Traceability.digest(waiting.receipts.get("plan"));
+        List<Runnable> jobs = new ArrayList<>();
+        engine.resume(task, "核准測試計畫 plan wrong", "u", jobs::add);
+        assertThat(store.flow(task.id()).orElseThrow().planApprovals).isEmpty();
+        var decision = new com.zipe.aiteam.slack.PlanReview.Decision(task.id(), "plan", digest, waiting.snapshot.revision(), waiting.baselineRevision);
+        engine.planDecision(task, "u", decision, true, "wrong-channel", task.slackThreadTs(), jobs::add);
+        engine.planDecision(task, "stranger", decision, true, task.slackChannel(), task.slackThreadTs(), jobs::add);
+        engine.planDecision(task, "u", new com.zipe.aiteam.slack.PlanReview.Decision(task.id(), "plan", digest, "stale", waiting.baselineRevision), true, task.slackChannel(), task.slackThreadTs(), jobs::add);
+        assertThat(store.flow(task.id()).orElseThrow().planApprovals).isEmpty();
+        assertThat(jobs).isEmpty();
+        engine.planDecision(task, "u", decision, false, task.slackChannel(), task.slackThreadTs(), jobs::add);
+        assertThat(store.flow(task.id()).orElseThrow().planApprovals).isEmpty();
+        assertThat(store.flow(task.id()).orElseThrow().pendingPlanRevision).isEqualTo("plan");
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        assertThat(jobs).isEmpty();
+        engine.planDecision(task, "u", decision, true, task.slackChannel(), task.slackThreadTs(), jobs::add);
+        engine.planDecision(task, "u", decision, true, task.slackChannel(), task.slackThreadTs(), jobs::add);
+        assertThat(store.flow(task.id()).orElseThrow().pendingPlanRevision).isNull();
+        assertThat(jobs).hasSize(1);
+        assertThat(store.flow(task.id()).orElseThrow().planApprovals).containsKey("plan");
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.RESUME_QUEUED);
+        engine.resume(task, "核准測試計畫 plan " + digest, "u", jobs::add);
+        assertThat(jobs).hasSize(1);
+        jobs.getFirst().run();
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        assertThat(store.flow(task.id()).orElseThrow().visits.get("triage")).isEqualTo(3);
+        verifyNoInteractions(publisher);
+    }
+    @Test void explicitRecoveryRequiresValidApprovalAndQueuesOnlyOnce() throws Exception {
+        var flow = store.flow(task.id()).orElseThrow();
+        ObjectNode definition = mapper.valueToTree(flow.snapshot.definition());
+        ((ObjectNode)definition.path("project")).put("requirePlanApproval", true);
+        flow.snapshot = new TeamDefinition.Snapshot(flow.snapshot.revision(), mapper.treeToValue(definition, TeamDefinition.class), flow.snapshot.repository(), flow.snapshot.assets());
+        store.saveFlow(task.id(), flow); engine.run(task);
+        List<Runnable> jobs = new ArrayList<>();
+        assertThatThrownBy(() -> engine.resumeApprovedPlan(task, jobs::add)).hasMessageContaining("沒有有效");
+        var waiting = store.flow(task.id()).orElseThrow();
+        var approval = PlanApproval.approve(waiting, "plan", Traceability.digest(waiting.receipts.get("plan")), "u");
+        waiting.planApprovals.put("plan", approval); store.saveFlow(task.id(), waiting);
+        engine.resumeApprovedPlan(task, jobs::add); engine.resumeApprovedPlan(task, jobs::add);
+        assertThat(jobs).hasSize(1);
+        assertThat(store.flow(task.id()).orElseThrow().planApprovals.get("plan")).isEqualTo(approval);
+        jobs.getFirst().run();
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        verifyNoInteractions(publisher);
+    }
     @TempDir Path tmp;
     ObjectMapper mapper = new ObjectMapper();
     TaskStore store;
@@ -45,6 +212,12 @@ class FlowEngineTest {
         when(catalog.enabled()).thenReturn(true);
         boolean spring = info.getTestMethod().orElseThrow().getName().startsWith("spring");
         when(catalog.snapshot()).thenReturn(TeamCatalog.load(Path.of(spring ? "teams/spring-starters.json" : "teams/node-web.json"), key -> tmp.resolve("repo").toString()));
+        // 既有流程測試維持「不需計畫核准」契約；新核准測試另明確啟用。
+        var original = catalog.snapshot();
+        ObjectNode legacyDefinition = mapper.valueToTree(original.definition());
+        ((ObjectNode)legacyDefinition.path("project")).put("requirePlanApproval", false);
+        when(catalog.snapshot()).thenReturn(new TeamDefinition.Snapshot(original.revision(),
+                mapper.treeToValue(legacyDefinition, TeamDefinition.class), original.repository(), original.assets()));
         when(props.allowedUsers()).thenReturn(Set.of("u"));
         when(workspace.exists("42")).thenAnswer(c -> provisioned);
         when(workspace.provision(eq(task), any(), anyString())).thenAnswer(c -> { provisioned = true; return tmp; });
@@ -57,6 +230,8 @@ class FlowEngineTest {
             FlowRun flow = c.getArgument(1); TeamDefinition.Node node = c.getArgument(2); calls.add(flow.node + ":" + node.role());
             Task executing = c.getArgument(0);
             if (executing.continuation() != null) resumed.add(flow.node + ":" + executing.continuation().sessionId());
+            if (mode.equals("usage") && flow.node.equals("verification"))
+                throw new RuntimeUsageError("Codex CLI 用法錯誤，指令未送達模型（結束碼 2）：error: unexpected argument '-P' found");
             if (mode.equals("quota") && flow.node.equals("verification")) {
                 store.saveCheckpoint(new Checkpoint("42", flow.node, "claude-code", "sonnet", "saved-session", "context", "head1", "quota"));
                 throw new QuotaExceeded("usage_limit_reached");

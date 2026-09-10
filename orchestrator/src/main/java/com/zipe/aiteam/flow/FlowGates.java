@@ -16,6 +16,8 @@ public final class FlowGates {
             case IMPLEMENTATION -> FailureReport.implementationIncomplete(result) ? "實作品質契約未通過或有範圍衝突" : null;
             case TEST_PLAN -> flow.snapshot.definition().version() >= 2 ? Traceability.planReason(result, flow) : QaGate.planReason(result);
             case VERIFICATION -> {
+                String approval = PlanApproval.blockingReason(flow, node.plan());
+                if (approval != null) yield approval;
                 yield FailureReport.verificationIncomplete(result) ? "驗收狀態未通過" : flow.snapshot.definition().version() >= 2
                         ? Traceability.executionReason(node, result, flow) : QaGate.executionReason(flow.receipts.get(node.plan()), result);
             }

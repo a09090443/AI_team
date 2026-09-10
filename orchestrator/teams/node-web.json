@@ -2,6 +2,12 @@
   "version": 2,
   "id": "node-web",
   "project": {
+    "requirePlanApproval": true,
+    "operations": {
+      "install": {"nodes": ["implementation", "frontend"], "directory": ".", "argv": ["npm", "ci"], "writes": ["node_modules"]},
+      "build": {"nodes": ["implementation", "frontend"], "directory": ".", "argv": ["npm", "run", "build"], "writes": ["dist"]},
+      "test": {"nodes": ["implementation", "frontend"], "directory": ".", "argv": ["npm", "test"], "writes": ["coverage"]}
+    },
     "requiredTools": [
       "node",
       "npm",

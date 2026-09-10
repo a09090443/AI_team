@@ -1,5 +1,26 @@
 # QA 受阻後的 PM 處理
 
+## 2026-09-09 工作區查核修正
+
+配置式 READ_ONLY 節點在任務已有 workspacePath 時，使用該任務工作區，
+不因 workspace=false 而查核主 repository；workspace=false 仍表示不建立新工作區。
+已保存路徑遺失、不符或為 symlink 時停止，不退回其他副本。PM 仍維持唯讀。
+checkpoint 的原工作目錄與新目錄不一致時禁止 resume，以免延續錯誤脈絡。
+已結束階段（activeNode=null）按原流程以新 session 重跑，舊 checkpoint/log 保留證據。
+
+spring-starters builder 僅補 npm 版本、ci、install、run build 與 node 版本指令，
+沒有開放任意 npm/npx；增加 .npm 快取與 node/npm 啟動工具鏈檢查。
+在 doc-site 目錄使用 npm ci 後 npm run build；含依賴 lifecycle，仍受外層沙箱限制。
+
+07:42 台北時間已部署 PID 100553；182 項 Maven 測試中 179 通過、3 略過，
+16 平台 fixture 與沙箱／工具鏈／Slack 啟動檢查通過。尚未完成真實文件建置與 QA 驗收。
+#1014 以專用 repair-1014-doc-tools.jq 遷移最小工具／建置設定、追加更正，
+保留模型、需求、測試計畫、歷史報告、checkpoint、AWAIT_HUMAN 狀態與 commit 814c9b1。
+維修 revision 為排序 JSON（snapshot 去掉 revision，含行末換行）的 SHA256；
+不同於 TeamCatalog 一般配置序列化，但不冒用舊版本，來源與新版本記錄於 audit_log。
+備份 triage-fix-backup.gVpYRx 包含原資料庫與 before/after JSON、程式與配置。
+本次未代為核准測試計畫或 PR，也未自動續跑。
+
 已於 2026-09-06 11:07（台北時間）部署到既有 VM；尚未完成 Slack 問題分流端對端驗證。
 
 2026-09-06 本機驗證：所選 10 個測試類別共 63 項通過；來源檢查與 16 項平台 fixture 斷言通過。

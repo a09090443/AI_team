@@ -36,6 +36,8 @@ import java.util.concurrent.TimeUnit;
  */
 @Component
 public class CodexRuntime implements AgentRuntime {
+    /** Codex 無細粒度 CLI 白名單；寫入需求仍須通過外層 SandboxPolicy 預檢。 */
+    @Override public boolean permitsCommand(List<String> tools, List<String> argv) { return true; }
 
     private static final Logger log = LoggerFactory.getLogger(CodexRuntime.class);
 
@@ -99,6 +101,9 @@ public class CodexRuntime implements AgentRuntime {
             SessionCapture.preserve(stdoutLog);
             SessionCapture.preserve(stderrLog);
 
+            CodexSandboxPreparation.prepare(req.workingDirectory());
+            checkSandbox(req, logDir.resolve(req.role() + ".codex.preflight.log"));
+
             // --output-schema 吃的是檔案路徑而不是字串（與 claude 的 --json-schema 不同），
             // 所以得先落檔。放在 logs 底下而不是 /tmp —— 沙箱開了 PrivateTmp=yes，
             // 寫進 /tmp 的檔案在受限行程裡看不到。
@@ -149,6 +154,14 @@ public class CodexRuntime implements AgentRuntime {
             QuotaExceeded.check(id(), stdout, stdoutLog.toString());
 
             if (exit != 0) {
+                String stderrText = Files.exists(stderrLog) ? Files.readString(stderrLog, StandardCharsets.UTF_8) : "";
+                if (RuntimeUsageError.looksLikeUsageError(exit, stdout, stderrText)) {
+                    throw new RuntimeUsageError(
+                            "Codex CLI 用法錯誤，指令未送達模型（結束碼 " + exit + "）："
+                          + Diagnostics.clip(stderrText, 1200)
+                          + "\n這是本專案組裝參數的缺陷，不是額度、不是產品失敗；"
+                          + "事件流為空：" + stdoutLog + "；stderr：" + stderrLog);
+                }
                 throw new RuntimeExecutionException(
                         "Codex 結束碼 " + exit + describeErrors(stdout)
                       + "。完整事件流：" + stdoutLog
@@ -169,6 +182,37 @@ public class CodexRuntime implements AgentRuntime {
         }
     }
 
+    /** 無模型呼叫；與 exec 的 workspace-write 對應，且套用相同外層 policy。 */
+    void checkSandbox(RuntimeRequest req, Path output) throws Exception {
+        SessionCapture.preserve(output);
+        List<String> probe = new ArrayList<>(List.of(props.codexBin().toString(), "sandbox"));
+        if (req.sandboxPolicy().localTestNetwork()) {
+            probe.addAll(CodexLocalTestPolicy.sandboxArguments(req, statePaths(props.userHome())));
+            probe.addAll(List.of("-C", req.workingDirectory().toAbsolutePath().toString(), "--", "sh", "-ec",
+                    "pwd; node -e \"$1\"; shift; for path do test -w \"$path\" || { printf 'not writable: %s\\n' \"$path\"; exit 23; }; done",
+                    "local-test-preflight", CodexLocalTestPolicy.TCP_PROBE));
+            CodexLocalTestPolicy.commandWrites(req, statePaths(props.userHome())).forEach(p -> probe.add(p.toString()));
+        } else probe.addAll(List.of("-P", ":workspace", "-C", req.workingDirectory().toAbsolutePath().toString(), "--", "/bin/pwd"));
+        List<String> wrapped = new ArrayList<>(sandbox.wrap("ai-team-codex-preflight-"
+                + java.util.UUID.randomUUID(), req.sandboxPolicy(), req.workingDirectory(), probe));
+        // 同時限制 unit 存活時間，避免用戶端逾時後留下 probe 子行程。
+        if (wrapped.contains("--")) wrapped.addAll(wrapped.indexOf("--"),List.of("-p","RuntimeMaxSec=25","-p","KillMode=control-group"));
+        Process process = new ProcessBuilder(wrapped)
+                .redirectErrorStream(true).redirectOutput(output.toFile()).start();
+        try {
+            process.getOutputStream().close();
+            if (!process.waitFor(30, TimeUnit.SECONDS)) {
+                throw new RuntimeExecutionException("Codex 內層沙箱預檢逾時，尚未呼叫模型；證據：" + output);
+            }
+            if (process.exitValue() != 0) {
+                throw new RuntimeExecutionException("Codex 內層沙箱預檢失敗，尚未呼叫模型："
+                        + Diagnostics.clip(Files.readString(output), 2000) + "；證據：" + output);
+            }
+        } finally {
+            if (process.isAlive()) process.destroyForcibly();
+        }
+    }
+
     /**
      * 以參數陣列建構指令，完全不經 shell。
      *
@@ -180,8 +224,8 @@ public class CodexRuntime implements AgentRuntime {
         cmd.add(props.codexBin().toString());
         cmd.add("exec");
         // -s 屬於 exec，resume 子指令不接受；必須放在 resume 前。
-        cmd.add("-s");
-        cmd.add("workspace-write");
+        if (req.sandboxPolicy().localTestNetwork()) cmd.addAll(CodexLocalTestPolicy.execArguments(req, statePaths(props.userHome())));
+        else { cmd.add("-s"); cmd.add("workspace-write"); }
 
         boolean resuming = req.resumeSessionId() != null && !req.resumeSessionId().isBlank();
         if (resuming) {
@@ -206,6 +250,11 @@ public class CodexRuntime implements AgentRuntime {
         }
 
         // 縱深防禦而已。codex 只有三級沙箱，真正的隔離是外層的 systemd unit ——
+        if (req.reasoningEffort() != null && !req.reasoningEffort().isBlank()) {
+            cmd.add("-c");
+            cmd.add("model_reasoning_effort=\"" + req.reasoningEffort() + "\"");
+        }
+
         // 已實測：即使這裡放成 danger-full-access，越界寫入仍然被外層擋下。
         cmd.add(buildPromptWithRole(req));
         return cmd;
@@ -347,6 +396,7 @@ public class CodexRuntime implements AgentRuntime {
     private String describeModel(RuntimeRequest req, JsonNode usage) {
         String m = (req.model() == null || req.model().isBlank())
                 ? "(codex 預設)" : req.model();
+        if (req.reasoningEffort() != null && !req.reasoningEffort().isBlank()) m += "／推理：" + req.reasoningEffort();
         if (usage == null) return m + "（要求值）";
         return m + "（要求值）; tokens in=" + usage.path("input_tokens").asInt()
              + " out=" + usage.path("output_tokens").asInt();

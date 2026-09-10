@@ -11,6 +11,9 @@ public class FlowRun {
     public boolean workspaceReady;
     public String workspacePath;
     public String context = "";
+    public String lastBlockReason;
+    public Map<String,String> recoveryGrants = new LinkedHashMap<>();
+    public Set<String> recoveryRevisions = new LinkedHashSet<>();
     public String approvalHead;
     public String origin;
     public String branch;
@@ -22,6 +25,7 @@ public class FlowRun {
     public String acceptanceOwner;
     public String baselineRevision;
     public String changeTarget;
+    public String pendingPlanRevision;
     public boolean changeAuthorized;
     public String prUrl;
     public String publishedHead;
@@ -30,6 +34,9 @@ public class FlowRun {
     public Map<String,Integer> visits = new LinkedHashMap<>();
     public Map<String,JsonNode> receipts = new LinkedHashMap<>();
     public Map<String,String> heads = new LinkedHashMap<>();
+    public Map<String,OperationPreflight.Evidence> executionContexts = new LinkedHashMap<>();
+    public Map<String,PlanApproval> planApprovals = new LinkedHashMap<>();
+    public List<TeamDefinition.Snapshot> migrationHistory = new ArrayList<>();
     public FlowRun() {}
     public FlowRun(TeamDefinition.Snapshot snapshot) { this.snapshot = snapshot; this.node = snapshot.definition().entry(); }
 }

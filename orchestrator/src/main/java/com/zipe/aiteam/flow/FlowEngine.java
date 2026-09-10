@@ -48,12 +48,34 @@ public class FlowEngine {
         slack.update(Identity.SYSTEM, task.slackChannel(), task.statusMessageTs(), text, null);
     }
     private void waitHuman(Task task, FlowRun flow, String reason) {
+        waitHuman(task, flow, reason, true);
+    }
+    private void waitHuman(Task task, FlowRun flow, String reason, boolean canSupplement) {
         store.saveFlow(task.id(), flow);
         state(task, Task.State.AWAIT_HUMAN, "任務 #" + task.id() + " 等待人工，禁止發布");
         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
                 (flow.acceptanceOwner == null ? "" : "<@" + flow.acceptanceOwner + "> ")
               + "任務 #" + task.id() + " 已停止，目前沒有 agent 在處理。\n"
-                + Diagnostics.clip(reason, 7000) + "\n請在原討論串 @主機器人或角色「補充 #" + task.id() + " 具體答案」。");
+                + Diagnostics.clip(reason, 7000) + (canSupplement
+                    ? "\n請在原討論串 @主機器人或角色「補充 #" + task.id() + " 具體答案」。"
+                    : "\n再次補充不會解除上限。請管理者先查核並修復原始阻礙，再評估原任務的受控恢復；既有實作與核准保留，不必直接重做。"));
+    }
+    private void presentPlan(Task task, FlowRun flow, String plan) {
+        try {
+            var pages = PlanReview.pages(task.id(), plan, flow.receipts.get(plan));
+            for (String page : pages) {
+                String sent = page.equals(pages.getLast())
+                        ? slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), page,
+                            PlanReview.buttons(new PlanReview.Decision(task.id(), plan, Traceability.digest(flow.receipts.get(plan)), flow.snapshot.revision(), flow.baselineRevision)))
+                        : slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), page);
+                if (sent == null) {
+                    audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "計畫呈現未完成，請重新檢視測試計畫");
+                    return;
+                }
+            }
+        } catch (IllegalArgumentException e) {
+            slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), e.getMessage());
+        }
     }
     /**
      * 交接通知：以剛跑完的角色身分 tag 下一棒。
@@ -64,7 +86,7 @@ public class FlowEngine {
      * 這是「可見的交接」而不是觸發機制：實際執行順序仍然由這個引擎決定，
      * 被 tag 的角色不會因為這則訊息而自己動起來。
      */
-    private void handoff(Task task, FlowRun flow, Node from, Node to, boolean blocked) {
+    private void handoff(Task task, FlowRun flow, Node from, Node to, boolean blocked) throws Exception {
         if (to == null || to.kind() != Kind.AGENT || from.role().equals(to.role())) return;
         var roles = flow.snapshot.definition().roles();
         Role fromRole = roles.get(from.role()), toRole = roles.get(to.role());
@@ -72,10 +94,14 @@ public class FlowEngine {
         slack.postConfigured(fromRole, task.slackChannel(), task.slackThreadTs(),
                 slack.mention(Identity.of(to.role(), toRole.name())) + " "
               + (blocked ? "我這邊受阻，退回給你處理。" : "我這邊完成了，換你接手。")
-              + "（節點 " + from.role() + " → " + to.role() + "）");
+              + "（節點 " + from.role() + " → " + to.role() + "）"
+              + "\n配置=" + flow.snapshot.revision()
+              + (flow.workspacePath == null ? "\n尚未建立任務工作區" : "\n工作區=" + flow.workspacePath + "\ncommit=" + workspaces.headSha(task.id())));
     }
     public void run(Task task) {
         FlowRun flow = store.flow(task.id()).orElseThrow();
+        // 只記錄「本輪確實計入」的節點，讓未送達模型的失敗能原樣還原，不影響其他路徑。
+        String countedNode = null; boolean usedRecovery = false;
         try {
             if (aborted(task)) return;
             if (task.statusMessageTs() == null) { task.statusMessageTs(slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "配置流程 #" + task.id() + " 開始處理")); store.save(task); }
@@ -84,6 +110,10 @@ public class FlowEngine {
                 if (flow.node.equals("end")) { state(task, Task.State.COMPLETED, "任務 #" + task.id() + " 已結束（未發布）"); return; }
                 Node node = flow.snapshot.definition().nodes().get(flow.node);
                 if (node == null) throw new IllegalStateException("快照缺少節點，禁止猜測恢復路徑");
+                if (node.gate() == Gate.VERIFICATION) {
+                    String approvalBlock = PlanApproval.blockingReason(flow, node.plan());
+                    if (approvalBlock != null) { waitHuman(task, flow, approvalBlock); presentPlan(task, flow, node.plan()); return; }
+                }
                 if (node.kind() == Kind.END) { state(task, Task.State.COMPLETED, "任務已結束（未發布）"); return; }
                 if (node.kind() == Kind.APPROVAL) {
                     String head = workspaces.headSha(task.id());
@@ -106,9 +136,24 @@ public class FlowEngine {
                         String invalid = FlowGates.blockingReason(flow.snapshot.definition().nodes().get(dependency), flow.receipts.get(dependency), flow);
                         if (invalid != null) throw new IllegalStateException("節點 " + flow.node + " 缺少有效前置契約 " + dependency + "：" + invalid);
                     }
-                    if (++flow.transitions > flow.snapshot.definition().maxTransitions()
-                            || flow.visits.merge(flow.node, 1, Integer::sum) > node.maxVisits()) {
-                        waitHuman(task, flow, "已達配置的節點／流程重試上限，禁止自動重跑。請人工檢查並建立新任務。"); return;
+                    if (flow.transitions >= flow.snapshot.definition().maxTransitions()
+                            || (flow.visits.getOrDefault(flow.node, 0) >= node.maxVisits() && !VerificationRecovery.permitted(flow,flow.node))) {
+                        waitHuman(task, flow, "已達流程防循環上限（不是 token 額度），禁止自動重跑。"
+                                + "\n節點 " + flow.node + "：已記錄 " + flow.visits.getOrDefault(flow.node, 0) + "／上限 " + node.maxVisits()
+                                + "；流程：已記錄 " + flow.transitions + "／上限 " + flow.snapshot.definition().maxTransitions()
+                                + "。本次未啟動 agent、未增加計數。"
+                                + (flow.lastBlockReason == null ? "\n原始阻礙請查閱上一份角色報告。"
+                                    : "\n上一個受阻原因：\n" + Diagnostics.clip(flow.lastBlockReason, 4500)), false); return;
+                    }
+                    flow.transitions++;
+                    flow.visits.merge(flow.node, 1, Integer::sum);
+                    countedNode = flow.node; usedRecovery = false;
+                    if (VerificationRecovery.permitted(flow,flow.node)) {
+                        flow.recoveryGrants.remove(flow.node);
+                        usedRecovery = true;
+                        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY,
+                                "使用一次真人受控恢復授權：" + flow.node + "，配置=" + flow.snapshot.revision()
+                                        + "；累計次數=" + flow.visits.get(flow.node) + "，歷史計數與總上限未重設");
                     }
                     if (node.workspace()) {
                         if (!flow.workspaceReady) {
@@ -139,6 +184,7 @@ public class FlowEngine {
                     task.continuation(null); store.saveFlow(task.id(), flow);
                 } else {
                     task.continuation(store.checkpoint(task.id()).filter(c -> c.role().equals(flow.node)).orElse(null));
+                    countedNode = null;
                 }
                 if (node.workspace()) requireWorkspace(task, flow);
                 state(task, Task.State.STAGE_RUNNING, "任務 #" + task.id() + " 節點 " + flow.node + "／角色 " + node.role() + " 處理中");
@@ -157,7 +203,7 @@ public class FlowEngine {
                 AgentRuntime.RuntimeResult result;
                 long started = System.nanoTime();
                 try (var progress = new StageProgress(slack, store, task,
-                        flow.snapshot.definition().roles().get(node.role()).name() + "／" + flow.node, props.progressIntervalSeconds())) {
+                        flow.snapshot.definition().roles().get(node.role()).executionLabel() + "／" + flow.node, props.progressIntervalSeconds())) {
                     result = executor.execute(task, flow, node);
                 }
                 catch (Exception e) { auditScope(task, flow, node); throw e; }
@@ -170,7 +216,7 @@ public class FlowEngine {
                 if (result.permissionDenials() != null && !result.permissionDenials().isEmpty()) audit.record(task.id(), node.role(), AuditLog.ACTION_DENIED, Diagnostics.toolFailures(result.permissionDenials()));
                 String block = FlowGates.blockingReason(node, report, flow);
                 slack.postConfigured(flow.snapshot.definition().roles().get(node.role()), task.slackChannel(), task.slackThreadTs(),
-                        "節點 " + flow.node + "\n" + Diagnostics.clip(report == null ? "沒有有效報告" : report.toPrettyString(), 9000));
+                        "任務 #" + task.id() + "／節點 " + flow.node + "\n" + com.zipe.aiteam.slack.SlackReport.render(report));
                 String next;
                 if (block == null) {
                     flow.receipts.put(flow.node, report);
@@ -185,11 +231,14 @@ public class FlowEngine {
                         next = node.routes().get(route);
                     } else next = node.next();
                 } else {
+                    flow.lastBlockReason = Diagnostics.clip("節點 " + flow.node + "：" + block
+                            + "\n" + SlackReport.render(report), 4500);
                     flow.context = Diagnostics.clip(flow.context + "\n節點 " + flow.node + " 受阻：\n" + block + "\n報告：" + report, 20000);
                     next = node.blocked();
                 }
                 flow.activeNode = null; task.continuation(null);
-                if (next.equals("human")) { waitHuman(task, flow, block == null ? report.toPrettyString() : block); return; }
+                countedNode = null;
+                if (next.equals("human")) { waitHuman(task, flow, block == null ? com.zipe.aiteam.slack.SlackReport.render(report) : block); return; }
                 Node target = flow.snapshot.definition().nodes().get(next);
                 if (target != null && target.gate() == Gate.REQUIREMENTS && flow.baselineRevision != null) {
                     flow.changeTarget = next;
@@ -201,12 +250,33 @@ public class FlowEngine {
         } catch (Exception e) {
             if (aborted(task)) return;
             QuotaExceeded quota = QuotaExceeded.find(e);
+            com.zipe.aiteam.runtime.RuntimeUsageError usage = com.zipe.aiteam.runtime.RuntimeUsageError.find(e);
             if (quota != null && store.checkpoint(task.id()).isPresent()) {
                 store.saveFlow(task.id(), flow);
                 store.saveCheckpoint(store.checkpoint(task.id()).orElseThrow().withReason(quota.getMessage()));
                 state(task, Task.State.WAITING_QUOTA, "任務 #" + task.id() + " 等待額度，原節點與配置已保存");
-                String message = "任務 #" + task.id() + " 已因額度停止；恢復後按繼續，不會切換角色、runtime 或配置。\n" + Diagnostics.describe(e);
+                String message = "任務 #" + task.id() + " 已因額度停止。\n"
+                        + com.zipe.aiteam.task.QuotaMessage.resetLine(quota.getMessage())
+                        + "系統將安排自動續跑並另行回報嘗試時間，也可手動按繼續。沿用原角色、runtime 與配置。\n"
+                        + Diagnostics.describe(e);
                 slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), message, SlackBlocks.quotaBlocks(task.id(), message));
+            } else if (usage != null && countedNode != null) {
+                // 參數沒被 CLI 接受，模型完全沒被呼叫：把本輪的計數與一次性授權還原，
+                // 否則我們自己的 bug 會吃掉真人核准，逼使用者重跑整套核准流程。
+                flow.visits.merge(countedNode, -1, Integer::sum);
+                flow.transitions = Math.max(0, flow.transitions - 1);
+                if (usedRecovery) {
+                    flow.recoveryGrants.put(countedNode, flow.snapshot.revision());
+                    flow.recoveryRevisions.remove(flow.snapshot.revision());
+                }
+                flow.activeNode = null; task.continuation(null);
+                audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_ERROR,
+                        "CLI 用法錯誤，未呼叫模型；已還原節點 " + countedNode + " 的次數"
+                      + (usedRecovery ? "與一次受控恢復授權" : "") + "。" + Diagnostics.describe(e));
+                waitHuman(task, flow, "本次未呼叫任何模型：執行參數被 CLI 拒絕，屬於本專案的缺陷。"
+                      + "\n節點 " + countedNode + " 的重跑次數"
+                      + (usedRecovery ? "與一次性受控恢復授權" : "") + "已還原，額度與真人核准不受影響。"
+                      + "\n修正部署後直接續跑即可，不需重新核准。\n" + Diagnostics.describe(e));
             } else {
                 audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_ERROR, Diagnostics.describe(e));
                 waitHuman(task, flow, Diagnostics.describe(e));
@@ -233,11 +303,95 @@ public class FlowEngine {
             slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id() + " 目前為 " + from + "，不能新增續跑或平行實作。"); return;
         }
         FlowRun flow = store.flow(task.id()).orElseThrow();
+        if (feedback != null && feedback.startsWith("核准恢復驗收")) {
+            if (from != Task.State.AWAIT_HUMAN) return;
+            String[] parts=feedback.trim().split("\\s+");
+            try {
+                if(parts.length!=3 || !parts[0].equals("核准恢復驗收")) throw new IllegalArgumentException("格式：核准恢復驗收 <驗收節點> <配置版本>");
+                VerificationRecovery.authorize(flow,parts[1],parts[2],user);
+                if (!store.claimState(task.id(),from,Task.State.RESUME_QUEUED)) return;
+                store.saveFlow(task.id(),flow);
+                if(store.claimState(task.id(),Task.State.RESUME_QUEUED,Task.State.AWAIT_HUMAN)) task.state(Task.State.AWAIT_HUMAN);
+                audit.record(task.id(),user,AuditLog.ACTION_BUTTON,"核准一次受控恢復 "+parts[1]+"，配置="+parts[2]+"；未重設計數，待重新核准測試計畫");
+                slack.post(Identity.SYSTEM,task.slackChannel(),task.slackThreadTs(),"已授權此配置一次受控驗收，不清空歷史次數；尚未派工。請重新審閱並核准下列測試計畫，核准後才會自動執行 QA。");
+                presentPlan(task,flow,flow.snapshot.definition().nodes().get(parts[1]).plan());
+            } catch(IllegalArgumentException e) { slack.post(Identity.SYSTEM,task.slackChannel(),task.slackThreadTs(),e.getMessage()); }
+            return;
+        }
+        if ("檢視測試計畫".equals(feedback)) {
+            var current = flow.snapshot.definition().nodes().get(flow.node);
+            String plan = current == null ? null : current.plan();
+            if (plan == null) {
+                var plans = flow.snapshot.definition().nodes().entrySet().stream()
+                        .filter(e -> e.getValue().gate() == Gate.TEST_PLAN && flow.receipts.containsKey(e.getKey()))
+                        .map(Map.Entry::getKey).toList();
+                if (plans.size() == 1) plan = plans.getFirst();
+            }
+            if (plan == null) slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "無法唯一識別待審計畫，請管理者確認節點；未續跑。");
+            else presentPlan(task, flow, plan);
+            return;
+        }
+        if (feedback != null && feedback.startsWith("核准測試計畫")) {
+            if (from != Task.State.AWAIT_HUMAN) {
+                slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "請在任務停止等待人工時核准計畫；未改動額度排程或任務狀態。"); return;
+            }
+            String[] parts = feedback.trim().split("\\s+");
+            if (parts.length != 3 || !"核准測試計畫".equals(parts[0])) {
+                slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "格式：核准測試計畫 <計畫節點> <plan_revision>；未核准或續跑。"); return;
+            }
+            try {
+                PlanApproval approved = PlanApproval.approve(flow, parts[1], parts[2], user);
+                requirePlanQueueTarget(flow, parts[1]);
+                if (!store.claimState(task.id(), from, Task.State.RESUME_QUEUED)) return;
+                task.state(Task.State.RESUME_QUEUED);
+                flow.planApprovals.put(parts[1], approved); flow.pendingPlanRevision = null; store.saveFlow(task.id(), flow);
+                audit.record(task.id(), user, AuditLog.ACTION_BUTTON, "真人測試計畫核准：" + approved);
+                slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "已保存測試計畫核准，QA 已排入中央佇列，無需再輸入續跑。這不代表 QA 已通過或核准 PR。");
+                enqueue.accept(() -> run(store.find(task.id()).orElseThrow()));
+            } catch (IllegalArgumentException e) { slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), e.getMessage()); }
+            return;
+        }
+        if (feedback != null && (feedback.equals("檢視配置更新") || feedback.startsWith("核准配置更新"))) {
+            if (from != Task.State.AWAIT_HUMAN || !user.equals(flow.acceptanceOwner) || flow.changeTarget != null) {
+                slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "只允許原負責人在停止等待人工且無待核准需求變更時處理配置更新。"); return;
+            }
+            try {
+                var target = catalog.snapshot();
+                var preview = TeamMigration.preview(flow.snapshot, target);
+                if (preview.changes().isEmpty()) { slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "沒有可套用的配置差異。"); return; }
+                if (feedback.equals("檢視配置更新")) {
+                    String detail = String.join("\n", preview.changes());
+                    if (detail.length() > 5000) { slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "配置差異超過 Slack 可安全完整呈現的長度，請管理者縮小變更；未產生核准指令。"); return; }
+                    slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "配置差異（尚未套用）：\n" + detail
+                            + "\n核准配置更新 " + preview.token() + "\n套用後保留歷史及工作區，失效舊驗收／核准證據，不自動續跑。"); return;
+                }
+                if (!feedback.equals("核准配置更新 " + preview.token())) throw new IllegalArgumentException("核准指令或版本不符，請重新檢視配置更新");
+                TeamMigration.apply(flow, target, preview.token());
+                if (!store.claimState(task.id(), from, Task.State.RESUME_QUEUED)) return;
+                store.saveFlow(task.id(), flow);
+                audit.record(task.id(), user, AuditLog.ACTION_BUTTON, "核准配置更新 " + preview);
+                if (store.claimState(task.id(), Task.State.RESUME_QUEUED, Task.State.AWAIT_HUMAN)) task.state(Task.State.AWAIT_HUMAN);
+                String recovery = target.definition().nodes().entrySet().stream().filter(e -> e.getValue().gate()==Gate.VERIFICATION)
+                        .map(e -> "\n若要在此配置授權一次受控驗收（不重設歷史次數），請送出：補充 #"+task.id()
+                                +" 核准恢復驗收 "+e.getKey()+" "+target.revision()).collect(java.util.stream.Collectors.joining());
+                slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "已套用配置並保存原快照；尚未續跑，舊計畫核准已失效。"
+                        + recovery + "\n系統將重新呈現測試計畫；你核准計畫後才派工。PR 仍需另行核准。");
+            } catch (IllegalArgumentException e) { slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), e.getMessage()); }
+            return;
+        }
         if (flow.changeTarget != null && (!user.equals(flow.acceptanceOwner) || feedback == null
                 || !feedback.startsWith("核准需求變更 ") || feedback.substring("核准需求變更 ".length()).isBlank())) {
             slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "尚未核准需求變更；請由 <@" + flow.acceptanceOwner + "> 補充「核准需求變更 具體變更內容」。一般補充不會改寫需求基準。"); return;
         }
+        if (flow.pendingPlanRevision != null && (!user.equals(flow.acceptanceOwner)
+                || feedback == null || feedback.isBlank() || feedback.trim().equals("續跑"))) {
+            slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "請原負責人先補充測試計畫的具體修改意見；目前不執行 QA。"); return;
+        }
         if (!store.claimState(task.id(), from, Task.State.RESUME_QUEUED)) return;
+        if (flow.pendingPlanRevision != null) {
+            flow.node = flow.pendingPlanRevision; flow.pendingPlanRevision = null; flow.activeNode = null;
+            audit.record(task.id(), user, AuditLog.ACTION_STATE, "依真人修改意見重訂測試計畫，原計畫及重試次數保留於歷史；需重新核准。");
+        }
         if (flow.changeTarget != null) {
             flow.node = flow.changeTarget; flow.changeTarget = null; flow.changeAuthorized = true; flow.activeNode = null;
             audit.record(task.id(), user, AuditLog.ACTION_STATE, "核准需求變更，原基準=" + flow.baselineRevision + "；內容=" + feedback);
@@ -246,6 +400,53 @@ public class FlowEngine {
         store.saveFlow(task.id(), flow);
         enqueue.accept(() -> run(store.find(task.id()).orElseThrow()));
         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id() + " 已排隊，將使用原配置與節點續跑，不代表已核准 PR。");
+    }
+    private void requirePlanQueueTarget(FlowRun flow, String plan) {
+        Node current = flow.snapshot.definition().nodes().get(flow.node);
+        if (flow.dialogue || flow.changeTarget != null || current == null || current.gate() != Gate.VERIFICATION
+                || !Objects.equals(current.plan(), plan))
+            throw new IllegalArgumentException("目前不是此計畫的 QA 等待節點，請先確認流程；未核准或派工。");
+    }
+    /** 管理者明確指定的既有核准任務；不批次恢復、不建立新核准紀錄。 */
+    public void resumeApprovedPlan(Task task, Consumer<Runnable> enqueue) {
+        FlowRun flow = store.flow(task.id()).orElseThrow();
+        Node current = flow.snapshot.definition().nodes().get(flow.node);
+        if (current == null) throw new IllegalArgumentException("不存在的 QA 節點");
+        requirePlanQueueTarget(flow, current.plan());
+        if (!props.allowedUsers().contains(flow.acceptanceOwner) || flow.pendingPlanRevision != null
+                || !flow.snapshot.definition().project().requirePlanApproval()
+                || !flow.planApprovals.containsKey(current.plan()) || PlanApproval.blockingReason(flow, current.plan()) != null)
+            throw new IllegalArgumentException("沒有有效的既有核准，拒絕恢復 QA");
+        if (!store.claimState(task.id(), Task.State.AWAIT_HUMAN, Task.State.RESUME_QUEUED)) return;
+        task.state(Task.State.RESUME_QUEUED);
+        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY, "管理者明確指定恢復已核准計畫，沿用既有真人收據，QA 已排入中央佇列");
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id() + " 已依既有測試計畫核准排入 QA，無需重新核准或另送續跑；PR 仍須獨立核准。");
+        enqueue.accept(() -> run(store.find(task.id()).orElseThrow()));
+    }
+    /** 按鈕核准即派工；要求修改仍停下，並驗證版本、負責人與原討論串。 */
+    public void planDecision(Task task, String user, PlanReview.Decision d, boolean approve, String channel, String thread, Consumer<Runnable> enqueue) {
+        if (!props.allowedUsers().contains(user) || !task.id().equals(d.task())
+                || !task.slackChannel().equals(channel) || !task.slackThreadTs().equals(thread)) return;
+        FlowRun flow = store.flow(task.id()).orElseThrow();
+        if (task.state() != Task.State.AWAIT_HUMAN || !user.equals(flow.acceptanceOwner)
+                || !Objects.equals(d.configuration(), flow.snapshot.revision()) || !Objects.equals(d.baseline(), flow.baselineRevision)
+                || !flow.receipts.containsKey(d.plan()) || !Objects.equals(d.digest(), Traceability.digest(flow.receipts.get(d.plan())))) {
+            slack.post(Identity.SYSTEM, channel, thread, "按鈕已過期、任務不在等待狀態或你不是原負責人；未核准或派工。請重新檢視測試計畫。"); return;
+        }
+        try { PlanApproval.approve(flow, d.plan(), d.digest(), user); }
+        catch (IllegalArgumentException e) { slack.post(Identity.SYSTEM, channel, thread, e.getMessage()); return; }
+        if (approve) {
+            resume(task, "核准測試計畫 " + d.plan() + " " + d.digest(), user, enqueue);
+        } else {
+            if (!store.claimState(task.id(), Task.State.AWAIT_HUMAN, Task.State.RESUME_QUEUED)) return;
+            flow.planApprovals.remove(d.plan());
+            flow.pendingPlanRevision = d.plan();
+            flow.context += "\n真人 " + user + " 要求修改測試計畫 " + d.plan() + "／" + d.digest() + "；等待具體修改意見，不得當成已核准。";
+            store.saveFlow(task.id(), flow);
+            audit.record(task.id(), user, AuditLog.ACTION_BUTTON, "要求修改測試計畫 " + d.value());
+            if (store.claimState(task.id(), Task.State.RESUME_QUEUED, Task.State.AWAIT_HUMAN)) task.state(Task.State.AWAIT_HUMAN);
+            slack.post(Identity.SYSTEM, channel, thread, "已記錄要求修改，計畫尚未核准，QA 不會執行。請在原討論串 @PM Agent，輸入「補充 #" + task.id() + " …」說明要修改的情境與預期結果。");
+        }
     }
     public void approve(Task task, String user, Consumer<Runnable> enqueue) {
         if (!props.allowedUsers().contains(user)) return;
@@ -282,7 +483,7 @@ public class FlowEngine {
         state(task, Task.State.STAGE_RUNNING, role.name() + " 唯讀對話處理中");
         task.continuation(store.checkpoint(task.id()).filter(c -> c.role().equals(flow.node)).orElse(null));
         AgentRuntime.RuntimeResult result;
-        try (var progress = new StageProgress(slack, store, task, role.name() + "／唯讀對話", props.progressIntervalSeconds())) {
+        try (var progress = new StageProgress(slack, store, task, role.executionLabel() + "／唯讀對話", props.progressIntervalSeconds())) {
             result = executor.execute(task, flow, node);
         }
         if (aborted(task)) return;

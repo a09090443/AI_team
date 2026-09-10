@@ -13,10 +13,16 @@
 - QA 受阻與 PM 派工：[docs/pm-triage.md](docs/pm-triage.md)。
 - 直接對角色提問／派工：[docs/direct-agent-requests.md](docs/direct-agent-requests.md)。
 - 配置式團隊與舊任務相容：[docs/configurable-team.md](docs/configurable-team.md)；新角色／流程改 `orchestrator/teams/`，不要再擴充 legacy role switch。
+- 跨專案操作、沙箱預檢、真人計畫核准與配置遷移：[docs/cross-project-execution.md](docs/cross-project-execution.md)；操作宣告不是自動擴權，舊快照不自動更新。
 - v2 需求追溯／返工／系統驗證／PR 狀態：[docs/engineering-workflow.md](docs/engineering-workflow.md)。
 - 現行 VM 部署版本與實測：[docs/deploy-2026-09-06-v2.md](docs/deploy-2026-09-06-v2.md)；使用 team.env 啟用 v2，#1011 已依使用者確認清理。
 - 失敗與發布閘門：[docs/failure-reporting.md](docs/failure-reporting.md)、[docs/review-gate.md](docs/review-gate.md)。
 - Session 與用量：[docs/quota-continuation.md](docs/quota-continuation.md)。
+- 真人計畫核准與 Slack 按鈕：[docs/plan-approval-buttons.md](docs/plan-approval-buttons.md)；核准收據綁版本，計畫核准不等於核准 PR。
+- Codex 執行前置（三者都會讓 QA 整段跑不起來，換 CLI 版本要重驗）：
+  雙層沙箱掛載點 [docs/codex-nested-sandbox.md](docs/codex-nested-sandbox.md)、
+  本機測試網路能力 [docs/local-test-capabilities.md](docs/local-test-capabilities.md)、
+  `codex sandbox` 與 `codex exec` 參數契約 [docs/codex-cli-argument-contract.md](docs/codex-cli-argument-contract.md)。
 - 建置工具：`deploy/bootstrap/`。`deploy/deploy-*.sh` 是特定舊 VM 的歷史升級腳本，不用於新機。
 - 變更新角色／schema／設定後，執行 `bash deploy/bootstrap/check-source.sh` 與 Maven 測試。
 - 不讀出憑證、不把 env.sh／CLI 登入檔放進一般發行包。OAuth 由使用者本人操作。

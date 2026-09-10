@@ -8,12 +8,13 @@ import java.util.Locale;
 public final class QuotaExceeded extends AgentRuntime.RuntimeExecutionException {
     public QuotaExceeded(String message) { super(message); }
 
-    static boolean explicit(String message) {
+    public static boolean explicit(String message) {
         String s = message.toLowerCase(Locale.ROOT);
         return s.contains("usage_limit_reached") || s.contains("insufficient_quota")
                 || s.contains("usage limit reached") || s.contains("usage limit has been reached")
                 || s.contains("you've hit your usage limit") || s.contains("you have hit your usage limit")
                 || s.contains("you've hit your limit") || s.contains("you have exceeded your current quota")
+                || s.contains("you've hit your session limit") || s.contains("you have hit your session limit")
                 || s.contains("已達用量上限") || s.contains("使用量已達上限");
     }
 
@@ -49,7 +50,7 @@ public final class QuotaExceeded extends AgentRuntime.RuntimeExecutionException 
     private static void inspect(String error, String evidence) throws QuotaExceeded {
         if (explicit(error)) throw new QuotaExceeded("供應商明確回報額度耗盡："
                 + Diagnostics.clip(error, 1200) + "\n證據：" + evidence
-                + "\n重置時間：未自動解析；若供應商有提供，以上原始錯誤為準。");
+                + "\n重置時間：以上供應商原始錯誤為準；自動續跑排程將另外回報。");
     }
 
     public static QuotaExceeded find(Throwable error) {

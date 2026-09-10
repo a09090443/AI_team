@@ -31,6 +31,16 @@ import java.util.concurrent.TimeUnit;
  */
 @Component
 public class ClaudeCodeRuntime implements AgentRuntime {
+    @Override public boolean permitsCommand(List<String> tools, List<String> argv) {
+        if (tools == null || argv == null || argv.isEmpty()) return false;
+        String command = String.join(" ", argv);
+        return tools.stream().anyMatch(rule -> {
+            if (rule.equals("Bash(" + command + ")")) return true;
+            if (!rule.startsWith("Bash(") || !rule.endsWith(" *)")) return false;
+            String prefix = rule.substring(5, rule.length() - 3);
+            return command.startsWith(prefix + " ");
+        });
+    }
 
     private static final Logger log = LoggerFactory.getLogger(ClaudeCodeRuntime.class);
 
@@ -221,7 +231,8 @@ public class ClaudeCodeRuntime implements AgentRuntime {
             JsonNode root = mapper.readTree(stdout);
             subtype = root.path("subtype").asText("");
             turns = root.path("num_turns").asInt(-1);
-            observed = Diagnostics.clip(root.path("errors").toString(), 700)
+            observed = "供應商結果：" + Diagnostics.clip(root.path("result").asText(), 1200)
+                    + "\n" + Diagnostics.clip(root.path("errors").toString(), 700)
                     + Diagnostics.toolFailures(root.get("permission_denials"));
         } catch (Exception ignored) {
             // 連 JSON 都解不出來，退回原始輸出

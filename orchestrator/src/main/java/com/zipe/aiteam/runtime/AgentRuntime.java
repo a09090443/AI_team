@@ -23,6 +23,9 @@ public interface AgentRuntime {
     /** 供 runtime 綁定設定參照，例如 "claude-code"、"codex"。 */
     String id();
 
+    /** 預檢操作是否在 CLI 工具政策內；未知 runtime 預設拒絕，不自行擴權。 */
+    default boolean permitsCommand(List<String> tools, List<String> argv) { return false; }
+
     /** 本 runtime 原生支援哪些能力；缺少的由呼叫端降級補足。 */
     Set<Capability> capabilities();
 
@@ -88,9 +91,20 @@ public interface AgentRuntime {
              * 不用 null 表示「不指定」，是因為 null 與「空字串」在傳給 CLI 時
              * 行為不同：傳空值會讓 claude 以結束碼 1 失敗，必須整個略過旗標。
              */
-            String model
+            String model,
+            String reasoningEffort
     ) {
+        public RuntimeRequest(String taskId, String role, Path workingDirectory, Path systemPromptFile,
+                              String prompt, List<String> allowedTools, String jsonSchema, String resumeSessionId,
+                              int maxTurns, Duration timeout, SandboxPolicy sandboxPolicy, String model) {
+            this(taskId, role, workingDirectory, systemPromptFile, prompt, allowedTools, jsonSchema,
+                    resumeSessionId, maxTurns, timeout, sandboxPolicy, model, null);
+        }
         public RuntimeRequest {
+            if (reasoningEffort != null && !reasoningEffort.isBlank()
+                    && !Set.of("low", "medium", "high", "xhigh").contains(reasoningEffort)) {
+                throw new IllegalArgumentException("不支援的 reasoningEffort");
+            }
             if (sandboxPolicy == null) {
                 throw new IllegalArgumentException(
                         "sandboxPolicy 不可為 null：所有 agent 執行都必須經過 ExecutionSandbox。");

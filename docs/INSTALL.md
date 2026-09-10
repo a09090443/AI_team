@@ -4,9 +4,14 @@
 [配置式團隊指南](configurable-team.md) 設定 `AI_TEAM_DEFINITION`，先靜態驗證再啟動。
 留空仍使用以下 legacy 五角色配置；新模式不需要沿用固定角色清單。
 
-更新：2026-09-06。**目前尚未通過乾淨 VM 重建驗收**；進度、缺口與證據見 [rebuild-verification.md](rebuild-verification.md)。
+更新：2026-09-10。**目前尚未通過乾淨 VM 重建驗收**；進度、缺口與證據見 [rebuild-verification.md](rebuild-verification.md)。
 不是一鍵安裝：安裝媒體、官方工具鏈 checksum、系統套件與本人登入仍需先備妥。
 不得把舊 VM clone、暖快取建置或 mock 測試冒充從零驗證。
+
+2026-09-07 之後併入本文的變更：額度自動續跑、Slack 階段進度回報、真人測試計畫核准閘門、
+能力配置遷移與一次性受控恢復、Codex 雙層沙箱掛載點準備、本機測試網路能力、
+Codex CLI 參數契約修正。這些會直接改變新機驗收會遇到的畫面與指令，
+特別是 [§6.1 真人核准閘門](#61-真人核准閘門必讀否則全管線驗收會停住)。
 
 ## 1. 獨立 VM 與系統前置條件
 
@@ -16,6 +21,9 @@ Linux x86_64／glibc／systemd 是目前建置配置；優先驗證 Debian／Ubu
 不限定 Ubuntu。各版本的實測狀態見 [linux-support.md](linux-support.md)。
 需由管理員備妥 OpenSSH server、git、curl、jq、SQLite CLI、tar/xz、CA 憑證、
 GNU 基礎工具、程序／網路工具、flock／unshare、systemd 與可用的 user bus。
+`tar` 不只是解壓來源用：它已列入團隊配置的 `requiredTools`
+（目前為 `java, mvn, node, npm, git, tar`），啟動時的沙箱工具鏈自檢會逐一檢查，
+缺任何一項服務會直接啟動失敗，不會安靜略過。
 套件名稱與安全政策依發行版／版本處理，不假設安裝 ISO 已內建；腳本不自動 sudo／apt／dnf。
 解壓 source 後先執行 `bash deploy/bootstrap/check-linux.sh runtime`，缺能力則明確停止。
 
@@ -67,6 +75,23 @@ codex --version
 Codex headless 可用 `codex login --device-auth`，需帳號／workspace 允許；不支援時可採官方 SSH callback 轉發。
 以 `codex login status` 檢查登入；不要輸出 auth.json。見 [官方認證文件](https://learn.chatgpt.com/docs/auth)。
 
+Codex 有三個實測過的前置條件會讓 QA 整段跑不起來，換 CLI 版本時要重新確認
+（細節與證據見 [codex-nested-sandbox.md](codex-nested-sandbox.md)、
+[local-test-capabilities.md](local-test-capabilities.md)、
+[codex-cli-argument-contract.md](codex-cli-argument-contract.md)）：
+
+- **內層 bwrap 掛載點**：工作區缺 `.agents`／`.codex` 時，內層沙箱會在執行任何指令前
+  以 `Can't mkdir …/.agents: Read-only file system` 失敗。程式已於派工前自動建立空目錄，
+  不需手動處理；但若看到這個錯誤，代表跑的是舊版，不要改用放寬沙箱的方式繞過。
+- **`codex sandbox` 與 `codex exec` 參數不對稱**：`-P/--permission-profile` 是
+  `codex sandbox` 的必填參數，`codex exec` 完全不接受（結束碼 2）；exec 端要用
+  `-c default_permissions="<profile>"`。程式已分成兩套參數並有零模型呼叫的契約測試，
+  升級 CLI 後請跑 `AI_TEAM_CODEX_SANDBOX_SMOKE=true` 的那組測試再上線。
+- **本機測試網路只支援 Codex**：`localTestNetwork` 節點必須是 codex runtime、
+  LIMITED 範圍、VERIFICATION 閘門且宣告 node 工具，否則配置載入就會被拒絕。
+  把 QA 角色改成 claude-code 時必須一併關閉此能力，代價是需要本機 socket 的
+  情境測試（例如 GreenMail SMTP）會再度受阻。
+
 ## 4. 沙箱前置條件
 
 ```bash
@@ -102,6 +127,20 @@ repo 不可 shallow；基準分支在 env.sh 指定 develop。演練記錄基準
 編輯 `~/ai-team/env.sh`（600），填 app token、主 bot、五角色 token、白名單、測試頻道。
 確認 AI_TEAM_HOME／REPO／LOGS／WORKSPACES、CLI 路徑與模型設定；修改後必須重啟才生效。
 
+另有一個**選填**的 `~/ai-team/team.env`（同樣 600）：`start.sh` 與 `preflight.sh` 會在
+讀完 `env.sh` 之後再讀它，兩邊都設同一個變數時以 `team.env` 為準，`backup.sh` 也會備份它。
+它的用途是把「切換團隊配置」（`AI_TEAM_DEFINITION`）與含憑證的 `env.sh` 分開；
+不需要 profile 的部署可以完全不建立這個檔案，直接在 `env.sh` 設定即可。
+
+`AI_TEAM_PROGRESS_INTERVAL_SECONDS` 控制 Slack 階段進度卡的更新間隔，
+預設 300 秒、最小 30 秒。那張卡只說明角色／節點與耗時，
+刻意不宣稱工具活動或完成百分比，不能當成驗收通過的證據。
+
+數值型設定（`AI_TEAM_MAX_CONCURRENCY`、`*_TIMEOUT_SECONDS`、上面這一項）
+**不能設成空字串**——空字串仍算「有設定」，會在啟動轉型時失敗、服務起不來。
+不想改就整行註解掉採用預設值，要改就填實際數字。字串型設定（如 `AI_TEAM_BASE_BRANCH`）
+留空才是合法的「未設定」。
+
 每個角色需要**兩個** token，缺一個功能就少一半：
 
 | token | 格式 | 變數 | 沒有它會怎樣 |
@@ -118,6 +157,45 @@ App-Level Token 的 scope 必須是 `connections:write`，且該 App 要開啟 S
 Reviewer 預設 codex、AI_TEAM_CODE_REVIEW=on。不要關掉審查來取得綠燈。
 前期演練 GitHub token 留空；推送另以測試 repo 與明確人工核准驗證。
 
+### 6.1 真人核准閘門（必讀，否則全管線驗收會停住）
+
+`teams/spring-starters.json` 與 `teams/node-web.json` 目前都是 `"requirePlanApproval": true`。
+這代表 QA 驗收**不會自動派工**：系統會先把完整測試計畫貼進討論串，等需求／驗收負責人
+（`acceptanceOwner`，也就是開任務的人）核准之後才執行。照舊流程等它自己跑會一直等不到。
+
+在任務原討論串 @主機器人（不是只 tag 角色），指令都是「補充 #編號 …」的形式：
+
+| 情境 | 指令 |
+|---|---|
+| 想先看計畫 | `補充 #<ID> 檢視測試計畫` |
+| 核准計畫並派工 | `補充 #<ID> 核准測試計畫 <計畫節點> <plan_revision>` |
+| 一般續跑／回答 PM 提問 | `補充 #<ID> <你的答案>` |
+
+`plan_revision` 由系統在呈現計畫時給出，照抄即可；版本對不上會被拒絕，這是刻意的。
+核准也可以用計畫卡上的按鈕，效果與文字指令相同。
+
+改了 `teams/*.json` 之後，**既有任務不會自動套用**——它跑的是自己的配置快照。
+要讓進行中的任務改用新配置，得由同一位負責人在原討論串走一次遷移：
+
+| 步驟 | 指令 |
+|---|---|
+| 1. 看差異（不套用） | `補充 #<ID> 檢視配置更新` |
+| 2. 套用（token 由上一步給） | `補充 #<ID> 核准配置更新 <token>` |
+| 3. 授權一次驗收（若次數已用盡） | `補充 #<ID> 核准恢復驗收 <驗收節點> <配置版本>` |
+| 4. 重新核准計畫 | `補充 #<ID> 核准測試計畫 <計畫節點> <plan_revision>` |
+
+三件事先講清楚，免得驗收時誤判成故障：
+
+- 遷移**只接受執行能力設定**（`requiredTools`／`cachePaths`／建置與測試說明／`operations`／
+  各角色 `tools`／節點 `writablePaths`、`localTestNetwork`）。改 runtime、模型、路由、角色、
+  基準分支或核准政策一律拒絕，訊息是「請另建任務」——這是設計，不是 bug。
+- 套用遷移會清掉舊的計畫核准與一次性恢復授權，所以第 4 步不能省。
+- 「核准恢復驗收」對**同一個配置版本只能用一次**，而且不重設歷史次數。
+  節點重跑上限是 3、流程總轉換上限 24，達上限時系統會停下並附上一次的原始阻礙，
+  再送續跑也不會解除——要先修好真正的阻礙。
+
+PR 發布是**另一道獨立核准**，任何計畫核准都不代表核准發布。
+
 ## 7. 前置檢查、啟停、查詢
 
 ```bash
@@ -130,6 +208,23 @@ bash ~/ai-team/audit.sh cost
 bash ~/ai-team/service.sh stop
 ```
 
+額度用盡時任務會轉成 `WAITING_QUOTA` 並保存節點、session 與工作區，
+由系統依供應商回報的重置時間或退避排程自動續跑；此時**不需要**人工介入。
+Slack 會分開呈現兩個時間，不要混為一談：
+
+- **供應商指定解禁**：照原文貼出。Claude 的措辭是 `resets 6:30pm (UTC)`（標了時區）；
+  Codex 的是 `try again at Sep 15th, 2026 1:09 PM`（**沒有時區**）。
+  沒標時區的一律原文照登，系統不換算也不推測。
+- **下次自動嘗試**：系統自己排的時間，換算成台北時間。這只是嘗試，不是解禁保證。
+
+排程規則：標了 UTC 就採用該時刻加兩分鐘；沒標時區但指名日期時，
+系統以「時區最壞解讀」（UTC−12）之後再試一次，中間不反覆重試；
+兩者都沒有才退回 30 分鐘起、最多 6 小時的退避。
+
+`AI_TEAM_RESUME_APPROVED_TASK=<任務編號>` 是啟動時的**一次性**變數，
+用於讓管理者明確指定「恢復某個已有有效核准的任務」，它不會代建核准收據、
+也不會掃描所有已核准任務。只在該次啟動生效，**不要**寫進 `env.sh`。
+
 preflight 本機通過不代表登入或 Slack 成功。核對本次啟動 log、自檢與屬於該 JVM 的 ESTAB:443。
 服務管理拒絕已知的執行中／排隊任務，但不是完整的競態免疫 drain 協定；維護時先停止提交新需求。
 
@@ -141,12 +236,15 @@ preflight 本機通過不代表登入或 Slack 成功。核對本次啟動 log�
 | 應用 | check-source、完整 Maven 測試與 jar SHA256 |
 | Runtime | Claude／Codex 結構化輸出、resume、外部沙箱實測；CLI 版本一致 |
 | Slack | 詢問任務正常結束；白名單／去重；五角色正確身分 |
-| 完整管線 | PM→可選 Architecture→QA 規劃→Backend→QA 驗收→Reviewer→人工閘門 |
+| 完整管線 | PM→可選 Architecture→QA 規劃→**真人核准測試計畫**→Backend→QA 驗收→Reviewer→人工閘門 |
+| 核准閘門 | 計畫核准收據綁定 baseline／plan_revision／配置版本／核准人；未核准不得派工 QA |
 | 負面案例 | 漏測／無法核實／工具失敗必須向上回報且不能發布；用量暫停續跑 |
 | 發布 | 只在隔離測試 repo、人工核准後測試推分支與開 PR |
 | 還原 | 停機備份→新目錄還原→DB integrity_check；登入／session 另驗證 |
 
-已知 #1010 Reviewer bwrap/.agents 問題未修；如果重現，必須記錄為阻擋，不能宣稱全管線成功。
+原 #1010 的 Reviewer bwrap/.agents 問題已於 2026-09-09 修正（派工前自動建立掛載點，
+含兩項實機雙層沙箱測試）；若在新機重現，代表跑的是舊版或掛載條件不同，
+必須記錄為阻擋並查明原因，不能宣稱全管線成功，也不可改用放寬沙箱的方式繞過。
 不用刻意耗光訂閱驗證 quota；先用模擬錯誤測試狀態機，標明未做真實耗盡測試。
 
 ## 9. 備份／還原與憑證

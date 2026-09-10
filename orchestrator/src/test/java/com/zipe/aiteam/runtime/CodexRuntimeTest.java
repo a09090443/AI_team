@@ -20,6 +20,25 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * 不是憑 API 文件想像出來的 —— 這個類別的價值全在於它能不能吃下 codex 真正吐出的東西。
  */
 class CodexRuntimeTest {
+    @Test void explicitModelAndEffortApplyToFreshAndResumedRuns() {
+        var props = org.mockito.Mockito.mock(com.zipe.aiteam.config.AiTeamProperties.class);
+        org.mockito.Mockito.when(props.codexBin()).thenReturn(Path.of("codex"));
+        for (String session : new String[]{null, "saved-session"}) {
+            var req = new AgentRuntime.RuntimeRequest("42", "plan", tmp, tmp.resolve("qa.md"), "test",
+                    List.of(), null, session, 1, Duration.ofSeconds(10),
+                    new SandboxPolicy(List.of(), List.of(), 256, 100, 32), "gpt-5.6-sol", "medium");
+            List<String> cmd = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                    new CodexRuntime(props, null), "buildCommand", req, null);
+            assertThat(cmd).containsSubsequence("-m", "gpt-5.6-sol", "-c", "model_reasoning_effort=\"medium\"");
+        }
+    }
+    @Test void oldRequestDoesNotOverrideEffort() {
+        var props = org.mockito.Mockito.mock(com.zipe.aiteam.config.AiTeamProperties.class);
+        org.mockito.Mockito.when(props.codexBin()).thenReturn(Path.of("codex"));
+        List<String> cmd = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                new CodexRuntime(props, null), "buildCommand", request(null), null);
+        assertThat(cmd).doesNotContain("-c", "-m");
+    }
 
     @Test
     void resume的sandbox參數放在父指令() throws Exception {

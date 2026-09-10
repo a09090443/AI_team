@@ -2,22 +2,36 @@
   "version": 2,
   "id": "spring-starters",
   "project": {
+    "requirePlanApproval": true,
+    "operations": {
+      "java-verify": {"nodes": ["implementation"], "directory": ".", "argv": ["mvn", "-B", "verify"], "writes": ["."]},
+      "docs-install": {"nodes": ["implementation"], "directory": "doc-site", "argv": ["npm", "ci"], "writes": ["doc-site/node_modules"]},
+      "qa-java": {"nodes": ["verification"], "directory": ".", "argv": ["mvn", "-B", "-o", "-pl", "base-spring-boot-starter", "verify"], "writes": ["base-spring-boot-starter/target"]},
+      "qa-docs-snapshot": {"nodes": ["verification"], "directory": ".", "argv": ["git", "archive", "HEAD", "doc-site", "llms.txt", "llms-full.txt"], "writes": ["target"]},
+      "qa-docs-install": {"nodes": ["verification"], "directory": ".", "argv": ["npm", "--prefix", "target/qa-docs/doc-site", "ci", "--offline", "--ignore-scripts", "--no-audit", "--no-fund"], "writes": ["target"]},
+      "qa-docs-build": {"nodes": ["verification"], "directory": ".", "argv": ["npm", "--prefix", "target/qa-docs/doc-site", "run", "build"], "writes": ["target"]},
+      "docs-build": {"nodes": ["implementation"], "directory": "doc-site", "argv": ["npm", "run", "build"], "writes": ["doc-site/build", "doc-site/.docusaurus", "llms.txt", "llms-full.txt"]}
+    },
     "requiredTools": [
       "java",
       "mvn",
-      "git"
+      "node",
+      "npm",
+      "git",
+      "tar"
     ],
     "name": "zipe-spring-boot-starters",
     "repositoryEnv": "AI_TEAM_REPO",
     "baseBranch": "develop",
-    "buildInstructions": "依 AGENTS.md 與專案 skills；mvn -B verify。需生成的文件必須依規定產生，未完成不能宣稱通過。",
-    "testInstructions": "先制定情境測試計畫，再驗收；不得只看程式或單元測試數量。",
+    "buildInstructions": "依 AGENTS.md 與專案 skills；mvn -B verify。需生成的文件必須依規定產生，未完成不能宣稱通過。文件建置請在 doc-site 目錄執行 npm ci（有 lockfile）或 npm install（無 lockfile），再執行 npm run build；使用 PATH 上的 npm，不使用 npx 或絕對路徑替代。",
+    "testInstructions": "先制定情境測試計畫，再驗收；不得只看程式或單元測試數量。QA localTestNetwork 僅開放隔離 namespace 內本機測試，不連外。Maven 使用 -o。文件在隔離產物副本建置：先 mkdir -p target/qa-docs，再 git archive HEAD doc-site llms.txt llms-full.txt | tar -x -C target/qa-docs；依序 npm --prefix target/qa-docs/doc-site ci --offline --ignore-scripts --no-audit --no-fund 與 npm --prefix target/qa-docs/doc-site run build。不要在原 doc-site 執行 npm ci/build。快取不足須回報，不得下載或繞過沙箱；根目錄 llms.txt/llms-full.txt 與原始文件保持唯讀，比對 target/qa-docs/doc-site/build 產物驗證同步狀態。",
     "protectedPaths": [
       "**/src/main/**",
       "**/pom.xml"
     ],
     "cachePaths": [
-      ".m2/repository"
+      ".m2/repository",
+      ".npm"
     ],
     "verification": {
       "commands": [
@@ -71,6 +85,12 @@
         "Edit",
         "Grep",
         "Glob",
+        "Bash(npm --version)",
+        "Bash(npm -v)",
+        "Bash(node --version)",
+        "Bash(npm ci)",
+        "Bash(npm install)",
+        "Bash(npm run build)",
         "Bash(mvn *)",
         "Bash(git *)",
         "Bash(ls *)"
@@ -78,8 +98,9 @@
     },
     "tester": {
       "name": "QA Agent",
-      "runtime": "claude-code",
-      "model": "sonnet",
+      "runtime": "codex",
+      "model": "gpt-5.6-sol",
+      "reasoningEffort": "medium",
       "prompt": "prompts/verify.md",
       "botTokenEnv": "SLACK_BOT_TOKEN_QA",
       "appTokenEnv": "SLACK_APP_TOKEN_QA",
@@ -205,8 +226,11 @@
       "workspace": true,
       "writablePaths": [
         "**/src/test/**",
-        "**/target/**"
+        "**/target/**",
+        "base-spring-boot-starter/target/**",
+        "target/**"
       ],
+      "localTestNetwork": true,
       "plan": "plan",
       "next": "review",
       "blocked": "triage",

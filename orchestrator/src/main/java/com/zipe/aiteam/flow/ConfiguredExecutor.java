@@ -19,16 +19,28 @@ public class ConfiguredExecutor {
     private final ExecutionSandbox sandbox;
     private final WorkspaceManager workspaces;
     private final TaskStore store;
+    private final OperationPreflight preflight;
+    @org.springframework.beans.factory.annotation.Autowired
     public ConfiguredExecutor(AiTeamProperties props, RuntimeRegistry runtimes, ExecutionSandbox sandbox, WorkspaceManager workspaces, TaskStore store) {
+        this(props, runtimes, sandbox, workspaces, store, new OperationPreflight(props, sandbox));
+    }
+    public ConfiguredExecutor(AiTeamProperties props, RuntimeRegistry runtimes, ExecutionSandbox sandbox, WorkspaceManager workspaces, TaskStore store, OperationPreflight preflight) {
         this.props = props; this.runtimes = runtimes; this.sandbox = sandbox; this.workspaces = workspaces; this.store = store;
+        this.preflight = preflight;
     }
     public AgentRuntime.RuntimeResult execute(Task task, FlowRun flow, Node node) throws Exception {
         sandbox.requireReadyForCodeChanges();
         Role role = flow.snapshot.definition().roles().get(node.role());
         AgentRuntime runtime = runtimes.require(role.runtime());
-        Path cwd = node.workspace() ? workspaces.pathFor(task.id()) : Path.of(flow.snapshot.repository());
-        if (flow.dialogue && flow.parentId != null && workspaces.exists(flow.parentId)) cwd = workspaces.pathFor(flow.parentId);
+        Path cwd = workingDirectory(task, flow, node);
         if (!Files.isDirectory(cwd.resolve(".git"))) throw new IllegalStateException("快照的工作目錄不存在或不是 repository：" + cwd);
+        SandboxPolicy selectedPolicy = policy(flow, node, runtime, cwd);
+        // 新契約專案才啟用；舊快照不因更新程式被暗中加上新派工條件。
+        OperationPreflight.Evidence evidence = null;
+        if (flow.snapshot.definition().project().operations() != null) {
+            evidence = preflight.check(task.id(), flow, node, cwd, selectedPolicy, runtime);
+            flow.executionContexts.put(flow.node, evidence); store.saveFlow(task.id(), flow);
+        }
         Path root = props.homePath().resolve("flow-assets").resolve(task.id()).resolve(flow.snapshot.revision());
         Files.createDirectories(root);
         Path prompt = root.resolve(flow.node + ".md");
@@ -43,9 +55,15 @@ public class ConfiguredExecutor {
                 + "\n指定角色：" + role.name() + "\n工作目錄：" + cwd + "\n使用者需求：\n" + task.requestText()
                 + "\n建置規範：" + flow.snapshot.definition().project().buildInstructions()
                 + "\n測試規範：" + flow.snapshot.definition().project().testInstructions() + "\n補充與已知阻礙：\n" + flow.context);
+        if (evidence != null) context.append("\n系統派工前證據（不是建置成功或真人核准）：").append(evidence);
+        if (!flow.dialogue) context.append("\n本階段操作契約：").append(OperationContract.forNode(flow.snapshot.definition(), flow.node));
         context.append("\n系統固定需求基準 baseline_revision：").append(flow.baselineRevision)
                 .append("\n真人需求／驗收負責人：").append(flow.acceptanceOwner)
                 .append("\n系統獨立驗證收據（不是模型自陳）：").append(flow.independentEvidence);
+        context.append("\n系統保存的真人測試計畫核准收據（以版本綁定；不同於測試結果）：").append(flow.planApprovals)
+                .append("\n人工核准不等於測試 PASS。請依目前 HEAD 重新執行本階段驗收，不得把補核准直接當作全部通過。");
+        context.append("\n系統獨立驗證收據是建置／測試證據，不是真人核准紀錄；不得以它為 null 推論無人核准。")
+                .append("\n請只在上述工作目錄核實產物；主 repository 與任務工作區是獨立副本，尚未發布時不同步是正常的。");
         if (node.plan() != null && flow.receipts.get(node.plan()) != null)
             context.append("\n系統固定測試計畫 plan_revision：").append(Traceability.digest(flow.receipts.get(node.plan())));
         Path agents = cwd.resolve("AGENTS.md");
@@ -60,6 +78,10 @@ public class ConfiguredExecutor {
         context.append("\n唯有 route 欄位可選擇下列配置好的分支；不准自行指定角色或其他節點：")
                 .append(node.routes() == null ? Set.of() : node.routes().keySet());
         Checkpoint continuation = task.continuation();
+        if (continuation != null && continuation.sessionId() != null
+                && (continuation.upstream() == null || !continuation.upstream().contains("\n工作目錄：" + cwd + "\n"))) {
+            throw new IllegalStateException("checkpoint 工作目錄與本次不同；禁止沿用錯誤目錄的 session，請備份後重建 checkpoint");
+        }
         if (continuation != null && !continuation.role().equals(flow.node)) throw new IllegalStateException("checkpoint 節點與快照不符");
         if (continuation != null && (!continuation.runtime().equals(role.runtime())
                 || !Objects.equals(continuation.model(), Objects.toString(role.model(), "")))) throw new IllegalStateException("checkpoint runtime/model 與原配置不符，拒絕跨引擎續跑");
@@ -68,15 +90,37 @@ public class ConfiguredExecutor {
         store.saveCheckpoint(cp);
         var request = new AgentRuntime.RuntimeRequest(task.id(), flow.node, cwd, prompt, context + FailureReport.INSTRUCTIONS,
                 flow.dialogue ? List.of("Read", "Grep", "Glob") : role.tools(), FailureReport.extendSchema(schema), cp.sessionId(),
-                node.maxTurns(), Duration.ofSeconds(node.timeoutSeconds()), policy(flow, node, runtime, cwd), cp.model());
+                node.maxTurns(), Duration.ofSeconds(node.timeoutSeconds()), selectedPolicy, cp.model(), role.reasoningEffort());
         return runtime.execute(request, session -> store.saveCheckpoint(cp.withSession(session)));
+    }
+    Path workingDirectory(Task task, FlowRun flow, Node node) throws Exception {
+        if (flow.dialogue && flow.parentId != null) {
+            FlowRun parent = store.flow(flow.parentId).orElseThrow(() -> new IllegalStateException("原任務快照遺失，禁止改查其他專案"));
+            if (!parent.snapshot.repository().equals(flow.snapshot.repository())) throw new IllegalStateException("對話與原任務的 repository 不符");
+            if (parent.workspaceReady || parent.workspacePath != null) return verifiedWorkspace(flow.parentId, parent.workspacePath);
+            return Path.of(flow.snapshot.repository());
+        }
+        // workspace=false 原意是不必建立工作區，不應讓後續唯讀分流檢查過時的主副本。
+        boolean existingReadOnly = !flow.dialogue && node.scope() == Scope.READ_ONLY && (flow.workspacePath != null || flow.workspaceReady);
+        if (existingReadOnly) {
+            return verifiedWorkspace(task.id(), flow.workspacePath);
+        }
+        return node.workspace() ? workspaces.pathFor(task.id()) : Path.of(flow.snapshot.repository());
+    }
+    private Path verifiedWorkspace(String taskId, String savedPath) throws Exception {
+        if (savedPath == null) throw new IllegalStateException("已建立工作區但缺少路徑證據，禁止退回主 repository");
+        Path expected = workspaces.pathFor(taskId).toAbsolutePath().normalize();
+        Path saved = Path.of(savedPath).toAbsolutePath().normalize();
+        if (!saved.equals(expected) || !workspaces.exists(taskId) || !expected.toRealPath().equals(expected))
+            throw new IllegalStateException("原工作區遺失或路徑不符，禁止退回主 repository 核實");
+        return expected;
     }
     SandboxPolicy policy(FlowRun flow, Node node, AgentRuntime runtime, Path cwd) throws Exception {
         var state = new SandboxPolicy.AgentState(runtime.statePaths(props.userHome()), runtime.escalationPins(props.userHome()));
         if (flow.dialogue || node.scope() == Scope.READ_ONLY) return SandboxPolicy.readOnly(state);
         List<Path> writable = new ArrayList<>(state.writable());
         if (node.scope() == Scope.WORKSPACE) writable.add(cwd);
-        else { writable.addAll(PathRules.writableRoots(cwd, node.writablePaths())); writable.add(cwd.resolve(".git")); }
+        else { writable.addAll(PathRules.writableRoots(cwd, node.writablePaths(), node.localTestNetwork())); writable.add(cwd.resolve(".git")); }
         var caches = flow.snapshot.definition().project().cachePaths();
         if (caches != null) for (String cache : caches) {
             validateCache(cache);
@@ -93,7 +137,7 @@ public class ConfiguredExecutor {
             paths.filter(p -> PathRules.allows(flow.snapshot.definition().project().protectedPaths(), cwd.relativize(p).toString().replace('\\', '/')))
                     .filter(p -> node.scope() == Scope.LIMITED).forEach(pins::add);
         }
-        return new SandboxPolicy(List.copyOf(writable), List.copyOf(pins), 4096, 400, 512);
+        return new SandboxPolicy(List.copyOf(writable), List.copyOf(pins), 4096, 400, 512, node.localTestNetwork());
     }
     static void validateCache(String cache) {
         TeamCatalog.require(cache != null && (Set.of(".m2/repository", ".npm", ".gradle/caches").contains(cache)

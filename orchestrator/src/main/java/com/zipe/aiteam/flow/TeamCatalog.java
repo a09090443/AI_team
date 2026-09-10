@@ -66,6 +66,10 @@ public class TeamCatalog {
             require(id.matches("[a-z][a-z0-9_]*") && !id.equals("system"), "無效角色 ID：" + id);
             require(r != null && r.name() != null && !r.name().isBlank() && r.runtime() != null && !r.runtime().isBlank(), "角色缺名稱或 runtime：" + id);
             require(r.tools() != null && !r.tools().isEmpty(), "角色缺工具政策：" + id);
+            if (r.reasoningEffort() != null && !r.reasoningEffort().isBlank()) {
+                require("codex".equals(r.runtime()), "reasoningEffort 目前僅支援 codex：" + id);
+                require(Set.of("low", "medium", "high", "xhigh").contains(r.reasoningEffort()), "不支援的 reasoningEffort：" + id);
+            }
             for (String ref : List.of(r.botTokenEnv() == null ? "" : r.botTokenEnv(), r.appTokenEnv() == null ? "" : r.appTokenEnv())) {
                 if (ref.isBlank()) continue;
                 require(ref.matches("[A-Z][A-Z0-9_]*") && tokenRefs.add(ref), "token 只允許互不重複的環境變數引用");
@@ -77,6 +81,9 @@ public class TeamCatalog {
             if (n.kind() == Kind.AGENT) {
                 require(d.roles().containsKey(n.role()), "節點引用不存在角色：" + id);
                 require(n.scope() != null && n.gate() != null, "節點缺權限或驗證政策：" + id);
+                require(!n.localTestNetwork() || (n.scope() == Scope.LIMITED && n.gate() == Gate.VERIFICATION
+                        && "codex".equals(d.roles().get(n.role()).runtime()) && d.project().requiredTools().contains("node")),
+                        "本機測試網路只支援 Codex LIMITED 驗收，並須宣告 node 工具：" + id);
                 require(n.maxVisits() >= 1 && n.maxVisits() <= 3 && n.timeoutSeconds() >= 1 && n.timeoutSeconds() <= 1800 && n.maxTurns() >= 1 && n.maxTurns() <= 80, "節點資源上限無效：" + id);
                 require(n.scope() == Scope.READ_ONLY || n.workspace(), "寫入只能在獨立工作區：" + id);
                 require(n.scope() != Scope.WORKSPACE || n.gate() == Gate.IMPLEMENTATION, "產品寫入必須通過實作品質驗證：" + id);
@@ -117,6 +124,7 @@ public class TeamCatalog {
                 && d.project().requiredTools().stream().allMatch(t -> t.matches("[a-zA-Z][a-zA-Z0-9_.+-]*")), "須宣告安全的 requiredTools 名稱");
         d.project().protectedPaths().forEach(PathRules::validate);
         if (d.project().cachePaths() != null) d.project().cachePaths().forEach(ConfiguredExecutor::validateCache);
+        OperationContract.validate(d);
         for (String id : d.nodes().keySet()) dependencies(d, id, new HashSet<>());
         if (d.version() >= 2) {
             require(d.nodes().values().stream().filter(n -> n.gate() == Gate.REQUIREMENTS).count() == 1,

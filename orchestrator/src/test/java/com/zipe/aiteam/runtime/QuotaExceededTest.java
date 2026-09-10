@@ -10,6 +10,10 @@ import static org.assertj.core.api.Assertions.*;
 
 class QuotaExceededTest {
     @TempDir Path tmp;
+    @Test void sessionLimit辨識且保留重置原文() {
+        assertThatThrownBy(() -> QuotaExceeded.check("claude-code", "{\"is_error\":true,\"subtype\":\"success\",\"api_error_status\":429,\"result\":\"You've hit your session limit · resets 6:30pm (UTC)\"}", "log"))
+                .isInstanceOf(QuotaExceeded.class).hasMessageContaining("resets 6:30pm (UTC)");
+    }
     @Test void onlyExplicitProviderErrorsAreQuota() {
         assertThatThrownBy(() -> QuotaExceeded.check("codex",
                 "{\"type\":\"turn.failed\",\"error\":{\"code\":\"usage_limit_reached\"}}", "log"))

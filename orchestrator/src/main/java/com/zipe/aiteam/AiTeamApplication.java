@@ -28,6 +28,8 @@ public class AiTeamApplication implements CommandLineRunner {
     private com.zipe.aiteam.flow.TeamCatalog teamCatalog;
     @org.springframework.beans.factory.annotation.Autowired
     private com.zipe.aiteam.runtime.RuntimeRegistry runtimes;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.zipe.aiteam.task.QuotaAutoResume quotaAutoResume;
 
     public AiTeamApplication(AiTeamProperties props, SlackListener listener,
                              TaskStore store, TaskOrchestrator orchestrator,
@@ -100,6 +102,15 @@ public class AiTeamApplication implements CommandLineRunner {
         if (purged > 0) log.info("已清除 {} 筆過期的去重紀錄", purged);
 
         orchestrator.recoverOnStartup();
+        // 部署者僅本次啟動明確指定；不掃描所有已核准任務，也不代建核准收據。
+        String approvedTask = System.getenv("AI_TEAM_RESUME_APPROVED_TASK");
+        if (approvedTask != null && !approvedTask.isBlank()) {
+            if (!approvedTask.matches("[0-9]+")) throw new IllegalArgumentException("AI_TEAM_RESUME_APPROVED_TASK 必須是單一任務編號");
+            orchestrator.resumeApprovedPlanTask(approvedTask);
+        }
+
+        // SocketModeApp.start() 會阻塞，因此不能等 ApplicationReadyEvent 才啟動。
+        quotaAutoResume.start();
 
         Runtime.getRuntime().addShutdownHook(new Thread(listener::stop));
         listener.start();

@@ -16,6 +16,72 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 
 class ConfiguredExecutorTest {
+    @Test void parentDialogueMustNotFallBackWhenOriginalWorkspaceIsMissing() throws Exception {
+        var parent = new FlowRun(flow.snapshot); parent.workspaceReady = true; parent.workspacePath = repo.toString();
+        when(store.flow("parent")).thenReturn(Optional.of(parent));
+        when(workspace.pathFor("parent")).thenReturn(repo);
+        flow.dialogue = true; flow.parentId = "parent";
+        assertThatThrownBy(() -> executor.workingDirectory(new Task("42", "c", "t", "u", "查核"), flow,
+                flow.snapshot.definition().nodes().get("triage"))).hasMessageContaining("禁止退回");
+        when(workspace.exists("parent")).thenReturn(true);
+        assertThat(executor.workingDirectory(new Task("42", "c", "t", "u", "查核"), flow,
+                flow.snapshot.definition().nodes().get("triage"))).isEqualTo(repo);
+    }
+    @Test void preflightFailurePreventsAnyModelCall() throws Exception {
+        flow.node = "triage";
+        doThrow(new IllegalStateException("missing tool: unavailable")).when(preflight).check(anyString(), any(), any(), any(), any(), any());
+        assertThatThrownBy(() -> executor.execute(new Task("42", "c", "t", "u", "查核"), flow, flow.snapshot.definition().nodes().get("triage")))
+                .hasMessageContaining("missing tool");
+        verify(runtime, never()).execute(any(), any());
+    }
+    OperationPreflight preflight = mock(OperationPreflight.class);
+    @Test void readOnlyTriageUsesExistingWorkspaceNotMainClone() throws Exception {
+        Path taskRepo = tmp.resolve("task-repo"); Files.createDirectories(taskRepo.resolve(".git"));
+        when(workspace.pathFor("42")).thenReturn(taskRepo);
+        when(workspace.exists("42")).thenReturn(true);
+        flow.workspacePath = taskRepo.toString(); flow.node = "triage";
+        AtomicReference<AgentRuntime.RuntimeRequest> captured = new AtomicReference<>();
+        when(runtime.execute(any(), any())).thenAnswer(c -> { captured.set(c.getArgument(0)); return null; });
+        executor.execute(new Task("42", "c", "t", "u", "查核"), flow, flow.snapshot.definition().nodes().get("triage"));
+        assertThat(captured.get().workingDirectory()).isEqualTo(taskRepo);
+        assertThat(captured.get().sandboxPolicy().writablePaths()).doesNotContain(taskRepo, repo);
+        assertThat(captured.get().prompt()).contains("不是\u771f人核准紀錄", "獨立副本");
+    }
+    @Test void triageBeforeWorkspaceCreationUsesMainRepo() throws Exception {
+        assertThat(executor.workingDirectory(new Task("42", "c", "t", "u", "查核"), flow,
+                flow.snapshot.definition().nodes().get("triage"))).isEqualTo(repo);
+    }
+    @Test void missingOrMismatchedWorkspaceMustNotFallBack() {
+        flow.workspacePath = repo.toString();
+        var node = flow.snapshot.definition().nodes().get("triage");
+        var task = new Task("42", "c", "t", "u", "查核");
+        assertThatThrownBy(() -> executor.workingDirectory(task, flow, node)).hasMessageContaining("禁止退回");
+        when(workspace.exists("42")).thenReturn(true);
+        flow.workspacePath = tmp.resolve("wrong-repo").toString();
+        assertThatThrownBy(() -> executor.workingDirectory(task, flow, node)).hasMessageContaining("路徑不符");
+    }
+    @Test void oldMainRepoSessionCannotResumeInTaskWorkspace() throws Exception {
+        Path taskRepo = tmp.resolve("task-repo"); Files.createDirectories(taskRepo.resolve(".git"));
+        when(workspace.pathFor("42")).thenReturn(taskRepo); when(workspace.exists("42")).thenReturn(true);
+        flow.workspacePath = taskRepo.toString(); flow.node = "triage";
+        var task = new Task("42", "c", "t", "u", "查核");
+        task.continuation(new com.zipe.aiteam.task.Checkpoint("42", "triage", "claude-code", "opus",
+                "old-session", "\n工作目錄：" + repo + "\n", null, null));
+        assertThatThrownBy(() -> executor.execute(task, flow, flow.snapshot.definition().nodes().get("triage")))
+                .hasMessageContaining("禁止沿用錯誤目錄");
+        verify(runtime, never()).execute(any(), any());
+    }
+    @Test void qaUsesSnapshotModelAndReasoningEffort() throws Exception {
+        flow = new FlowRun(TeamCatalog.load(Path.of("teams/spring-starters.json"), key -> repo.toString()));
+        flow.node = "plan";
+        when(runtime.id()).thenReturn("codex");
+        executor = new ConfiguredExecutor(props, new RuntimeRegistry(List.of(runtime)), mock(ExecutionSandbox.class), workspace, store, preflight);
+        AtomicReference<AgentRuntime.RuntimeRequest> captured = new AtomicReference<>();
+        when(runtime.execute(any(), any())).thenAnswer(c -> { captured.set(c.getArgument(0)); return null; });
+        executor.execute(new Task("42", "c", "t", "u", "測試"), flow, flow.snapshot.definition().nodes().get("plan"));
+        assertThat(captured.get().model()).isEqualTo("gpt-5.6-sol");
+        assertThat(captured.get().reasoningEffort()).isEqualTo("medium");
+    }
     @TempDir Path tmp;
     AiTeamProperties props = mock(AiTeamProperties.class);
     WorkspaceManager workspace = mock(WorkspaceManager.class);
@@ -35,7 +101,7 @@ class ConfiguredExecutorTest {
         when(workspace.pathFor("42")).thenReturn(repo);
         when(runtime.id()).thenReturn("claude-code"); when(runtime.statePaths(any())).thenReturn(List.of(tmp.resolve("state")));
         when(runtime.escalationPins(any())).thenReturn(List.of());
-        executor = new ConfiguredExecutor(props, new RuntimeRegistry(List.of(runtime)), mock(ExecutionSandbox.class), workspace, store);
+        executor = new ConfiguredExecutor(props, new RuntimeRegistry(List.of(runtime)), mock(ExecutionSandbox.class), workspace, store, preflight);
     }
     @Test void arbitraryRoleRuntimePromptAndToolsComeFromSnapshot() throws Exception {
         flow.node = "frontend"; Task task = new Task("42", "c", "t", "u", "新增畫面");

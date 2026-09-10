@@ -28,6 +28,18 @@ public class SlackListener {
 
     private static final Logger log = LoggerFactory.getLogger(SlackListener.class);
     private static final Pattern MENTION = Pattern.compile("<@[A-Z0-9]+>");
+    static String unwrapCommand(String text) {
+        String value = text.trim();
+        String candidate = value;
+        if (value.startsWith("```") && value.endsWith("```") && value.length() >= 6) {
+            candidate = value.substring(3, value.length() - 3).trim();
+            if (candidate.startsWith("text\n")) candidate = candidate.substring(5).trim();
+        } else if (value.startsWith("`") && value.endsWith("`") && value.length() >= 2) {
+            candidate = value.substring(1, value.length() - 1).trim();
+        }
+        // 只解開整則已知管理指令；不從一般問題或程式範例中擷取指令。
+        return candidate.matches("(?s)^(補充|處理)\\s+#\\d+(?:\\s+.*)?$") ? candidate : value;
+    }
 
     private final AiTeamProperties props;
     private final TaskOrchestrator orchestrator;
@@ -86,6 +98,7 @@ public class SlackListener {
             });
         }
 
+        registerPlanActions(app);
         socketApp = new SocketModeApp(props.slackAppToken(), app);
         log.info("Socket Mode 連線中…（白名單 {} 人，並行上限 {}）",
                 props.allowedUsers().size(), props.maxConcurrency());
@@ -104,6 +117,7 @@ public class SlackListener {
                     enqueueMention(payload.getEventId(), payload.getEvent(), role);
                     return ctx.ack();
                 });
+                registerPlanActions(roleApp);
                 SocketModeApp socket = new SocketModeApp(token, roleApp);
                 roleSockets.add(socket);
                 socket.startAsync();
@@ -159,7 +173,7 @@ public class SlackListener {
             return;
         }
 
-        String text = MENTION.matcher(e.getText() == null ? "" : e.getText()).replaceAll("").trim();
+        String text = unwrapCommand(MENTION.matcher(e.getText() == null ? "" : e.getText()).replaceAll(""));
         // 一則訊息只允許一個團隊目標，避免多個 App 各自建立實作。
         long targets = (props.identities().isEmpty() ? java.util.List.of(SlackNotifier.Identity.values()) : props.identities()).stream()
                 .map(notifier::mention).filter(java.util.Objects::nonNull)
@@ -193,6 +207,29 @@ public class SlackListener {
         else orchestrator.requestRole(role, e.getChannel(), threadTs, e.getUser(), text);
     }
 
+    private void registerPlanActions(App app) {
+        for (String action : new String[]{PlanReview.APPROVE, PlanReview.REVISE}) {
+            app.blockAction(action, (req, ctx) -> {
+                var p = req.getPayload();
+                String user = p.getUser().getId(), value = p.getActions().getFirst().getValue();
+                String channel = p.getChannel() == null ? null : p.getChannel().getId();
+                String thread = p.getMessage() == null ? null : p.getMessage().getThreadTs();
+                ingress.execute(() -> {
+                    try { handlePlanButton(user, value, action, channel, thread); }
+                    catch (Exception e) { log.error("處理計畫按鈕失敗：{}", com.zipe.aiteam.runtime.Diagnostics.describe(e)); }
+                });
+                return ctx.ack();
+            });
+        }
+    }
+    void handlePlanButton(String user, String value, String action, String channel, String thread) {
+        if (!props.allowedUsers().contains(user) || !java.util.Set.of(PlanReview.APPROVE, PlanReview.REVISE).contains(action)) return;
+        var decision = PlanReview.Decision.parse(value);
+        orchestrator.lookup(decision.task()).ifPresent(task -> {
+            if (task.slackChannel().equals(channel) && task.slackThreadTs().equals(thread))
+                orchestrator.planDecision(task, user, decision, PlanReview.APPROVE.equals(action), channel, thread);
+        });
+    }
     private void handleButton(String userId, String taskId, String action) {
         Optional<Task> found = orchestrator.lookup(taskId);
         if (found.isEmpty()) {

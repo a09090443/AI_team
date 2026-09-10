@@ -18,6 +18,7 @@ class RuntimeDiagnosticsTest {
     @TempDir Path tmp;
 
     @Test void bothRuntimesKeepPartialStdoutOnTimeout() throws Exception {
+        Files.createDirectory(tmp.resolve(".git"));
         for (boolean codex : List.of(false, true)) {
             AiTeamProperties props = mock(AiTeamProperties.class);
             when(props.logsPath()).thenReturn(tmp);
@@ -26,6 +27,8 @@ class RuntimeDiagnosticsTest {
             ExecutionSandbox sandbox = mock(ExecutionSandbox.class);
             when(sandbox.wrap(anyString(), any(), any(), anyList())).thenReturn(
                     List.of("/bin/sh", "-c", "printf partial-evidence; exec sleep 5"));
+            when(sandbox.wrap(startsWith("ai-team-codex-preflight-"), any(), any(), anyList()))
+                    .thenReturn(List.of("/bin/true"));
             Path prompt = tmp.resolve("role.md");
             Files.writeString(prompt, "test role");
             AgentRuntime runtime = codex ? new CodexRuntime(props, sandbox) : new ClaudeCodeRuntime(props, sandbox);

@@ -8,6 +8,31 @@ import java.nio.file.*;
 import static org.assertj.core.api.Assertions.*;
 
 class TeamCatalogTest {
+    @Test void springBuilderCanBuildDocsWithoutBroadNpmOrPmWriteAccess() throws Exception {
+        var definition = mapper.readValue(Files.readString(Path.of("teams/spring-starters.json")), TeamDefinition.class);
+        TeamCatalog.validate(definition);
+        assertThat(definition.roles().get("builder").tools()).contains("Bash(npm ci)", "Bash(npm run build)")
+                .doesNotContain("Bash(npm *)", "Bash(npx *)");
+        assertThat(definition.roles().get("coordinator").tools()).doesNotContain("Write", "Edit", "Bash(npm run build)");
+        assertThat(definition.project().requiredTools()).contains("node", "npm");
+        assertThat(definition.project().cachePaths()).contains(".npm");
+    }
+    @Test void qaModelEffortAndOldSnapshotCompatibility() throws Exception {
+        var definition = mapper.readValue(Files.readString(Path.of("teams/spring-starters.json")), TeamDefinition.class);
+        TeamCatalog.validate(definition);
+        var qa = definition.roles().get("tester");
+        assertThat(qa.model()).isEqualTo("gpt-5.6-sol");
+        assertThat(qa.reasoningEffort()).isEqualTo("medium");
+        assertThat(qa.executionLabel()).contains("gpt-5.6-sol", "medium", "要求值");
+        var old = config();
+        assertThat(mapper.treeToValue(old, TeamDefinition.class).roles().get("builder").reasoningEffort()).isNull();
+        validate(old);
+        var role = (ObjectNode)old.path("roles").path("builder");
+        role.put("reasoningEffort", "medium");
+        assertThatThrownBy(() -> validate(old)).hasMessageContaining("僅支援 codex");
+        role.put("runtime", "codex").put("reasoningEffort", "invalid");
+        assertThatThrownBy(() -> validate(old)).hasMessageContaining("不支援的 reasoningEffort");
+    }
     @TempDir Path tmp;
     ObjectMapper mapper = new ObjectMapper();
     ObjectNode config() throws Exception { return (ObjectNode)mapper.readTree(Files.readString(Path.of("teams/node-web.json"))); }

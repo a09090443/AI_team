@@ -1,5 +1,8 @@
 # 配置式專案、角色與工作流程
 
+跨專案操作契約、每階段沙箱預檢、真人計畫核准及受控配置遷移，
+見 [跨專案執行契約](cross-project-execution.md)。此版尚未部署，勿與下方歷史部署混淆。
+
 ## 狀態與範圍
 
 **正式部署更新：**2026-09-06 18:08 已啟用 v2，詳見 [部署與重測準備](deploy-2026-09-06-v2.md)。
@@ -138,3 +141,12 @@ CLI session 仍存在原 runtime 狀態目錄，checkpoint 保存其 ID；環境
 - 任務在真實額度中斷與重啟後的續跑。
 - 以新模式走到 PR 人工閘門，再由使用者另行核准發布。
 - Node 範例是配置與流程測試範例，不代表已在任意 Node repo 完成產品驗收。
+# QA 明確模型設定（2026-09-08）
+
+`spring-starters` 的 tester 現在使用 `runtime: "codex"`、
+`model: "gpt-5.6-sol"`、`reasoningEffort: "medium"`，涵蓋 plan、verification 與 QA 唯讀對話。
+`reasoningEffort` 是角色選填欄位，目前僅 Codex 支援 low/medium/high/xhigh；
+新執行與 resume 都會傳入 `-c model_reasoning_effort="medium"`。
+缺少此欄位的舊快照維持 CLI 原有行為，不回寫歷史任務或全域 config.toml。
+這不是自動提升推理強度功能；需要 high 時由管理者修改配置，對新任務生效。
+設定依 OpenAI Docs 的 [Codex 配置參考](https://learn.chatgpt.com/docs/config-file/config-reference) 核對。

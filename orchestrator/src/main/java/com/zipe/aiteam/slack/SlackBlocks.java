@@ -377,7 +377,7 @@ public final class SlackBlocks {
     private static String renderGeneric(Task task, StageSpec stage, StageOutcome o) {
         StringBuilder sb = new StringBuilder();
         sb.append("*任務 #").append(task.id()).append("　").append(stage.displayName())
-          .append(" 結果*\n\n```\n").append(o.result().toPrettyString()).append("\n```");
+          .append(" 結果*\n\n").append(SlackReport.render(o.result()));
         appendFooter(sb, task, o);
         return sb.toString();
     }

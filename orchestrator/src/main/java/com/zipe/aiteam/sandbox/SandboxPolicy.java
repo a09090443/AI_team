@@ -25,8 +25,12 @@ public record SandboxPolicy(
         List<Path> readOnlyPins,
         int memoryMaxMb,
         int cpuQuotaPct,
-        int tasksMax
+        int tasksMax,
+        boolean localTestNetwork
 ) {
+    public SandboxPolicy(List<Path> writablePaths, List<Path> readOnlyPins, int memoryMaxMb, int cpuQuotaPct, int tasksMax) {
+        this(writablePaths, readOnlyPins, memoryMaxMb, cpuQuotaPct, tasksMax, false);
+    }
 
     /**
      * 某個 runtime 自己需要的檔案系統條件。

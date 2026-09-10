@@ -522,7 +522,7 @@ public class TaskOrchestrator {
                 "⏸️ 任務 #" + task.id() + " 等待額度恢復，禁止發布", null);
         String message = slack.mention(Identity.PM) + " <@" + task.requesterUserId() + ">\n"
                 + "任務 #" + task.id() + " 已因額度暫停。\n" + Diagnostics.safe(detail)
-                + "\n額度恢復後請按「繼續任務」。不會自動重試或切換供應商。";
+                + "\n系統將安排自動續跑並回報时间，也可按「繼續任務」。沿用原供應商與 session。";
         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), message,
                 SlackBlocks.quotaBlocks(task.id(), message));
     }
@@ -1080,6 +1080,15 @@ public class TaskOrchestrator {
     }
 
     /** 舊的 AWAIT_HUMAN 任務可明確要求 PM 接手，補充內容不另建任務。 */
+    public void planDecision(Task task, String user, com.zipe.aiteam.slack.PlanReview.Decision decision,
+                             boolean approve, String channel, String thread) {
+        if (flowEngine != null && flowEngine.owns(task.id())) flowEngine.planDecision(task, user, decision, approve, channel, thread, job -> work.offer(job));
+    }
+    public void resumeApprovedPlanTask(String id) {
+        Task task = store.find(id).orElseThrow(() -> new IllegalArgumentException("指定任務不存在"));
+        if (flowEngine == null || !flowEngine.owns(id)) throw new IllegalArgumentException("指定任務不是配置流程");
+        flowEngine.resumeApprovedPlan(task, job -> work.offer(job));
+    }
     public void requestTriage(Task task, String feedback, String byUser) {
         if (flowEngine != null && flowEngine.owns(task.id())) { flowEngine.resume(task, feedback, byUser, job -> work.offer(job)); return; }
         if (legacyBlockedByNewConfiguration(task)) return;

@@ -22,7 +22,7 @@ cp -p "$build/orchestrator/target/$jar" "$live/target/$jar.next"
 mv "$live/target/$jar.next" "$live/target/$jar"
 cp -a "$build/orchestrator/src/." "$live/src/"
 printf 'BACKUP=%s\n' "$backup"
-bash "$root/service.sh" start
+bash "$root/service.sh" start 8>&-
 for attempt in {1..40}; do
   if grep -q 'INSPECTOR 直接對話 Socket Mode 已啟動' "$root/orchestrator.log" && grep -q '沙箱工具鏈自檢通過' "$root/orchestrator.log"; then
     sqlite3 -readonly -json "$root/ai-team.db" 'select * from task order by id;' | sha256sum > "$backup/tasks.after"

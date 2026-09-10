@@ -10,7 +10,8 @@ public final class PathRules {
     public static void validate(String pattern) {
         TeamCatalog.require(pattern != null && !pattern.isBlank() && !pattern.startsWith("/")
                 && !pattern.contains("\\") && !pattern.contains(":") && !pattern.contains("..")
-                && !pattern.startsWith(".git") && !pattern.equals("**") && !pattern.equals("**/*"), "不安全的專案路徑政策：" + pattern);
+                && !pattern.startsWith(".git") && !pattern.startsWith(".agents") && !pattern.startsWith(".codex")
+                && !pattern.equals("**") && !pattern.equals("**/*"), "不安全的專案路徑政策：" + pattern);
     }
     public static boolean matches(String glob, String path) {
         StringBuilder regex = new StringBuilder("^");
@@ -27,6 +28,9 @@ public final class PathRules {
     }
     public static boolean allows(List<String> patterns, String path) { return patterns != null && patterns.stream().anyMatch(p -> matches(p, path)); }
     public static List<Path> writableRoots(Path workspace, List<String> patterns) throws java.io.IOException {
+        return writableRoots(workspace, patterns, false);
+    }
+    public static List<Path> writableRoots(Path workspace, List<String> patterns, boolean prepareMissing) throws java.io.IOException {
         Path root = workspace.toRealPath();
         List<Path> found = new ArrayList<>();
         for (String pattern : patterns) {
@@ -36,7 +40,11 @@ public final class PathRules {
             if (!base.contains("*")) {
                 Path p = root.resolve(base).normalize();
                 TeamCatalog.require(p.startsWith(root) && !p.equals(root), "寫入路徑越界");
-                // 不建立缺少的父目錄，避免循 symlink 向外写入。
+                // 僅明確、已核准的目錄政策可建立掛載根；先拒絕所有 symlink 祖先。
+                Path existing = p;
+                while (!Files.exists(existing, LinkOption.NOFOLLOW_LINKS)) existing = existing.getParent();
+                TeamCatalog.require(existing.toRealPath().equals(existing), "symlink 寫入政策越界");
+                if (prepareMissing) Files.createDirectories(p);
                 if (Files.isDirectory(p)) found.add(p);
             } else try (var paths = Files.walk(root)) {
                 paths.filter(Files::isDirectory).filter(p -> matches(base, root.relativize(p).toString().replace('\\', '/')))
