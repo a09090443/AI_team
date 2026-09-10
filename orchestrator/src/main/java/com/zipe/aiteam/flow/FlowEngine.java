@@ -216,7 +216,8 @@ public class FlowEngine {
                 if (result.permissionDenials() != null && !result.permissionDenials().isEmpty()) audit.record(task.id(), node.role(), AuditLog.ACTION_DENIED, Diagnostics.toolFailures(result.permissionDenials()));
                 String block = FlowGates.blockingReason(node, report, flow);
                 slack.postConfigured(flow.snapshot.definition().roles().get(node.role()), task.slackChannel(), task.slackThreadTs(),
-                        "任務 #" + task.id() + "／節點 " + flow.node + "\n" + com.zipe.aiteam.slack.SlackReport.render(report));
+                        "任務 #" + task.id() + "／節點 " + flow.node + "\n" + describe(report)
+                      + fullReportHint(task, flow.node));
                 String next;
                 if (block == null) {
                     flow.receipts.put(flow.node, report);
@@ -238,7 +239,13 @@ public class FlowEngine {
                 }
                 flow.activeNode = null; task.continuation(null);
                 countedNode = null;
-                if (next.equals("human")) { waitHuman(task, flow, block == null ? com.zipe.aiteam.slack.SlackReport.render(report) : block); return; }
+                if (next.equals("human")) {
+                    // 受阻原因一律完整顯示：那是要求人立刻做事的內容，壓縮它等於把
+                    // 該處理的事藏起來。只有「正常結束」的報告走摘要。
+                    waitHuman(task, flow, block == null
+                            ? describe(report) + fullReportHint(task, flow.node) : block);
+                    return;
+                }
                 Node target = flow.snapshot.definition().nodes().get(next);
                 if (target != null && target.gate() == Gate.REQUIREMENTS && flow.baselineRevision != null) {
                     flow.changeTarget = next;
@@ -291,6 +298,20 @@ public class FlowEngine {
                 throw new SecurityException("限寫階段越權，禁止下游與發布：" + path);
         }
     }
+    /** 依設定決定貼摘要或完整報告；預設摘要。 */
+    private String describe(JsonNode report) {
+        return props.briefReports()
+                ? com.zipe.aiteam.slack.SlackReport.brief(report)
+                : com.zipe.aiteam.slack.SlackReport.render(report);
+    }
+
+    /** 摘要模式才需要告訴使用者完整報告怎麼拿；full 模式加這句只是雜訊。 */
+    private String fullReportHint(Task task, String node) {
+        return props.briefReports()
+                ? "\n\n完整報告：補充 #" + task.id() + " 檢視完整報告 " + node
+                : "";
+    }
+
     private void requireWorkspace(Task task, FlowRun flow) {
         if (!workspaces.exists(task.id()) || flow.workspacePath == null
                 || !flow.workspacePath.equals(workspaces.pathFor(task.id()).toAbsolutePath().normalize().toString()))
@@ -316,6 +337,28 @@ public class FlowEngine {
                 slack.post(Identity.SYSTEM,task.slackChannel(),task.slackThreadTs(),"已授權此配置一次受控驗收，不清空歷史次數；尚未派工。請重新審閱並核准下列測試計畫，核准後才會自動執行 QA。");
                 presentPlan(task,flow,flow.snapshot.definition().nodes().get(parts[1]).plan());
             } catch(IllegalArgumentException e) { slack.post(Identity.SYSTEM,task.slackChannel(),task.slackThreadTs(),e.getMessage()); }
+            return;
+        }
+        if (feedback != null && feedback.startsWith("檢視完整報告")) {
+            // 只讀既有的 stage_result，不呼叫模型、不改狀態、不推進流程。
+            String wanted = feedback.substring("檢視完整報告".length()).trim();
+            var stages = task.stages();
+            if (wanted.isEmpty()) {
+                // 沒指定就用目前節點；它還沒有結果時退回最後一個有結果的節點。
+                wanted = stages.containsKey(flow.node) ? flow.node
+                        : stages.keySet().stream().reduce((a, b) -> b).orElse("");
+            }
+            var outcome = wanted.isEmpty() ? null : stages.get(wanted);
+            if (outcome == null || outcome.result() == null) {
+                slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                        "找不到節點「" + Diagnostics.safe(wanted) + "」的報告。"
+                      + (stages.isEmpty() ? "這個任務還沒有任何階段結果。"
+                                          : "可查詢的節點：" + String.join("、", stages.keySet())));
+            } else {
+                slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                        "任務 #" + task.id() + "／節點 " + Diagnostics.safe(wanted) + " 的完整報告：\n"
+                      + com.zipe.aiteam.slack.SlackReport.render(outcome.result()));
+            }
             return;
         }
         if ("檢視測試計畫".equals(feedback)) {

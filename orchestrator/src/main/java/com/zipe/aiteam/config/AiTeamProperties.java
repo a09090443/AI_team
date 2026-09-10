@@ -121,6 +121,20 @@ public class AiTeamProperties {
     @Value("${AI_TEAM_RUNTIME_QA:}")
     private String runtimeQa;
 
+    /**
+     * 階段回報的詳細程度：brief（預設）只貼判定／摘要／阻礙／建議後續，full 貼完整報告。
+     *
+     * 預設改成 brief 是因為完整報告動輒數千字，真正需要人處理的部分會被情境清單
+     * 與證據淹沒。完整報告沒有消失，仍存在 stage_result，可用
+     * 「補充 #<ID> 檢視完整報告」隨時叫出來。
+     */
+    @Value("${AI_TEAM_REPORT_DETAIL:brief}")
+    private String reportDetail;
+
+    public boolean briefReports() {
+        return reportDetail == null || !"full".equalsIgnoreCase(reportDetail.trim());
+    }
+
     /** Code Review 階段的開關。預設開啟；設成 off 可整個略過。 */
     @Value("${AI_TEAM_CODE_REVIEW:on}")
     private String codeReview;

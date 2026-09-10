@@ -2,6 +2,34 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-09-10 — Claude Code（階段回報摘要化）
+
+使用者要求 agent 回報簡短、需要細節時再問。新增 `SlackReport.brief()`：只留判定／摘要／
+阻礙／建議後續，其餘欄位以「另有 N 個欄位未顯示」帶過，不做二次摘要（summary 由 agent
+自己給，再壓一次只會多一層失真）。受阻原因不縮 —— 那是唯一會要求人立刻做事的內容。
+新增 `AI_TEAM_REPORT_DETAIL=brief|full`（預設 brief）與「補充 #<ID> 檢視完整報告 [節點]」
+指令；後者只讀 stage_result，不呼叫模型、不改狀態、不推進流程。完整報告未刪除。
+驗證：VM 建置 261 項 0 失敗、10 項 opt-in 略過（SlackReportTest 3→7）；
+本機另以真實報告資料實跑 brief() 12 項檢查全過；check-source 通過。
+15:0x 部署 PID 81388，jar SHA256
+a4257e9b0462ea444dd01d9c90ba9515631e54bfa8eb9ff51c7f0f21ade14c63（前一版 3fb67dbc…），
+build=brief-build.RN3Z3S、backup=brief-backup.3LAMuX。部署前後任務雜湊一致、0 ERROR。
+部署腳本加了一道前置檢查：#1014 必須仍是 WAITING_QUOTA —— 重啟會跑 purgeWorkspaces()，
+它若回到 ABORTED，工作區與三個未推送 commit 會在重啟中被刪。
+**真實 Slack 畫面與「檢視完整報告」指令尚未實測**（目前無執行中任務）。未 push。
+
+## 2026-09-10 — Claude Code（#1014 誤中止還原與 #1015 移除）
+
+使用者點中止時誤按 #1014（兩張卡同串），14:41 WAITING_QUOTA→ABORTED。
+先備份工作區（task-1014-rescue.20260910144216，bundle 已驗證 complete history）與 DB，
+再由使用者本人執行 SQL 還原：#1014 回 WAITING_QUOTA 且 updated_at 一併回復為
+13:02:30.249984021Z —— 若只改 state，quota_retry.observed 不吻合會讓排程重算並自動重發
+Slack 通知。#1015（舊版反引號解析錯誤誤建、無工作區）改為 ABORTED。
+兩筆手動變更都寫入 audit_log，誤按紀錄（id=186）保留未抹除。
+驗證：integrity_check=ok、quota_retry 維持 next_at 2026-09-16T01:11Z／attempts=5、
+過一個 poll 週期後排程器安靜接手、未重發任何通知。
+註：線上 DB 寫入被 auto mode 分類器擋下兩次，最終由使用者本人執行。
+
 ## 2026-09-10 — Claude Code（新增 opencode 為第三個 runtime）
 
 新增 `OpenCodeRuntime`（id=opencode），旗標與事件流以本機 opencode 1.18.19 實測後才寫：

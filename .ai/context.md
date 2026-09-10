@@ -1,3 +1,18 @@
+2026-09-10 15:0x Claude Code：**線上目前是 PID 81388，jar SHA256
+`a4257e9b0462ea444dd01d9c90ba9515631e54bfa8eb9ff51c7f0f21ade14c63`**（階段回報摘要化）。
+build=`brief-build.RN3Z3S`（261 項 0 失敗、10 項 opt-in 略過），backup=`brief-backup.3LAMuX`。
+節點回報預設只貼判定／摘要／阻礙／建議後續，完整報告改用
+「補充 #<ID> 檢視完整報告 [節點]」取回（只讀 stage_result）；`AI_TEAM_REPORT_DETAIL=full` 可回舊行為。
+**真實 Slack 畫面與該指令尚未實測** —— 目前沒有執行中任務，最省事的驗證是在 #1014 串下
+`補充 #1014 檢視完整報告 verification`，它只讀資料不動狀態。
+
+任務現況：#1014 `WAITING_QUOTA`（重試 2026-09-16T01:11Z、attempts=5，工作區在，
+三個未推送 commit 另有備份 `task-1014-rescue.20260910144216`）、#1015 已 `ABORTED`。
+**警告：#1014 只要回到 ABORTED，下次服務重啟的 `purgeWorkspaces()` 就會刪掉它的工作區。**
+部署腳本已加前置檢查擋這件事，但手動重啟不會擋。
+
+以下為同日稍早的 opencode 交接。
+
 2026-09-10 13:34 Claude Code：opencode 第三 runtime **已部署**，PID 75366，
 jar SHA256 `3fb67dbc8b4f53efbd024fc544cdc95e2f300f5f425c7370a4540c42cbbbca64`
 （前一版 `5d23cf8c…`；先前交接寫的「線上 409f6a0a」已過期，實際早已換過）。

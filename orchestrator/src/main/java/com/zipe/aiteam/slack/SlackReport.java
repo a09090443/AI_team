@@ -21,6 +21,67 @@ public final class SlackReport {
             Map.entry("steps", "執行步驟"), Map.entry("expected_result", "預期結果"),
             Map.entry("environment", "測試環境"));
 
+    /** 摘要模式下 summary 的上限；超過就截斷，完整內容仍在任務紀錄裡。 */
+    private static final int SUMMARY_LIMIT = 500;
+
+    /**
+     * 只回報「要不要處理、處理什麼」所需的最少內容。
+     *
+     * 每個節點結束就把整份結構化報告貼進討論串，會讓真正需要人看的東西
+     * （受阻、待確認、下一步）淹沒在情境清單與證據裡。這裡只留四項：
+     * 判定／執行狀態、摘要、阻礙、建議後續，其餘一律不顯示 ——
+     * 不是刪掉，`stage_result` 仍保存完整報告，隨時可以叫出來。
+     *
+     * 刻意不做「智慧摘要」：摘要由 agent 自己在 summary 欄位給，
+     * 這裡再壓一次只會多一層失真，而且壓縮的是唯一能追責的那份文字。
+     */
+    public static String brief(JsonNode report) {
+        if (report == null || report.isNull()) return "沒有有效報告";
+        StringBuilder out = new StringBuilder();
+
+        String status = report.path("verdict").asText(report.path("execution_status").asText(""));
+        if (!status.isBlank()) out.append(statusLabel(status)).append('\n');
+
+        String summary = report.path("summary").asText("");
+        if (!summary.isBlank()) {
+            out.append(plain(summary.length() <= SUMMARY_LIMIT
+                    ? summary : summary.substring(0, SUMMARY_LIMIT) + "…")).append('\n');
+        }
+
+        // 阻礙一定要看得到：這是唯一會要求人立刻做事的欄位。
+        JsonNode blockers = report.get("blockers");
+        if (blockers != null && blockers.isArray() && !blockers.isEmpty()) {
+            out.append("\n阻礙 ").append(blockers.size()).append(" 項，第一項：\n");
+            StringBuilder first = new StringBuilder();
+            value(first, blockers.get(0), 0);
+            out.append(Diagnostics.clip(first.toString().strip(), 300)).append('\n');
+        }
+
+        String route = report.path("route").asText("");
+        if (!route.isBlank()) out.append("\n建議後續階段：").append(plain(route)).append('\n');
+
+        int omitted = 0;
+        var shown = java.util.Set.of("verdict", "execution_status", "summary", "blockers", "route");
+        for (var it = report.fieldNames(); it.hasNext(); ) if (!shown.contains(it.next())) omitted++;
+        if (omitted > 0) out.append("\n（另有 ").append(omitted).append(" 個欄位未顯示）");
+
+        String text = Diagnostics.safe(out.toString().strip());
+        return text.isBlank() ? "報告未提供可顯示的內容" : text;
+    }
+
+    private static String statusLabel(String status) {
+        return switch (status) {
+            case "COMPLETED" -> "本階段已完成（不代表整體任務或 QA 驗收通過）";
+            case "PARTIAL" -> "部分完成";
+            case "BLOCKED" -> "受阻";
+            case "FAILED" -> "失敗";
+            case "PASS" -> "判定：通過";
+            case "FAIL" -> "判定：不通過";
+            case "SUCCESS" -> "成功";
+            default -> plain(status);
+        };
+    }
+
     public static String render(JsonNode report) {
         if (report == null || report.isNull()) return "沒有有效報告";
         StringBuilder out = new StringBuilder();
