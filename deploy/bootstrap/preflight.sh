@@ -19,6 +19,8 @@ for tool in java mvn git jq sqlite3 systemd-run systemctl unshare ss flock; do
  command -v "$tool" >/dev/null || { echo "缺少系統工具：$tool"; exit 1; }
 done
 test -x "$CLAUDE_BIN"; test -x "$CODEX_BIN"
+# opencode 是選用的第三個 runtime：沒設就跳過，設了就必須真的可執行。
+[[ -z ${OPENCODE_BIN:-} ]] || test -x "$OPENCODE_BIN"
 if [[ -n ${AI_TEAM_DEFINITION:-} ]]; then
  java -jar "$root/orchestrator/target/ai-team-orchestrator-0.1.0.jar" --validate-team "$AI_TEAM_DEFINITION"
 else

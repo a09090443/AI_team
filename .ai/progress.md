@@ -2,6 +2,37 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-09-10 — Claude Code（新增 opencode 為第三個 runtime）
+
+新增 `OpenCodeRuntime`（id=opencode），旗標與事件流以本機 opencode 1.18.19 實測後才寫：
+`run --format json --dir --session -m provider/model --auto --`，prompt 一律放在 `--` 之後。
+能力宣告 SESSION_RESUME／MODEL_SELECTION／COST_REPORTING／NATIVE_AGENTS_MAP（四項皆實測），
+缺 APPEND_SYSTEM_PROMPT／STRUCTURED_OUTPUT／MAX_TURNS／TOOL_PERMISSIONS，前兩項在 runtime 內降級。
+`SessionCapture` 改由 runtime 提供 session id 取法（codex 行為不變）；
+`RuntimeUsageError` 增 `looksLikeYargsUsageError()` —— opencode 的用法錯誤是結束碼 1 加印出說明，
+不是 clap 的 2。設定新增 `OPENCODE_BIN`，只有真的有角色指定 opencode 才要求，既有部署不受影響。
+驗證：`orchestrator/src/main` 全量 javac 編譯通過（依賴取自既有 fat jar）；
+以實錄 JSONL 跑 `parse()` 的 15 項本機檢查全通過；`check-source.sh` 通過。
+**`OpenCodeRuntimeTest` 尚未執行**（本機無 Maven 與 ~/.m2），
+**VM 沙箱下的端對端執行也尚未進行** —— 不可視為 opencode runtime 已可用。
+安裝與設定已補進 docs/INSTALL.md：新增 §3.1（opencode 安裝／認證／三個與其他兩家不同之處，
+沒有角色用它就整段跳過）、§6 的 `OPENCODE_BIN` 說明、§8 驗收表 Runtime 列加註尚未實測的項目。
+**13:34 已部署**（使用者授權）。隔離 build=`opencode-build.TLQba7`：
+`mvn clean package` 257 項 0 失敗、10 項 opt-in 略過（含 `OpenCodeRuntimeTest` 20 項全過，
+此前從未執行過）。部署前 VM 線上原始碼與本機工作樹逐檔 sha256 比對，
+差異只有本次的 2 個新檔與 4 個修改檔，無其他分歧。
+jar SHA256 `3fb67dbc8b4f53efbd024fc544cdc95e2f300f5f425c7370a4540c42cbbbca64`（前一版 `5d23cf8c…`），
+PID 75366、backup=`opencode-backup.WhXo1u`、腳本 `deploy/deploy-opencode-20260910.sh`。
+部署前後 task／flow_run／checkpoint／stage_result 雜湊一致；本次啟動 log 0 ERROR，
+沙箱自檢與 INSPECTOR Socket Mode 各 1 次。1014 仍 WAITING_QUOTA（重試 2026-09-16T01:11Z）、
+1015 仍 AWAIT_HUMAN；未動配置、未設 OPENCODE_BIN、未代核准或續跑。
+沒有任何角色設為 opencode，因此線上行為不變。
+13:43 續：VM 安裝 opencode 1.18.19（npm，33 秒／3 套件），Linux 上重驗旗標契約與缺訊息行為
+與 Windows 一致，狀態目錄與 `statePaths()` 宣告相符；`OPENCODE_BIN` 寫入 env.sh（600，已備份），
+`preflight.sh` 同步含 opencode 檢查並通過；服務未重啟、任務狀態未動。
+**認證與沙箱端對端執行仍未做** —— 前者須本人操作，後者是提權釘選有效性的唯一證據。
+未 push。詳 docs/opencode-runtime-report.md 第七節。
+
 ## 2026-09-09 — Codex（本機測試與文件副本能力）
 
 22:06 部署 localTestNetwork 與明確 QA target 產物根、能力遷移預覽及一次性真人恢復授權。

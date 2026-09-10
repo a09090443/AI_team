@@ -137,6 +137,9 @@ public class AiTeamProperties {
     @Value("${CODEX_BIN:}")
     private String codexBin;
 
+    @Value("${OPENCODE_BIN:}")
+    private String opencodeBin;
+
     @Value("${AI_TEAM_REPO:}")
     private String repoPath;
 
@@ -242,6 +245,7 @@ public class AiTeamProperties {
     public String channelId()      { return channelId; }
     public Path   claudeBin()      { return Path.of(claudeBin); }
     public Path   codexBin()       { return Path.of(codexBin); }
+    public Path   opencodeBin()    { return Path.of(opencodeBin); }
     public Path   repoPath()       { return configuredTeam() ? Path.of(teamCatalog.snapshot().repository()) : Path.of(repoPath); }
     public Path   homePath()       { return Path.of(homePath); }
     public Path   logsPath()       { return Path.of(logsPath); }
@@ -301,10 +305,22 @@ public class AiTeamProperties {
         return codeReview == null || !"off".equalsIgnoreCase(codeReview.trim());
     }
 
-    public boolean usesCodex() {
-        if (configuredTeam()) return teamCatalog.snapshot().definition().roles().values().stream().anyMatch(r -> r.runtime().equals("codex"));
+    public boolean usesCodex() { return usesRuntime("codex"); }
+
+    /** 是否有任何角色指定用 opencode。 */
+    public boolean usesOpencode() { return usesRuntime("opencode"); }
+
+    /**
+     * 是否有任何角色指定用這個 runtime。
+     *
+     * 用途只有一個：決定要不要在啟動時要求對應的 CLI 路徑。
+     * 沒人用的 runtime 不該讓既有部署起不來 —— 多接一個 adapter 不等於多一項安裝需求。
+     */
+    private boolean usesRuntime(String runtimeId) {
+        if (configuredTeam()) return teamCatalog.snapshot().definition().roles().values().stream()
+                .anyMatch(r -> runtimeId.equals(r.runtime()));
         return java.util.stream.Stream.of("PM", "ARCHITECTURE", "BACKEND", "QA", "CODE_REVIEW")
-                .anyMatch(r -> "codex".equals(roleRuntime(r)));
+                .anyMatch(r -> runtimeId.equals(roleRuntime(r)));
     }
 
     /** 觸發者白名單。見 architecture-review.md I5：只靠頻道權限不夠。 */
@@ -337,6 +353,13 @@ public class AiTeamProperties {
             require(codexBin, "CODEX_BIN");
             if (!codexBin().toFile().canExecute()) {
                 throw new IllegalStateException("CODEX_BIN 無法執行：" + codexBin);
+            }
+        }
+        // 同理：沒有角色指定 opencode 時不要求 OPENCODE_BIN。
+        if (usesOpencode()) {
+            require(opencodeBin, "OPENCODE_BIN");
+            if (!opencodeBin().toFile().canExecute()) {
+                throw new IllegalStateException("OPENCODE_BIN 無法執行：" + opencodeBin);
             }
         }
         if (!repoPath().resolve(".git").toFile().isDirectory()) {

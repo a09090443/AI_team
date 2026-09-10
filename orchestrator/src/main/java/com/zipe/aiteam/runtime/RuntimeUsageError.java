@@ -31,6 +31,24 @@ public final class RuntimeUsageError extends AgentRuntime.RuntimeExecutionExcept
                 || (s.contains("error:") && s.contains("usage:"));
     }
 
+    /**
+     * opencode（yargs）版本的同一件事。
+     *
+     * 判定條件與上面同構，只有兩處依實測調整：opencode 的用法錯誤結束碼是 1 而不是 2，
+     * 而且不認識的旗標不會報錯，是把整份說明印到 stderr 後結束 ——
+     * 所以「stderr 出現 usage 說明」本身就是訊號。
+     * 事件流非空一律不算，理由與 clap 版相同：有事件就代表模型端已經開始。
+     */
+    public static boolean looksLikeYargsUsageError(int exitCode, String events, String stderr) {
+        if (exitCode == 0) return false;
+        if (events != null && !events.isBlank()) return false;
+        if (stderr == null) return false;
+        String s = stderr.toLowerCase(Locale.ROOT);
+        return s.contains("you must provide a message")
+                || s.contains("unknown argument") || s.contains("unknown option")
+                || (s.contains("positionals:") && s.contains("options:"));
+    }
+
     public static RuntimeUsageError find(Throwable error) {
         for (int i = 0; error != null && i < 10; i++, error = error.getCause())
             if (error instanceof RuntimeUsageError u) return u;

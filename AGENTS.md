@@ -23,6 +23,9 @@
   雙層沙箱掛載點 [docs/codex-nested-sandbox.md](docs/codex-nested-sandbox.md)、
   本機測試網路能力 [docs/local-test-capabilities.md](docs/local-test-capabilities.md)、
   `codex sandbox` 與 `codex exec` 參數契約 [docs/codex-cli-argument-contract.md](docs/codex-cli-argument-contract.md)。
+- opencode runtime（第三個 runtime，選用）：[docs/opencode-runtime-report.md](docs/opencode-runtime-report.md)；
+  旗標與事件流已實測（1.18.19），但 VM 沙箱下的端對端執行尚未驗證，不可標成已支援。
+  模型名格式 `provider/model`，與 claude／codex 都不通用；它是唯一會回報實際金額的 runtime。
 - 建置工具：`deploy/bootstrap/`。`deploy/deploy-*.sh` 是特定舊 VM 的歷史升級腳本，不用於新機。
 - 變更新角色／schema／設定後，執行 `bash deploy/bootstrap/check-source.sh` 與 Maven 測試。
 - 不讀出憑證、不把 env.sh／CLI 登入檔放進一般發行包。OAuth 由使用者本人操作。

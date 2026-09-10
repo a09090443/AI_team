@@ -20,7 +20,7 @@ import java.util.Set;
  */
 public interface AgentRuntime {
 
-    /** 供 runtime 綁定設定參照，例如 "claude-code"、"codex"。 */
+    /** 供 runtime 綁定設定參照，例如 "claude-code"、"codex"、"opencode"。 */
     String id();
 
     /** 預檢操作是否在 CLI 工具政策內；未知 runtime 預設拒絕，不自行擴權。 */

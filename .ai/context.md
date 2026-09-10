@@ -1,3 +1,24 @@
+2026-09-10 13:34 Claude Code：opencode 第三 runtime **已部署**，PID 75366，
+jar SHA256 `3fb67dbc8b4f53efbd024fc544cdc95e2f300f5f425c7370a4540c42cbbbca64`
+（前一版 `5d23cf8c…`；先前交接寫的「線上 409f6a0a」已過期，實際早已換過）。
+build=`opencode-build.TLQba7`（257 項 0 失敗、10 項 opt-in 略過，OpenCodeRuntimeTest 20/20），
+backup=`opencode-backup.WhXo1u`，腳本 `deploy/deploy-opencode-20260910.sh`。
+部署前後任務雜湊一致、log 0 ERROR；1014 WAITING_QUOTA（重試 2026-09-16T01:11Z）、1015 AWAIT_HUMAN 均未動。
+
+13:43 同日續：VM 已裝 opencode 1.18.19（`~/.local/node/bin/opencode`，Linux 上檔名也是 `.exe`，
+`file` 確認為 ELF x86-64）；Linux 上重驗旗標契約與缺訊息行為，與 Windows 完全一致；
+狀態目錄 `~/.config/opencode`、`~/.local/share/opencode` 首次執行後自動建立，與 `statePaths()` 相符。
+`OPENCODE_BIN` 已寫入 `~/ai-team/env.sh`（權限仍 600，備份 `env.sh.before-opencode.20260910134447`），
+`preflight.sh` 已同步為含 opencode 檢查的版本並通過。服務未重啟（PID 仍 75366）——
+沒有任何角色用 opencode，這個變數目前不影響任何行為；要讓它進入行程環境需下次重啟。
+
+**還沒做的（要真的用 opencode 之前必須補）**：
+  1. **認證**：`opencode providers` 必須本人操作，我不會代做；沒認證前任何一次執行都會失敗；
+  2. 沙箱包裝下實跑一次，確認提權釘選真的擋得住寫入 `~/.config/opencode`；
+  3. 上述通過前，docs/INSTALL.md §3.1、opencode-runtime-report.md §5、AGENTS.md 的
+     「尚未驗證」段落不可拿掉，也不要把正式角色切成 opencode。
+本次未動 #1014、未改配置、未代核准或續跑，未 push。以下為先前交接。
+
 2026-09-09 23:42 Claude Code：#1014 QA 失敗根因已修正，**尚未部署**。
 15:20 Codex 結束碼 2、事件流 0 bytes、stderr `unexpected argument '-P' found`；
 未呼叫模型，未消耗任何 token／額度。實測 codex-cli 0.153.4：`-P` 只有

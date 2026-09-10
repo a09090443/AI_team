@@ -89,8 +89,38 @@ Codex 有三個實測過的前置條件會讓 QA 整段跑不起來，換 CLI �
   升級 CLI 後請跑 `AI_TEAM_CODEX_SANDBOX_SMOKE=true` 的那組測試再上線。
 - **本機測試網路只支援 Codex**：`localTestNetwork` 節點必須是 codex runtime、
   LIMITED 範圍、VERIFICATION 閘門且宣告 node 工具，否則配置載入就會被拒絕。
-  把 QA 角色改成 claude-code 時必須一併關閉此能力，代價是需要本機 socket 的
+  把 QA 角色改成 claude-code 或 opencode 時必須一併關閉此能力，代價是需要本機 socket 的
   情境測試（例如 GreenMail SMTP）會再度受阻。
+
+### 3.1 opencode（選用的第三個 runtime，安裝前先讀完本節）
+
+**沒有任何角色指定 `opencode` 時，整段跳過。** 不裝不影響啟動，也不影響既有部署。
+
+```bash
+npm install --global --prefix "$HOME/.local/node" opencode-ai@1.18.19
+opencode --version
+opencode providers        # 別名 auth；本人操作，不要輸出 auth.json
+```
+
+憑證與 session 寫在 `~/.local/share/opencode/`，設定與外掛在 `~/.config/opencode/`，
+兩處都必須可寫，否則認證或 resume 會其中一項**靜默失效**（程式已在 `statePaths()` 宣告，
+不需手動開權限）。
+
+三件與 claude／codex 不同、會直接讓你踩到的事（實測依據見
+[opencode-runtime-report.md](opencode-runtime-report.md)）：
+
+- **計費模式不同**：claude／codex 走訂閱制、事件流沒有金額；opencode 接的是
+  API key 供應商（例如 OpenRouter），每個 step 都有實際美元金額。它是唯一會回報
+  `costEstimate` 的 runtime，也代表誤設一個貴模型的代價是直接的，不是「用掉一點額度」。
+- **模型名格式是 `provider/model`**（例如 `openrouter/openai/gpt-oss-20b`），與另外兩家
+  完全不通用。把角色改成 opencode 時 `AI_TEAM_MODEL_<角色>` 必須一併換掉，
+  留著 `opus`／`sonnet` 會以 error 事件加結束碼 1 收場。
+- **參數解析不會對不認識的旗標報錯**，而是印出整份說明並以結束碼 1 結束。程式已把
+  prompt 一律放在 `--` 之後並另做用法錯誤判定；但升級 CLI 後旗標若有變動，
+  失敗樣態會是「一份說明文字」而不是明確錯誤，請以 `opencode run --help` 重新核對契約。
+
+**目前的驗證狀態**：旗標與事件流已在 opencode 1.18.19 實測，但**沙箱包裝下的端對端執行
+與 Linux 上的狀態目錄位置尚未實機驗證**。在自己跑過之前，不要把某個正式角色切成 opencode。
 
 ## 4. 沙箱前置條件
 
@@ -154,6 +184,9 @@ App-Level Token 的 scope 必須是 `connections:write`，且該 App 要開啟 S
 
 `CODEX_BIN` 指向 codex 執行檔；只有在有角色的 runtime 設為 codex 時才會被要求
 （Reviewer 預設就是），設定值打錯會在啟動時直接失敗，不會安靜退回 claude-code。
+`OPENCODE_BIN` 同理，只有在有角色設為 `opencode` 時才會被要求，範本裡是註解掉的；
+`AI_TEAM_RUNTIME_<角色>` 可填 `claude-code`（預設）、`codex` 或 `opencode`，
+留空退回 claude-code。preflight 只在 `OPENCODE_BIN` 有值時檢查它可執行。
 Reviewer 預設 codex、AI_TEAM_CODE_REVIEW=on。不要關掉審查來取得綠燈。
 前期演練 GitHub token 留空；推送另以測試 repo 與明確人工核准驗證。
 
@@ -234,7 +267,7 @@ preflight 本機通過不代表登入或 Slack 成功。核對本次啟動 log�
 |---|---|
 | 基礎 | 新 OS／空快取證據、安裝媒體／工具鏈 checksum、版本與下載 log |
 | 應用 | check-source、完整 Maven 測試與 jar SHA256 |
-| Runtime | Claude／Codex 結構化輸出、resume、外部沙箱實測；CLI 版本一致 |
+| Runtime | Claude／Codex 結構化輸出、resume、外部沙箱實測；CLI 版本一致。<br>用到 opencode 時另加：沙箱包裝下的實跑、狀態目錄可寫與提權釘選生效（尚未有人做過） |
 | Slack | 詢問任務正常結束；白名單／去重；五角色正確身分 |
 | 完整管線 | PM→可選 Architecture→QA 規劃→**真人核准測試計畫**→Backend→QA 驗收→Reviewer→人工閘門 |
 | 核准閘門 | 計畫核准收據綁定 baseline／plan_revision／配置版本／核准人；未核准不得派工 QA |
