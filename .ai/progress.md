@@ -2,6 +2,23 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-09-11 — Claude Code（資料模型文件與 schema 註解）
+
+使用者指出 DDL 只有零星註解、四張 JSON 快照表（task_checkpoint／direct_request／
+flow_run／task_remediation）完全沒說明，`data` 裡是什麼只能翻 Java。新增
+`docs/data-model.md`：9 張表逐欄說明、`Task.State` 22 個狀態與 `audit_log.action`
+8 種取值列表、四個 JSON 欄位對應的 record 與逐欄語意（含 FlowRun 的 30 餘個欄位）、
+關聯圖與唯讀查詢範例。同時修掉 schema.sql 裡被後來插入的 table 切開的兩段註解
+（「各階段的產出。用獨立資料表而非在 task 加欄位，」原本接的是 stage_result，
+中間卡了五張表），並補上 task／audit_log／stage_* 的欄位註解。
+
+文件中記下三件翻程式碼才知道的事：`task.pm_session_id`／`pm_result` 是遺留欄位已無人讀寫；
+`stage_attempt` 只寫不讀（Java 無查詢路徑）；`Checkpoint.upstream`／`qaHead` 在 legacy
+與 v2 兩條路徑存的是不同東西（v2 分別放 flow.context 與 flow.beforeHead），看欄位名會猜錯。
+
+只動註解與文件，無程式碼與 DDL 結構變更。驗證：check-source.sh 通過（2 項 PASS）。
+**Maven 測試未跑** —— 本機 Windows 未安裝 mvn，只有 JDK 25；要跑得到 VM 上。未 push。
+
 ## 2026-09-10 — Claude Code（階段回報摘要化）
 
 使用者要求 agent 回報簡短、需要細節時再問。新增 `SlackReport.brief()`：只留判定／摘要／

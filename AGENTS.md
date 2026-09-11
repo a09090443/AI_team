@@ -15,6 +15,9 @@
 - 配置式團隊與舊任務相容：[docs/configurable-team.md](docs/configurable-team.md)；新角色／流程改 `orchestrator/teams/`，不要再擴充 legacy role switch。
 - 跨專案操作、沙箱預檢、真人計畫核准與配置遷移：[docs/cross-project-execution.md](docs/cross-project-execution.md)；操作宣告不是自動擴權，舊快照不自動更新。
 - v2 需求追溯／返工／系統驗證／PR 狀態：[docs/engineering-workflow.md](docs/engineering-workflow.md)。
+- 資料表與欄位說明（含四張 JSON 快照表的結構）：[docs/data-model.md](docs/data-model.md)；
+  DDL 以 `orchestrator/src/main/resources/schema.sql` 為準，改 schema 或 `FlowRun`／`Checkpoint`
+  等序列化型別時要同步更新本文，並注意沒有遷移機制、舊資料解析失敗會直接拋錯。
 - 現行 VM 部署版本與實測：[docs/deploy-2026-09-06-v2.md](docs/deploy-2026-09-06-v2.md)；使用 team.env 啟用 v2，#1011 已依使用者確認清理。
 - 失敗與發布閘門：[docs/failure-reporting.md](docs/failure-reporting.md)、[docs/review-gate.md](docs/review-gate.md)。
 - Session 與用量：[docs/quota-continuation.md](docs/quota-continuation.md)。

@@ -1,0 +1,316 @@
+# 資料模型
+
+Orchestrator 的持久化結構。DDL 唯一來源是
+[`orchestrator/src/main/resources/schema.sql`](../orchestrator/src/main/resources/schema.sql)，
+本文說明每張表的用途、每個欄位的意義與允許值，以及四個 JSON 欄位對應的 Java 型別。
+
+- **資料庫**：SQLite，正式機路徑 `~/ai-team/ai-team.db`。
+- **建立方式**：服務啟動時執行 `schema.sql`，全部 `IF NOT EXISTS`，可重複執行。
+- **沒有遷移機制**：schema 改了不會自動升級既有資料庫；加欄位要自己補 `ALTER TABLE`，
+  這也是流程狀態刻意存成 JSON 而非展開欄位的原因（見 [執行現場](#執行現場四張-json-快照表)）。
+- **沒有外鍵**：所有 `task_id` 都是邏輯關聯，刪除 `task` 不會連動刪除其他表。
+- **時間格式**：所有時間欄位都是 `TEXT`，`Instant.toString()` 的 ISO-8601 UTC
+  （例如 `2026-09-10T14:42:16.123Z`），可直接字串排序。
+- **金額單位**：`cost_usd` 為美元。只有 runtime 實際回報花費時才有值；
+  claude 與 codex 多半回報 `null`，opencode 會回報實際金額（見 [opencode-runtime-report.md](opencode-runtime-report.md)）。
+
+## 全表一覽
+
+| 資料表 | 每列代表 | 生命週期 |
+|---|---|---|
+| [`task`](#task) | 一則 Slack 需求 | 永久保留 |
+| [`task_sequence`](#task_sequence) | 全域唯一列，任務 ID 發號器 | 永久，只有一列 |
+| [`processed_event`](#processed_event) | 一個已處理的 Slack event_id | 保留 1 小時後清除 |
+| [`audit_log`](#audit_log) | 一次稽核事件 | 永久保留 |
+| [`task_checkpoint`](#task_checkpoint) | 一個任務的中斷現場 | 階段恢復後清空 |
+| [`direct_request`](#direct_request) | 一次對角色的直接提問 | 永久保留 |
+| [`flow_run`](#flow_run) | 一個任務的 v2 流程快照 | 每次狀態變更整份覆寫 |
+| [`task_remediation`](#task_remediation) | 一個任務的 PM 派工狀態 | 收斂後整列刪除 |
+| [`stage_attempt`](#stage_attempt) | 一次階段執行（含被覆蓋的） | 永久保留，目前只寫不讀 |
+| [`stage_result`](#stage_result) | 一個角色的最新產出 | 重做時覆蓋 |
+
+關聯都以 `task.id` 為中心：
+
+```
+task (1) ──┬── (0..1) task_checkpoint     中斷現場
+           ├── (0..1) flow_run            v2 流程快照
+           ├── (0..1) task_remediation    PM 派工狀態
+           ├── (0..1) direct_request      （子請求自己那一列）
+           ├── (0..n) stage_result        每角色一列
+           ├── (0..n) stage_attempt       每次執行一列
+           └── (0..n) audit_log           每個事件一列
+```
+
+---
+
+## task
+
+任務主表，一則 Slack 需求一列。對應 `com.zipe.aiteam.task.Task`。
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `id` | TEXT PK | 序號字串，如 `'1014'`。**是字串不是整數**，排序一律 `ORDER BY CAST(id AS INTEGER)` |
+| `slack_channel` | TEXT NOT NULL | 需求所在頻道 |
+| `slack_thread_ts` | TEXT NOT NULL | 討論串根訊息 ts，所有回報都貼回這裡 |
+| `requester_user_id` | TEXT NOT NULL | 提出者。同時是 `flow_run.acceptanceOwner`，**唯一有權核准計畫／變更／PR 的人** |
+| `request_text` | TEXT NOT NULL | 原始需求文字，不做正規化 |
+| `state` | TEXT NOT NULL | `Task.State` 的列舉名稱，見下表 |
+| `status_message_ts` | TEXT | 狀態訊息 ts，供原地編輯進度；尚未貼出時為 NULL |
+| `pm_session_id` | TEXT | **遺留欄位**，v2 後已無任何程式碼讀寫 |
+| `pm_result` | TEXT | **遺留欄位**，產出改存 `stage_result` |
+| `redo_count` | INTEGER NOT NULL DEFAULT 0 | 重做次數，上限 `Task.MAX_REDO`（3），避免人與 agent 互相消耗額度 |
+| `failure_reason` | TEXT | 只有 `FAILED` 時有值 |
+| `created_at` | TEXT NOT NULL | 建立後不再變動 |
+| `updated_at` | TEXT NOT NULL | 每次 `TaskStore.save()` 覆寫 |
+
+索引：`idx_task_state ON task(state)`——重啟時掃未結束任務用。
+
+注意 `TaskStore.save()` 的 upsert **只更新** `state`、`status_message_ts`、`redo_count`、
+`failure_reason`、`updated_at`；其餘欄位建立後不再改寫。
+
+### `state` 的允許值
+
+取自 `Task.State`。三類的判定規則寫在列舉自己的 `isRunning()` / `isWaiting()` / `isTerminal()`。
+
+| 分類 | 值 | 意義 |
+|---|---|---|
+| 佇列 | `QUEUED` | 已受理，等待排入執行 |
+| 等待 | `WAITING_QUOTA` | 額度用盡，等待 `QuotaAutoResume` 或人工續跑 |
+| 等待 | `RESUME_QUEUED` | 續跑已被領取，等待執行（原子轉換，連按只有一次生效） |
+| 等待 | `TRIAGE_QUEUED` | PM 派工已被領取，等待執行 |
+| 等待 | `AWAIT_PR_APPROVAL` | 全自動模式下唯一的人工閘門：推分支與開 PR 之前 |
+| 等待 | `AWAIT_HUMAN` | PM 把握度低、判定為純詢問，或流程受阻，停下等人決定 |
+| 執行中 | `PM_TRIAGE_RUNNING`、`DIRECT_RUNNING`、`STAGE_RUNNING`、`PUBLISH_RUNNING` | v2 配置式流程使用 |
+| 執行中 | `PM_RUNNING`、`ARCH_RUNNING`、`QA_PLAN_RUNNING`、`IMPL_RUNNING`、`QA_RUNNING`、`REVIEW_RUNNING` | legacy 固定管線使用 |
+| 終止 | `COMPLETED` | 完成 |
+| 終止 | `PR_CREATED` | 自動開發管線結束。**不代表已合併、發布或產品驗收** |
+| 終止 | `ABORTED` | 中止。注意：下次服務重啟的 `purgeWorkspaces()` 會刪掉這類任務的工作區 |
+| 終止 | `FAILED` | 失敗，原因在 `failure_reason` |
+
+`findUnfinished()` 以 `state NOT IN ('COMPLETED','PR_CREATED','ABORTED','FAILED')` 判定「未結束」。
+
+## task_sequence
+
+任務 ID 發號器，**永遠只有一列**（`CHECK (id = 1)`）。
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `id` | INTEGER PK | 恆為 1 |
+| `value` | INTEGER NOT NULL | 最後發出的號碼，初始 1000 |
+
+發號用 `UPDATE ... SET value=value+1 ... RETURNING value` 原子完成。
+即使刪掉最高編號的任務也不重用 ID——舊的 Slack 按鈕會指到新任務。
+啟動時 `initSequence()` 會把 `value` 拉高到 `MAX(CAST(id AS INTEGER))`，避免還原資料庫後撞號。
+
+## processed_event
+
+Slack `event_id` 去重表。
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `event_id` | TEXT PK | Slack 的 event_id |
+| `seen_at` | TEXT NOT NULL | 首次看到的時間 |
+
+索引：`idx_processed_event_seen_at ON processed_event(seen_at)`，供清除舊紀錄。
+保留時間 `TaskStore.DEDUP_RETENTION_HOURS` = 1 小時（Slack 最長 5 分鐘後重送）。
+**必須持久化**：服務重啟後若把 Slack 的重送當成新任務，同一個需求會被執行兩次。
+
+## audit_log
+
+稽核紀錄，是 Orchestrator 的三大職責之一（另兩項是任務狀態機與審批閘門），
+用來回答「這個任務到底發生過什麼事」。同時寫入資料庫與應用程式 log。
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | 也是同一任務內的事件順序 |
+| `task_id` | TEXT | **可為 NULL**：任務尚未建立就發生的事件 |
+| `at` | TEXT NOT NULL | 事件時間 |
+| `actor` | TEXT NOT NULL | Slack user id、`system`（`AuditLog.ACTOR_SYSTEM`）、或角色名稱 |
+| `action` | TEXT NOT NULL | 見下表 |
+| `detail` | TEXT | 自由文字，**寫入前截斷至 2000 字元**，超出補 `…` |
+| `cost_usd` | REAL | 僅 runtime 有回報花費時有值 |
+| `session_id` | TEXT | 對應 runtime session，供事後追查 |
+
+索引：`idx_audit_task ON audit_log(task_id, id)`。
+
+`action` 的取值（常數定義在 `AuditLog`）：
+
+| 值 | 意義 |
+|---|---|
+| `RECEIVED` | 收到需求 |
+| `STATE_CHANGE` | 狀態轉換。`detail` 固定格式 `FROM → TO`，由 `stateChange()` 產生 |
+| `RUNTIME_CALL` | 呼叫 agent runtime |
+| `BUTTON` | Slack 按鈕操作 |
+| `ERROR` | 錯誤（同時以 `log.error` 輸出） |
+| `REJECTED` | 權限或閘門拒絕 |
+| `RECOVERY` | 恢復授權相關 |
+| `TOOL_DENIED` | Agent 想用但被權限設定擋下的工具呼叫。不記錄的話會被誤判成 agent 能力不足 |
+
+稽核寫入失敗不會讓任務失敗，但會留下 `log.error`。常用查詢：
+
+```bash
+sqlite3 ~/ai-team/ai-team.db "SELECT at,actor,action,detail FROM audit_log WHERE task_id='1014' ORDER BY id"
+```
+
+---
+
+## 執行現場：四張 JSON 快照表
+
+`task_checkpoint`、`direct_request`、`flow_run`、`task_remediation` 結構相同：
+
+```sql
+task_id TEXT PRIMARY KEY,
+data    TEXT NOT NULL
+```
+
+`data` 是 Jackson 直接序列化對應 Java 型別的結果，由 `TaskStore` 讀寫。
+**這些結構沒有版本欄位**：Java 型別改了欄位名稱，舊資料就解析失敗，
+而 `TaskStore` 對解析失敗一律拋 `IllegalStateException`（例如「流程快照損毀，拒絕改用新配置」）
+而不是靜默降級——寧可停下來，也不要拿半份狀態繼續跑。改這些 record 前先確認線上沒有進行中的任務。
+
+### task_checkpoint
+
+中斷階段的最小可恢復現場，對應 `com.zipe.aiteam.task.Checkpoint`。
+工作樹與未提交檔案不在這裡，另外留在工作區。
+
+| JSON 欄位 | 說明 |
+|---|---|
+| `taskId` | 對應 `task.id` |
+| `role` | 中斷時所在的角色（v2 是節點名稱）。續跑時會比對，不符就拒絕 |
+| `runtime` | `claude` / `codex` / `opencode`。與配置不符時拒絕跨引擎續跑 |
+| `model` | 當時使用的模型；opencode 是 `provider/model` 格式，與另兩者不通用。同樣會比對 |
+| `sessionId` | 供 `--resume` 接回同一個 session。中斷太早可能為 null，此時以新 session 接手同一階段 |
+| `upstream` | **兩條路徑意義不同**：legacy 存上游階段摘要，v2 存累積的 `flow.context` |
+| `qaHead` | **兩條路徑意義不同**：legacy 存 `task.qaBaseline()`，v2 存 `flow.beforeHead`（限寫階段起始 commit） |
+| `reason` | 中斷原因 |
+
+`upstream` 與 `qaHead` 這兩個名字是 legacy 留下來的，v2 借用同一個 record 塞了不同東西——
+看欄位名會猜錯，以 `StageRunner`（legacy）與 `ConfiguredExecutor`（v2）的建構處為準。
+
+### direct_request
+
+對話另存的唯讀子請求，對應 `com.zipe.aiteam.task.DirectRequest`。
+**子請求有自己的 `task.id`**，這裡的 `task_id` 是子請求本身的 ID，不是母任務的。
+用途見 [direct-agent-requests.md](direct-agent-requests.md)。
+
+| JSON 欄位 | 說明 |
+|---|---|
+| `taskId` | 子請求自己的 ID |
+| `role` | 目標角色。序列化為字串（`SYSTEM` / `PM` / `ARCHITECTURE` / `BACKEND` / `QA` / `CODE_REVIEW`，或配置定義的角色名） |
+| `parentId` | 母任務 ID |
+| `context` | 提問內容 |
+
+只 `INSERT` 不 upsert——一次提問一列，不覆蓋原任務的驗收與 checkpoint。
+
+### flow_run
+
+v2 配置式流程的整份執行快照，對應 `com.zipe.aiteam.flow.FlowRun`。
+**每次狀態變更整份覆寫**。這是四張表裡欄位最多、也最需要小心的一張。
+
+最關鍵的性質：`snapshot` 內含「任務開始時」的 teams 配置，
+磁碟上的配置改了不會影響進行中的任務。要換配置必須走 `TeamMigration`，
+而遷移會清掉 `planApprovals`、`executionContexts`、`recoveryGrants`
+並把舊快照整份推進 `migrationHistory`——舊的核准不會自動延用到新配置。
+
+| JSON 欄位 | 型別 | 說明 |
+|---|---|---|
+| `snapshot` | `TeamDefinition.Snapshot` | 當時的配置：`revision`（雜湊）、`definition`、`repository`、`assets` |
+| `node` | String | 目前所在節點 |
+| `activeNode` | String | 已進入但尚未結束的節點。**非 null 代表現場還在**，續跑可直接恢復，不需重做配置遷移 |
+| `transitions` | int | 累計轉換次數，上限 `definition.maxTransitions()` |
+| `visits` | Map&lt;節點,次數&gt; | 各節點造訪次數，上限為節點自己的 `maxVisits()` |
+| `workspaceReady` / `workspacePath` | boolean / String | 工作區是否已備妥、路徑 |
+| `context` | String | 累積脈絡，預設空字串 |
+| `lastBlockReason` | String | 上一次受阻原因，回報時附在訊息裡（截斷 4500 字元） |
+| `acceptanceOwner` | String | 需求／驗收負責人，來自 `task.requester_user_id`。所有核准都比對這個值 |
+| `baselineRevision` | String | 需求基準摘要。需求節點產出後建立；需求變更會清空並連帶清掉 `receipts`／`heads` |
+| `baselineHistory` | List | 歷次需求基準報告的深拷貝，不覆蓋 |
+| `receipts` | Map&lt;節點,報告&gt; | 各節點的結構化報告 |
+| `heads` | Map&lt;節點,commit&gt; | 各節點結束時的 HEAD |
+| `origin` / `branch` | String | 工作區的 origin 與分支 |
+| `beforeHead` | String | 限寫階段的起始 commit。**缺這個就拒絕核實寫入範圍**（`SecurityException`） |
+| `changeTarget` / `changeAuthorized` | String / boolean | 待核准的需求變更目標節點；核准後才允許回頭改需求 |
+| `pendingPlanRevision` | String | 待核准的測試計畫節點 |
+| `planApprovals` | Map&lt;節點,`PlanApproval`&gt; | 真人核准收據：`plan`、`planRevision`、`baseline`、`configuration`、`user`、`at`。**只由已授權真人指令建立**，不接受 agent 報告裡的 `approved` 欄位 |
+| `approvalHead` | String | 核准當下的 HEAD |
+| `executionContexts` | Map&lt;節點,`OperationPreflight.Evidence`&gt; | 沙箱預檢證據：`workspace`、`head`、`configuration`、`checkedAt`、`log`、`sha256` |
+| `independentEvidence` | `IndependentVerifier.Receipt` | 獨立驗證收據：`head`、`baseline`、`configuration`、`startedAt`、`completedAt`、`commands[]`（每項含 `argv`、`exitCode`、`log`、`sha256`） |
+| `recoveryGrants` | Map&lt;節點,配置版本&gt; | 一次性的 verification 恢復授權 |
+| `recoveryRevisions` | Set&lt;配置版本&gt; | 已用掉恢復授權的配置版本，同一版本不給第二次 |
+| `migrationHistory` | List&lt;Snapshot&gt; | 歷次配置遷移前的完整舊快照 |
+| `dialogue` / `dialogueRole` / `parentId` | boolean / String / String | 對話模式旗標與目標角色、母任務 |
+| `prUrl` / `publishedHead` | String | 發布結果 |
+
+相關文件：[configurable-team.md](configurable-team.md)、[engineering-workflow.md](engineering-workflow.md)、
+[plan-approval-buttons.md](plan-approval-buttons.md)、[cross-project-execution.md](cross-project-execution.md)。
+
+### task_remediation
+
+QA 受阻後的 PM 派工狀態，對應 `com.zipe.aiteam.task.Remediation`。
+不取代原本的 PM 與 QA 計畫。流程見 [pm-triage.md](pm-triage.md)。
+
+| JSON 欄位 | 說明 |
+|---|---|
+| `taskId` | 對應 `task.id` |
+| `phase` | 目前派給誰。`active()` 認得的值：`pm_triage`、`backend`、`qa`、`code_review`；其他值視為已結束 |
+| `repairs` | 已修復次數，上限 `Remediation.MAX_REPAIRS`（2） |
+| `context` | 派工說明 |
+
+收斂後由 `clearRemediation()` **整列刪除**，所以沒有紀錄不代表沒發生過派工——
+要查歷史得看 `audit_log`。
+
+---
+
+## 階段產出：stage_attempt 與 stage_result
+
+兩張表都由 `TaskStore.saveStage()` 在同一次呼叫裡寫入，差別是保留策略：
+
+- `stage_attempt`：**每一次**執行都留一列，含被後續重做覆蓋掉的那幾次。
+- `stage_result`：只留**最新**一次，`(task_id, role)` 唯一。
+
+用獨立資料表而非在 `task` 加欄位，這樣新增角色不需要改 schema。
+
+### stage_attempt
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | 也是執行順序 |
+| `task_id` | TEXT NOT NULL | 對應 `task.id` |
+| `role` | TEXT NOT NULL | 角色名稱，取值由 teams 配置決定 |
+| `session_id` | TEXT | 該次執行的 runtime session |
+| `result` | TEXT | `structured_output` 的 JSON 原文 |
+| `completed_at` | TEXT NOT NULL | 完成時間 |
+
+**目前只寫不讀**：Java 端沒有任何查詢路徑，用途是事後用 sqlite3 追查
+「這個角色到底跑過幾次、每次交出什麼」。沒有索引，也沒有清理機制。
+
+### stage_result
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `task_id` | TEXT NOT NULL | 與 `role` 合為主鍵 |
+| `role` | TEXT NOT NULL | legacy 為 `pm` / `architecture` / `backend` / `qa`；v2 由配置決定 |
+| `session_id` | TEXT | 供重做時 `--resume` 續接 |
+| `result` | TEXT | `structured_output` 的 JSON 原文。還原成 `JsonNode` 放進 `Task.stages` |
+| `cost_usd` | REAL | 該階段花費（USD）。`Task.totalCost()` 把非 null 的加總後顯示在 Slack |
+| `elapsed_sec` | INTEGER | 該階段耗時（秒） |
+| `completed_at` | TEXT NOT NULL | 完成時間 |
+
+這裡是**完整報告的唯一去處**。Slack 的階段回報預設只貼判定／摘要／阻礙／建議後續，
+完整內容留在這張表，要看得用「補充 #&lt;ID&gt; 檢視完整報告 [節點]」取回（只讀不改狀態），
+或設 `AI_TEAM_REPORT_DETAIL=full` 回到舊行為。見 [INSTALL.md](INSTALL.md)。
+
+---
+
+## 直接查資料庫
+
+```bash
+sqlite3 ~/ai-team/ai-team.db ".schema"
+sqlite3 ~/ai-team/ai-team.db "SELECT id,state,updated_at FROM task ORDER BY CAST(id AS INTEGER) DESC LIMIT 10"
+sqlite3 ~/ai-team/ai-team.db "SELECT at,actor,action,detail FROM audit_log WHERE task_id='1014' ORDER BY id"
+sqlite3 ~/ai-team/ai-team.db "SELECT role,cost_usd,elapsed_sec,completed_at FROM stage_result WHERE task_id='1014'"
+sqlite3 ~/ai-team/ai-team.db "SELECT json_extract(data,'$.node'), json_extract(data,'$.activeNode') FROM flow_run WHERE task_id='1014'"
+```
+
+服務執行中請只做唯讀查詢。直接改 `task.state` 或 `flow_run.data` 會繞過狀態機與閘門，
+記憶體中的任務也不會同步——要改狀態請用 Slack 指令。
