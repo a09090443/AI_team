@@ -53,14 +53,32 @@ public class FlowEngine {
     private void waitHuman(Task task, FlowRun flow, String reason, boolean canSupplement) {
         store.saveFlow(task.id(), flow);
         state(task, Task.State.AWAIT_HUMAN, "任務 #" + task.id() + " 等待人工，禁止發布");
-        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
-                (flow.acceptanceOwner == null ? "" : "<@" + flow.acceptanceOwner + "> ")
-              + "任務 #" + task.id() + " 已停止，目前沒有 agent 在處理。\n"
+        String token = extensionToken(task, flow);
+        String text = (flow.acceptanceOwner == null ? "" : "<@" + flow.acceptanceOwner + "> ")
+              + "任務 #" + task.id() + " 停下來了，現在沒有任何 agent 在跑，要等你決定怎麼做。\n"
                 + Diagnostics.clip(reason, 7000)
-                + HumanOptions.render(task, flow, canSupplement, props.briefReports())
-                + (canSupplement
-                    ? "\n請在原討論串 @主機器人或角色送出上述其中一項。"
-                    : "\n再次補充不會解除上限。請管理者先查核並修復原始阻礙，再評估原任務的受控恢復；既有實作與核准保留，不必直接重做。"));
+                + HumanOptions.render(task, flow, canSupplement, props.briefReports(), token)
+                + (canSupplement ? ""
+                    : "\n再補充一次不會解除上限。請先查核並修復原始阻礙，再評估要不要恢復；既有實作與核准都保留，不必重做。");
+        var options = HumanOptions.options(task, flow, canSupplement, props.briefReports(), token);
+        if (options.stream().anyMatch(HumanOptions.Option::button))
+            slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), text,
+                    HumanGate.blocks(task.id(), text, options));
+        else slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), text);
+    }
+
+    /** 額度已滿且現場可辨識時才有延長授權碼；其餘情況回傳 null，按鈕與文字都不會出現。 */
+    private String extensionToken(Task task, FlowRun flow) {
+        if (flow.automaticHandoffs < AutomaticHandoff.effectiveLimit(flow)
+                || flow.automaticHandoffExtraBudget >= AutomaticHandoff.MAX_EXTRA_BUDGET) return null;
+        try {
+            String head = flow.workspaceReady && workspaces.exists(task.id()) ? workspaces.headSha(task.id()) : null;
+            return AutomaticHandoff.extensionToken(flow, head);
+        } catch (Exception e) {
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE,
+                    "無法建立延長授權碼：" + Diagnostics.describe(e));
+            return null;
+        }
     }
     private void presentPlan(Task task, FlowRun flow, String plan) {
         try {
@@ -157,16 +175,20 @@ public class FlowEngine {
                         usedAutomaticHandoff = AutomaticHandoff.claim(flow);
                     }
                     if (overLimit && !recoveryPermitted && usedAutomaticHandoff == null) {
-                        waitHuman(task, flow, "已達流程防循環上限（不是 token 額度），禁止自動重跑。"
-                                + "\n節點 " + flow.node + "：已記錄 " + flow.visits.getOrDefault(flow.node, 0) + "／上限 " + node.maxVisits()
-                                + "；一般流程歷史次數：" + flow.transitions + "／" + flow.snapshot.definition().maxTransitions()
-                                + "（受控責任交接可越過，不代表額度已重設）"
-                                + "；獨立受阻事件：" + flow.automaticHandoffs + "／" + AutomaticHandoff.effectiveLimit(flow)
-                                + "；本次交接節點：" + flow.automaticHandoffHops + "／" + AutomaticHandoff.HOP_LIMIT
-                                + "。本次未啟動 agent、未增加計數。"
-                                + extensionHint(task, flow)
-                                + (flow.lastBlockReason == null ? "\n原始阻礙請查閱上一份角色報告。"
-                                    : "\n上一個受阻原因：\n" + Diagnostics.clip(flow.lastBlockReason, 700))
+                        waitHuman(task, flow, "系統自己已經試到上限，不會再自動重跑了。"
+                                + "這是流程的防循環保護，不是 token 或用量不足。"
+                                + "\n本次沒有啟動任何 agent，也沒有增加任何次數。"
+                                + "\n\n目前的計數："
+                                + "\n・這個階段（" + flow.node + "）跑過 " + flow.visits.getOrDefault(flow.node, 0)
+                                + " 次，上限 " + node.maxVisits() + " 次"
+                                + "\n・整個任務換手 " + flow.transitions + " 次，上限 "
+                                + flow.snapshot.definition().maxTransitions() + " 次（受控交接可以越過，不代表次數被重設）"
+                                + "\n・系統自己處理過的問題 " + flow.automaticHandoffs + " 件，上限 "
+                                + AutomaticHandoff.effectiveLimit(flow) + " 件"
+                                + "\n・同一件問題轉手 " + flow.automaticHandoffHops + " 站，上限 "
+                                + AutomaticHandoff.HOP_LIMIT + " 站"
+                                + (flow.lastBlockReason == null ? "\n\n上一次卡住的原因請查閱前一份角色報告。"
+                                    : "\n\n上一次卡住的原因：\n" + Diagnostics.clip(flow.lastBlockReason, 700))
                                 + fullReportHint(task, ""), false); return;
                     }
                     flow.transitions++;
@@ -260,7 +282,8 @@ public class FlowEngine {
                             "節點 " + flow.node + " 回報未受阻但本輪有工具遭拒，系統改判受阻；不採信其查核結論。");
                 }
                 slack.postConfigured(flow.snapshot.definition().roles().get(node.role()), task.slackChannel(), task.slackThreadTs(),
-                        "任務 #" + task.id() + "／節點 " + flow.node + "\n" + describe(report)
+                        "任務 #" + task.id() + "｜" + flow.snapshot.definition().roles().get(node.role()).name()
+                      + "（" + flow.node + "）\n" + describe(report)
                       + fullReportHint(task, flow.node));
                 String next;
                 if (block == null) {
@@ -576,18 +599,6 @@ public class FlowEngine {
         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id() + " 已排隊，將使用原配置與節點續跑，不代表已核准 PR。");
     }
 
-    private String extensionHint(Task task, FlowRun flow) {
-        if (flow.automaticHandoffs < AutomaticHandoff.effectiveLimit(flow)
-                || flow.automaticHandoffExtraBudget >= AutomaticHandoff.MAX_EXTRA_BUDGET) return "";
-        try {
-            String head = flow.workspaceReady && workspaces.exists(task.id()) ? workspaces.headSha(task.id()) : null;
-            String token = AutomaticHandoff.extensionToken(flow, head);
-            return token == null ? "" : "\n若原負責人確認此為新的可修復問題，可輸入：核准延長自動交接 " + token
-                    + "（一次增加 " + AutomaticHandoff.EXTENSION_SIZE + " 個事件額度；不重設歷史）";
-        } catch (Exception e) {
-            return "\n目前無法建立延長授權碼：" + Diagnostics.describe(e);
-        }
-    }
     private void requirePlanQueueTarget(FlowRun flow, String plan) {
         Node current = flow.snapshot.definition().nodes().get(flow.node);
         if (flow.dialogue || flow.changeTarget != null || current == null || current.gate() != Gate.VERIFICATION

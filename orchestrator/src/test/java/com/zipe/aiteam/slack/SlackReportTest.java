@@ -12,8 +12,8 @@ class SlackReportTest {
         var before = report.deepCopy();
         String text = SlackReport.render(report);
         assertTrue(text.contains("保留既有實作\n接續文件建置"));
-        assertTrue(text.contains("不代表整體任務或 QA 驗收通過"));
-        assertTrue(text.contains("建議後續階段：\nimplementation"));
+        assertTrue(text.contains("還不代表整個任務驗收通過"));
+        assertTrue(text.contains("下一步：\n交回工程實作修正（implementation）"));
         assertFalse(text.contains("\\n"));
         assertFalse(text.contains("\"summary\""));
         assertEquals(before, report);
@@ -48,11 +48,11 @@ class SlackReportTest {
 
         String text = SlackReport.brief(report);
 
-        assertTrue(text.contains("判定：不通過"));
+        assertTrue(text.contains("驗收沒過"));
         assertTrue(text.contains("6/27 情境通過"));
-        assertTrue(text.contains("建議後續階段：triage"));
+        assertTrue(text.contains("下一步：交給 PM 分流判斷（triage）"));
         // 未顯示的欄位不能靜靜消失，要讓人知道還有東西可看
-        assertTrue(text.contains("另有 3 個欄位未顯示"));
+        assertTrue(text.contains("還有 3 項細節沒列出來"));
         assertFalse(text.contains("SC-01"));
         assertFalse(text.contains("mvn -B verify"));
     }
@@ -65,7 +65,7 @@ class SlackReportTest {
 
         String text = SlackReport.brief(report);
 
-        assertTrue(text.contains("受阻"));
+        assertTrue(text.contains("卡住了，需要處理"));
         assertTrue(text.contains("阻礙 2 項"));
         assertTrue(text.contains("工作區唯讀"));
     }

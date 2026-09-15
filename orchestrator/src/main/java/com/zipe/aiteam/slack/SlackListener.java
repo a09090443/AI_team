@@ -99,6 +99,7 @@ public class SlackListener {
         }
 
         registerPlanActions(app);
+        registerHumanGateActions(app);
         socketApp = new SocketModeApp(props.slackAppToken(), app);
         log.info("Socket Mode 連線中…（白名單 {} 人，並行上限 {}）",
                 props.allowedUsers().size(), props.maxConcurrency());
@@ -221,6 +222,33 @@ public class SlackListener {
                 return ctx.ack();
             });
         }
+    }
+    /**
+     * 停止訊息上的選項按鈕。按鈕不是新的權限路徑：它送出的就是使用者本來要手動打的
+     * 那串「補充」指令，走同一套白名單與同一套驗證，只是不必自己抄授權碼。
+     */
+    private void registerHumanGateActions(App app) {
+        app.blockAction(HumanGate.ACTION_COMMAND, (req, ctx) -> {
+            var p = req.getPayload();
+            String user = p.getUser().getId(), value = p.getActions().getFirst().getValue();
+            String channel = p.getChannel() == null ? null : p.getChannel().getId();
+            String thread = p.getMessage() == null ? null : p.getMessage().getThreadTs();
+            ingress.execute(() -> {
+                try { handleHumanGateButton(user, value, channel, thread); }
+                catch (Exception e) { log.error("處理停止選項按鈕失敗：{}", com.zipe.aiteam.runtime.Diagnostics.describe(e)); }
+            });
+            return ctx.ack();
+        });
+    }
+    void handleHumanGateButton(String user, String value, String channel, String thread) {
+        if (!props.allowedUsers().contains(user)) return;
+        var command = HumanGate.Command.parse(value);
+        orchestrator.lookup(command.task()).ifPresent(task -> {
+            // 按鈕可能來自別的討論串或被轉貼；只認任務原本的討論串。
+            if (!task.slackChannel().equals(channel) || !task.slackThreadTs().equals(thread)) return;
+            audit.record(task.id(), user, AuditLog.ACTION_BUTTON, "以停止選項按鈕送出：" + command.command());
+            orchestrator.requestTriage(task, command.command(), user);
+        });
     }
     void handlePlanButton(String user, String value, String action, String channel, String thread) {
         if (!props.allowedUsers().contains(user) || !java.util.Set.of(PlanReview.APPROVE, PlanReview.REVISE).contains(action)) return;

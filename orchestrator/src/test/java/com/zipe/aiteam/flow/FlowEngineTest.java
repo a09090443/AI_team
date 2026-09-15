@@ -247,10 +247,11 @@ class FlowEngineTest {
         assertThat(saved.visits.get(flow.node)).isEqualTo(limit);
         assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
         verifyNoInteractions(executor, publisher);
+        // 摘要模式下「看完整報告」是按鈕，所以走帶 blocks 的多載。
         verify(slack, times(2)).post(any(), any(), any(), argThat((String text) ->
-                text.contains("不是 token 額度") && text.contains("QA bwrap:")
-                && text.contains("本次未啟動 agent") && text.contains("檢視完整報告")
-                && text.length() < 1800 && !text.contains("具體答案")));
+                text.contains("不是 token 或用量不足") && text.contains("QA bwrap:")
+                && text.contains("本次沒有啟動任何 agent") && text.contains("檢視完整報告")
+                && text.length() < 1800 && !text.contains("具體答案")), any());
     }
     @Test void oldBlockedSnapshotCanAutomaticallyReachResponsibleTriageDespiteBothCaps() {
         var flow = store.flow(task.id()).orElseThrow();
@@ -297,7 +298,8 @@ class FlowEngineTest {
 
         assertThat(calls).isEmpty();
         assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
-        verify(slack).post(any(), any(), any(), contains("獨立受阻事件：6／6"));
+        // 額度用完時會附延長授權按鈕，因此走的是帶 blocks 的多載。
+        verify(slack).post(any(), any(), any(), contains("系統自己處理過的問題 6 件，上限 6 件"), any());
     }
     @Test void legacyPerHopKeysAreCollapsedBeforeApplyingIncidentBudget() {
         var flow = store.flow(task.id()).orElseThrow();
@@ -352,7 +354,7 @@ class FlowEngineTest {
 
         assertThat(calls).isEmpty();
         assertThat(store.flow(task.id()).orElseThrow().automaticHandoffs).isEqualTo(4);
-        verify(slack).post(any(), any(), any(), contains("本次交接節點：12／12"));
+        verify(slack).post(any(), any(), any(), contains("同一件問題轉手 12 站，上限 12 站"));
     }
     @Test void totalCapDoesNotIncrementNodeVisit() {
         var flow = store.flow(task.id()).orElseThrow();

@@ -11,41 +11,87 @@ import static com.zipe.aiteam.flow.TeamDefinition.*;
  * 舊版只說「請補充具體答案」，但系統其實知道自己在等哪一種決定，也知道有哪些指令可用。
  * 少了這段，任務會停在 AWAIT_HUMAN 而沒有人知道下一步該打什麼字 —— #1014 就是這樣卡了三天。
  * 這裡只列出目前狀態真的可用的選項，不列不適用的，避免變成一份人人跳過的指令表。
+ *
+ * 能用一個按鈕表達的選項會帶 command：按鈕按下去就送出同一串文字，
+ * 走的是和手動輸入完全相同的驗證路徑，不另開權限。
+ * 需要自由填寫內容的（補充說明、需求變更）沒有 command，只能用打字的。
  */
 public final class HumanOptions {
     private HumanOptions() {}
 
-    public static String render(Task task, FlowRun flow, boolean canSupplement, boolean briefReports) {
-        List<String> options = new ArrayList<>();
+    /** button 為 true 表示這個選項可以用一顆按鈕完成。 */
+    public record Option(String kind, String label, String hint, String command) {
+        public boolean button() { return command != null; }
+    }
+
+    public static final String EXTEND = "EXTEND";
+    public static final String REPORT = "REPORT";
+    public static final String PLAN = "PLAN";
+    public static final String REMEDIATE = "REMEDIATE";
+    public static final String REQUIREMENT = "REQUIREMENT";
+    public static final String SUPPLEMENT = "SUPPLEMENT";
+
+    public static List<Option> options(Task task, FlowRun flow, boolean canSupplement,
+                                       boolean briefReports, String extensionToken) {
+        List<Option> options = new ArrayList<>();
         String id = task.id();
 
-        if (flow.changeTarget != null) options.add("需求要改：補充 #" + id + " 核准需求變更 <具體變更內容>"
-                + "（只有需求負責人可核准；核准後會回到需求節點重做，既有驗收收據失效）");
+        if (extensionToken != null && !extensionToken.isBlank())
+            options.add(new Option(EXTEND, "再給系統兩次機會",
+                    "系統自己試過的次數已經用完。按下去只增加 " + AutomaticHandoff.EXTENSION_SIZE
+                            + " 次，不會重設已經累積的次數，也不等於核准 PR。",
+                    "核准延長自動交接 " + extensionToken));
+
+        if (flow.changeTarget != null)
+            options.add(new Option(REQUIREMENT, "需求要改",
+                    "只有需求負責人可以核准；核准後會回到需求節點重做，既有驗收證據會失效。",
+                    null));
 
         Node current = flow.snapshot == null ? null : flow.snapshot.definition().nodes().get(flow.node);
         String planNode = current == null ? null : current.plan();
         if (planNode != null && PlanApproval.blockingReason(flow, planNode) != null)
-            options.add("計畫要核准：補充 #" + id + " 核准測試計畫 " + planNode + " <計畫版本>"
-                    + "（版本在上方計畫卡；核准計畫不等於核准 PR）");
-
-        if (flow.pendingPlanRevision != null)
-            options.add("計畫已退回重訂：待 " + flow.pendingPlanRevision + " 產出新版後仍須重新核准");
+            options.add(new Option(PLAN, "核准測試計畫",
+                    "計畫卡會另外貼出來，上面有專用按鈕。核准計畫不等於核准 PR。", null));
 
         if (verificationAwaitingRemediation(flow))
-            options.add("你自己修好了：補充 #" + id + " 核准人工修復重驗 <驗收節點> <commit>"
-                    + "（工作區必須乾淨且 commit 等於目前 HEAD；之後仍須重新核准測試計畫）");
+            options.add(new Option(REMEDIATE, "你自己修好了，請它重驗",
+                    "工作區必須乾淨，而且 commit 要等於目前的 HEAD；重驗之後仍須重新核准測試計畫。",
+                    null));
 
-        if (canSupplement) options.add("其他情況一律用：補充 #" + id + " <你的說明或決定>"
-                + "。內容會進入流程脈絡並交由分流重新判斷 ——"
-                + "若你知道還有未修的缺陷，直接把缺陷寫進來，系統才派得出去；只寫「續跑」不會改變上一輪的判斷依據。");
+        if (canSupplement) options.add(new Option(SUPPLEMENT, "告訴它還缺什麼",
+                "你寫的內容會進入流程脈絡，交由分流重新判斷。"
+                        + "如果你知道還有沒修好的問題，直接把問題寫進來，系統才派得出去；"
+                        + "只寫「續跑」不會改變上一輪的判斷依據。", null));
 
-        if (briefReports) options.add("想先看細節：補充 #" + id + " 檢視完整報告 [節點]");
+        if (briefReports) options.add(new Option(REPORT, "看完整報告",
+                "只是把完整內容叫出來看，不會改變任務狀態。", "檢視完整報告"));
 
+        return List.copyOf(options);
+    }
+
+    /** 純文字版本，給沒有按鈕的情境（或按鈕送不出去時）仍然看得到指令。 */
+    public static String render(Task task, FlowRun flow, boolean canSupplement,
+                                boolean briefReports, String extensionToken) {
+        List<Option> options = options(task, flow, canSupplement, briefReports, extensionToken);
         if (options.isEmpty()) return "";
         StringBuilder out = new StringBuilder("\n\n你現在可以做的事：");
-        for (String option : options) out.append("\n・").append(option);
-        out.append("\n停止不等於完成。只有走到發布核准節點並由你核准，任務才算結束；目前尚未到達。");
+        for (Option option : options) {
+            out.append("\n・").append(option.label()).append("：").append(option.hint());
+            if (option.button()) out.append("\n　按下方按鈕，或輸入：補充 #").append(task.id())
+                    .append(' ').append(option.command());
+            else out.append("\n　輸入：補充 #").append(task.id()).append(' ').append(commandHint(option.kind()));
+        }
+        out.append("\n停止不等於完成。只有走到發布核准並由你核准，任務才算結束；目前尚未到達。");
         return out.toString();
+    }
+
+    private static String commandHint(String kind) {
+        return switch (kind) {
+            case REQUIREMENT -> "核准需求變更 <具體變更內容>";
+            case PLAN -> "核准測試計畫 <計畫節點> <計畫版本>";
+            case REMEDIATE -> "核准人工修復重驗 <驗收節點> <commit>";
+            default -> "<你的說明或決定>";
+        };
     }
 
     /** 驗收節點已用完重試次數、工作區又有可用 HEAD 時，人工修復重驗才是有意義的選項。 */

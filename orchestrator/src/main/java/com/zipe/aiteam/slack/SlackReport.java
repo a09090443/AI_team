@@ -9,7 +9,7 @@ public final class SlackReport {
     private SlackReport() {}
     private static final Map<String, String> LABELS = Map.ofEntries(
             Map.entry("summary", "摘要"), Map.entry("execution_status", "階段執行狀態"),
-            Map.entry("route", "建議後續階段"), Map.entry("blockers", "阻礙與待處理事項"),
+            Map.entry("route", "下一步"), Map.entry("blockers", "阻礙與待處理事項"),
             Map.entry("next_steps", "後續步驟"), Map.entry("reason", "原因"),
             Map.entry("evidence", "查核證據"), Map.entry("tests", "測試"),
             Map.entry("scenario_results", "情境驗證結果"), Map.entry("verification_status", "核實狀態"),
@@ -25,6 +25,29 @@ public final class SlackReport {
 
     /** 摘要模式下 summary 的上限；超過就截斷，完整內容仍在任務紀錄裡。 */
     private static final int SUMMARY_LIMIT = 500;
+
+    /**
+     * route 是配置裡的節點鍵，對讀訊息的人沒有意義。
+     * 這裡翻成白話但保留原鍵，讓人看得懂、也還能跟配置對得起來；未知鍵原樣顯示。
+     */
+    private static final Map<String, String> ROUTES = Map.ofEntries(
+            Map.entry("human", "需要你決定，系統不會自己往下做"),
+            Map.entry("implementation", "交回工程實作修正"),
+            Map.entry("verification", "交回測試重新驗收"),
+            Map.entry("review", "交回獨立審查"),
+            Map.entry("plan", "重新規劃測試"),
+            Map.entry("design", "重新設計"),
+            Map.entry("requirements", "需求要重新確認"),
+            Map.entry("intake", "需求要重新確認"),
+            Map.entry("triage", "交給 PM 分流判斷"),
+            Map.entry("ready", "可以往下一步"),
+            Map.entry("question", "有問題要先問清楚"));
+
+    /** 顯示用：白話說明 + 原鍵，方便對照配置。 */
+    public static String routeLabel(String route) {
+        String plain = ROUTES.get(route);
+        return plain == null ? plain(route) : plain(plain) + "（" + plain(route) + "）";
+    }
 
     /**
      * 只回報「要不要處理、處理什麼」所需的最少內容。
@@ -60,12 +83,12 @@ public final class SlackReport {
         }
 
         String route = report.path("route").asText("");
-        if (!route.isBlank()) out.append("\n建議後續階段：").append(plain(route)).append('\n');
+        if (!route.isBlank()) out.append("\n下一步：").append(routeLabel(route)).append('\n');
 
         int omitted = 0;
         var shown = java.util.Set.of("verdict", "execution_status", "summary", "blockers", "route");
         for (var it = report.fieldNames(); it.hasNext(); ) if (!shown.contains(it.next())) omitted++;
-        if (omitted > 0) out.append("\n（另有 ").append(omitted).append(" 個欄位未顯示）");
+        if (omitted > 0) out.append("\n（還有 ").append(omitted).append(" 項細節沒列出來，需要時可以叫出完整報告）");
 
         String text = Diagnostics.safe(out.toString().strip());
         return text.isBlank() ? "報告未提供可顯示的內容" : text;
@@ -73,13 +96,17 @@ public final class SlackReport {
 
     private static String statusLabel(String status) {
         return switch (status) {
-            case "COMPLETED" -> "本階段已完成（不代表整體任務或 QA 驗收通過）";
-            case "PARTIAL" -> "部分完成";
-            case "BLOCKED" -> "受阻";
-            case "FAILED" -> "失敗";
-            case "PASS" -> "判定：通過";
-            case "FAIL" -> "判定：不通過";
-            case "SUCCESS" -> "成功";
+            case "COMPLETED" -> "這個階段做完了（還不代表整個任務驗收通過）";
+            case "PARTIAL" -> "只做完一部分";
+            case "BLOCKED" -> "卡住了，需要處理";
+            case "FAILED" -> "失敗了";
+            case "PASS" -> "驗收通過";
+            case "FAIL" -> "驗收沒過";
+            case "SUCCESS" -> "完成";
+            case "APPROVE" -> "審查通過";
+            case "REQUEST_CHANGES" -> "審查要求修改";
+            case "COMMENT" -> "審查有意見但不擋";
+            case "PASS_WITH_CONCERNS" -> "驗收通過，但有疑慮";
             default -> plain(status);
         };
     }
@@ -106,13 +133,9 @@ public final class SlackReport {
         out.append("\n").append("  ".repeat(depth)).append(plain(LABELS.getOrDefault(key, key))).append("：\n");
         // COMPLETED describes this stage, not acceptance of the whole task.
         if (key.equals("execution_status") && node.isTextual()) {
-            out.append(switch (node.asText()) {
-                case "COMPLETED" -> "本階段已完成（不代表整體任務或 QA 驗收通過）";
-                case "PARTIAL" -> "部分完成";
-                case "BLOCKED" -> "受阻";
-                case "FAILED" -> "失敗";
-                default -> plain(node.asText());
-            }).append('\n');
+            out.append(statusLabel(node.asText())).append('\n');
+        } else if (key.equals("route") && node.isTextual()) {
+            out.append(routeLabel(node.asText())).append('\n');
         } else value(out, node, depth + 1);
     }
 
