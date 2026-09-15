@@ -29,6 +29,17 @@ class RuntimeUsageErrorTest {
         assertThat(RuntimeUsageError.looksLikeUsageError(2, "", null)).isFalse();
     }
 
+    @Test void recognisesSchemaRejectionBeforeAgentStarts() {
+        String rejected = """
+                {"error":{"message":"Invalid schema","type":"invalid_request_error","code":"invalid_json_schema"}}
+                """;
+        assertThat(RuntimeUsageError.looksLikeRequestContractError(1, rejected, "")).isTrue();
+        assertThat(RuntimeUsageError.looksLikeRequestContractError(1,
+                "{\"type\":\"thread.started\"}\n" + rejected, "")).isFalse();
+        assertThat(RuntimeUsageError.looksLikeRequestContractError(0, rejected, "")).isFalse();
+        assertThat(RuntimeUsageError.looksLikeRequestContractError(1, "unrelated", "")).isFalse();
+    }
+
     @Test void findsWrappedCause() {
         var usage = new RuntimeUsageError("用法錯誤");
         assertThat(RuntimeUsageError.find(new IllegalStateException("外層", usage))).isSameAs(usage);

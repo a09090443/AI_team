@@ -56,10 +56,13 @@ public class ConfiguredExecutor {
                 + "\n建置規範：" + flow.snapshot.definition().project().buildInstructions()
                 + "\n測試規範：" + flow.snapshot.definition().project().testInstructions() + "\n補充與已知阻礙：\n" + flow.context);
         if (evidence != null) context.append("\n系統派工前證據（不是建置成功或真人核准）：").append(evidence);
-        if (!flow.dialogue) context.append("\n本階段操作契約：").append(OperationContract.forNode(flow.snapshot.definition(), flow.node));
+        if (!flow.dialogue) context.append("\n本階段可使用／規畫的操作契約：").append(availableOperations(flow, node));
         context.append("\n系統固定需求基準 baseline_revision：").append(flow.baselineRevision)
                 .append("\n真人需求／驗收負責人：").append(flow.acceptanceOwner)
                 .append("\n系統獨立驗證收據（不是模型自陳）：").append(flow.independentEvidence);
+        context.append("\n若系統獨立驗證收據含管理者固定命令、exitCode=0 且版本仍有效，"
+                + "它就是該完整建置操作的主要證據；不得只因本節點操作契約未重複提供同一命令而回報受阻。"
+                + "本節點若補了測試但不能寫 Git，須明確回報未提交路徑，由系統交給具 Git 寫入能力的節點；不得要求放寬 .git 權限。");
         context.append("\n系統保存的真人測試計畫核准收據（以版本綁定；不同於測試結果）：").append(flow.planApprovals)
                 .append("\n人工核准不等於測試 PASS。請依目前 HEAD 重新執行本階段驗收，不得把補核准直接當作全部通過。");
         context.append("\n系統獨立驗證收據是建置／測試證據，不是真人核准紀錄；不得以它為 null 推論無人核准。")
@@ -92,6 +95,16 @@ public class ConfiguredExecutor {
                 flow.dialogue ? List.of("Read", "Grep", "Glob") : role.tools(), FailureReport.extendSchema(schema), cp.sessionId(),
                 node.maxTurns(), Duration.ofSeconds(node.timeoutSeconds()), selectedPolicy, cp.model(), role.reasoningEffort());
         return runtime.execute(request, session -> store.saveCheckpoint(cp.withSession(session)));
+    }
+    /** 測試計畫只能引用其對應驗收節點的管理者操作契約。 */
+    static Map<String, Operation> availableOperations(FlowRun flow, Node node) {
+        TeamDefinition definition = flow.snapshot.definition();
+        Map<String, Operation> available = new LinkedHashMap<>(OperationContract.forNode(definition, flow.node));
+        if (node.gate() == Gate.TEST_PLAN) definition.nodes().forEach((id, target) -> {
+            if (target.gate() == Gate.VERIFICATION && Objects.equals(target.plan(), flow.node))
+                available.putAll(OperationContract.forNode(definition, id));
+        });
+        return Map.copyOf(available);
     }
     Path workingDirectory(Task task, FlowRun flow, Node node) throws Exception {
         if (flow.dialogue && flow.parentId != null) {

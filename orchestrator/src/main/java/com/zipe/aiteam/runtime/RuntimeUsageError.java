@@ -32,6 +32,18 @@ public final class RuntimeUsageError extends AgentRuntime.RuntimeExecutionExcept
     }
 
     /**
+     * API 可能在建立 thread 前拒絕 output schema。CLI 會把錯誤寫成 JSON，故事件流
+     * 不為空；只有明確 invalid_json_schema 且沒有任何生命週期事件才視為未啟動 agent。
+     */
+    public static boolean looksLikeRequestContractError(int exitCode, String events, String stderr) {
+        if (exitCode == 0) return false;
+        String output = (events == null ? "" : events) + "\n" + (stderr == null ? "" : stderr);
+        String s = output.toLowerCase(Locale.ROOT);
+        if (!s.contains("invalid_json_schema")) return false;
+        return !s.contains("\"thread.started\"") && !s.contains("\"turn.started\"");
+    }
+
+    /**
      * opencode（yargs）版本的同一件事。
      *
      * 判定條件與上面同構，只有兩處依實測調整：opencode 的用法錯誤結束碼是 1 而不是 2，

@@ -12,8 +12,22 @@ public class FlowRun {
     public String workspacePath;
     public String context = "";
     public String lastBlockReason;
+    /** 目前受阻鏈的證據摘要；只允許配置內既有節點使用有界自動交接。 */
+    public String automaticHandoff;
+    /** 任務生命週期內已使用的自動交接額度，不因新錯誤文字或 commit 重設。 */
+    public int automaticHandoffs;
+    /** 真人針對當前受阻證據核准的額外事件額度；不重設既有事件或節點計數。 */
+    public int automaticHandoffExtraBudget;
+    /** 同一受阻事件已通過的節點數；另設上限，避免同一證據在節點間無限循環。 */
+    public int automaticHandoffHops;
+    public Set<String> automaticHandoffKeys = new LinkedHashSet<>();
+    /** 已使用的額度延長授權 token，永久保留以防相同現場重放。 */
+    public Set<String> automaticHandoffExtensionKeys = new LinkedHashSet<>();
     public Map<String,String> recoveryGrants = new LinkedHashMap<>();
     public Set<String> recoveryRevisions = new LinkedHashSet<>();
+    /** 人工修復後的重驗授權綁定節點與實際 commit；已使用 key 永久保留以防重放。 */
+    public Map<String,String> remediationRecoveryGrants = new LinkedHashMap<>();
+    public Set<String> remediationRecoveryKeys = new LinkedHashSet<>();
     public String approvalHead;
     public String origin;
     public String branch;
@@ -34,6 +48,8 @@ public class FlowRun {
     public Map<String,Integer> visits = new LinkedHashMap<>();
     public Map<String,JsonNode> receipts = new LinkedHashMap<>();
     public Map<String,String> heads = new LinkedHashMap<>();
+    /** 各 workspace 節點最近一次真正開始執行時的 HEAD，供人工修復重驗比對。 */
+    public Map<String,String> attemptHeads = new LinkedHashMap<>();
     public Map<String,OperationPreflight.Evidence> executionContexts = new LinkedHashMap<>();
     public Map<String,PlanApproval> planApprovals = new LinkedHashMap<>();
     public List<TeamDefinition.Snapshot> migrationHistory = new ArrayList<>();

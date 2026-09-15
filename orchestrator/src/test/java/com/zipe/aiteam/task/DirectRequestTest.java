@@ -71,6 +71,18 @@ class DirectRequestTest {
         assertThat(store.direct(next.id()).orElseThrow().context()).contains("SMTP 故障與成功情境");
         assertThat(next.id()).isNotEqualTo(first.id());
     }
+    @Test void directReplyDefaultsToBriefWhileFullAnswerRemainsStored() throws Exception {
+        String full = "細".repeat(3000);
+        when(runner.run(any(), any(), nullable(String.class), nullable(String.class), nullable(String.class)))
+                .thenReturn(new AgentRuntime.RuntimeResult("session", "", new ObjectMapper().readTree(
+                        "{\"execution_status\":\"COMPLETED\",\"failure_report\":null,\"answer\":\"" + full + "\"}"),
+                        null, false, tmp.resolve("log"), "model", null));
+        Task task = ask(); run(task);
+
+        verify(slack).post(eq(Identity.QA), eq("c"), eq("t"), argThat((String text) ->
+                text.length() < 1500 && text.contains("簡要回覆") && text.contains("追問該角色")));
+        assertThat(task.stages().values().iterator().next().result().path("answer").asText()).hasSize(3000);
+    }
     @Test void otherThreadNeverEntersContext() {
         store.save(new Task("41", "c", "other", "u", "secret-other-task"));
         assertThat(store.direct(ask().id()).orElseThrow().context()).doesNotContain("secret-other-task");

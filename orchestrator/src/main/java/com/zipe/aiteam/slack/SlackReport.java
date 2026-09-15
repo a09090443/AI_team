@@ -16,6 +16,8 @@ public final class SlackReport {
             Map.entry("verdict", "判定"), Map.entry("findings", "查核發現"),
             Map.entry("uncertainties", "待確認事項"), Map.entry("changes", "變更內容"),
             Map.entry("id", "情境編號"), Map.entry("requirement_ids", "對應需求"),
+            Map.entry("acceptance_items", "原子驗收項目"), Map.entry("acceptance_ids", "對應驗收項目"),
+            Map.entry("counterexample", "反例／弱實作"), Map.entry("dimension", "驗收維度"),
             Map.entry("criterion", "驗收條件"), Map.entry("preconditions", "前置條件"),
             Map.entry("test_data", "測試資料"), Map.entry("method", "測試方式"),
             Map.entry("steps", "執行步驟"), Map.entry("expected_result", "預期結果"),

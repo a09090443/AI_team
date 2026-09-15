@@ -96,6 +96,12 @@ class CodexSandboxVmTest {
                 "refers to undefined profile", "does not set `default_permissions`");
         assertThat(accepted).contains("Not inside a trusted directory");
 
+        // resume 會重新解析子指令選項；權限設定必須放在 resume 後。
+        // 用不存在的 session 停在本機查找，因此不會發出模型請求。
+        String resumed = cli(plain, resume(CodexLocalTestPolicy.execArguments(req, List.of())));
+        assertThat(resumed).doesNotContain("unexpected argument", "unknown configuration field",
+                "refers to undefined profile", "does not set `default_permissions`");
+
         // 反向回歸：sandbox 專用旗標交給 exec 必須仍被拒絕，避免又把兩邊參數混用。
         String rejected = cli(plain, exec(CodexLocalTestPolicy.sandboxArguments(req, List.of()), plain));
         assertThat(rejected).contains("unexpected argument");
@@ -105,6 +111,12 @@ class CodexSandboxVmTest {
         List<String> cmd = new ArrayList<>(List.of(bin.toString(), "exec", "--strict-config"));
         cmd.addAll(policyArgs);
         cmd.addAll(List.of("-C", cwd.toString(), "contract-probe"));
+        return cmd;
+    }
+    private List<String> resume(List<String> policyArgs) {
+        List<String> cmd = new ArrayList<>(List.of(bin.toString(), "exec", "resume", "--strict-config"));
+        cmd.addAll(policyArgs);
+        cmd.addAll(List.of("00000000-0000-4000-8000-000000000000", "contract-probe"));
         return cmd;
     }
     private String cli(Path cwd, List<String> command) throws Exception {

@@ -2,6 +2,7 @@ package com.zipe.aiteam.runtime;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.zipe.aiteam.config.AiTeamProperties;
 import com.zipe.aiteam.sandbox.ExecutionSandbox;
 import org.slf4j.Logger;
@@ -110,7 +111,7 @@ public class CodexRuntime implements AgentRuntime {
             Path schemaFile = null;
             if (req.jsonSchema() != null && !req.jsonSchema().isBlank()) {
                 schemaFile = logDir.resolve(req.role() + ".codex.schema.json");
-                Files.writeString(schemaFile, req.jsonSchema(), StandardCharsets.UTF_8);
+                Files.writeString(schemaFile, compatibleSchema(req.jsonSchema()), StandardCharsets.UTF_8);
             }
 
             String unit = "ai-team-" + req.taskId() + "-" + req.role()
@@ -155,11 +156,12 @@ public class CodexRuntime implements AgentRuntime {
 
             if (exit != 0) {
                 String stderrText = Files.exists(stderrLog) ? Files.readString(stderrLog, StandardCharsets.UTF_8) : "";
-                if (RuntimeUsageError.looksLikeUsageError(exit, stdout, stderrText)) {
+                if (RuntimeUsageError.looksLikeUsageError(exit, stdout, stderrText)
+                        || RuntimeUsageError.looksLikeRequestContractError(exit, stdout, stderrText)) {
                     throw new RuntimeUsageError(
-                            "Codex CLI 用法錯誤，指令未送達模型（結束碼 " + exit + "）："
-                          + Diagnostics.clip(stderrText, 1200)
-                          + "\n這是本專案組裝參數的缺陷，不是額度、不是產品失敗；"
+                            "Codex 請求在 agent 啟動前被拒絕（結束碼 " + exit + "）："
+                          + Diagnostics.clip(stdout + "\n" + stderrText, 1200)
+                          + "\n這是 runtime 請求契約的缺陷，不是額度、不是產品失敗；"
                           + "事件流為空：" + stdoutLog + "；stderr：" + stderrLog);
                 }
                 throw new RuntimeExecutionException(
@@ -180,6 +182,25 @@ public class CodexRuntime implements AgentRuntime {
             throw new RuntimeExecutionException("無法執行 Codex；stdout=" + stdoutLog
                     + "；stderr=" + stderrLog, e);
         }
+    }
+
+    /**
+     * Codex Structured Outputs 只接受 JSON Schema 的子集合。團隊快照仍保留完整契約，
+     * 只在送給 Codex 的副本移除不支援的 uniqueItems；陣列唯一性由 Traceability
+     * 的確定性閘門驗證，不能因 runtime 相容處理而放寬。
+     */
+    String compatibleSchema(String schema) throws IOException {
+        JsonNode root = mapper.readTree(schema);
+        stripUnsupportedSchemaKeywords(root);
+        return mapper.writeValueAsString(root);
+    }
+
+    private void stripUnsupportedSchemaKeywords(JsonNode node) {
+        if (node == null) return;
+        if (node.isObject()) {
+            ((ObjectNode) node).remove("uniqueItems");
+        }
+        node.forEach(this::stripUnsupportedSchemaKeywords);
     }
 
     /** 無模型呼叫；與 exec 的 workspace-write 對應，且套用相同外層 policy。 */
@@ -223,15 +244,22 @@ public class CodexRuntime implements AgentRuntime {
         List<String> cmd = new ArrayList<>();
         cmd.add(props.codexBin().toString());
         cmd.add("exec");
-        // -s 屬於 exec，resume 子指令不接受；必須放在 resume 前。
-        if (req.sandboxPolicy().localTestNetwork()) cmd.addAll(CodexLocalTestPolicy.execArguments(req, statePaths(props.userHome())));
-        else { cmd.add("-s"); cmd.add("workspace-write"); }
-
         boolean resuming = req.resumeSessionId() != null && !req.resumeSessionId().isBlank();
-        if (resuming) {
-            cmd.add("resume");
-            cmd.add(req.resumeSessionId());
+        if (resuming) cmd.add("resume");
+
+        // resume 會重新解析自己的選項；放在父層 exec 的沙箱設定雖然不會觸發
+        // CLI 用法錯誤，實際續跑卻會退回 :read-only。因此續跑選項必須放在
+        // `codex exec resume` 之後，並在 session id 之前。
+        if (req.sandboxPolicy().localTestNetwork()) {
+            cmd.addAll(CodexLocalTestPolicy.execArguments(req, statePaths(props.userHome())));
+        } else if (resuming) {
+            // resume 子指令沒有 -s，但有 -c；用同一個設定鍵明確恢復。
+            cmd.addAll(List.of("-c", "sandbox_mode=\"workspace-write\""));
         } else {
+            cmd.addAll(List.of("-s", "workspace-write"));
+        }
+
+        if (!resuming) {
             // 只有非 resume 的路徑吃 --cd。resume 傳了會直接以用法錯誤結束（碼 2）。
             cmd.add("--cd");
             cmd.add(req.workingDirectory().toAbsolutePath().toString());
@@ -254,6 +282,8 @@ public class CodexRuntime implements AgentRuntime {
             cmd.add("-c");
             cmd.add("model_reasoning_effort=\"" + req.reasoningEffort() + "\"");
         }
+
+        if (resuming) cmd.add(req.resumeSessionId());
 
         // 已實測：即使這裡放成 danger-full-access，越界寫入仍然被外層擋下。
         cmd.add(buildPromptWithRole(req));

@@ -1,5 +1,6 @@
 package com.zipe.aiteam.runtime;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.zipe.aiteam.sandbox.SandboxPolicy;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -20,6 +21,26 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * 不是憑 API 文件想像出來的 —— 這個類別的價值全在於它能不能吃下 codex 真正吐出的東西。
  */
 class CodexRuntimeTest {
+    @Test void outputSchema移除Codex不支援關鍵字但保留其餘限制() throws Exception {
+        String schema = """
+                {"type":"object","properties":{"rows":{"type":"array","minItems":1,
+                "uniqueItems":true,"items":{"type":"array","uniqueItems":true,
+                "items":{"type":"string","minLength":1}}}}}
+                """;
+
+        JsonNode compatible = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree(runtime.compatibleSchema(schema));
+
+        assertThat(compatible.findValues("uniqueItems")).isEmpty();
+        assertThat(compatible.at("/properties/rows/minItems").asInt()).isEqualTo(1);
+        assertThat(compatible.at("/properties/rows/items/items/minLength").asInt()).isEqualTo(1);
+    }
+
+    @Test void 無效Schema必須明確失敗而不是送出不受控請求() {
+        assertThatThrownBy(() -> runtime.compatibleSchema("{not-json"))
+                .isInstanceOf(java.io.IOException.class);
+    }
+
     @Test void explicitModelAndEffortApplyToFreshAndResumedRuns() {
         var props = org.mockito.Mockito.mock(com.zipe.aiteam.config.AiTeamProperties.class);
         org.mockito.Mockito.when(props.codexBin()).thenReturn(Path.of("codex"));
@@ -41,7 +62,7 @@ class CodexRuntimeTest {
     }
 
     @Test
-    void resume的sandbox參數放在父指令() throws Exception {
+    void resume的sandbox參數必須放在子指令() throws Exception {
         Files.writeString(tmp.resolve("pm.md"), "role");
         var props = org.mockito.Mockito.mock(com.zipe.aiteam.config.AiTeamProperties.class);
         org.mockito.Mockito.when(props.codexBin()).thenReturn(Path.of("codex"));
@@ -50,8 +71,28 @@ class CodexRuntimeTest {
                 new SandboxPolicy(List.of(), List.of(), 256, 100, 32), "model");
         List<String> cmd = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
                 new CodexRuntime(props, null), "buildCommand", req, null);
-        assertThat(cmd).startsWith("codex", "exec", "-s", "workspace-write", "resume", "saved-session");
+        assertThat(cmd).startsWith("codex", "exec", "resume", "-c", "sandbox_mode=\"workspace-write\"");
+        assertThat(cmd.indexOf("saved-session")).isGreaterThan(cmd.indexOf("sandbox_mode=\"workspace-write\""));
         assertThat(cmd).doesNotContain("--cd");
+    }
+
+    @Test
+    void localTestResume在子指令套用具名權限() throws Exception {
+        Files.writeString(tmp.resolve("qa.md"), "role");
+        var props = org.mockito.Mockito.mock(com.zipe.aiteam.config.AiTeamProperties.class);
+        org.mockito.Mockito.when(props.codexBin()).thenReturn(Path.of("codex"));
+        org.mockito.Mockito.when(props.userHome()).thenReturn(tmp.resolve("home"));
+        var req = new AgentRuntime.RuntimeRequest("42", "qa", tmp, tmp.resolve("qa.md"), "resume",
+                List.of(), null, "saved-session", 1, Duration.ofSeconds(10),
+                new SandboxPolicy(List.of(tmp.resolve("target")), List.of(), 256, 100, 32, true), "model");
+        List<String> cmd = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                new CodexRuntime(props, null), "buildCommand", req, null);
+
+        assertThat(cmd).startsWith("codex", "exec", "resume");
+        assertThat(cmd).contains("default_permissions=\"" + CodexLocalTestPolicy.PROFILE + "\"");
+        assertThat(cmd.indexOf("default_permissions=\"" + CodexLocalTestPolicy.PROFILE + "\""))
+                .isLessThan(cmd.indexOf("saved-session"));
+        assertThat(cmd).doesNotContain("-s", "--cd");
     }
 
     @Test

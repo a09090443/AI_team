@@ -4,9 +4,9 @@
   "project": {
     "requirePlanApproval": true,
     "operations": {
-      "install": {"nodes": ["implementation", "frontend"], "directory": ".", "argv": ["npm", "ci"], "writes": ["node_modules"]},
-      "build": {"nodes": ["implementation", "frontend"], "directory": ".", "argv": ["npm", "run", "build"], "writes": ["dist"]},
-      "test": {"nodes": ["implementation", "frontend"], "directory": ".", "argv": ["npm", "test"], "writes": ["coverage"]}
+      "install": {"nodes": ["implementation", "frontend", "verification"], "directory": ".", "argv": ["npm", "ci"], "writes": ["node_modules"]},
+      "build": {"nodes": ["implementation", "frontend", "verification"], "directory": ".", "argv": ["npm", "run", "build"], "writes": ["dist"]},
+      "test": {"nodes": ["implementation", "frontend", "verification"], "directory": ".", "argv": ["npm", "test"], "writes": ["coverage"]}
     },
     "requiredTools": [
       "node",
@@ -202,6 +202,7 @@
       "workspace": true,
       "writablePaths": [
         "tests/**",
+        "node_modules/**",
         "coverage/**",
         "dist/**"
       ],

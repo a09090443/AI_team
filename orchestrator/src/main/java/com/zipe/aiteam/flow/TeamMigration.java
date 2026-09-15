@@ -44,7 +44,10 @@ public final class TeamMigration {
         flow.activeNode = null; // 不沿用舊權限／cwd session。
         flow.independentEvidence = null; flow.approvalHead = null;
         flow.planApprovals.clear(); flow.executionContexts.clear();
-        flow.recoveryGrants.clear();
+        flow.recoveryGrants.clear(); flow.remediationRecoveryGrants.clear();
+        // 延長授權綁定舊配置與當時 blocker；不可跨配置沿用，但永久 key／事件歷史仍保留。
+        flow.automaticHandoffExtraBudget = 0;
+        AutomaticHandoff.clear(flow);
         for (var entry : target.definition().nodes().entrySet()) {
             if (entry.getValue().gate() == TeamDefinition.Gate.VERIFICATION || entry.getValue().gate() == TeamDefinition.Gate.REVIEW) {
                 flow.receipts.remove(entry.getKey()); flow.heads.remove(entry.getKey());

@@ -149,8 +149,9 @@ public class TaskOrchestrator {
             StageOutcome result = runStage(task, StageSpec.direct(direct.role()), direct.context(), task.statusMessageTs());
             String answer = result.result().path("answer").asText();
             if (answer.isBlank()) throw new IllegalStateException("角色未回傳非空 answer，請查 stage_result 與 session");
-            slack.post(direct.role(), task.slackChannel(), task.slackThreadTs(), Diagnostics.clip(answer, 10000)
-                    + "\n（唯讀對話完成；未改動原任務、未派工或核准 PR。）");
+            slack.post(direct.role(), task.slackChannel(), task.slackThreadTs(), Diagnostics.clip(answer, 1200)
+                    + "\n（簡要回覆；如需細節，請在同一討論串繼續追問該角色。"
+                    + "本次未改動原任務、未派工或核准 PR。）");
             finish(task, Task.State.COMPLETED, AuditLog.ACTION_STATE, "角色唯讀對話完成");
             slack.update(Identity.SYSTEM, task.slackChannel(), task.statusMessageTs(), "角色對話 #" + task.id() + " 已完成", null);
         } catch (Exception e) {

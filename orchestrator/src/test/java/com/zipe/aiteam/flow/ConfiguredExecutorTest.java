@@ -81,6 +81,7 @@ class ConfiguredExecutorTest {
         executor.execute(new Task("42", "c", "t", "u", "測試"), flow, flow.snapshot.definition().nodes().get("plan"));
         assertThat(captured.get().model()).isEqualTo("gpt-5.6-sol");
         assertThat(captured.get().reasoningEffort()).isEqualTo("medium");
+        assertThat(captured.get().prompt()).contains("qa-java", "qa-reactor", "主要證據", "不得要求放寬 .git 權限");
     }
     @TempDir Path tmp;
     AiTeamProperties props = mock(AiTeamProperties.class);

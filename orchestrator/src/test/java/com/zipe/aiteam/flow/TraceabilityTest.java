@@ -17,13 +17,19 @@ class TraceabilityTest {
         flow = new FlowRun(TeamCatalog.load(Path.of("teams/node-web.json"), key -> tmp.toString()));
         baseline = json("""
                 {"summary":"mail","route":"implementation","requirements":[
-                  {"id":"R1","kind":"FUNCTIONAL","description":"寄信","acceptance":"正確送達","source":"使用者原文"},
-                  {"id":"R2","kind":"NON_FUNCTIONAL","description":"不洩漏密碼","acceptance":"log 不含密碼","source":"專案安全規範"}
+                  {"id":"R1","kind":"FUNCTIONAL","description":"寄信","acceptance":"正確送達",
+                   "acceptance_items":[{"id":"R1-DELIVER","criterion":"正確送達","dimension":"send/成功"}],"source":"使用者原文"},
+                  {"id":"R2","kind":"NON_FUNCTIONAL","description":"不洩漏密碼","acceptance":"log 不含密碼",
+                   "acceptance_items":[{"id":"R2-PLAIN","criterion":"log 不含明文密碼","dimension":"日誌/明文"}],"source":"專案安全規範"}
                 ],"out_of_scope":["郵件行銷"],"open_questions":[]}
                 """);
         flow.receipts.put("intake", baseline); flow.baselineRevision = Traceability.digest(baseline);
         plan = json("""
-                {"status":"READY","scenarios":[{"id":"S1","requirement_ids":["R1","R2"],"criterion":"送達且log無密碼",
+                {"status":"READY","scenarios":[{"id":"S1","requirement_ids":["R1","R2"],
+                  "acceptance_ids":["R1-DELIVER","R2-PLAIN"],
+                  "operation_ids":["test"],
+                  "counterexample":"只檢查方法返回，不檢查收件與 log；測試會檢查兩者",
+                  "criterion":"送達且log無密碼",
                   "preconditions":"SMTP","test_data":"信件","method":"整合測試","steps":"寄送並查log","expected_result":"送達且密碼未出現","environment":"測試SMTP"}]}
                 """);
         plan.put("baseline_revision", flow.baselineRevision); flow.receipts.put("plan", plan);
@@ -51,6 +57,7 @@ class TraceabilityTest {
     }
     @Test void uncoveredRequirementNamesExactMissingId() {
         ((ObjectNode)plan.path("scenarios").get(0)).putArray("requirement_ids").add("R1");
+        ((ObjectNode)plan.path("scenarios").get(0)).putArray("acceptance_ids").add("R1-DELIVER");
         assertThat(Traceability.planReason(plan, flow)).contains("遺漏需求", "R2");
     }
     @Test void inventedOrDuplicateRequirementLinkIsRejected() {
@@ -60,6 +67,50 @@ class TraceabilityTest {
     @Test void staleBaselineCannotBeUsedByPlan() {
         plan.put("baseline_revision", "old");
         assertThat(Traceability.planReason(plan, flow)).contains("版本不符");
+    }
+    @Test void uncoveredAtomicAcceptanceNamesExactMissingId() {
+        ((ObjectNode)plan.path("scenarios").get(0)).putArray("acceptance_ids").add("R1-DELIVER");
+        assertThat(Traceability.planReason(plan, flow)).contains("遺漏原子驗收項目", "R2-PLAIN");
+    }
+    @Test void acceptanceMustBelongToLinkedRequirement() {
+        ((ObjectNode)plan.path("scenarios").get(0)).putArray("requirement_ids").add("R1");
+        assertThat(Traceability.planReason(plan, flow)).contains("R2-PLAIN", "未連結所屬需求", "R2");
+    }
+    @Test void everyScenarioNeedsCounterexample() {
+        ((ObjectNode)plan.path("scenarios").get(0)).remove("counterexample");
+        assertThat(Traceability.planReason(plan, flow)).contains("S1", "counterexample");
+    }
+    @Test void testPlanCannotInventAnUnconfiguredOperation() {
+        ((ObjectNode)plan.path("scenarios").get(0)).putArray("operation_ids").add("shell-anything");
+        assertThat(Traceability.planReason(plan, flow)).contains("未授權", "shell-anything");
+    }
+
+    @Test void everyNewScenarioMustReferenceAnOperationContract() {
+        ((ObjectNode)plan.path("scenarios").get(0)).remove("operation_ids");
+        assertThat(Traceability.planReason(plan, flow)).contains("S1", "operation_ids");
+    }
+    @Test void duplicateAtomicAcceptanceIsRejected() {
+        ((ObjectNode) baseline.withArray("requirements").get(1)).withArray("acceptance_items")
+                .add(baseline.path("requirements").get(0).path("acceptance_items").get(0).deepCopy());
+        assertThat(Traceability.requirementsReason(baseline)).contains("驗收項目 ID", "重複");
+    }
+    @Test void legacySnapshotWithoutAtomicFieldsRemainsValid() throws Exception {
+        baseline.withArray("requirements").forEach(r -> ((ObjectNode) r).remove("acceptance_items"));
+        ((ObjectNode)plan.path("scenarios").get(0)).remove("acceptance_ids");
+        ((ObjectNode)plan.path("scenarios").get(0)).remove("counterexample");
+        ((ObjectNode)plan.path("scenarios").get(0)).remove("operation_ids");
+        var assets = new java.util.HashMap<>(flow.snapshot.assets());
+        ObjectNode oldSchema = (ObjectNode) mapper.readTree(assets.get("schemas/plan.json"));
+        ((ObjectNode)oldSchema.at("/properties/scenarios/items/properties")).remove("operation_ids");
+        var required = (com.fasterxml.jackson.databind.node.ArrayNode) oldSchema.at("/properties/scenarios/items/required");
+        for (int i = required.size() - 1; i >= 0; i--) if ("operation_ids".equals(required.get(i).asText())) required.remove(i);
+        assets.put("schemas/plan.json", oldSchema.toString());
+        flow.snapshot = new TeamDefinition.Snapshot(flow.snapshot.revision(), flow.snapshot.definition(),
+                flow.snapshot.repository(), java.util.Map.copyOf(assets));
+        flow.baselineRevision = Traceability.digest(baseline);
+        plan.put("baseline_revision", flow.baselineRevision);
+        assertThat(Traceability.requirementsReason(baseline)).isNull();
+        assertThat(Traceability.planReason(plan, flow)).isNull();
     }
     @Test void sameScenarioIdWithChangedExpectationInvalidatesOldResult() {
         ((ObjectNode)plan.path("scenarios").get(0)).put("expected_result", "不同預期");
@@ -78,5 +129,11 @@ class TraceabilityTest {
         flow.receipts.put("implementation", result); flow.receipts.put("verification", result); flow.receipts.put("review", result);
         Traceability.invalidate(flow, "verification");
         assertThat(flow.receipts).containsKeys("intake", "plan", "implementation").doesNotContainKeys("verification", "review");
+    }
+    @Test void enteringReadOnlyReviewRetainsSystemVerificationReceipt() {
+        flow.independentEvidence = new IndependentVerifier.Receipt("head", flow.baselineRevision,
+                flow.snapshot.revision(), "start", "end", java.util.List.of());
+        Traceability.invalidate(flow, "review");
+        assertThat(flow.independentEvidence).isNotNull();
     }
 }

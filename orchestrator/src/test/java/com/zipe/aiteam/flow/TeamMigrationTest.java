@@ -25,12 +25,18 @@ class TeamMigrationTest {
         var next = snapshot(); var preview = TeamMigration.preview(original, next);
         assertThat(preview.changes()).anyMatch(s -> s.contains("buildInstructions"));
         FlowRun flow = new FlowRun(original); flow.workspacePath = "original-workspace"; flow.baselineRevision = "baseline";
+        flow.automaticHandoff = "old-blocker"; flow.automaticHandoffHops = 2;
+        flow.automaticHandoffExtraBudget = 2; flow.automaticHandoffExtensionKeys.add("used-token");
         assertThatThrownBy(() -> TeamMigration.apply(flow, next, "wrong")).hasMessageContaining("版本過期");
         assertThat(flow.snapshot).isEqualTo(original);
         TeamMigration.apply(flow, next, preview.token());
         assertThat(flow.migrationHistory).containsExactly(original);
         assertThat(flow.workspacePath).isEqualTo("original-workspace");
         assertThat(flow.baselineRevision).isEqualTo("baseline");
+        assertThat(flow.automaticHandoff).isNull();
+        assertThat(flow.automaticHandoffHops).isZero();
+        assertThat(flow.automaticHandoffExtraBudget).isZero();
+        assertThat(flow.automaticHandoffExtensionKeys).containsExactly("used-token");
     }
     @Test void modelOrApprovalPolicyChangesCannotSneakIntoCapabilityMigration() throws Exception {
         ((ObjectNode)target.path("roles").path("builder")).put("model", "other");

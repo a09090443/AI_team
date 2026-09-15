@@ -21,6 +21,105 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 
 class FlowEngineTest {
+    @Test void legacyFlowJsonInitializesManualRecoveryTrackingFields() throws Exception {
+        ObjectNode json=mapper.valueToTree(new FlowRun(catalog.snapshot()));
+        json.remove(List.of("remediationRecoveryGrants","remediationRecoveryKeys","attemptHeads",
+                "automaticHandoff","automaticHandoffs","automaticHandoffExtraBudget","automaticHandoffHops",
+                "automaticHandoffKeys","automaticHandoffExtensionKeys"));
+        FlowRun restored=mapper.treeToValue(json,FlowRun.class);
+        assertThat(restored.remediationRecoveryGrants).isEmpty();
+        assertThat(restored.remediationRecoveryKeys).isEmpty();
+        assertThat(restored.attemptHeads).isEmpty();
+        assertThat(restored.automaticHandoff).isNull();
+        assertThat(restored.automaticHandoffs).isZero();
+        assertThat(restored.automaticHandoffExtraBudget).isZero();
+        assertThat(restored.automaticHandoffHops).isZero();
+        assertThat(restored.automaticHandoffKeys).isEmpty();
+        assertThat(restored.automaticHandoffExtensionKeys).isEmpty();
+    }
+
+    @Test void manualRemediationRecoveryRequiresNewCleanCommitAndFreshPlanApproval() throws Exception {
+        var blocked=blockedVerificationAtLimit();
+        // #1014 類型的舊快照沒有 attemptHeads，必須能從既有 beforeHead 安全判定。
+        blocked.attemptHeads.clear();blocked.beforeHead="head1";store.saveFlow(task.id(),blocked);
+        String revision=blocked.snapshot.revision();
+        String fixed="2222222222222222222222222222222222222222";
+        when(workspace.headSha("42")).thenReturn(fixed);
+        List<Runnable> jobs=new ArrayList<>();
+
+        engine.resume(task,"核准人工修復重驗 verification "+fixed,"u",jobs::add);
+        var pending=store.flow(task.id()).orElseThrow();
+        assertThat(pending.recoveryGrants).containsEntry("verification",revision);
+        assertThat(pending.remediationRecoveryGrants).containsEntry("verification",fixed);
+        assertThat(pending.remediationRecoveryKeys).containsExactly(revision+":verification:"+fixed);
+        assertThat(pending.planApprovals).isEmpty();
+        assertThat(pending.visits.get("verification")).isEqualTo(3);
+        assertThat(jobs).isEmpty();
+
+        engine.resume(task,"核准人工修復重驗 verification "+fixed,"u",jobs::add);
+        verify(slack).post(any(),any(),any(),contains("一次重驗授權已使用"));
+
+        engine.resume(task,"核准測試計畫 plan "+Traceability.digest(pending.receipts.get("plan")),"u",jobs::add);
+        assertThat(jobs).hasSize(1); mode="normal"; jobs.getFirst().run();
+        var completed=store.flow(task.id()).orElseThrow();
+        assertThat(completed.visits.get("verification")).isEqualTo(4);
+        assertThat(completed.recoveryGrants).isEmpty();
+        assertThat(completed.remediationRecoveryGrants).isEmpty();
+        assertThat(completed.remediationRecoveryKeys).containsExactly(revision+":verification:"+fixed);
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        verifyNoInteractions(publisher);
+    }
+
+    @Test void manualRemediationRecoveryRejectsUnchangedOrDirtyWorkspace() throws Exception {
+        blockedVerificationAtLimit();
+        List<Runnable> jobs=new ArrayList<>();
+        engine.resume(task,"核准人工修復重驗 verification head1","u",jobs::add);
+        verify(slack).post(any(),any(),any(),contains("沒有新的修復 commit"));
+        when(workspace.headSha("42")).thenReturn("2222222222222222222222222222222222222222");
+        when(workspace.clean("42")).thenReturn(false);
+        engine.resume(task,"核准人工修復重驗 verification 2222222222222222222222222222222222222222","u",jobs::add);
+        verify(slack).post(any(),any(),any(),contains("未提交修改"));
+        assertThat(jobs).isEmpty();
+    }
+
+    @Test void cliUsageErrorRestoresManualRemediationGrantForSameCommit() throws Exception {
+        var blocked=blockedVerificationAtLimit();
+        String fixed="2222222222222222222222222222222222222222";
+        when(workspace.headSha("42")).thenReturn(fixed);
+        List<Runnable> jobs=new ArrayList<>();
+        engine.resume(task,"核准人工修復重驗 verification "+fixed,"u",jobs::add);
+        var pending=store.flow(task.id()).orElseThrow();
+        engine.resume(task,"核准測試計畫 plan "+Traceability.digest(pending.receipts.get("plan")),"u",jobs::add);
+        mode="usage"; jobs.getFirst().run();
+
+        var restored=store.flow(task.id()).orElseThrow();
+        assertThat(restored.visits.get("verification")).isEqualTo(3);
+        assertThat(restored.recoveryGrants).containsEntry("verification",blocked.snapshot.revision());
+        assertThat(restored.remediationRecoveryGrants).containsEntry("verification",fixed);
+        assertThat(restored.remediationRecoveryKeys).isEmpty();
+        assertThat(restored.planApprovals).containsKey("plan");
+    }
+
+    private FlowRun blockedVerificationAtLimit() throws Exception {
+        var initial=store.flow(task.id()).orElseThrow();
+        ObjectNode def=mapper.valueToTree(initial.snapshot.definition());
+        ((ObjectNode)def.path("project")).put("requirePlanApproval",true);
+        initial.snapshot=new TeamDefinition.Snapshot(initial.snapshot.revision(),mapper.treeToValue(def,TeamDefinition.class),initial.snapshot.repository(),initial.snapshot.assets());
+        store.saveFlow(task.id(),initial);engine.run(task);
+        var waiting=store.flow(task.id()).orElseThrow();
+        List<Runnable> jobs=new ArrayList<>();
+        engine.resume(task,"核准測試計畫 plan "+Traceability.digest(waiting.receipts.get("plan")),"u",jobs::add);
+        mode="blocked";jobs.getFirst().run();
+        var blocked=store.flow(task.id()).orElseThrow();
+        blocked.visits.put("verification",blocked.snapshot.definition().nodes().get("verification").maxVisits());
+        blocked.recoveryRevisions.add(blocked.snapshot.revision());
+        store.saveFlow(task.id(),blocked);
+        assertThat(blocked.attemptHeads).containsEntry("verification","head1");
+        task=store.find(task.id()).orElseThrow();
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        return blocked;
+    }
+
     @Test void migratedConfigurationNeedsExplicitSingleRecoveryAndFreshPlanApproval() throws Exception {
         var initial=store.flow(task.id()).orElseThrow();
         ObjectNode def=mapper.valueToTree(initial.snapshot.definition());
@@ -84,6 +183,7 @@ class FlowEngineTest {
         verifyNoInteractions(publisher);
     }
     @Test void retryCapDoesNotConsumeAnotherVisitOrHideOriginalFailure() {
+        when(props.briefReports()).thenReturn(true);
         var flow = store.flow(task.id()).orElseThrow();
         int limit = flow.snapshot.definition().nodes().get(flow.node).maxVisits();
         flow.visits.put(flow.node, limit); flow.transitions = 9;
@@ -97,7 +197,110 @@ class FlowEngineTest {
         verifyNoInteractions(executor, publisher);
         verify(slack, times(2)).post(any(), any(), any(), argThat((String text) ->
                 text.contains("不是 token 額度") && text.contains("QA bwrap:")
-                && text.contains("本次未啟動 agent") && !text.contains("具體答案")));
+                && text.contains("本次未啟動 agent") && text.contains("檢視完整報告")
+                && text.length() < 1800 && !text.contains("具體答案")));
+    }
+    @Test void oldBlockedSnapshotCanAutomaticallyReachResponsibleTriageDespiteBothCaps() {
+        var flow = store.flow(task.id()).orElseThrow();
+        flow.node = "triage";
+        flow.lastBlockReason = "verification：SC-04 缺少精確失敗測試";
+        flow.visits.put("triage", flow.snapshot.definition().nodes().get("triage").maxVisits());
+        flow.transitions = flow.snapshot.definition().maxTransitions();
+        store.saveFlow(task.id(), flow);
+
+        engine.run(task);
+
+        var saved = store.flow(task.id()).orElseThrow();
+        assertThat(calls).containsExactly("triage:coordinator");
+        assertThat(saved.automaticHandoffs).isEqualTo(1);
+        assertThat(saved.visits.get("triage")).isEqualTo(4);
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
+    }
+
+    @Test void boundedAutomaticHandoffRoutesRepairAndReverificationWithoutResettingHistory() {
+        mode = "automaticRepair";
+
+        engine.run(task);
+
+        var saved = store.flow(task.id()).orElseThrow();
+        assertThat(calls).containsSubsequence("verification:tester", "triage:coordinator",
+                "implementation:builder", "frontend:frontend", "verification:tester", "review:security_auditor");
+        assertThat(saved.automaticHandoffs).isEqualTo(1);
+        assertThat(saved.automaticHandoffHops).isZero();
+        assertThat(saved.transitions).isGreaterThan(saved.snapshot.definition().maxTransitions());
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        verifyNoInteractions(publisher);
+    }
+
+    @Test void automaticHandoffBudgetStillStopsARealLoop() {
+        var flow = store.flow(task.id()).orElseThrow();
+        flow.node = "triage";
+        flow.lastBlockReason = "同一阻礙仍未解除";
+        flow.automaticHandoff = "evidence";
+        flow.automaticHandoffs = AutomaticHandoff.LIMIT;
+        flow.visits.put("triage", flow.snapshot.definition().nodes().get("triage").maxVisits());
+        store.saveFlow(task.id(), flow);
+
+        engine.run(task);
+
+        assertThat(calls).isEmpty();
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        verify(slack).post(any(), any(), any(), contains("獨立受阻事件：6／6"));
+    }
+    @Test void legacyPerHopKeysAreCollapsedBeforeApplyingIncidentBudget() {
+        var flow = store.flow(task.id()).orElseThrow();
+        String first = "a".repeat(64), second = "b".repeat(64);
+        flow.node = "triage"; flow.lastBlockReason = "新的可修復問題"; flow.automaticHandoff = "fresh";
+        flow.automaticHandoffKeys.addAll(List.of(first + ":verification:7", first + ":triage:5",
+                second + ":verification:8", second + ":triage:6",
+                "incident:" + "c".repeat(64), "incident:" + "d".repeat(64)));
+        flow.automaticHandoffs = 6;
+        flow.visits.put("triage", flow.snapshot.definition().nodes().get("triage").maxVisits());
+        store.saveFlow(task.id(), flow);
+
+        engine.run(task);
+
+        var saved = store.flow(task.id()).orElseThrow();
+        assertThat(calls).containsExactly("triage:coordinator");
+        assertThat(saved.automaticHandoffs).isEqualTo(5);
+        assertThat(saved.automaticHandoffKeys).contains("incident:" + first, "incident:" + second,
+                "incident:" + "c".repeat(64), "incident:" + "d".repeat(64), "incident:fresh");
+        verify(audit).record(eq("42"), eq(AuditLog.ACTOR_SYSTEM), eq(AuditLog.ACTION_RECOVERY),
+                contains("6→4"));
+    }
+    @Test void acceptanceOwnerCanGrantBoundedNonReplayableIncidentExtension() {
+        var flow = store.flow(task.id()).orElseThrow();
+        flow.node = "triage"; flow.lastBlockReason = "第七個獨立問題"; flow.automaticHandoff = "seventh";
+        for (int i = 0; i < AutomaticHandoff.LIMIT; i++) flow.automaticHandoffKeys.add("incident:used-" + i);
+        flow.automaticHandoffs = AutomaticHandoff.LIMIT;
+        flow.visits.put("triage", flow.snapshot.definition().nodes().get("triage").maxVisits());
+        store.saveFlow(task.id(), flow); engine.run(task);
+        String token = AutomaticHandoff.extensionToken(store.flow(task.id()).orElseThrow(), null);
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(task, "核准延長自動交接 " + token, "u", jobs::add);
+
+        var extended = store.flow(task.id()).orElseThrow();
+        assertThat(extended.automaticHandoffExtraBudget).isEqualTo(AutomaticHandoff.EXTENSION_SIZE);
+        assertThat(AutomaticHandoff.effectiveLimit(extended)).isEqualTo(8);
+        assertThat(extended.automaticHandoffExtensionKeys).containsExactly(token);
+        assertThat(jobs).hasSize(1);
+        engine.resume(task, "核准延長自動交接 " + token, "u", jobs::add);
+        assertThat(jobs).hasSize(1);
+    }
+    @Test void sameBlockedIncidentCanTraverseConfiguredNodesButStillHasHopLimit() {
+        var flow = store.flow(task.id()).orElseThrow();
+        flow.node = "triage"; flow.automaticHandoff = "same-incident";
+        flow.automaticHandoffKeys.add("incident:same-incident");
+        flow.automaticHandoffs = 4; flow.automaticHandoffHops = AutomaticHandoff.HOP_LIMIT;
+        flow.visits.put("triage", flow.snapshot.definition().nodes().get("triage").maxVisits());
+        store.saveFlow(task.id(), flow);
+
+        engine.run(task);
+
+        assertThat(calls).isEmpty();
+        assertThat(store.flow(task.id()).orElseThrow().automaticHandoffs).isEqualTo(4);
+        verify(slack).post(any(), any(), any(), contains("本次交接節點：12／12"));
     }
     @Test void totalCapDoesNotIncrementNodeVisit() {
         var flow = store.flow(task.id()).orElseThrow();
@@ -196,6 +399,7 @@ class FlowEngineTest {
     ConfiguredExecutor executor = mock(ConfiguredExecutor.class);
     WorkspaceManager workspace = mock(WorkspaceManager.class);
     SlackNotifier slack = mock(SlackNotifier.class);
+    AuditLog audit = mock(AuditLog.class);
     PullRequestPublisher publisher = mock(PullRequestPublisher.class);
     IndependentVerifier verifier = mock(IndependentVerifier.class);
     FlowEngine engine;
@@ -204,6 +408,8 @@ class FlowEngineTest {
     List<String> resumed = new ArrayList<>();
     String mode = "normal";
     boolean provisioned;
+    boolean workspaceClean;
+    String workspaceHead;
     @BeforeEach void setup(TestInfo info) throws Exception {
         Files.createDirectories(tmp.resolve("repo/.git"));
         var ds = new org.sqlite.SQLiteDataSource(); ds.setUrl("jdbc:sqlite:" + tmp.resolve("db"));
@@ -221,11 +427,14 @@ class FlowEngineTest {
         when(props.allowedUsers()).thenReturn(Set.of("u"));
         when(workspace.exists("42")).thenAnswer(c -> provisioned);
         when(workspace.provision(eq(task), any(), anyString())).thenAnswer(c -> { provisioned = true; return tmp; });
+        workspaceClean = true; workspaceHead = "head1";
         when(workspace.pathFor("42")).thenReturn(tmp.resolve("work"));
-        when(workspace.headSha("42")).thenReturn("head1"); when(workspace.clean("42")).thenReturn(true);
+        when(workspace.headSha("42")).thenAnswer(c -> workspaceHead);
+        when(workspace.clean("42")).thenAnswer(c -> workspaceClean);
         when(workspace.origin("42")).thenReturn("https://github.com/test/example.git");
         when(workspace.currentBranch("42")).thenReturn("feature/task42"); when(workspace.baseBranch("42")).thenReturn("main");
-        when(workspace.auditPaths(eq("42"), anyString())).thenReturn(List.of());
+        when(workspace.auditPaths(eq("42"), anyString())).thenAnswer(c -> workspaceClean ? List.of()
+                : List.of("base-spring-boot-starter/src/test/java/com/example/MailTest.java"));
         when(executor.execute(any(), any(), any())).thenAnswer(c -> {
             FlowRun flow = c.getArgument(1); TeamDefinition.Node node = c.getArgument(2); calls.add(flow.node + ":" + node.role());
             Task executing = c.getArgument(0);
@@ -237,37 +446,62 @@ class FlowEngineTest {
                 throw new QuotaExceeded("usage_limit_reached");
             }
             JsonNode report = report(node.gate());
+            if (node.gate() == TeamDefinition.Gate.TEST_PLAN
+                    && "spring-starters".equals(flow.snapshot.definition().id())) {
+                ((ObjectNode) report.path("scenarios").get(0)).putArray("operation_ids").add("qa-java");
+            }
+            boolean firstAutomaticVerification = mode.equals("automaticRepair")
+                    && flow.node.equals("verification")
+                    && calls.stream().filter(s -> s.startsWith("verification:")).count() == 1;
+            boolean firstDirtyVerification = mode.equals("dirtyVerification")
+                    && flow.node.equals("verification")
+                    && calls.stream().filter(s -> s.startsWith("verification:")).count() == 1;
+            if (firstDirtyVerification) workspaceClean = false;
+            if (mode.equals("dirtyVerification") && flow.node.equals("implementation") && !workspaceClean) {
+                workspaceClean = true; workspaceHead = "head2";
+            }
+            if (firstAutomaticVerification) {
+                flow.transitions = flow.snapshot.definition().maxTransitions();
+                for (String id : List.of("triage", "implementation", "verification", "review"))
+                    flow.visits.put(id, flow.snapshot.definition().nodes().get(id).maxVisits());
+            }
             if (node.gate() == TeamDefinition.Gate.TEST_PLAN || node.gate() == TeamDefinition.Gate.VERIFICATION)
                 ((ObjectNode) report).put("baseline_revision", flow.baselineRevision);
             if (node.gate() == TeamDefinition.Gate.VERIFICATION)
                 ((ObjectNode) report).put("plan_revision", Traceability.digest(flow.receipts.get(node.plan())));
             if (flow.node.equals("design")) ((ObjectNode)report).put("route", "ready");
-            if (flow.node.equals("triage")) ((ObjectNode)report).put("route", mode.equals("repair") ? "verification" : mode.equals("change") ? "requirements" : mode.equals("replan") ? "plan" : "human");
-            if (mode.equals("blocked") && flow.node.equals("verification")) ((ObjectNode)report).withArray("uncertainties").add("SMTP 無法核實");
+            if (flow.node.equals("triage")) ((ObjectNode)report).put("route", mode.equals("repair") ? "verification"
+                    : mode.equals("dirtyVerification") ? "verification"
+                    : mode.equals("automaticRepair") ? "implementation" : mode.equals("change") ? "requirements"
+                    : mode.equals("replan") ? "plan" : "human");
+            if ((mode.equals("blocked") && flow.node.equals("verification")) || firstAutomaticVerification || firstDirtyVerification)
+                ((ObjectNode)report).withArray("uncertainties").add("SMTP 無法核實");
             return new AgentRuntime.RuntimeResult("session", "", report, 0.1, false, tmp.resolve("log"), "model", null);
         });
         when(verifier.verify(any(), any())).thenAnswer(c -> {
             FlowRun f = c.getArgument(1);
-            return new IndependentVerifier.Receipt("head1", f.baselineRevision, f.snapshot.revision(), "start", "end", List.of());
+            return new IndependentVerifier.Receipt(workspaceHead, f.baselineRevision, f.snapshot.revision(), "start", "end", List.of());
         });
-        engine = new FlowEngine(catalog, props, store, executor, workspace, slack, mock(AuditLog.class), publisher, verifier);
+        engine = new FlowEngine(catalog, props, store, executor, workspace, slack, audit, publisher, verifier);
         engine.prepare(task); store.save(task);
     }
     JsonNode report(TeamDefinition.Gate gate) throws Exception {
         String fields = switch (gate) {
             case REPORT -> "\"summary\":\"已確認\",\"route\":\"implementation\"";
-            case REQUIREMENTS -> "\"summary\":\"郵件需求\",\"route\":\"implementation\",\"requirements\":[{\"id\":\"R1\",\"kind\":\"FUNCTIONAL\",\"description\":\"寄送郵件\",\"acceptance\":\"正確送達\",\"source\":\"使用者需求\"}],\"out_of_scope\":[],\"open_questions\":[]";
+            case REQUIREMENTS -> "\"summary\":\"郵件需求\",\"route\":\"implementation\",\"requirements\":[{\"id\":\"R1\",\"kind\":\"FUNCTIONAL\",\"description\":\"寄送郵件\",\"acceptance\":\"正確送達\",\"acceptance_items\":[{\"id\":\"R1-A1\",\"criterion\":\"正確送達\",\"dimension\":\"郵件/成功\"}],\"source\":\"使用者需求\"}],\"out_of_scope\":[],\"open_questions\":[]";
             case IMPLEMENTATION -> "\"status\":\"SUCCESS\",\"summary\":\"實作完成\",\"quality_gate\":{\"verify_passed\":true},\"boundary_conflict\":null";
-            case TEST_PLAN -> "\"status\":\"READY\",\"scenarios\":[{\"id\":\"s1\",\"requirement_ids\":[\"R1\"],\"criterion\":\"c\",\"preconditions\":\"p\",\"test_data\":\"d\",\"method\":\"m\",\"steps\":\"s\",\"expected_result\":\"r\",\"environment\":\"e\"}]";
+            case TEST_PLAN -> "\"status\":\"READY\",\"scenarios\":[{\"id\":\"s1\",\"requirement_ids\":[\"R1\"],\"acceptance_ids\":[\"R1-A1\"],\"operation_ids\":[\"test\"],\"counterexample\":\"只檢查返回值會漏掉未送達；測試檢查收件\",\"criterion\":\"c\",\"preconditions\":\"p\",\"test_data\":\"d\",\"method\":\"m\",\"steps\":\"s\",\"expected_result\":\"r\",\"environment\":\"e\"}]";
             case VERIFICATION -> "\"verdict\":\"PASS\",\"verify_passed\":true,\"scenario_results\":[{\"scenario_id\":\"s1\",\"status\":\"PASS\",\"actual_result\":\"ok\",\"evidence\":\"log\",\"command\":\"npm test\"}],\"findings\":[],\"uncertainties\":[]";
             case REVIEW -> "\"verification_status\":\"VERIFIED\",\"confidence\":\"HIGH\",\"verdict\":\"APPROVE\",\"blockers\":[],\"checked\":[\"diff\"],\"findings\":[]";
         };
         return mapper.readTree("{\"execution_status\":\"COMPLETED\",\"failure_report\":null," + fields + "}");
     }
-    @Test void arbitraryFrontendAndReviewerExecuteFromConfiguration() {
+    @Test void arbitraryFrontendAndReviewerExecuteFromConfiguration() throws Exception {
         engine.run(task);
         assertThat(calls).containsExactly("intake:coordinator", "plan:tester", "implementation:builder", "frontend:frontend", "verification:tester", "review:security_auditor");
         assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL); verifyNoInteractions(publisher);
+        verify(verifier, times(1)).verify(any(), any());
+        assertThat(store.flow(task.id()).orElseThrow().independentEvidence).isNotNull();
     }
     @Test void springConfigurationUsesSameEngineWithDifferentRolesAndNodes() {
         engine.run(task);
@@ -278,6 +512,19 @@ class FlowEngineTest {
         mode = "blocked"; engine.run(task);
         assertThat(calls).contains("triage:coordinator").doesNotContain("review:security_auditor");
         assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN); verifyNoInteractions(publisher);
+    }
+    @Test void springDirtyLimitedVerificationRoutesToConfiguredGitWriterAndReturnsToQa() throws Exception {
+        mode = "dirtyVerification";
+
+        engine.run(task);
+
+        assertThat(calls).containsSubsequence("verification:tester", "triage:coordinator",
+                "implementation:builder", "verification:tester", "review:inspector");
+        assertThat(workspaceClean).isTrue();
+        assertThat(workspaceHead).isEqualTo("head2");
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        verify(audit).record(eq("42"), eq(AuditLog.ACTOR_SYSTEM), eq(AuditLog.ACTION_RECOVERY),
+                contains("具 Git 寫入能力"));
     }
     @Test void humanFeedbackResumesConfiguredRepairNotWholePipeline() {
         mode = "blocked"; engine.run(task); calls.clear(); mode = "repair";
