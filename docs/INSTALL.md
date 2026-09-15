@@ -4,7 +4,7 @@
 [配置式團隊指南](configurable-team.md) 設定 `AI_TEAM_DEFINITION`，先靜態驗證再啟動。
 留空仍使用以下 legacy 五角色配置；新模式不需要沿用固定角色清單。
 
-更新：2026-09-10。**目前尚未通過乾淨 VM 重建驗收**；進度、缺口與證據見 [rebuild-verification.md](rebuild-verification.md)。
+更新：2026-09-13。**目前尚未通過乾淨 VM 重建驗收**；進度、缺口與證據見 [rebuild-verification.md](rebuild-verification.md)。
 不是一鍵安裝：安裝媒體、官方工具鏈 checksum、系統套件與本人登入仍需先備妥。
 不得把舊 VM clone、暖快取建置或 mock 測試冒充從零驗證。
 
@@ -36,18 +36,41 @@ ssh -o BatchMode=yes -p 2223 vboxuser@127.0.0.1 'id; uname -m'
 原始碼從本機打包（不帶 env.sh、DB、target 或 CLI 登入資料）：
 
 ```powershell
-tar -cf ai-team-source.tar AGENTS.md CLAUDE.md .ai deploy docs orchestrator/pom.xml orchestrator/src orchestrator/prompts orchestrator/schemas
+tar -cf ai-team-source.tar AGENTS.md CLAUDE.md README.md .ai deploy docs orchestrator/pom.xml orchestrator/src orchestrator/prompts orchestrator/schemas orchestrator/teams
+$sourceSha = (Get-FileHash .\ai-team-source.tar -Algorithm SHA256).Hash.ToLower()
+$sourceSha
 scp -P 2223 ai-team-source.tar vboxuser@127.0.0.1:/home/vboxuser/
 ```
 
-新 VM 內解壓到新建的 `~/ai-team-source`，保留 tar 的 SHA256 作為演練來源證據。
+新 VM 先計算 `sha256sum ~/ai-team-source.tar`，人工比對上一步 `$sourceSha`；一致後才解壓：
+
+```bash
+mkdir ~/ai-team-source
+tar -xf ~/ai-team-source.tar -C ~/ai-team-source
+bash ~/ai-team-source/deploy/bootstrap/check-source.sh
+```
+
+保留兩端 SHA256 與 check-source 輸出作為演練證據。打包清單的 `orchestrator/teams`
+不可省略；`check-source.sh` 與 `install-app.sh` 都會使用它。
 
 ## 2. 工具鏈（使用者層級）
 
-`deploy/bootstrap/provision.sh` 需要先核實的固定版本 HTTPS URL 與 SHA256；格式見
-`deploy/bootstrap/toolchain.tsv.example`。**範例刻意不能直接執行，尚未封存正式工具鏈 lock。**
-從供應者的官方 release/checksum 核實後填入三列 node／java／maven，避免 latest 漂移。
-歷史相容基準：Node 22.21.1、Temurin JDK 21、Maven 3.9.16；不表示目前仍可從 CDN 下載。
+`deploy/bootstrap/provision.sh` 需要固定版本的 HTTPS URL 與 SHA256；格式見
+`deploy/bootstrap/toolchain.tsv.example`。Linux x86_64 的現行驗證基準如下，請以空白分隔
+存成 `~/toolchain.tsv`，不要改成 latest：
+
+```text
+node https://nodejs.org/dist/v22.21.1/node-v22.21.1-linux-x64.tar.xz 680d3f30b24a7ff24b98db5e96f294c0070f8f9078df658da1bce1b9c9873c88
+java https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_x64_linux_hotspot_21.0.12.1_1.tar.gz ce79869e1307ed8ee1e2baa86a412b1eb5b75d10a01006d788a6f968bcfaee94
+maven https://archive.apache.org/dist/maven/maven-3/3.9.16/binaries/apache-maven-3.9.16-bin.tar.gz 80ffca22aed9e8b9713a232f3394fd81d7f20322df75efdb2b047dbd3e3a23bb
+```
+
+來源證據：[Node.js SHASUMS256](https://nodejs.org/dist/v22.21.1/SHASUMS256.txt)、
+[Temurin SHA256](https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_x64_linux_hotspot_21.0.12.1_1.tar.gz.sha256.txt)、
+[Maven SHA512](https://archive.apache.org/dist/maven/maven-3/3.9.16/binaries/apache-maven-3.9.16-bin.tar.gz.sha512)。
+Maven 的上述 SHA256 是先以官方 SHA512
+`831a8591fe20c8243b1dbe7d71e3244f31d1665b0804b2e825e38cbbe5ce0cafb8338851f90780735568773e0a6cd07bbec107cda0b896b008b861075358b6f6`
+驗證同一封存檔後計算所得。換版時必須重新從官方 checksum 核實，不能沿用本段數值。
 
 ```bash
 bash ~/ai-team-source/deploy/bootstrap/provision.sh ~/toolchain.tsv
@@ -75,7 +98,7 @@ codex --version
 Codex headless 可用 `codex login --device-auth`，需帳號／workspace 允許；不支援時可採官方 SSH callback 轉發。
 以 `codex login status` 檢查登入；不要輸出 auth.json。見 [官方認證文件](https://learn.chatgpt.com/docs/auth)。
 
-Codex 有三個實測過的前置條件會讓 QA 整段跑不起來，換 CLI 版本時要重新確認
+Codex 有四個實測過的前置條件會讓 QA 整段跑不起來，換 CLI 版本時要重新確認
 （細節與證據見 [codex-nested-sandbox.md](codex-nested-sandbox.md)、
 [local-test-capabilities.md](local-test-capabilities.md)、
 [codex-cli-argument-contract.md](codex-cli-argument-contract.md)）：
@@ -87,6 +110,10 @@ Codex 有三個實測過的前置條件會讓 QA 整段跑不起來，換 CLI �
   `codex sandbox` 的必填參數，`codex exec` 完全不接受（結束碼 2）；exec 端要用
   `-c default_permissions="<profile>"`。程式已分成兩套參數並有零模型呼叫的契約測試，
   升級 CLI 後請跑 `AI_TEAM_CODEX_SANDBOX_SMOKE=true` 的那組測試再上線。
+- **`codex exec resume` 選項位置**：permission profile、sandbox、schema、model 與
+  reasoning 必須位於 `resume` 之後、session id 之前。舊寫法雖能啟動，卻會靜默退回
+  `:read-only`，使 Maven 無法寫入 `/tmp` 與 `target`。fresh／resume 都必須跑契約測試；
+  詳見 [Codex CLI 參數契約](codex-cli-argument-contract.md#2026-09-13resume-選項必須放在子指令)。
 - **本機測試網路只支援 Codex**：`localTestNetwork` 節點必須是 codex runtime、
   LIMITED 範圍、VERIFICATION 閘門且宣告 node 工具，否則配置載入就會被拒絕。
   把 QA 角色改成 claude-code 或 opencode 時必須一併關閉此能力，代價是需要本機 socket 的
@@ -119,8 +146,8 @@ opencode providers        # 別名 auth；本人操作，不要輸出 auth.json
   prompt 一律放在 `--` 之後並另做用法錯誤判定；但升級 CLI 後旗標若有變動，
   失敗樣態會是「一份說明文字」而不是明確錯誤，請以 `opencode run --help` 重新核對契約。
 
-**目前的驗證狀態**：旗標與事件流已在 opencode 1.18.19 實測，但**沙箱包裝下的端對端執行
-與 Linux 上的狀態目錄位置尚未實機驗證**。在自己跑過之前，不要把某個正式角色切成 opencode。
+**目前的驗證狀態**：旗標、事件流及 Linux 狀態目錄位置已在 opencode 1.18.19 實測；
+**沙箱包裝下的端對端執行仍未驗證**。在完成前，不要把正式角色切成 opencode。
 
 ## 4. 沙箱前置條件
 
@@ -155,6 +182,8 @@ repo 不可 shallow；基準分支在 env.sh 指定 develop。演練記錄基準
 演練應使用獨立主 App 與測試頻道，避免與正式服務競爭 Socket Mode 事件。
 
 編輯 `~/ai-team/env.sh`（600），填 app token、主 bot、五角色 token、白名單、測試頻道。
+目前 `preflight.sh` 將 `AI_TEAM_CHANNEL_ID` 視為必填；即使 runtime 本身支援不限頻道，
+安裝流程仍不可留空，請填獨立測試頻道 ID。
 確認 AI_TEAM_HOME／REPO／LOGS／WORKSPACES、CLI 路徑與模型設定；修改後必須重啟才生效。
 
 另有一個**選填**的 `~/ai-team/team.env`（同樣 600）：`start.sh` 與 `preflight.sh` 會在
@@ -166,7 +195,9 @@ repo 不可 shallow；基準分支在 env.sh 指定 develop。演練記錄基準
 只顯示判定／摘要／阻礙／建議後續，其餘欄位以「另有 N 個欄位未顯示」帶過。
 **完整報告沒有被丟掉**，仍保存在 `stage_result`，隨時可用
 `補充 #<ID> 檢視完整報告 [節點]` 取出（只讀資料，不呼叫模型、不推進流程）。
-受阻原因不受此設定影響，一律完整顯示。設成 `full` 可回到舊行為。
+受阻回覆也預設顯示簡要原因與下一步，不直接鋪陳逐情境證據。
+直接向角色提問同樣預設簡要回覆；如需細節，在同一討論串追問該角色即可。
+設成 `full` 可將流程節點回報切回完整模式，但不改變直接角色對話的簡要預設。
 
 `AI_TEAM_PROGRESS_INTERVAL_SECONDS` 控制 Slack 階段進度卡的更新間隔，
 預設 300 秒、最小 30 秒。那張卡只說明角色／節點與耗時，
@@ -224,6 +255,23 @@ Reviewer 預設 codex、AI_TEAM_CODE_REVIEW=on。不要關掉審查來取得綠�
 | 3. 授權一次驗收（若次數已用盡） | `補充 #<ID> 核准恢復驗收 <驗收節點> <配置版本>` |
 | 4. 重新核准計畫 | `補充 #<ID> 核准測試計畫 <計畫節點> <plan_revision>` |
 
+若配置恢復已經用過，之後由管理者在原工作區人工修好並建立新 commit，可由原驗收負責人
+授權該 commit 一次重驗：
+
+`補充 #<ID> 核准人工修復重驗 <驗收節點> <完整 commit SHA>`
+
+系統會核對工作區存在且乾淨、SHA 等於目前 HEAD、與前次驗收 commit 不同、前置契約仍有效，
+並要求重新核准測試計畫。授權不會清空節點或流程歷史計數；同一配置、節點與 commit 不可重用。
+
+若停止原因是獨立受阻事件額度已用完，系統會在最新停止訊息提供綁定目前配置、受阻證據與
+HEAD 的授權碼。原驗收負責人確認仍是既定範圍內可修復問題後，可輸入：
+
+`補充 #<ID> 核准延長自動交接 <授權碼>`
+
+每次只增加 2 個事件，最多額外 6 個；相同授權碼不能重放，不會清空 `visits`、`transitions`
+或既有事件，也不會略過需求、測試計畫或 PR 核准。舊快照的逐節點交接 key 會先依相同證據
+合併為獨立事件；無法辨識的舊格式維持原本較高計數。
+
 三件事先講清楚，免得驗收時誤判成故障：
 
 - 遷移**只接受執行能力設定**（`requiredTools`／`cachePaths`／建置與測試說明／`operations`／
@@ -233,6 +281,8 @@ Reviewer 預設 codex、AI_TEAM_CODE_REVIEW=on。不要關掉審查來取得綠�
 - 「核准恢復驗收」對**同一個配置版本只能用一次**，而且不重設歷史次數。
   節點重跑上限是 3、流程總轉換上限 24，達上限時系統會停下並附上一次的原始阻礙，
   再送續跑也不會解除——要先修好真正的阻礙。
+- 「核准人工修復重驗」只解除節點次數上限一次，不解除流程總上限，也不接受未提交修改、
+  舊 commit 或已使用過的 commit。CLI 若在呼叫模型前拒絕參數，系統才會原樣還原該次授權。
 
 PR 發布是**另一道獨立核准**，任何計畫核准都不代表核准發布。
 

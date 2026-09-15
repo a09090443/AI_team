@@ -217,8 +217,14 @@ v2 配置式流程的整份執行快照，對應 `com.zipe.aiteam.flow.FlowRun`�
 | `snapshot` | `TeamDefinition.Snapshot` | 當時的配置：`revision`（雜湊）、`definition`、`repository`、`assets` |
 | `node` | String | 目前所在節點 |
 | `activeNode` | String | 已進入但尚未結束的節點。**非 null 代表現場還在**，續跑可直接恢復，不需重做配置遷移 |
-| `transitions` | int | 累計轉換次數，上限 `definition.maxTransitions()` |
+| `transitions` | int | 一般流程累計轉換次數；受控責任交接可越過 `definition.maxTransitions()`，歷史值不重設 |
 | `visits` | Map&lt;節點,次數&gt; | 各節點造訪次數，上限為節點自己的 `maxVisits()` |
+| `automaticHandoff` | String | 尚待使用的受阻證據鍵；含配置版本、來源／目標節點、HEAD 與報告摘要 |
+| `automaticHandoffs` | int | 已處理的獨立受阻事件數；基本上限 6；可辨識的舊制逐節點 key 會按證據合併重算 |
+| `automaticHandoffExtraBudget` | int | 真人針對目前現場增加的事件額度；每次 2、最多額外 6，不重設既有計數；配置遷移時歸零 |
+| `automaticHandoffHops` | int | 同一受阻事件已經過的節點數；固定上限 12，避免同一事件在節點間循環 |
+| `automaticHandoffKeys` | Set&lt;String&gt; | 已使用的事件證據鍵，防止同一受阻事件重複消耗事件額度 |
+| `automaticHandoffExtensionKeys` | Set&lt;String&gt; | 已使用的人工延長授權碼；綁定配置、受阻證據與 HEAD，永久保留以防重放 |
 | `workspaceReady` / `workspacePath` | boolean / String | 工作區是否已備妥、路徑 |
 | `context` | String | 累積脈絡，預設空字串 |
 | `lastBlockReason` | String | 上一次受阻原因，回報時附在訊息裡（截斷 4500 字元） |
@@ -237,6 +243,9 @@ v2 配置式流程的整份執行快照，對應 `com.zipe.aiteam.flow.FlowRun`�
 | `independentEvidence` | `IndependentVerifier.Receipt` | 獨立驗證收據：`head`、`baseline`、`configuration`、`startedAt`、`completedAt`、`commands[]`（每項含 `argv`、`exitCode`、`log`、`sha256`） |
 | `recoveryGrants` | Map&lt;節點,配置版本&gt; | 一次性的 verification 恢復授權 |
 | `recoveryRevisions` | Set&lt;配置版本&gt; | 已用掉恢復授權的配置版本，同一版本不給第二次 |
+| `remediationRecoveryGrants` | Map&lt;節點,commit&gt; | 人工修復後尚待使用的一次性 verification 授權；同時以 `recoveryGrants` 綁定配置版本 |
+| `remediationRecoveryKeys` | Set&lt;配置版本:節點:commit&gt; | 已授權／使用的人工修復重驗 key，防止同一 commit 重放；CLI 未呼叫模型時才移除並還原授權 |
+| `attemptHeads` | Map&lt;節點,commit&gt; | 各 workspace 節點最近一次真正開始執行時的 HEAD；人工修復重驗必須使用不同的新 commit |
 | `migrationHistory` | List&lt;Snapshot&gt; | 歷次配置遷移前的完整舊快照 |
 | `dialogue` / `dialogueRole` / `parentId` | boolean / String / String | 對話模式旗標與目標角色、母任務 |
 | `prUrl` / `publishedHead` | String | 發布結果 |
@@ -285,6 +294,11 @@ QA 受阻後的 PM 派工狀態，對應 `com.zipe.aiteam.task.Remediation`。
 「這個角色到底跑過幾次、每次交出什麼」。沒有索引，也沒有清理機制。
 
 ### stage_result
+
+`result` 保存節點建立當下 schema 的完整結構化報告。新建 v2 任務的需求報告含
+`requirements[].acceptance_items[]`（`id`、`criterion`、`dimension`）；測試計畫情境含
+`acceptance_ids[]` 與 `counterexample`。舊任務的配置快照仍依舊 schema 解析，資料庫不回填
+這些欄位；若要採用新版規畫契約，必須建立新任務或走正式配置遷移，不能直接改歷史 JSON。
 
 | 欄位 | 型別 | 說明 |
 |---|---|---|

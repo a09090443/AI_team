@@ -33,7 +33,8 @@ check-source／test-bootstrap：結構漂移與 fixture 安全性測試，不是
 ## 尚待完成的驗收
 
 1. 確認 Linux 發行版／版本、ISO 路徑、來源與 checksum，建立獨立 VM；不限定 Ubuntu。
-2. 封存供應者核實的工具鏈 manifest；目前只有格式範例，不能直接一鍵安裝。
+2. INSTALL 已記錄供應者核實的 Linux x86_64 工具鏈 URL／checksum；尚待在新 VM
+   另存 `toolchain.tsv` 並完成冷下載驗證。
 3. 新 OS 基礎套件／user namespace／user manager 前置條件實測。
 4. 從官方來源下載、空 Maven/npm 快取建置；記錄完整版本與相依資料。
 5. 使用者完成 Claude／Codex 登入，建立獨立測試 Slack App／頻道。
@@ -47,8 +48,22 @@ check-source／test-bootstrap：結構漂移與 fixture 安全性測試，不是
 - 第 6 項的「Reviewer bwrap/.agents」已於 2026-09-09 修正並部署：派工前自動建立
   `.agents`／`.codex` 掛載點，含兩項實機雙層沙箱測試。其餘六項仍未完成。
 - 應用測試已由 68 項成長為 237 項（10 項 opt-in 實機測試預設略過）。
+  2026-09-13 新增 resume 與簡要回覆回歸後為 263 項，仍有 10 項 opt-in。
   數字請以當次建置 log 為準。
 - 上述都是既有 VM 上的結果，**仍不是乾淨 VM 重建驗收**；本文狀態不變。
+
+### 2026-09-13 文件一致性修正
+
+- INSTALL 的來源打包清單原本漏掉 `orchestrator/teams/`，但 check-source 與 install-app
+  都要求該目錄；已補入，並補上控制端／新 VM 的 SHA256 比對、解壓與來源檢查指令。
+- INSTALL 已寫入 Node 22.21.1、Temurin 21.0.12.1+1、Maven 3.9.16 的固定 URL 與
+  checksum 來源，避免讀者只能從不可執行的範例自行猜值。這仍須由新 VM 冷下載驗收。
+- env 範本原稱 `AI_TEAM_CHANNEL_ID` 可留空，但 preflight 實際必填；文件與範本現統一為
+  安裝時必須填專用測試頻道，未改 runtime 行為。
+- INSTALL 已補上 Codex resume 選項位置與 `:read-only` 事故的防復發檢查，並更新
+  opencode 的 Linux 狀態目錄為已驗證、沙箱端對端仍未驗證。
+- `test-bootstrap.sh` 在現有 VM 的 SQLite 會因雙引號字串中斷；這是待修的腳本問題，
+  本輪只修文件，不把它寫成已通過。
 
 ## 本次執行結果
 
@@ -69,3 +84,14 @@ check-source／test-bootstrap：結構漂移與 fixture 安全性測試，不是
 
 本機 Git Bash 已通過 16 項平台 fixture 斷言、bootstrap Bash 語法與來源結構檢查；
 以實際 Windows 環境執行 check-linux tools 時正確拒絕。這些結果不代表任何新 Linux VM 已通過。
+
+### 2026-09-15 自動交接計數修正驗證
+
+- 既有 VM 的全新隔離目錄 `handoff-budget-build.q3hFuo` 完整 Maven package：289 項，
+  0 失敗、10 項 opt-in 略過，BUILD SUCCESS。
+- AutomaticHandoff／FlowEngine 針對測試 37 項全數通過；涵蓋舊制逐跳 key 合併、未知格式
+  fail closed、額度延長綁定與防重放。
+- `check-source.sh` 通過。這是程式與既有 VM 隔離建置驗證，仍不等於乾淨 VM 重建驗收。
+- 正式部署 JAR SHA256 `310e578c…71dd`，PID 3420；沙箱／工具鏈自檢及五角色 Socket Mode
+  啟動通過，部署前後主要 DB 表與 #1014 工作區雜湊一致，備份為
+  `handoff-budget-backup.BmGdTK`。未自動續跑任務。

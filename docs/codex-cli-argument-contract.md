@@ -54,6 +54,27 @@ Error loading config.toml: unknown configuration field `active_permission_profil
 理由：我們自己的參數缺陷不該吃掉真人核准，逼使用者重走整套核准流程。
 額度（`QuotaExceeded`）仍走原本的等待與自動續跑路徑，兩者不共用。
 
+## 2026-09-13：resume 選項必須放在子指令
+
+#1014 再次續跑時，無模型的 `codex sandbox` 預檢通過，但實際
+`codex exec resume` 的 `turn_context` 顯示 `active_permission_profile=:read-only`，
+隨後 Maven 無法寫入 `base-spring-boot-starter/target`，`/tmp` 也是唯讀。
+
+對比同一個 session 的證據：首次非 resume 回合正確使用
+`ai_team_local_tests`；之後每次 resume 都退回 `:read-only`。根因是舊指令將
+權限 `-c` 選項放在父層 `codex exec` 與 `resume` 之間；CLI 接受語法，
+但 resume 子指令沒有套用這些設定。
+
+修正後：
+
+- resume 指令改成 `codex exec resume <子指令選項> <session-id> <prompt>`。
+- 本機測試 profile 的定義與 `default_permissions` 都放在 `resume` 後。
+- 一般 workspace-write 續跑使用 resume 可接受的
+  `-c sandbox_mode="workspace-write"`，不再使用只屬於父層 exec 的 `-s`。
+- 所有選項放在 session id 前，避免位置曖昧。
+- 實機 CLI 回歸以不存在的 session id 驗證設定可被 resume 解析，
+  在本機查找就停止，不呼叫模型。
+
 ## 驗證
 
 隔離目錄 `usage-fix-build.Sa7L5Y`，未動線上 `target/`：
@@ -65,3 +86,22 @@ Error loading config.toml: unknown configuration field `active_permission_profil
 - 候選 jar SHA256 `9d54bb4b18c4efacb7ac0e7dcce63191d97ff1963a9c3bf33a5037cceb52a3d7`
 
 尚未部署，也尚未有任何真實 QA 端到端通過的證據。
+
+## 2026-09-14：Structured Outputs schema 相容性
+
+#1014 恢復到測試計畫節點後，Codex API 在建立 thread 前以
+`invalid_json_schema` 拒絕舊快照的 `uniqueItems`。這不是 agent 回報失敗，
+也不是使用者未完成恢復；Codex Structured Outputs 只支援 JSON Schema 子集合。
+
+修正方式：
+
+- 團隊快照仍保留原始 schema；`CodexRuntime` 只在送出的副本遞迴移除
+  `uniqueItems`，因此舊任務不必遷移快照。
+- `Traceability` 原有的 requirement／acceptance ID 唯一性閘門仍會執行，
+  runtime 相容處理不會放寬產品驗收。
+- 明確的 `invalid_json_schema` 且尚未出現 `thread.started`／`turn.started` 時，
+  歸類為 agent 啟動前的請求契約錯誤；流程會還原本輪次數與一次性恢復授權。
+- 新版 `plan.json` 不再產生已知不相容的 `uniqueItems`。
+
+隔離建置：275 項測試、0 失敗、10 項 opt-in 略過；Codex runtime 針對性
+測試 25/25，兩份 team 靜態驗證與 `check-source.sh` 均通過。
