@@ -9,14 +9,14 @@ source_root=${1:?用法：deploy-blocked-finding-continuity-20260915.sh <隔離�
 build="$source_root/orchestrator"
 jar=ai-team-orchestrator-0.1.0.jar
 previous=310e578cb0ca938dab466d169659215af08dd04a30c3744574c0e730f35171dd
-expected=774fc43eb0b7f51eebd5a7052d09908b3834ad4c3d36faa5e4cd1f88d641cd44
+expected=ceb72a5736c32ca065ddae635e05c2342b80f05c601bb4aada3efd966e33ac37
 repo="$root/workspaces/task-1014"
 
 exec 8>"$root/deployment.lock"
 flock -n 8
 
 # 候選版本必須來自隔離目錄的完整建置，且與線上目前版本相符。
-grep -q 'Tests run: 308, Failures: 0, Errors: 0, Skipped: 10' "$build/full-build.log"
+grep -q 'Tests run: 315, Failures: 0, Errors: 0, Skipped: 10' "$build/full-build.log"
 grep -q 'BUILD SUCCESS' "$build/full-build.log"
 test "$(sha256sum "$build/target/$jar" | cut -d' ' -f1)" = "$expected"
 test "$(sha256sum "$root/orchestrator/target/$jar" | cut -d' ' -f1)" = "$previous"

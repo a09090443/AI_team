@@ -56,8 +56,10 @@ public class FlowEngine {
         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
                 (flow.acceptanceOwner == null ? "" : "<@" + flow.acceptanceOwner + "> ")
               + "任務 #" + task.id() + " 已停止，目前沒有 agent 在處理。\n"
-                + Diagnostics.clip(reason, 7000) + (canSupplement
-                    ? "\n請在原討論串 @主機器人或角色「補充 #" + task.id() + " 具體答案」。"
+                + Diagnostics.clip(reason, 7000)
+                + HumanOptions.render(task, flow, canSupplement, props.briefReports())
+                + (canSupplement
+                    ? "\n請在原討論串 @主機器人或角色送出上述其中一項。"
                     : "\n再次補充不會解除上限。請管理者先查核並修復原始阻礙，再評估原任務的受控恢復；既有實作與核准保留，不必直接重做。"));
     }
     private void presentPlan(Task task, FlowRun flow, String plan) {
