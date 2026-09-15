@@ -1,3 +1,45 @@
+2026-09-13 21:00 Codex：Codex resume 權限與簡要回覆修正已部署。
+後續唯讀檢查 #1041：線上 JVM PID 95618 實際開啟
+`/home/vboxuser/ai-team/ai-team.db`，該 DB 最高任務為 #1015；task、flow、checkpoint、
+stage_result、quota、audit 與 orchestrator.log 均無 #1041，因此不是既有任務失敗，
+而是該編號未建立或使用者可能指的是 #1014。未修改任何線上狀態。
+使用者隨後貼出 #1014 防循環回報；再次唯讀確認 task=AWAIT_HUMAN、flow.node=triage、
+activeNode=null、triage visits=5、verification visits=4、transitions=14，且無 agent 程序。
+本次停止是 QA 確認 SC-17／SC-25 未達標後命中 triage 上限，不是 resume、唯讀或額度故障。
+使用者授權修正後，已在 #1014 工作區提交 `0b6a8b8`：Base64Util 不再記錄輸入值，
+SC-17 同時擷取 MailServiceImpl／Base64Util logger，Base64UtilTest 新增敏感輸入回歸，
+根 README 補多組 SMTP 容錯說明。針對測試 9/9、base 模組 91/91、完整 Maven reactor
+均 BUILD SUCCESS；工作區乾淨，未 push、未改 DB、未解除流程上限。下一步需真人受控恢復 verification。
+21:24 使用者澄清只要檢查安裝文件，不要執行完整重建或修改腳本。本輪已停止並清除
+隔離演練目錄，撤回超出範圍的腳本／文件試改。文件審查結論：目前不能宣稱可從新環境
+完整建置；INSTALL 的 source tar 漏 `orchestrator/teams`、channel 可留空與 preflight 必填
+互相矛盾、正式 toolchain lock 尚缺，且 INSTALL 的 opencode Linux 狀態已過期。
+使用者隨後授權修文件：已補 teams、兩端 SHA256／解壓步驟、固定工具鏈 URL/checksum、
+Codex resume 防復發條目，並讓 env 範本與 preflight 統一為 channel 必填及更新 opencode 狀態。
+只改 INSTALL、rebuild-verification 與 env 範本註解；未改 runtime／bootstrap 行為。
+線上 PID 95618，jar SHA256
+`b86c86896cec38f150b91c5d46501943d6cd4e74c46c7958d377ad1cee607f50`，
+build=`resume-fix-clean.QhTyoo`，有效 backup=`resume-brief-backup.JTlbOD`。
+乾淨隔離 Maven package 263 項 0 失敗、10 項 opt-in 略過；opt-in 另跑 10/10
+（CodexSandbox 4、OperationPreflight 3、Linux 3），check-source 通過。
+
+根因是 `codex exec resume` 不會套用放在父層 exec 的沙箱設定；首輪
+`ai_team_local_tests` 正常，之後續跑皆退回 `:read-only`。現改為權限選項
+放在 resume 子指令之後、session id 之前；一般續跑改用
+`-c sandbox_mode="workspace-write"`。受阻與防循環訊息也改為簡要顯示，
+直接角色對話預設最多顯示 1200 字，細節由使用者追問；完整報告仍保留。
+
+#1014 仍 `AWAIT_HUMAN`，updated_at 未變，工作區存在且乾淨，未自動續跑。
+使用者於 21:04 明確授權後，已先備份 DB 至
+`/home/vboxuser/ai-team/resume-state-backup.Oh16IP`（integrity_check=ok），再只將
+flow.node/activeNode 從 triage/null 恢復為 verification/verification。
+遮蔽這兩欄後的 flow 雜湊前後一致；visits.verification=4、visits.triage=5、
+transitions=14 均未變，並寫入 RECOVERY audit。現在可由使用者按原本的「繼續任務」一次。
+使用者於 21:05 按下後，任務已進入 STAGE_RUNNING／verification；Codex resume
+成功啟動 Maven `base-spring-boot-starter verify`，確認不再退回唯讀權限，目前仍執行中。
+首次部署嘗試在替換檔案前因線上 prompt 實際位於 `~/ai-team/prompts/`
+而停止；已先恢復舊服務健康，修正腳本後才成功部署。本次未 push、未續跑任務。
+
 2026-09-10 15:0x Claude Code：**線上目前是 PID 81388，jar SHA256
 `a4257e9b0462ea444dd01d9c90ba9515631e54bfa8eb9ff51c7f0f21ade14c63`**（階段回報摘要化）。
 build=`brief-build.RN3Z3S`（261 項 0 失敗、10 項 opt-in 略過），backup=`brief-backup.3LAMuX`。
@@ -247,3 +289,140 @@ checkpoint 與未提交實作仍保留，額度回報修正尚未實作。下方
 
 由使用者決定：是否要把 `.ai/` 的更新義務也寫進 `orchestrator/prompts/`，
 讓 orchestrator 派出的下游 agent 也維護目標 repo 的 `.ai/`。
+
+## 2026-09-13 #1014 人工修復後續跑狀態
+
+- 任務為 `AWAIT_HUMAN`，flow.node=`triage`，activeNode=null，沒有 agent 執行。
+- 工作區 `/home/vboxuser/ai-team/workspaces/task-1014` 已於 commit `0b6a8b8` 修正
+  SC-17／SC-25，完整 Maven reactor 驗證成功，工作區乾淨，尚未 push。
+- 當前配置 revision `d36d9dbc...` 的一次性 verification 恢復已用掉；triage visits=5。
+  按「繼續任務」仍會撞防循環上限，再送同 revision 的恢復指令也會被拒絕。
+- v2 flow 的 `requestTriage` 直接轉 `FlowEngine.resume`，不會走 legacy PM remediation。
+  若要保留原任務續跑，應先補一個保留歷史、需負責人重新核准測試計畫、且留下 audit 的
+  「人工修復後一次性重驗」正式機制；不要直接改 DB 清掉歷史計數或已用授權。
+
+### 已完成
+
+人工修復重驗正式機制已實作、測試並部署，線上 PID 114379，JAR SHA256
+`d65a4982ea41820a0bfd1b5e353c247d6b8905dd8b572a6a21fb39a966b67f38`。
+#1014 尚未授權或派工。下一步由原驗收負責人在原 Slack 討論串送出：
+`補充 #1014 核准人工修復重驗 verification 0b6a8b8a1b33829830990cfdeeec310b97679855`
+收到新計畫卡後再核准；核准計畫即自動排入 verification，不必再按「繼續任務」。
+
+### 14:22 最新狀態
+
+#1014 已完成上述重驗，verification 與系統獨立 Maven 建置通過，但 review 確認實作／測試
+仍有驗收缺口，現為 AWAIT_HUMAN、node=triage、activeNode=null，沒有 agent 執行。
+需另做新 commit 修正整體逾時，以及補齊附件／HTML、實際發送失敗例外鏈、sender timeout
+屬性與 legacy Spring 設定載入測試；完成後才可使用新 commit 再走人工修復重驗。
+
+### 15:28 #1014 第二次 reviewer 缺口與暫停點
+
+- 原 QA plan 本身即有語意覆蓋缺口：SC-18 只規畫不可達／黑洞連線，未規畫 SMTP 多階段
+  各自未逾時但累積超過 overall-timeout；REQ-003 也未逐一要求五個寄信方法的全失敗驗收。
+- 這應由 triage route=plan 回到規畫節點，而非只在 verification 補證據；現有機械 gate 只能檢查
+  scenario ID／欄位／證據結構，不能保證 acceptance 的語意組合完整。
+- 使用者追問此是否應在專案規畫階段發現，因此目前先停止後續 commit。
+- #1014 工作區目前有未提交變更：MailServiceImpl、MailServiceFailoverTest、
+  MailServiceTimeoutAndLimitsTest。已加入整體 Future 截止、截止時 socket 關閉、多階段延遲 SMTP
+  測試，以及 attached／batch 全失敗測試；針對性 21 項測試通過，但尚未跑本版完整 reactor
+  verify、尚未 commit。應先由使用者決定只完成 #1014，或同時修正 AI Team 規畫流程。
+
+### 14:43 最新狀態
+
+#1014 reviewer 列出的程式與測試缺口已修正，commit 為
+`6c80ca1d0d867e2067127089a97a47c4a48b27b5`，工作區乾淨。相關 18 項測試與完整八模組
+離線 `mvn -B -o verify` 均通過；無公開 API／設定文件變更。任務本身仍為 AWAIT_HUMAN，
+尚未再次授權或執行 agent。下一步由原驗收負責人在 Slack 原討論串送出：
+`補充 #1014 核准人工修復重驗 verification 6c80ca1d0d867e2067127089a97a47c4a48b27b5`
+收到新計畫卡後再核准。
+2026-09-13 23:42 台北時間：已系統性修正「Agent 規畫只覆蓋 requirement ID、漏掉驗收維度」問題並部署。
+新任務的 REQUIREMENTS 會把驗收拆成 `acceptance_items`（唯一 ID／criterion／dimension）；
+TEST_PLAN 必須以 `acceptance_ids` 全覆蓋，且每個情境提供會通過弱測試的 `counterexample`。
+Traceability 會拒絕漏項、跨需求錯接與無反例計畫；intake／plan／verify／review prompt 均同步要求
+量詞展開與測試辨識力。舊任務仍用快照舊契約，不會自動失效或改寫。
+隔離 `check-source.sh` 通過；完整 Maven clean package 272 項、0 失敗、10 項 opt-in 略過；
+兩份 team 靜態驗證通過。線上 JAR SHA256=`06771046ccef8831922d1c42d44b2cad30cad5dc2ab9fe26788ef49ea61c021d`，
+PID=133264，backup=`/home/vboxuser/ai-team/planning-gate-backup.sU4ndM`。部署前後 DB 與 #1014
+未提交工作區雜湊一致，未核准、未排隊、未續跑。新規則只自動套用於部署後新建任務；
+#1014 若要套用，需正式配置遷移／重新規畫或另建任務，不能竄改歷史計畫。
+
+2026-09-14 08:21 台北時間：使用者在 Slack 輸入「請完成並提交 #1014 目前修改」時，
+訊息被當成同討論串的新任務要求，因此只收到防平行任務提示，未觸發 #1014。Codex 已直接
+接手工作區未提交修正，補上 overall-timeout=0、SocketFactory 四種連線入口、呼叫端中斷與
+異常 timeout 屬性的回歸測試。針對性測試 25/25；完整八模組 `mvn -B -o verify` BUILD SUCCESS；
+MailServiceImpl JaCoCo 指令 982/1016（約 96.7%）、分支 46/58（約 79.3%）。已提交
+`5f1b2ef931f15408b132903fd4c67d767147e7d4`，工作區乾淨，未 push、未變更任務狀態。
+下一步由原負責人在 Slack 原討論串送出：
+`補充 #1014 核准人工修復重驗 verification 5f1b2ef931f15408b132903fd4c67d767147e7d4`。
+計畫卡出現後先要求修改，補 SMTP 多階段累積逾時及 attached／batch 全失敗情境；新計畫
+核准後才自動執行 QA。
+
+2026-09-14 21:16 台北時間：#1014 最近兩次 plan 續跑不是使用者操作或額度問題，而是
+Codex API 在 agent 啟動前拒絕舊快照 schema 的 `uniqueItems`。相容修正已部署：PID 146446，
+JAR `a9637b143d0c0e438d70e98a66732577db0c86ca1a3c25299d3fb6e5a38bf334`，備份
+`codex-schema-backup.h8h2sL`。275 項測試 0 失敗，兩份 team 配置驗證通過；DB、核准、報告與
+工作區部署前後不變。#1014 現為 AWAIT_HUMAN、node=plan、activeNode=plan，既有恢復授權與
+人工修復 commit `5f1b2ef...` 保留。使用者現在只需在原討論串再按一次「繼續任務」；
+不需再次核准人工修復，也不要建立新任務。續跑後應恢復同一 plan session，完成新計畫後
+仍需真人審閱／核准才會進 QA。
+
+2026-09-14 最新交接：已在本機完成泛用自動受阻交接與驗收操作事前綁定，主要檔案為
+`AutomaticHandoff.java`、`FlowEngine.java`、`Traceability.java`、兩份 team 配置及
+`docs/adr-automatic-blocker-routing.md`。每任務 6 次證據式交接，依配置路由，不新增權限且
+保留所有真人閘門；舊 blocked 快照可相容重建。新計畫必填 `operation_ids`，系統在 QA 前
+先執行獨立驗證。針對測試 59/59 與配置靜態驗證通過。尚未完成 Linux 完整驗證或部署：
+安全審查要求使用者明確同意後，才能將目前專案原始碼、測試與配置（不含 env／登入憑證）
+複製到本機 VM `127.0.0.1:2222`。取得同意後應先在隔離目錄執行 `check-source.sh` 與完整
+Maven package，全部通過才部署；部署前後保持 DB 與 #1014 狀態不變。現行線上仍是 PID
+146446／JAR `a9637b...`；#1014 最後唯讀確認為 AWAIT_HUMAN／triage、activeNode=null、
+transitions=21，沒有 agent 執行。部署後才請使用者在原串送 `補充 #1014 續跑`。
+
+2026-09-14 22:42 台北時間：上述版本已完成 Linux 驗證並部署。完整 Maven package 281 項
+0 失敗、10 略過；兩份 team 配置通過。線上 PID=156768、JAR `f7902aa8...`，備份
+`automatic-handoff-backup.Np8AQd`；DB 與 #1014 工作區部署前後一致，log 無 ERROR。
+#1014 仍 AWAIT_HUMAN／triage、activeNode=null、transitions=21、automaticHandoffs=0，無 agent。
+使用者下一步只需在原 Slack 討論串送 `補充 #1014 續跑`。系統將以舊 lastBlockReason 重建
+受阻交接並執行 triage；不要建立新任務、不要再次核准人工修復，也不要手動改 DB。
+
+2026-09-14 23:24 台北時間：dirty verification 泛用路由修正已部署。線上 PID=165331、JAR
+`b54bda10...`、備份 `dirty-route-backup.qprexg`；完整 Linux package 283 項 0 失敗、10 略過，
+check-source 與兩份配置通過。#1014 的唯一未提交 MailServiceFailoverTest diff 已確認部署前後一致；
+任務仍 AWAIT_HUMAN／verification、activeNode=verification、transitions=25、automaticHandoffs=4，
+未自動續跑。下一次 `補充 #1014 續跑` 會先核對 dirty diff，再直接路由 implementation builder
+提交，之後共用同一受阻事件額度返回 verification 與 review。禁止手動 commit／改 DB／放寬 QA
+的 `.git`；若 diff 出現產品或保護路徑，新版應停給真人。
+2026-09-15 07:52 Codex：已修正自動交接舊制逐跳計數未遷移問題，尚未部署。
+#1014 現存 6 個 key 實際為 2 個舊證據各跨 verification／triage 加上 2 個新版 incident；
+通用正規化後為 4 個獨立事件。只在 key 全可辨識且舊計數與 key 數一致時降低，否則 fail closed。
+基本上限仍 6；新增綁配置／blocker／HEAD、不可重放的人工延長 token，每次 +2、最多額外 +6，
+不重設 visits／transitions／核准；配置遷移會讓舊配置額外額度失效但保留防重放歷史。
+交接／流程／配置遷移針對測試 40/40、隔離 Linux 完整 package 289 項 0 失敗
+（10 opt-in 略過）、check-source 通過。尚未部署、未改 DB、未續跑任務。隔離建置目錄
+`/home/vboxuser/ai-team/handoff-budget-build.q3hFuo`，候選 JAR SHA256
+`310e578cb0ca938dab466d169659215af08dd04a30c3744574c0e730f35171dd`。
+
+2026-09-15 08:54：上述版本已依使用者明確要求部署。線上 PID=3420，JAR SHA256
+`310e578cb0ca938dab466d169659215af08dd04a30c3744574c0e730f35171dd`，備份
+`/home/vboxuser/ai-team/handoff-budget-backup.BmGdTK`。部署前後主要 DB 表與 #1014 工作區雜湊
+一致；沙箱／工具鏈自檢及五角色 Socket Mode 通過，log 無 ERROR。#1014 保持
+AWAIT_HUMAN／triage、activeNode=null、transitions=29、automaticHandoffs=6，未自動續跑。
+下次原串 `補充 #1014 續跑` 才會惰性正規化為 4 個事件、寫 RECOVERY audit 並依既有 blocker
+路由；不要手動改 DB。若後續真的用完事件額度，停止訊息會提供一次性延長 token。
+
+2026-09-15 Claude Code：受阻發現傳遞連續性修正已完成本機實作與隔離 Linux 驗證，尚未部署。
+主要檔案：新增 `FlowContext.java`、`ToolTrust.java`、`docs/adr-blocked-finding-continuity.md`；
+修改 `FlowRun.java`（新增 `blockedFindings`）、`FlowEngine.java`、`ConfiguredExecutor.java`、
+兩份 team 配置的 coordinator 工具、`teams/prompts/triage.md`、`docs/data-model.md`、
+`docs/configurable-team.md`，以及 `FlowEngineTest`／`ConfiguredExecutorTest` 與兩支新測試。
+隔離目錄 `/home/vboxuser/ai-team/blocked-findings-build.aPdGyd`：check-source exit 0、
+完整 package 308 項 0 失敗（10 opt-in 略過）、兩份 team 靜態驗證通過。候選 JAR SHA256
+`1952e0ce3e4be29e4a8dad3bd7e543bf43b189e9766f226329195f00eb6b9d7a`。
+
+下一步需使用者決定是否部署。部署前提醒兩點：
+1. #1014 使用凍結快照 `d36d9db...`，不會自動取得新的 coordinator 工具；但 `blockedFindings`
+   是執行期欄位，新版可正常運作。#1014 目前的 `blockedFindings` 為空（舊資料沒有這個欄位），
+   review 在 09-14 的 HIGH 發現無法自動回填，需要在續跑前以人工方式重新交給責任節點，
+   或讓 review 重跑一次產生新的受阻發現。單純再送「補充 #1014 續跑」仍會得到相同結果，
+   而且會再消耗一個事件額度（目前 5／6）。
+2. 線上仍為 PID 3420、JAR `310e578c...`；本輪未改線上服務、DB 或 #1014 工作區，全程唯讀查證。
