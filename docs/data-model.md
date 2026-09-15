@@ -226,12 +226,13 @@ v2 配置式流程的整份執行快照，對應 `com.zipe.aiteam.flow.FlowRun`�
 | `automaticHandoffKeys` | Set&lt;String&gt; | 已使用的事件證據鍵，防止同一受阻事件重複消耗事件額度 |
 | `automaticHandoffExtensionKeys` | Set&lt;String&gt; | 已使用的人工延長授權碼；綁定配置、受阻證據與 HEAD，永久保留以防重放 |
 | `workspaceReady` / `workspacePath` | boolean / String | 工作區是否已備妥、路徑 |
-| `context` | String | 累積脈絡，預設空字串 |
+| `context` | String | 滾動交接紀錄，預設空字串。上限 20000 字元，單筆事件上限 6000 字元；**超量時淘汰最舊的段落而不是截斷新內容**，並在開頭標示已淘汰。舊版以留頭截尾的 `clip` 累加，context 一旦飽和就永久凍結，之後的受阻報告與使用者補充都會被靜默丟棄（#1014） |
 | `lastBlockReason` | String | 上一次受阻原因，回報時附在訊息裡（截斷 4500 字元） |
 | `acceptanceOwner` | String | 需求／驗收負責人，來自 `task.requester_user_id`。所有核准都比對這個值 |
 | `baselineRevision` | String | 需求基準摘要。需求節點產出後建立；需求變更會清空並連帶清掉 `receipts`／`heads` |
 | `baselineHistory` | List | 歷次需求基準報告的深拷貝，不覆蓋 |
-| `receipts` | Map&lt;節點,報告&gt; | 各節點的結構化報告 |
+| `receipts` | Map&lt;節點,報告&gt; | 各節點**通過**時的結構化報告；受阻報告不寫進來 |
+| `blockedFindings` | Map&lt;節點,報告&gt; | 尚未解除的受阻發現，以來源節點為鍵。受阻時寫入，該節點自己通過時移除。**不受 `context` 長度上限影響**，必定注入下游節點提示；這是開放缺陷唯一保證送達的來源。需求變更不清除，採 fail closed |
 | `heads` | Map&lt;節點,commit&gt; | 各節點結束時的 HEAD |
 | `origin` / `branch` | String | 工作區的 origin 與分支 |
 | `beforeHead` | String | 限寫階段的起始 commit。**缺這個就拒絕核實寫入範圍**（`SecurityException`） |

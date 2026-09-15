@@ -57,7 +57,12 @@
       "tools": [
         "Read",
         "Grep",
-        "Glob"
+        "Glob",
+        "Bash(git status *)",
+        "Bash(git log *)",
+        "Bash(git show *)",
+        "Bash(git diff *)",
+        "Bash(git rev-parse *)"
       ]
     },
     "architect": {

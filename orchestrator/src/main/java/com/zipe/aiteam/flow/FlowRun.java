@@ -47,6 +47,12 @@ public class FlowRun {
     public List<JsonNode> baselineHistory = new ArrayList<>();
     public Map<String,Integer> visits = new LinkedHashMap<>();
     public Map<String,JsonNode> receipts = new LinkedHashMap<>();
+    /**
+     * 尚未解除的受阻發現，以節點 ID 為鍵（因此筆數受配置節點數限制，不會無限成長）。
+     * 受阻報告不會寫入 receipts，而 context 有長度上限會淘汰舊段落；
+     * 這份紀錄是唯一保證送達下游節點的開放缺陷來源，該節點自己通過後才移除。
+     */
+    public Map<String,JsonNode> blockedFindings = new LinkedHashMap<>();
     public Map<String,String> heads = new LinkedHashMap<>();
     /** 各 workspace 節點最近一次真正開始執行時的 HEAD，供人工修復重驗比對。 */
     public Map<String,String> attemptHeads = new LinkedHashMap<>();

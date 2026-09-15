@@ -252,12 +252,18 @@ public class FlowEngine {
                 audit.record(task.id(), node.role(), AuditLog.ACTION_RUNTIME, "節點=" + flow.node + "；配置=" + flow.snapshot.revision(), result.costEstimate(), result.sessionId());
                 if (result.permissionDenials() != null && !result.permissionDenials().isEmpty()) audit.record(task.id(), node.role(), AuditLog.ACTION_DENIED, Diagnostics.toolFailures(result.permissionDenials()));
                 String block = FlowGates.blockingReason(node, report, flow);
+                if (block == null) {
+                    block = ToolTrust.blockingReason(flow.snapshot.definition().roles().get(node.role()), result.permissionDenials());
+                    if (block != null) audit.record(task.id(), node.role(), AuditLog.ACTION_DENIED,
+                            "節點 " + flow.node + " 回報未受阻但本輪有工具遭拒，系統改判受阻；不採信其查核結論。");
+                }
                 slack.postConfigured(flow.snapshot.definition().roles().get(node.role()), task.slackChannel(), task.slackThreadTs(),
                         "任務 #" + task.id() + "／節點 " + flow.node + "\n" + describe(report)
                       + fullReportHint(task, flow.node));
                 String next;
                 if (block == null) {
                     flow.receipts.put(flow.node, report);
+                    flow.blockedFindings.remove(flow.node);
                     if (node.gate() == Gate.REQUIREMENTS && Traceability.requirementsReason(report) == null) {
                         flow.baselineRevision = Traceability.digest(report);
                         audit.record(task.id(), node.role(), AuditLog.ACTION_STATE, "建立需求基準=" + flow.baselineRevision + "；負責人=" + flow.acceptanceOwner);
@@ -271,7 +277,8 @@ public class FlowEngine {
                 } else {
                     flow.lastBlockReason = Diagnostics.clip("節點 " + flow.node + "：" + block
                             + "\n" + SlackReport.render(report), 4500);
-                    flow.context = Diagnostics.clip(flow.context + "\n節點 " + flow.node + " 受阻：\n" + block + "\n報告：" + report, 20000);
+                    flow.blockedFindings.put(flow.node, report);
+                    flow.context = FlowContext.append(flow.context, "節點 " + flow.node + " 受阻：\n" + block + "\n報告：" + report);
                     next = node.blocked();
                     if (!"human".equals(next)) {
                         String head = flow.workspacePath == null ? "" : workspaces.headSha(task.id());
@@ -363,7 +370,7 @@ public class FlowEngine {
         String reason = "驗收節點產生了限寫範圍內的未提交變更：" + changed
                 + "。請只核對並提交這些既有變更，完成配置建置後交回驗收；不得降低標準。";
         flow.lastBlockReason = reason;
-        flow.context = Diagnostics.clip(flow.context + "\n系統責任路由：" + reason, 20000);
+        flow.context = FlowContext.append(flow.context, "系統責任路由：" + reason);
         flow.independentEvidence = null;
         AutomaticHandoff.begin(flow, flow.node, reason, workspaces.headSha(task.id()));
         flow.activeNode = null;
@@ -561,7 +568,7 @@ public class FlowEngine {
             flow.node = flow.changeTarget; flow.changeTarget = null; flow.changeAuthorized = true; flow.activeNode = null;
             audit.record(task.id(), user, AuditLog.ACTION_STATE, "核准需求變更，原基準=" + flow.baselineRevision + "；內容=" + feedback);
         }
-        flow.context = Diagnostics.clip(flow.context + "\n使用者 " + user + " 補充：" + Objects.toString(feedback, "額度恢復，續跑原階段"), 20000);
+        flow.context = FlowContext.append(flow.context, "使用者 " + user + " 補充：" + Objects.toString(feedback, "額度恢復，續跑原階段"));
         store.saveFlow(task.id(), flow);
         enqueue.accept(() -> run(store.find(task.id()).orElseThrow()));
         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id() + " 已排隊，將使用原配置與節點續跑，不代表已核准 PR。");

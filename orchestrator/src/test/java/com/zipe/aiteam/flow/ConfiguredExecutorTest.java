@@ -47,6 +47,33 @@ class ConfiguredExecutorTest {
         assertThat(captured.get().sandboxPolicy().writablePaths()).doesNotContain(taskRepo, repo);
         assertThat(captured.get().prompt()).contains("不是\u771f人核准紀錄", "獨立副本");
     }
+    @Test void openBlockedFindingsReachTheNextNodeRegardlessOfContextLength() throws Exception {
+        Path taskRepo = tmp.resolve("task-repo"); Files.createDirectories(taskRepo.resolve(".git"));
+        when(workspace.pathFor("42")).thenReturn(taskRepo); when(workspace.exists("42")).thenReturn(true);
+        flow.workspacePath = taskRepo.toString(); flow.node = "triage";
+        flow.context = "填充".repeat(FlowContext.MAX);
+        flow.blockedFindings.put("review", new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree("{\"verdict\":\"REQUEST_CHANGES\",\"findings\":[{\"severity\":\"HIGH\",\"detail\":\"DeadlineSocketFactory 破壞隱式 TLS\"}]}"));
+        AtomicReference<AgentRuntime.RuntimeRequest> captured = new AtomicReference<>();
+        when(runtime.execute(any(), any())).thenAnswer(c -> { captured.set(c.getArgument(0)); return null; });
+
+        executor.execute(new Task("42", "c", "t", "u", "查核"), flow, flow.snapshot.definition().nodes().get("triage"));
+
+        assertThat(captured.get().prompt()).contains("尚未解除的受阻發現")
+                .contains("來源節點 review").contains("DeadlineSocketFactory 破壞隱式 TLS");
+    }
+
+    @Test void reportStageExplainsWhyThereIsNoIndependentReceipt() {
+        var triage = flow.snapshot.definition().nodes().get("triage");
+        assertThat(ConfiguredExecutor.receiptView(flow, triage)).contains("本節點階段不產生系統獨立驗證收據");
+        assertThat(ConfiguredExecutor.receiptView(flow, triage)).doesNotContain("null");
+    }
+
+    @Test void verificationStageSaysReceiptIsStillPending() {
+        var verification = flow.snapshot.definition().nodes().get("verification");
+        assertThat(ConfiguredExecutor.receiptView(flow, verification)).contains("尚未產生");
+    }
+
     @Test void triageBeforeWorkspaceCreationUsesMainRepo() throws Exception {
         assertThat(executor.workingDirectory(new Task("42", "c", "t", "u", "查核"), flow,
                 flow.snapshot.definition().nodes().get("triage"))).isEqualTo(repo);

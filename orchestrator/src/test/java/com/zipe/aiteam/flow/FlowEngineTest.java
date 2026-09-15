@@ -25,8 +25,9 @@ class FlowEngineTest {
         ObjectNode json=mapper.valueToTree(new FlowRun(catalog.snapshot()));
         json.remove(List.of("remediationRecoveryGrants","remediationRecoveryKeys","attemptHeads",
                 "automaticHandoff","automaticHandoffs","automaticHandoffExtraBudget","automaticHandoffHops",
-                "automaticHandoffKeys","automaticHandoffExtensionKeys"));
+                "automaticHandoffKeys","automaticHandoffExtensionKeys","blockedFindings"));
         FlowRun restored=mapper.treeToValue(json,FlowRun.class);
+        assertThat(restored.blockedFindings).isEmpty();
         assertThat(restored.remediationRecoveryGrants).isEmpty();
         assertThat(restored.remediationRecoveryKeys).isEmpty();
         assertThat(restored.attemptHeads).isEmpty();
@@ -98,6 +99,57 @@ class FlowEngineTest {
         assertThat(restored.remediationRecoveryGrants).containsEntry("verification",fixed);
         assertThat(restored.remediationRecoveryKeys).isEmpty();
         assertThat(restored.planApprovals).containsKey("plan");
+    }
+
+    @Test void blockedFindingIsKeptOutsideContextAndSurvivesSaturation() throws Exception {
+        var blocked = blockedVerificationAtLimit();
+
+        // 受阻報告不進 receipts，只有 blockedFindings 保得住。
+        assertThat(blocked.receipts).doesNotContainKey("verification");
+        assertThat(blocked.blockedFindings).containsKey("verification");
+        assertThat(blocked.blockedFindings.get("verification").path("uncertainties").get(0).asText())
+                .isEqualTo("SMTP 無法核實");
+
+        // context 飽和後仍必須送得出最新事件，這是 #1014 卡死的直接原因。
+        blocked.context = "填充".repeat(FlowContext.MAX);
+        store.saveFlow(task.id(), blocked);
+        List<Runnable> jobs = new ArrayList<>();
+        engine.resume(task, "補充說明", "u", jobs::add);
+
+        assertThat(store.flow(task.id()).orElseThrow().context).contains("補充說明");
+    }
+
+    @Test void blockedFindingClearsOnlyWhenThatNodeItselfPasses() throws Exception {
+        var initial = store.flow(task.id()).orElseThrow();
+        initial.blockedFindings.put("intake", mapper.readTree("{\"detail\":\"舊缺陷\"}"));
+        // triage 在這條正常路徑上不會執行，代表尚未有人處理的開放缺陷。
+        initial.blockedFindings.put("triage", mapper.readTree("{\"detail\":\"仍未解除\"}"));
+        store.saveFlow(task.id(), initial);
+
+        engine.run(task);
+
+        var flow = store.flow(task.id()).orElseThrow();
+        assertThat(flow.blockedFindings).doesNotContainKey("intake").containsKey("triage");
+    }
+
+    @Test void deniedToolTurnsAnOtherwiseCleanReportIntoABlock() throws Exception {
+        // #1014：coordinator 沒有 Bash，triage 卻回報查核完成並直接分流。
+        deniedAt = "intake";
+        engine.run(task);
+
+        var flow = store.flow(task.id()).orElseThrow();
+        assertThat(flow.blockedFindings).containsKey("intake");
+        assertThat(flow.receipts).doesNotContainKey("intake");
+        assertThat(flow.lastBlockReason).contains("本輪有工具呼叫遭拒").contains("Bash");
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
+    }
+
+    @Test void deniedToolDoesNotDoubleBlockAnAlreadyBlockedReport() throws Exception {
+        deniedAt = "verification";
+        var blocked = blockedVerificationAtLimit();
+
+        // 原本的阻礙原因要保留，不能被工具遭拒的訊息取代。
+        assertThat(blocked.lastBlockReason).doesNotContain("本輪有工具呼叫遭拒");
     }
 
     private FlowRun blockedVerificationAtLimit() throws Exception {
@@ -407,6 +459,7 @@ class FlowEngineTest {
     List<String> calls = new ArrayList<>();
     List<String> resumed = new ArrayList<>();
     String mode = "normal";
+    String deniedAt;
     boolean provisioned;
     boolean workspaceClean;
     String workspaceHead;
@@ -476,7 +529,10 @@ class FlowEngineTest {
                     : mode.equals("replan") ? "plan" : "human");
             if ((mode.equals("blocked") && flow.node.equals("verification")) || firstAutomaticVerification || firstDirtyVerification)
                 ((ObjectNode)report).withArray("uncertainties").add("SMTP 無法核實");
-            return new AgentRuntime.RuntimeResult("session", "", report, 0.1, false, tmp.resolve("log"), "model", null);
+            JsonNode denials = deniedAt != null && deniedAt.equals(flow.node)
+                    ? mapper.readTree("[{\"tool_name\":\"Bash\",\"tool_use_id\":\"t1\",\"tool_input\":{\"command\":\"git show --stat 814c9b1\"}}]")
+                    : null;
+            return new AgentRuntime.RuntimeResult("session", "", report, 0.1, false, tmp.resolve("log"), "model", denials);
         });
         when(verifier.verify(any(), any())).thenAnswer(c -> {
             FlowRun f = c.getArgument(1);
