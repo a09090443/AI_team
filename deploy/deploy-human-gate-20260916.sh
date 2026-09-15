@@ -24,9 +24,10 @@ test "$(sha256sum "$root/orchestrator/target/$jar" | cut -d' ' -f1)" = "$previou
 # 沒有執行中或排隊的任務才可停服務。
 test -z "$(sqlite3 -readonly "$root/ai-team.db" \
   "select id from task where state like '%RUNNING' or state in ('QUEUED','RESUME_QUEUED','TRIAGE_QUEUED');")"
-test "$(sqlite3 -readonly "$root/ai-team.db" "select state from task where id=1014;")" = AWAIT_HUMAN
-test "$(sqlite3 -readonly "$root/ai-team.db" "select json_extract(data,'$.node') from flow_run where task_id=1014;")" = triage
-test -z "$(sqlite3 -readonly "$root/ai-team.db" "select json_extract(data,'$.activeNode') from flow_run where task_id=1014;")"
+# 也不能有還在跑的 agent —— 狀態欄位是事後才寫的，程序才是現場。
+test -z "$(pgrep -f 'claude|codex|opencode' || true)"
+# 任務停在哪個節點、等人還是等額度，都是會合法變動的值，不當成部署前置斷言；
+# 真正的保證是「沒有東西在跑」加上部署前後的狀態雜湊一致。
 test -z "$(git -C "$repo" status --porcelain=v1)"
 
 AI_TEAM_REPO="$repo" java -jar "$build/target/$jar" --validate-team "$build/teams/spring-starters.json"
@@ -61,6 +62,7 @@ workspace_snapshot | sha256sum > "$backup/workspace.before"
 sqlite3 -readonly "$root/ai-team.db" \
   "select json_extract(data,'\$.automaticHandoffs')||'/'||json_array_length(json_extract(data,'\$.automaticHandoffKeys'))
    from flow_run where task_id=1014;" > "$backup/handoffs.before"
+sqlite3 -readonly "$root/ai-team.db" "select state from task where id=1014;" > "$backup/state.before"
 
 rollback() {
   echo "部署檢查未通過；已啟動回復。備份：$backup"
@@ -88,10 +90,13 @@ for attempt in {1..45}; do
     cmp "$backup/tasks.before" "$backup/tasks.after"
     cmp "$backup/workspace.before" "$backup/workspace.after"
     test "$(sha256sum "$root/orchestrator/target/$jar" | cut -d' ' -f1)" = "$expected"
-    test "$(sqlite3 -readonly "$root/ai-team.db" "select state from task where id=1014;")" = AWAIT_HUMAN
+    # 狀態不必是某個特定值，但必須和部署前完全一樣。
+    test "$(sqlite3 -readonly "$root/ai-team.db" "select state from task where id=1014;")" \
+       = "$(cat "$backup/state.before")"
+    # service.sh 啟動時會覆寫 orchestrator.log，所以這裡看到的就只有本次啟動。
     ! grep -q ' ERROR ' "$root/orchestrator.log"
     echo 'PASS: 所有任務資料與 #1014 工作區部署前後完全一致'
-    echo 'PASS: #1014 保持 AWAIT_HUMAN／triage，未續跑、未改額度或核准'
+    echo "PASS: #1014 維持 $(cat "$backup/state.before")；已用受阻事件／已記錄證據 $(cat "$backup/handoffs.before")，未續跑、未改核准"
     sha256sum "$root/orchestrator/target/$jar"
     bash "$root/service.sh" status
     trap - ERR

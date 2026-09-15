@@ -646,3 +646,24 @@ coordinator 沒有 Bash 而工具遭拒，隨即回 AWAIT_HUMAN，未產生任�
 原部署腳本把 `automaticHandoffs = 5` 寫成前置斷言，因此第一次執行在無輸出的情況下中止；
 交接額度是會合法變動的值，已改為記錄到備份（`handoffs.before`）而不作為斷言，
 真正的安全保證仍是「無執行中任務」與「部署前後狀態雜湊一致」。
+
+2026-09-16 Claude Code：白話化回報與停止選項按鈕已部署。線上 PID=33087，JAR SHA256=
+`bf53f7a317bc4480f55be5584a0a5e407c9c295758ad149f301ae0a2a977c135`，備份=
+`/home/vboxuser/ai-team/human-gate-backup.FrBwMl`，腳本 `deploy/deploy-human-gate-20260916.sh`。
+隔離建置 `humangate-build`：check-source 通過、完整 package 326 項 0 失敗（10 項 opt-in 略過）、
+兩份 team 靜態驗證通過。部署前後六張表與 #1014 工作區雜湊一致，本次啟動 log 0 筆 ERROR。
+
+內容：`SlackReport` 把 route／execution_status／verdict 翻成白話並保留原鍵；階段標題改為
+「任務 #1014｜PM Agent（triage）」；防循環上限訊息改為逐條列出四種計數。`HumanOptions` 改回傳
+結構化選項，`HumanGate` 把可一鍵完成的選項畫成按鈕（延長自動交接帶授權碼、看完整報告、中止），
+需要自由填寫的仍只能打字。按鈕送出的就是同一串「補充」指令，不新增權限路徑。
+
+#1014 進展：使用者於 9/15 14:45 以正確授權碼延長額度（上限 8），triage 這次成功改派
+`implementation`（稽核 298），隨即於 14:47 遇到用量上限轉 WAITING_QUOTA，重試時間
+2026-09-15T20:48:29Z、attempts=5。部署時任務未在跑，重試設定部署前後未變。
+節點 implementation／activeNode=implementation、已用事件 7／上限 8、工作區乾淨 HEAD=c962a33。
+
+部署腳本修正兩處會誤判的前置條件：任務狀態與所在節點都是會合法變動的值，改為記錄到備份而非
+斷言固定值，另加「沒有 claude／codex／opencode 程序在跑」的檢查。過程中一度把 ERROR 檢查改成
+只看新行，但 `service.sh` 啟動時會覆寫 orchestrator.log，該改法會讓檢查永遠空過；已改回檢查整份
+（本來就只有本次啟動的內容）。
