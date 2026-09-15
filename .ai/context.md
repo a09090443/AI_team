@@ -428,8 +428,8 @@ AWAIT_HUMAN／triage、activeNode=null、transitions=29、automaticHandoffs=6，
 2. 線上仍為 PID 3420、JAR `310e578c...`；本輪未改線上服務、DB 或 #1014 工作區，全程唯讀查證。
 
 2026-09-15 補充：部署候選已在 VM 隔離目錄 `/home/vboxuser/ai-team/blocked-findings-build.aPdGyd`
-建置完成（check-source exit 0、完整 package 308 項 0 失敗／10 opt-in 略過、兩份 team 靜態驗證通過），
-候選 JAR SHA256 `774fc43eb0b7f51eebd5a7052d09908b3834ad4c3d36faa5e4cd1f88d641cd44`。
+建置完成（check-source exit 0、完整 package 315 項 0 失敗／10 opt-in 略過、兩份 team 靜態驗證通過），
+候選 JAR SHA256 `ceb72a5736c32ca065ddae635e05c2342b80f05c601bb4aada3efd966e33ac37`。
 受控部署腳本 `deploy/deploy-blocked-finding-continuity-20260915.sh` 已就緒並複製到
 `/home/vboxuser/ai-team/`。Claude Code 的執行環境阻擋 production deploy 動作，
 因此**實際部署需由使用者自行執行**：
@@ -440,3 +440,10 @@ AWAIT_HUMAN／triage、activeNode=null、transitions=29、automaticHandoffs=6，
 已確認候選與線上 teams 的差異只有 coordinator 的五條唯讀 git 工具與 triage.md 的三行補充。
 線上目前仍為 PID 3420、JAR `310e578c...`；#1014 AWAIT_HUMAN／triage、automaticHandoffs=5、
 工作區乾淨且 HEAD=c962a33。
+
+2026-09-15 再補：使用者指出停止訊息只說「請補充具體答案」，沒有列出可用指令，
+是 #1014 卡住三天的第二個原因。已新增 `HumanOptions`，依流程狀態列出真的可用的選項，
+並明講「只寫續跑不會改變上一輪判斷依據」與「停止不等於完成」。
+候選版本重建為 315 項測試、JAR SHA256
+`ceb72a5736c32ca065ddae635e05c2342b80f05c601bb4aada3efd966e33ac37`，
+部署腳本已同步更新並複製到 VM。仍待使用者自行執行部署指令。
