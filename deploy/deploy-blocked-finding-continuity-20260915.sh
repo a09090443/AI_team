@@ -27,7 +27,6 @@ test -z "$(sqlite3 -readonly "$root/ai-team.db" \
 test "$(sqlite3 -readonly "$root/ai-team.db" "select state from task where id=1014;")" = AWAIT_HUMAN
 test "$(sqlite3 -readonly "$root/ai-team.db" "select json_extract(data,'$.node') from flow_run where task_id=1014;")" = triage
 test -z "$(sqlite3 -readonly "$root/ai-team.db" "select json_extract(data,'$.activeNode') from flow_run where task_id=1014;")"
-test "$(sqlite3 -readonly "$root/ai-team.db" "select json_extract(data,'$.automaticHandoffs') from flow_run where task_id=1014;")" = 5
 test -z "$(git -C "$repo" status --porcelain=v1)"
 
 AI_TEAM_REPO="$repo" java -jar "$build/target/$jar" --validate-team "$build/teams/spring-starters.json"
@@ -58,6 +57,10 @@ sqlite3 "$root/ai-team.db" ".backup '$backup/ai-team.db'"
 test "$(sqlite3 -readonly "$backup/ai-team.db" 'pragma integrity_check;')" = ok
 snapshot > "$backup/tasks.before"
 workspace_snapshot | sha256sum > "$backup/workspace.before"
+# 交接額度是會合法變動的值，不當成部署前置斷言；記錄下來供部署前後對照即可。
+sqlite3 -readonly "$root/ai-team.db" \
+  "select json_extract(data,'\$.automaticHandoffs')||'/'||json_array_length(json_extract(data,'\$.automaticHandoffKeys'))
+   from flow_run where task_id=1014;" > "$backup/handoffs.before"
 
 rollback() {
   echo "部署檢查未通過；已啟動回復。備份：$backup"

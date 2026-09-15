@@ -629,3 +629,20 @@ context 早已達 20000 上限（DB 實測長度 20012，結尾停在 verificati
 完整 Maven `clean package` 308 項、0 失敗、10 項 opt-in 略過，BUILD SUCCESS；兩份 team 靜態驗證通過。
 候選 JAR SHA256=`1952e0ce3e4be29e4a8dad3bd7e543bf43b189e9766f226329195f00eb6b9d7a`
 （線上仍為 `310e578c...`，PID 3420）。尚未部署、未改線上 DB、未續跑 #1014。
+
+2026-09-15 14:35 台北時間 Claude Code：受阻發現傳遞連續性修正已部署。線上 PID=24086，
+JAR SHA256=`ceb72a5736c32ca065ddae635e05c2342b80f05c601bb4aada3efd966e33ac37`，備份=
+`/home/vboxuser/ai-team/blocked-finding-backup.TCzx3p`。腳本
+`deploy/deploy-blocked-finding-continuity-20260915.sh` 一併更新 `/home/vboxuser/ai-team/teams/`
+（角色工具白名單在配置裡不在 JAR）。部署前後 task、flow_run、checkpoint、direct_request、
+stage_result、quota_retry 與 #1014 工作區雜湊完全一致；啟動自檢與五角色 Socket Mode 通過，
+log 無 ERROR。#1014 保持 AWAIT_HUMAN／triage，未續跑、未改額度或核准。
+隔離建置 `blocked-findings-build.aPdGyd`：check-source 通過、完整 package 315 項 0 失敗
+（10 項 opt-in 略過）、兩份 team 靜態驗證通過。
+
+同日 14:05 與 14:21 使用者曾兩次續跑 #1014（部署前的舊版本）。兩次都在 triage 因
+coordinator 沒有 Bash 而工具遭拒，隨即回 AWAIT_HUMAN，未產生任何進展；
+`automaticHandoffs` 已達 6／6，下次續跑需要一次性延長授權碼。
+原部署腳本把 `automaticHandoffs = 5` 寫成前置斷言，因此第一次執行在無輸出的情況下中止；
+交接額度是會合法變動的值，已改為記錄到備份（`handoffs.before`）而不作為斷言，
+真正的安全保證仍是「無執行中任務」與「部署前後狀態雜湊一致」。
