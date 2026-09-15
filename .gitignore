@@ -10,3 +10,4 @@ backups/
 orchestrator/target/
 .build-m2/
 *.tgz
+.codex/
