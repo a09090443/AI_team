@@ -29,10 +29,28 @@ class HumanGateTest {
                 new HumanOptions.Option(HumanOptions.SUPPLEMENT, "告訴它還缺什麼", "說明", null)));
 
         assertThat(rendered).hasSize(2);
-        assertThat(rendered.getFirst().getActionId()).isEqualTo(HumanGate.ACTION_COMMAND);
+        assertThat(rendered.getFirst().getActionId()).matches(HumanGate.ACTION_PATTERN);
         assertThat(rendered.getFirst().getStyle()).isEqualTo("primary");
         assertThat(rendered.getFirst().getValue()).isEqualTo("1014|核准延長自動交接 abc");
         assertThat(rendered.getLast().getActionId()).isEqualTo(SlackBlocks.ACTION_ABORT);
+    }
+
+    @Test void everyButtonHasAUniqueActionIdOrSlackRejectsTheWholeMessage() {
+        // #1014：「繼續執行」與「看完整報告」共用 action_id，整則停止訊息以 invalid_blocks 被拒收。
+        var rendered = buttons(List.of(
+                new HumanOptions.Option(HumanOptions.RESUME, "繼續執行", "說明", "續跑"),
+                new HumanOptions.Option(HumanOptions.REPORT, "看完整報告", "說明", "檢視完整報告")));
+
+        var ids = rendered.stream().map(ButtonElement::getActionId).toList();
+        assertThat(ids).hasSize(3).doesNotHaveDuplicates();
+        assertThat(ids.subList(0, 2)).allMatch(id -> HumanGate.ACTION_PATTERN.matcher(id).matches());
+    }
+
+    @Test void listenerPatternAcceptsOnlyCommandButtons() {
+        assertThat(HumanGate.ACTION_PATTERN.matcher("ai_team_human_command_0").matches()).isTrue();
+        assertThat(HumanGate.ACTION_PATTERN.matcher("ai_team_human_command_12").matches()).isTrue();
+        assertThat(HumanGate.ACTION_PATTERN.matcher(SlackBlocks.ACTION_ABORT).matches()).isFalse();
+        assertThat(HumanGate.ACTION_PATTERN.matcher("ai_team_human_command_x").matches()).isFalse();
     }
 
     @Test void commandRoundTripsThroughTheButtonValue() {

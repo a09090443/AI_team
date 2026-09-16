@@ -24,6 +24,13 @@ public final class HumanGate {
     private HumanGate() {}
 
     public static final String ACTION_COMMAND = "ai_team_human_command";
+    /**
+     * Slack 要求同一個 actions block 裡的 action_id 不能重複，重複會讓整則訊息以
+     * invalid_blocks 被拒收 —— #1014 恢復成功後的停止訊息就是這樣整則消失。
+     * 所以每顆按鈕加上序號，Listener 以這個樣式一次接住。
+     */
+    public static final java.util.regex.Pattern ACTION_PATTERN =
+            java.util.regex.Pattern.compile("^" + ACTION_COMMAND + "(_\\d+)?$");
 
     /** value 需要同時帶任務與要送出的指令；Slack 上限 2000 字元。 */
     public record Command(String task, String command) {
@@ -46,12 +53,13 @@ public final class HumanGate {
         for (HumanOptions.Option option : options) {
             if (!option.button() || buttons.size() >= 4) continue;
             String value = new Command(taskId, option.command()).value();
+            String actionId = ACTION_COMMAND + "_" + buttons.size();
             // 只標一顆主要按鈕：系統建議的那一步（恢復、繼續或延長，依序只會出現其中之一）。
             boolean primary = !primaryUsed && java.util.Set.of(HumanOptions.RESTORE, HumanOptions.RESUME,
                     HumanOptions.EXTEND).contains(option.kind());
             primaryUsed |= primary;
             buttons.add(button(b -> {
-                b.actionId(ACTION_COMMAND).value(value).text(plainText(option.label()));
+                b.actionId(actionId).value(value).text(plainText(option.label()));
                 return primary ? b.style("primary") : b;
             }));
         }

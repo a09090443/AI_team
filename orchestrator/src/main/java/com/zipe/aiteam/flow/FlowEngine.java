@@ -62,10 +62,16 @@ public class FlowEngine {
                 + (canSupplement ? ""
                     : "\n再補充一次不會解除上限。請先查核並修復原始阻礙，再評估要不要恢復；既有實作與核准都保留，不必重做。");
         var options = HumanOptions.options(task, flow, canSupplement, props.briefReports(), token, workspace);
-        if (options.stream().anyMatch(HumanOptions.Option::button))
-            slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), text,
+        String sent = null;
+        if (options.stream().anyMatch(HumanOptions.Option::button)) {
+            sent = slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), text,
                     HumanGate.blocks(task.id(), text, options));
-        else slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), text);
+            // 版面被 Slack 拒收時，至少要讓人收到文字版（裡面有同樣的指令）；
+            // 停止訊息是使用者唯一知道要做什麼的地方，不能因為按鈕格式問題整則消失。
+            if (sent == null) audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE,
+                    "停止訊息的按鈕版面送出失敗，改送純文字版");
+        }
+        if (sent == null) slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), text);
     }
 
     /** 停止訊息要判斷恢復選項時用；取不到就當成沒有工作區，不讓訊息本身失敗。 */

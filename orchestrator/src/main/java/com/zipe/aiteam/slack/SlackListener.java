@@ -228,7 +228,7 @@ public class SlackListener {
      * 那串「補充」指令，走同一套白名單與同一套驗證，只是不必自己抄授權碼。
      */
     private void registerHumanGateActions(App app) {
-        app.blockAction(HumanGate.ACTION_COMMAND, (req, ctx) -> {
+        app.blockAction(HumanGate.ACTION_PATTERN, (req, ctx) -> {
             var p = req.getPayload();
             String user = p.getUser().getId(), value = p.getActions().getFirst().getValue();
             String channel = p.getChannel() == null ? null : p.getChannel().getId();
