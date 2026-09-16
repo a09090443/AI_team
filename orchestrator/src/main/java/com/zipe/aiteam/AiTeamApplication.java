@@ -72,6 +72,8 @@ public class AiTeamApplication implements CommandLineRunner {
                 var snapshot = com.zipe.aiteam.flow.TeamCatalog.load(java.nio.file.Path.of(args[1]), System::getenv);
                 System.out.println("靜態配置驗證通過：" + snapshot.definition().id() + "，角色=" + snapshot.definition().roles().keySet()
                         + "，revision=" + snapshot.revision() + "；未連線 Slack、未執行 runtime 或驗證沙箱。");
+                for (String warning : com.zipe.aiteam.flow.TeamCatalog.warnings(snapshot.definition()))
+                    System.out.println("警告：" + warning);
                 return;
             } catch (Exception e) { throw new IllegalArgumentException("配置驗證失敗：" + e.getMessage(), e); }
         }

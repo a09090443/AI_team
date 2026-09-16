@@ -147,6 +147,109 @@ class FlowEngineTest {
                 && !t.contains("A．另開任務處理")), any());
     }
 
+    // ---- 從配置推導白話、承接成新任務 ----
+
+    @Test void nextStepLabelsComeFromTheConfigurationNotFromHardcodedNodeNames() {
+        var flow = store.flow(task.id()).orElseThrow();
+        var triage = flow.snapshot.definition().nodes().get("triage");
+        var labels = FlowEngine.routeLabels(flow, triage);
+        String implementer = flow.snapshot.definition().roles()
+                .get(flow.snapshot.definition().nodes().get(triage.routes().get("implementation")).role()).name();
+
+        assertThat(labels.apply("implementation")).isEqualTo("交給 " + implementer + " 實作修正（implementation）");
+        assertThat(labels.apply("human")).contains("需要你決定");
+        assertThat(labels.apply("未配置的路線")).isEqualTo("未配置的路線");
+    }
+
+    private void exhaustAtTriage() {
+        var flow = store.flow(task.id()).orElseThrow();
+        flow.node = "triage";
+        flow.transitions = flow.snapshot.definition().maxTransitions() + 5;
+        flow.automaticHandoffExtraBudget = AutomaticHandoff.MAX_EXTRA_BUDGET;
+        flow.automaticHandoffs = AutomaticHandoff.effectiveLimit(flow);
+        flow.workspaceReady = true;
+        flow.workspacePath = tmp.resolve("work").toAbsolutePath().normalize().toString();
+        flow.context = "使用者 u 補充：核准需求變更 465 全部一起修";
+        store.saveFlow(task.id(), flow);
+        provisioned = true;
+        task.state(Task.State.AWAIT_HUMAN); store.save(task);
+    }
+
+    @Test void exhaustedTaskCanBeContinuedAsANewTaskFromItsLatestCommit() throws Exception {
+        exhaustAtTriage();
+        when(slack.post(any(), eq("c"), isNull(), anyString())).thenReturn("new-thread");
+        when(workspace.provisionFrom(any(), any(), anyString(), anyString(), anyString(), anyString())).thenReturn(tmp);
+        when(workspace.pathFor(argThat((String id) -> !"42".equals(id)))).thenReturn(tmp.resolve("child"));
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(task, "承接成新任務", "u", jobs::add);
+
+        var parent = store.flow(task.id()).orElseThrow();
+        assertThat(parent.successor).isNotNull();
+        var child = store.flow(parent.successor).orElseThrow();
+        var childTask = store.find(parent.successor).orElseThrow();
+        assertThat(childTask.slackThreadTs()).isEqualTo("new-thread");
+        assertThat(childTask.requestText()).isEqualTo(task.requestText());
+        assertThat(child.continuationOf).isEqualTo(task.id());
+        assertThat(child.workspaceReady).isTrue();
+        assertThat(child.planApprovals).isEmpty();
+        assertThat(child.context).contains("承接自任務 #42").contains("核准需求變更 465 全部一起修");
+        verify(workspace).provisionFrom(any(), any(), anyString(), eq("42"), eq("feature/task42"), eq("head1"));
+        assertThat(jobs).hasSize(1);
+
+        // 承接後原任務不再接受任何操作。
+        jobs.clear();
+        engine.resume(task, "續跑", "u", jobs::add);
+        assertThat(jobs).isEmpty();
+        assertThat(store.flow(task.id()).orElseThrow().successor).isEqualTo(parent.successor);
+    }
+
+    @Test void continuationIsRefusedWhileTheTaskCanStillProceed() throws Exception {
+        task.state(Task.State.AWAIT_HUMAN); store.save(task);
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(task, "承接成新任務", "u", jobs::add);
+
+        assertThat(store.flow(task.id()).orElseThrow().successor).isNull();
+        assertThat(jobs).isEmpty();
+        verify(slack).post(any(), any(), any(), contains("還能繼續，不需要承接"));
+        verify(workspace, never()).provisionFrom(any(), any(), anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test void continuationRefusesADirtyWorkspace() throws Exception {
+        exhaustAtTriage();
+        workspaceClean = false;
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(task, "承接成新任務", "u", jobs::add);
+
+        assertThat(store.flow(task.id()).orElseThrow().successor).isNull();
+        verify(slack).post(any(), any(), any(), contains("未提交的修改"));
+    }
+
+    @Test void onlyTheAcceptanceOwnerCanContinueATask() throws Exception {
+        exhaustAtTriage();
+        when(props.allowedUsers()).thenReturn(Set.of("u", "someone-else"));
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(task, "承接成新任務", "someone-else", jobs::add);
+
+        assertThat(store.flow(task.id()).orElseThrow().successor).isNull();
+        assertThat(jobs).isEmpty();
+    }
+
+    @Test void statusCommandRepostsOptionsWithoutChangingAnything() throws Exception {
+        exhaustAtTriage();
+        var before = mapper.writeValueAsString(store.flow(task.id()).orElseThrow());
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(task, "狀態", "u", jobs::add);
+
+        assertThat(jobs).isEmpty();
+        assertThat(mapper.writeValueAsString(store.flow(task.id()).orElseThrow())).isEqualTo(before);
+        verify(slack, atLeastOnce()).post(any(), any(), any(), contains("承接成新任務"));
+    }
+
     @Test void deniedToolTurnsAnOtherwiseCleanReportIntoABlock() throws Exception {
         // #1014：coordinator 沒有 Bash，triage 卻回報查核完成並直接分流。
         deniedAt = "intake";

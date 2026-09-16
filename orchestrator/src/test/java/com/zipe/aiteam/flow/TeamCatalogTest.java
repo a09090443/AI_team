@@ -17,6 +17,22 @@ class TeamCatalogTest {
         assertThat(definition.project().requiredTools()).contains("node", "npm");
         assertThat(definition.project().cachePaths()).contains(".npm");
     }
+    @Test void bundledTeamsHaveNoInspectionToolWarnings() throws Exception {
+        for (String name : java.util.List.of("spring-starters", "node-web")) {
+            var definition = mapper.readValue(Files.readString(Path.of("teams/" + name + ".json")), TeamDefinition.class);
+            assertThat(TeamCatalog.warnings(definition)).as(name).isEmpty();
+        }
+    }
+    @Test void warnsWhenAReadOnlyJudgingNodesRoleCannotInspectAnything() throws Exception {
+        // 新專案常見的錯：分流／審查角色只給 Read/Grep/Glob，執行時一查 git 就被工具遭拒規則作廢。
+        var json = (ObjectNode) mapper.readTree(Files.readString(Path.of("teams/spring-starters.json")));
+        var tools = ((ObjectNode) json.path("roles").path("coordinator")).putArray("tools");
+        tools.add("Read").add("Grep").add("Glob");
+        var definition = mapper.treeToValue(json, TeamDefinition.class);
+
+        assertThat(TeamCatalog.warnings(definition))
+                .anyMatch(w -> w.contains("節點 triage") && w.contains("coordinator") && w.contains("Bash(git log *)"));
+    }
     @Test void qaModelEffortAndOldSnapshotCompatibility() throws Exception {
         var definition = mapper.readValue(Files.readString(Path.of("teams/spring-starters.json")), TeamDefinition.class);
         TeamCatalog.validate(definition);

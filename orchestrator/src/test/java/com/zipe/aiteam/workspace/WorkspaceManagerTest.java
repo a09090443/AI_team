@@ -77,6 +77,43 @@ class WorkspaceManagerTest {
     }
 
     @Test
+    void 承接任務的工作區從原任務未推送的commit接著做而且基準包含原任務成果() throws Exception {
+        Path parent = manager.provision(task("1101"));
+        Files.writeString(parent.resolve("Mail.java"), "原任務的修正\n");
+        run(parent, "git", "add", "Mail.java"); run(parent, "git", "commit", "-qm", "原任務修正");
+        String parentHead = manager.headSha("1101");
+
+        Path ws = manager.provisionFrom(task("1102"), repo, null, "1101", "feature/ai-team-task-1101", parentHead);
+
+        assertThat(manager.headSha("1102")).isEqualTo(parentHead);
+        assertThat(ws.resolve("Mail.java")).hasContent("原任務的修正\n");
+        assertThat(out(ws, "git", "branch", "--show-current")).isEqualTo("feature/ai-team-task-1102");
+        assertThat(manager.clean("1102")).isTrue();
+        assertThat(manager.origin("1102")).isEqualTo(origin.toString());
+        // 原任務的提交要算在「自基準以來」裡，PR 才會包含它們。
+        assertThat(manager.commitsSinceBase("1102")).anyMatch(c -> c.contains("原任務修正"));
+        assertThat(out(ws, "git", "config", "--get", "ai-team.continuation-of")).isEqualTo("1101");
+    }
+
+    @Test
+    void 原任務HEAD已變動時拒絕承接() throws Exception {
+        manager.provision(task("1103"));
+        String stale = manager.headSha("1103");
+        Path parent = workspaces.resolve("task-1103");
+        Files.writeString(parent.resolve("x.txt"), "後來又改了\n");
+        run(parent, "git", "add", "x.txt"); run(parent, "git", "commit", "-qm", "後續提交");
+
+        assertThatThrownBy(() -> manager.provisionFrom(task("1104"), repo, null, "1103", "feature/ai-team-task-1103", stale))
+                .hasMessageContaining("已變動");
+    }
+
+    @Test
+    void 原任務工作區不存在時拒絕承接() {
+        assertThatThrownBy(() -> manager.provisionFrom(task("1106"), repo, null, "1105", "feature/ai-team-task-1105", "abc"))
+                .hasMessageContaining("不存在");
+    }
+
+    @Test
     void 限寫稽核不能只看最後diff而漏掉中途修改後還原的commit() throws Exception {
         Path ws = manager.provision(task("1042"));
         String before = manager.headSha("1042");

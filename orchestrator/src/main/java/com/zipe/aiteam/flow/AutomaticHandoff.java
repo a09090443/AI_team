@@ -32,11 +32,36 @@ final class AutomaticHandoff {
 
     /** 舊快照沒有交接欄位；停在 configured blocked target 時可由已保存原因重建。 */
     static void restoreLegacyBlockedTarget(FlowRun flow) {
-        if (flow.automaticHandoff != null || flow.lastBlockReason == null || flow.lastBlockReason.isBlank()) return;
+        if (flow.automaticHandoff == null) flow.automaticHandoff = pendingEvidence(flow);
+    }
+
+    /**
+     * 不改動狀態，回答「下一次啟動時會用哪一份受阻證據」。
+     * 停止訊息判斷能不能繼續時必須和引擎用同一套規則，否則會提供按了也走不下去的按鈕。
+     */
+    static String pendingEvidence(FlowRun flow) {
+        if (flow.automaticHandoff != null) return flow.automaticHandoff;
+        if (flow.lastBlockReason == null || flow.lastBlockReason.isBlank()) return null;
         boolean blockedTarget = flow.snapshot.definition().nodes().values().stream()
                 .anyMatch(node -> flow.node.equals(node.blocked()));
-        if (blockedTarget) flow.automaticHandoff = digest(
-                flow.node + "\n" + flow.lastBlockReason + "\n" + flow.snapshot.revision());
+        return blockedTarget ? digest(flow.node + "\n" + flow.lastBlockReason + "\n" + flow.snapshot.revision()) : null;
+    }
+
+    /** 與 claim 相同的判斷，但不改動狀態。 */
+    static boolean wouldClaim(FlowRun flow) {
+        String evidence = pendingEvidence(flow);
+        if (evidence == null || flow.automaticHandoffHops >= HOP_LIMIT) return false;
+        boolean fresh = !flow.automaticHandoffKeys.contains("incident:" + evidence);
+        return !fresh || flow.automaticHandoffs < effectiveLimit(flow);
+    }
+
+    /** 目前卡在事件額度，而且人工延長確實能讓下一次啟動通過。 */
+    static boolean extensionWouldHelp(FlowRun flow) {
+        String evidence = pendingEvidence(flow);
+        return evidence != null && flow.automaticHandoffHops < HOP_LIMIT
+                && !flow.automaticHandoffKeys.contains("incident:" + evidence)
+                && flow.automaticHandoffs >= effectiveLimit(flow)
+                && flow.automaticHandoffExtraBudget < MAX_EXTRA_BUDGET;
     }
 
     static Claim claim(FlowRun flow) {

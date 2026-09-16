@@ -244,33 +244,60 @@ class HumanOptionsTest {
 
     // ---- 自動處理次數全部用完 ----
 
+    // ---- 自動處理次數全部用完 ----
+
     private void exhaust() {
         flow.node = "triage";
         flow.transitions = flow.snapshot.definition().maxTransitions() + 16;
         flow.automaticHandoffExtraBudget = AutomaticHandoff.MAX_EXTRA_BUDGET;
         flow.automaticHandoffs = AutomaticHandoff.effectiveLimit(flow);
         flow.automaticHandoff = null;
+        flow.lastBlockReason = null;
     }
 
-    @Test void exhaustedTaskSaysSoPlainlyAndOffersNoMisleadingButtons() throws Exception {
+    @Test void exhaustedTaskSaysSoPlainlyAndOffersOnlyContinuation() throws Exception {
         exhaust();
         flow.changeTarget = "intake";
         flow.receipts.put("triage", decisionReport());
 
         var options = HumanOptions.options(task, flow, true, true, "t".repeat(64),
                 new HumanOptions.Workspace("fa96f9f", true));
-        assertThat(options).extracting(HumanOptions.Option::kind).containsExactly(HumanOptions.REPORT);
+        assertThat(options).extracting(HumanOptions.Option::kind)
+                .containsExactly(HumanOptions.SUCCESSOR, HumanOptions.REPORT);
+        assertThat(options.getFirst().command()).isEqualTo(HumanOptions.SUCCESSOR_COMMAND);
 
         String text = HumanOptions.render(task, flow, true, true, "t".repeat(64), new HumanOptions.Workspace("fa96f9f", true));
         assertThat(text).contains("這個任務已經無法再自動往下跑").contains("不是故障")
-                .contains("commit=fa96f9f（已全部提交）").contains("另開新任務").contains("以這個任務的分支為基礎")
+                .contains("commit=fa96f9f（已全部提交）").contains("承接成新任務")
                 .doesNotContain("核准：").doesNotContain("再給系統兩次機會");
     }
 
-    @Test void notExhaustedWhileExtensionsRemain() {
+    @Test void exhaustedEvenWithOneEventLeftWhenTheStoppedNodeCannotUseIt() {
+        // #1014：核准需求變更後停在需求節點，還剩一個事件額度，但需求節點不是任何節點的受阻交接目標，
+        // 那個額度根本用不上。舊判斷只看剩幾次，於是仍提供按鈕，按了立刻被擋。
+        flow.node = "intake";
+        flow.transitions = flow.snapshot.definition().maxTransitions() + 16;
+        flow.automaticHandoffExtraBudget = AutomaticHandoff.MAX_EXTRA_BUDGET;
+        flow.automaticHandoffs = AutomaticHandoff.effectiveLimit(flow) - 1;
+        flow.automaticHandoff = null;
+        flow.lastBlockReason = "上一次受阻原因";
+
+        assertThat(HumanOptions.exhausted(flow)).isTrue();
+    }
+
+    @Test void notExhaustedWhileAnExtensionWouldLetTheNextStepThrough() {
         exhaust();
+        // triage 是受阻交接目標，有受阻原因就能建立事件；額度滿了但還能延長。
+        flow.lastBlockReason = "驗收受阻";
         flow.automaticHandoffExtraBudget = AutomaticHandoff.MAX_EXTRA_BUDGET - AutomaticHandoff.EXTENSION_SIZE;
+        flow.automaticHandoffs = AutomaticHandoff.effectiveLimit(flow);
         assertThat(HumanOptions.exhausted(flow)).isFalse();
+    }
+
+    @Test void extensionDoesNotCountWhenThereIsNoEvidenceToExtend() {
+        exhaust();
+        flow.automaticHandoffExtraBudget = 0;
+        assertThat(HumanOptions.exhausted(flow)).isTrue();
     }
 
     @Test void notExhaustedWhileARegisteredIncidentStillHasHops() {
@@ -285,6 +312,13 @@ class HumanOptionsTest {
         exhaust();
         flow.transitions = 0;
         assertThat(HumanOptions.exhausted(flow)).isFalse();
+    }
+
+    @Test void succeededTaskOffersNothingAndPointsToTheNewTask() {
+        exhaust();
+        flow.successor = "1016";
+        assertThat(HumanOptions.options(task, flow, true, true, null)).isEmpty();
+        assertThat(HumanOptions.render(task, flow, true, true, null)).contains("已由 *任務 #1016* 承接");
     }
 
     @Test void readOnlyReportOptionIsAButton() {

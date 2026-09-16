@@ -52,6 +52,32 @@ public class TeamCatalog {
         require(Files.size(path) <= 256_000, "配置資產過大：" + name);
         assets.put(name, Files.readString(path));
     }
+    /**
+     * 不擋配置、但建配置時就該知道的問題。
+     *
+     * 唯讀的分流（其他節點受阻時交接的目標）與審查節點產出的是「我查過了」的判斷；它的角色若沒有任何能執行的查核工具，
+     * 只能讀檔案，一旦想看 git 狀態或建置結果就會工具遭拒，結論會被系統作廢。
+     * 這在執行時才發現代價很高（#1014 的分流節點因此反覆被判受阻），所以在靜態驗證時先提醒。
+     */
+    public static List<String> warnings(TeamDefinition d) {
+        List<String> warnings = new ArrayList<>();
+        // 需要「核實」而不只是「閱讀」的，是其他節點受阻時交接過來的節點，以及審查節點。
+        Set<String> blockedTargets = new HashSet<>();
+        d.nodes().values().forEach(node -> { if (node.blocked() != null) blockedTargets.add(node.blocked()); });
+        d.nodes().forEach((id, node) -> {
+            if (node.kind() != Kind.AGENT || node.scope() != Scope.READ_ONLY) return;
+            if (node.gate() != Gate.REVIEW && !blockedTargets.contains(id)) return;
+            Role role = d.roles().get(node.role());
+            if (role == null) return;
+            boolean canInspect = role.tools() != null && role.tools().stream()
+                    .anyMatch(tool -> tool != null && tool.startsWith("Bash"));
+            if (!canInspect) warnings.add("節點 " + id + "（" + node.gate() + "）的角色 " + node.role()
+                    + " 沒有任何可執行的查核工具，只能讀檔；若它需要核實版本控制或建置狀態，"
+                    + "請補上唯讀權限（例如 Bash(git log *)、Bash(git show *)），否則工具遭拒時結論會被作廢。");
+        });
+        return List.copyOf(warnings);
+    }
+
     public static void validate(TeamDefinition d) {
         require(d != null && (d.version() == 1 || d.version() == 2), "不支援的配置版本");
         require(d.id() != null && d.id().matches("[a-z][a-z0-9_-]*"), "無效的專案 ID");

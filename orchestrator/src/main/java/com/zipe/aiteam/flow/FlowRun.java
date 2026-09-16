@@ -36,6 +36,10 @@ public class FlowRun {
     public boolean dialogue;
     public String dialogueRole;
     public String parentId;
+    /** 用完自動處理次數後，由負責人承接成的新任務編號；有值時本任務不再接受任何操作。 */
+    public String successor;
+    /** 本任務承接自哪個任務；工作區從該任務的分支 HEAD 開始。 */
+    public String continuationOf;
     public String acceptanceOwner;
     public String baselineRevision;
     public String changeTarget;

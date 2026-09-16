@@ -154,6 +154,36 @@ public class WorkspaceManager {
      * 路徑必須真的位於 workspaces 之下，且目錄名必須是 task- 開頭。
      * 少了它們，一個設錯的 AI_TEAM_WORKSPACES 就足以刪掉不該刪的東西。
      */
+    /**
+     * 承接任務的工作區：照一般流程從基準分支建立，再把原任務分支的 HEAD 帶進來接著做。
+     *
+     * 原任務的提交通常只存在它的本機工作區（還沒推送），所以不能只靠主 repo；
+     * 若只用 provision，新任務會從基準分支重新開始，完全看不到原任務的成果。
+     * 基準 commit 改為原任務分支與基準分支的分岔點，之後 PR 與「自基準以來的提交」才會包含原任務的成果。
+     */
+    public Path provisionFrom(Task task, Path repository, String configuredBase,
+                              String parentId, String parentBranch, String parentHead) throws WorkspaceException {
+        if (parentId == null || !parentId.matches("[0-9]+")) throw new WorkspaceException("無效的原任務 ID，拒絕承接");
+        if (parentBranch == null || parentBranch.isBlank() || parentHead == null || parentHead.isBlank())
+            throw new WorkspaceException("缺少原任務的分支或 commit，拒絕承接");
+        Path parent = pathFor(parentId);
+        if (!Files.isDirectory(parent.resolve(".git"))) throw new WorkspaceException("原任務工作區不存在，無法承接：" + parent);
+
+        Path ws = provision(task, repository, configuredBase);
+        git(ws, "fetch", "--quiet", parent.toString(), "refs/heads/" + parentBranch);
+        String fetched = gitOutput(ws, "rev-parse", "FETCH_HEAD");
+        if (!fetched.equals(parentHead))
+            throw new WorkspaceException("原任務分支的最新 commit 已變動，拒絕承接：預期 " + parentHead + "，實際 " + fetched);
+        git(ws, "reset", "--hard", "--quiet", parentHead);
+
+        String base = gitOutput(ws, "config", "--get", BASE_BRANCH_CONFIG_KEY);
+        git(ws, "fetch", "--quiet", repository.toString(), "refs/remotes/origin/" + base);
+        git(ws, "config", BASE_SHA_CONFIG_KEY, gitOutput(ws, "merge-base", parentHead, "FETCH_HEAD"));
+        git(ws, "config", "ai-team.continuation-of", parentId);
+        log.info("任務 {} 承接任務 {}：工作區從 {} 的 {} 開始", task.id(), parentId, parentBranch, parentHead);
+        return ws;
+    }
+
     public void discard(String taskId) throws WorkspaceException {
         Path ws = pathFor(taskId).toAbsolutePath().normalize();
         Path root = props.workspacesPath().toAbsolutePath().normalize();

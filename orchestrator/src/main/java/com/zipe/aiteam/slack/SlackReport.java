@@ -27,27 +27,20 @@ public final class SlackReport {
     private static final int SUMMARY_LIMIT = 500;
 
     /**
-     * route 是配置裡的節點鍵，對讀訊息的人沒有意義。
-     * 這裡翻成白話但保留原鍵，讓人看得懂、也還能跟配置對得起來；未知鍵原樣顯示。
+     * route 是配置裡的節點鍵，每個專案都不一樣，不能在程式裡寫死任何名稱。
+     * 沒有配置資訊時只翻譯系統保留的 human／end，其餘原樣顯示；
+     * 引擎會依目標節點的類型與角色名稱提供白話說明（見 FlowEngine.routeLabel）。
      */
-    private static final Map<String, String> ROUTES = Map.ofEntries(
-            Map.entry("human", "需要你決定，系統不會自己往下做"),
-            Map.entry("implementation", "交回工程實作修正"),
-            Map.entry("verification", "交回測試重新驗收"),
-            Map.entry("review", "交回獨立審查"),
-            Map.entry("plan", "重新規劃測試"),
-            Map.entry("design", "重新設計"),
-            Map.entry("requirements", "需求要重新確認"),
-            Map.entry("intake", "需求要重新確認"),
-            Map.entry("triage", "交給 PM 分流判斷"),
-            Map.entry("ready", "可以往下一步"),
-            Map.entry("question", "有問題要先問清楚"));
+    public static final java.util.function.Function<String, String> GENERIC_ROUTES = route -> switch (route) {
+        case "human" -> "需要你決定，系統不會自己往下做（human）";
+        case "end" -> "結束，不發布（end）";
+        default -> route;
+    };
 
-    /** 顯示用：白話說明 + 原鍵，方便對照配置。 */
-    public static String routeLabel(String route) {
-        String plain = ROUTES.get(route);
-        return plain == null ? plain(route) : plain(plain) + "（" + plain(route) + "）";
-    }
+    private static final ThreadLocal<java.util.function.Function<String, String>> LABELER =
+            ThreadLocal.withInitial(() -> GENERIC_ROUTES);
+
+    private static String routeLabel(String route) { return plain(LABELER.get().apply(route)); }
 
     /** 報告是否帶有可顯示的真人決定事項。 */
     public static boolean hasDecision(JsonNode report) {
@@ -103,6 +96,19 @@ public final class SlackReport {
      * 刻意不做「智慧摘要」：摘要由 agent 自己在 summary 欄位給，
      * 這裡再壓一次只會多一層失真，而且壓縮的是唯一能追責的那份文字。
      */
+    public static String brief(JsonNode report, java.util.function.Function<String, String> routes) {
+        return withRoutes(routes, () -> brief(report));
+    }
+
+    public static String render(JsonNode report, java.util.function.Function<String, String> routes) {
+        return withRoutes(routes, () -> render(report));
+    }
+
+    private static String withRoutes(java.util.function.Function<String, String> routes, java.util.function.Supplier<String> body) {
+        LABELER.set(routes == null ? GENERIC_ROUTES : routes);
+        try { return body.get(); } finally { LABELER.remove(); }
+    }
+
     public static String brief(JsonNode report) {
         if (report == null || report.isNull()) return "沒有有效報告";
         // 需要人決定時，把決定事項放最前面、完整顯示；原本的摘要降為補充。

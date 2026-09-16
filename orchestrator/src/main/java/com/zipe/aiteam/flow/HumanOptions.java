@@ -37,14 +37,22 @@ public final class HumanOptions {
     public static final String REMEDIATE = "REMEDIATE";
     public static final String REQUIREMENT = "REQUIREMENT";
     public static final String SUPPLEMENT = "SUPPLEMENT";
+    public static final String SUCCESSOR = "SUCCESSOR";
+    public static final String SUCCESSOR_COMMAND = "承接成新任務";
 
     public static List<Option> options(Task task, FlowRun flow, boolean canSupplement,
                                        boolean briefReports, String extensionToken, Workspace workspace) {
         List<Option> options = new ArrayList<>();
         Workspace ws = workspace == null ? Workspace.NONE : workspace;
 
-        // 自動處理次數全部用完時，任何選項都不會讓任務往下跑；不要再提供看似可行的按鈕。
+        // 已由新任務承接：這裡不再有任何動作。
+        if (flow.successor != null) return List.of();
+
+        // 自動處理次數全部用完時，任何選項都不會讓任務往下跑；只提供承接成新任務。
         if (exhausted(flow)) {
+            options.add(new Option(SUCCESSOR, "承接成新任務",
+                    "開一個新任務，從這個任務的最新 commit 接著做，並帶入已做過的決定；次數重新計算，"
+                            + "需求、測試計畫與 PR 仍要重新核准。", SUCCESSOR_COMMAND));
             if (briefReports) options.add(new Option(REPORT, "看完整報告",
                     "只是把完整內容叫出來看，不會改變任務狀態。", "檢視完整報告"));
             return List.copyOf(options);
@@ -156,20 +164,15 @@ public final class HumanOptions {
      * 系統知道走不下去，就必須直接說，而不是讓人一直按。
      */
     static boolean exhausted(FlowRun flow) {
-        if (flow.snapshot == null || flow.dialogue) return false;
-        if (flow.transitions < flow.snapshot.definition().maxTransitions()) return false;
-        if (flow.automaticHandoffExtraBudget < AutomaticHandoff.MAX_EXTRA_BUDGET) return false;
-        if (flow.automaticHandoffs < AutomaticHandoff.effectiveLimit(flow)) return false;
-        if (flow.recoveryGrants != null && !flow.recoveryGrants.isEmpty()) return false;
-        // 已登記的同一事件還有轉手站數時，仍可以前進。
-        return !(flow.automaticHandoff != null
-                && flow.automaticHandoffKeys.contains("incident:" + flow.automaticHandoff)
-                && flow.automaticHandoffHops < AutomaticHandoff.HOP_LIMIT);
+        return FlowLimits.exhausted(flow);
     }
 
     /** 純文字版本，給沒有按鈕的情境（或按鈕送不出去時）仍然看得到指令。 */
     public static String render(Task task, FlowRun flow, boolean canSupplement,
                                 boolean briefReports, String extensionToken, Workspace workspace) {
+        if (flow.successor != null)
+            return "\n\n這個任務已由 *任務 #" + flow.successor + "* 承接，之後請到頻道裡「任務 #" + flow.successor
+                    + "」的討論串操作；這裡不會再有任何動作。";
         if (exhausted(flow)) return exhaustedNotice(task, flow, workspace, briefReports);
         List<Option> options = options(task, flow, canSupplement, briefReports, extensionToken, workspace);
         if (options.isEmpty()) return "";
@@ -199,19 +202,20 @@ public final class HumanOptions {
     private static String exhaustedNotice(Task task, FlowRun flow, Workspace workspace, boolean briefReports) {
         Workspace ws = workspace == null ? Workspace.NONE : workspace;
         StringBuilder out = new StringBuilder("\n\n*這個任務已經無法再自動往下跑*\n")
-                .append("系統允許的自動處理次數已經全部用完：整個任務換手 ").append(flow.transitions)
-                .append(" 次（上限 ").append(flow.snapshot.definition().maxTransitions()).append("）、")
-                .append("系統自己處理過的問題 ").append(flow.automaticHandoffs).append(" 件（上限 ")
-                .append(AutomaticHandoff.effectiveLimit(flow)).append("），延長也已經加到最多。")
-                .append("\n這是防止任務無限循環的保護，不是故障。現在不論按哪個按鈕、補充什麼，")
-                .append("下一步都會在開始前被擋下，所以這裡不再提供會讓人以為可以繼續的選項。")
+                .append("整個任務已經換手 ").append(flow.transitions)
+                .append(" 次（上限 ").append(flow.snapshot.definition().maxTransitions()).append("），")
+                .append("而目前停住的這一步，沒有任何可用的延長或恢復授權能讓它通過。")
+                .append("\n這是防止任務無限循環的保護，不是故障。在這個任務裡不論按什麼、補充什麼，")
+                .append("下一步都會在開始前被擋下。")
                 .append("\n\n*目前的成果都還在*")
                 .append(ws.head() == null ? "\n任務工作區保留原樣。"
-                        : "\n任務工作區保留原樣，最新 commit=" + ws.head() + (ws.clean() ? "（已全部提交）" : "（有未提交的修改）"))
-                .append("\n\n*接下來需要人處理*")
-                .append("\n・剩下要做的事請另開新任務，並在需求裡寫明以這個任務的分支為基礎，否則新任務會從基準分支重新開始，看不到這裡的成果。")
-                .append("\n・這個任務已完成的部分若要交付，需要有 Git 推送權限的人把分支推上去並開 PR。");
-        if (briefReports) out.append("\n・想先看細節：補充 #").append(task.id()).append(" 檢視完整報告");
+                        : "\n任務工作區保留原樣，最新 commit=" + ws.head() + (ws.clean() ? "（已全部提交）" : "（有未提交的修改，承接前請先處理）"))
+                .append("\n\n*怎麼繼續*")
+                .append("\n按「承接成新任務」：開一個新任務，工作區從上面這個 commit 接著做，")
+                .append("並帶入這個任務的交接紀錄與你做過的決定（包含已核准的需求變更）。次數重新計算；")
+                .append("需求、測試計畫與 PR 仍會請你重新核准。新任務會在頻道開新的討論串。")
+                .append("\n或輸入：補充 #").append(task.id()).append(' ').append(SUCCESSOR_COMMAND);
+        if (briefReports) out.append("\n想先看細節：補充 #").append(task.id()).append(" 檢視完整報告");
         return out.toString();
     }
 
@@ -243,12 +247,10 @@ public final class HumanOptions {
             Node needed = flow.snapshot.definition().nodes().get(dependency);
             if (needed == null || FlowGates.blockingReason(needed, flow.receipts.get(dependency), flow) != null) return false;
         }
-        boolean overLimit = flow.transitions >= flow.snapshot.definition().maxTransitions()
-                || flow.visits.getOrDefault(flow.node, 0) >= node.maxVisits();
-        if (!overLimit || VerificationRecovery.permitted(flow, flow.node)) return true;
-        // 同一受阻事件已經登記過，續跑只會用掉一站轉手，不需要新的事件額度。
-        return flow.automaticHandoff != null
-                && flow.automaticHandoffKeys.contains("incident:" + flow.automaticHandoff)
+        // 與引擎共用同一套上限判斷；只接受「不必再消耗新事件額度」的情況。
+        if (!FlowLimits.overLimit(flow, node) || VerificationRecovery.permitted(flow, flow.node)) return true;
+        String evidence = AutomaticHandoff.pendingEvidence(flow);
+        return evidence != null && flow.automaticHandoffKeys.contains("incident:" + evidence)
                 && flow.automaticHandoffHops < AutomaticHandoff.HOP_LIMIT;
     }
 

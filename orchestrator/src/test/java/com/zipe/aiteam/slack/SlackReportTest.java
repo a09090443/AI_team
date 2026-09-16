@@ -13,7 +13,10 @@ class SlackReportTest {
         String text = SlackReport.render(report);
         assertTrue(text.contains("保留既有實作\n接續文件建置"));
         assertTrue(text.contains("還不代表整個任務驗收通過"));
-        assertTrue(text.contains("下一步：\n交回工程實作修正（implementation）"));
+        // 沒有配置資訊時不猜節點名稱的意思，原樣顯示；白話說明由引擎依配置提供。
+        assertTrue(text.contains("下一步：\nimplementation"));
+        assertTrue(SlackReport.render(report, r -> "交給 Backend Agent 實作修正（" + r + "）")
+                .contains("下一步：\n交給 Backend Agent 實作修正（implementation）"));
         assertFalse(text.contains("\\n"));
         assertFalse(text.contains("\"summary\""));
         assertEquals(before, report);
@@ -50,7 +53,7 @@ class SlackReportTest {
 
         assertTrue(text.contains("驗收沒過"));
         assertTrue(text.contains("6/27 情境通過"));
-        assertTrue(text.contains("下一步：交給 PM 分流判斷（triage）"));
+        assertTrue(text.contains("下一步：triage"));
         // 未顯示的欄位不能靜靜消失，要讓人知道還有東西可看
         assertTrue(text.contains("還有 3 項細節沒列出來"));
         assertFalse(text.contains("SC-01"));
@@ -116,6 +119,13 @@ class SlackReportTest {
         var report = mapper.readTree("{\"execution_status\":\"COMPLETED\",\"summary\":\"完成\",\"human_decision\":null}");
         assertFalse(SlackReport.hasDecision(report));
         assertFalse(SlackReport.brief(report).contains("需要你決定"));
+    }
+
+    @Test void 系統保留的路線一律翻譯_其他名稱不寫死() throws Exception {
+        assertTrue(SlackReport.brief(mapper.readTree("{\"route\":\"human\"}")).contains("需要你決定"));
+        assertTrue(SlackReport.brief(mapper.readTree("{\"route\":\"end\"}")).contains("結束，不發布"));
+        // 任何專案自訂的節點名稱都不應被程式預設翻譯。
+        assertTrue(SlackReport.brief(mapper.readTree("{\"route\":\"security_audit\"}")).contains("下一步：security_audit"));
     }
 
     @Test void 摘要模式同樣要遮蔽與跳脫() throws Exception {
