@@ -46,6 +46,29 @@ class HumanGateTest {
         assertThat(ids.subList(0, 2)).allMatch(id -> HumanGate.ACTION_PATTERN.matcher(id).matches());
     }
 
+    @Test void decisionsGetTheirOwnRowAndIdsStayUniqueAcrossRows() {
+        var blocks = HumanGate.blocks("1014", "停下來了", List.of(
+                new HumanOptions.Option(HumanOptions.DECISION, "另開任務處理", "說明", "負責人決定：q　選擇：A"),
+                new HumanOptions.Option(HumanOptions.DECISION, "這次一起支援", "說明", "負責人決定：q　選擇：B"),
+                new HumanOptions.Option(HumanOptions.REPORT, "看完整報告", "說明", "檢視完整報告")));
+
+        var rows = blocks.stream().filter(ActionsBlock.class::isInstance).map(ActionsBlock.class::cast).toList();
+        assertThat(rows).hasSize(2);
+        assertThat(rows.getFirst().getElements()).hasSize(2);
+        assertThat(rows.getLast().getElements()).hasSize(2); // 看完整報告 + 中止
+
+        var ids = buttons(List.of(
+                new HumanOptions.Option(HumanOptions.DECISION, "A", "說明", "負責人決定：q　選擇：A"),
+                new HumanOptions.Option(HumanOptions.REPORT, "看完整報告", "說明", "檢視完整報告")))
+                .stream().map(ButtonElement::getActionId).toList();
+        assertThat(ids).doesNotHaveDuplicates();
+    }
+
+    @Test void longLabelsAreClippedToSlacksButtonLimit() {
+        var rendered = buttons(List.of(new HumanOptions.Option(HumanOptions.DECISION, "長".repeat(100), "說明", "負責人決定：q")));
+        assertThat(rendered.getFirst().getText().getText().length()).isLessThanOrEqualTo(75);
+    }
+
     @Test void listenerPatternAcceptsOnlyCommandButtons() {
         assertThat(HumanGate.ACTION_PATTERN.matcher("ai_team_human_command_0").matches()).isTrue();
         assertThat(HumanGate.ACTION_PATTERN.matcher("ai_team_human_command_12").matches()).isTrue();

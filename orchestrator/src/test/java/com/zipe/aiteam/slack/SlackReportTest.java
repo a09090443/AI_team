@@ -81,6 +81,43 @@ class SlackReportTest {
         assertEquals(before, report);
     }
 
+    private static final String DECISION_REPORT = """
+            {"execution_status":"COMPLETED","route":"human","summary":"%s",
+             "human_decision":{"headline":"驗收時發現一個原本就存在的限制","question":"smtps 這次要一起支援嗎？",
+               "options":[{"label":"另開任務處理","consequence":"這次照現況完成，smtps 另外追蹤"},
+                          {"label":"這次一起支援","consequence":"要改需求、補情境、重跑實作與驗收"}],
+               "recommendation":"建議另開任務，因為不是這次改壞的",
+               "also_needed":["QA 環境需要補 npm 離線快取"]}}
+            """;
+
+    @Test void 需要決定時完整顯示決定事項_不被摘要截斷() throws Exception {
+        var report = mapper.readTree(DECISION_REPORT.formatted("長".repeat(3000)));
+
+        String text = SlackReport.brief(report);
+
+        assertTrue(text.startsWith("*為什麼停下來*"));
+        assertTrue(text.contains("smtps 這次要一起支援嗎？"));
+        assertTrue(text.contains("A．另開任務處理"));
+        assertTrue(text.contains("B．這次一起支援"));
+        assertTrue(text.contains("要改需求、補情境、重跑實作與驗收"));
+        assertTrue(text.contains("建議另開任務"));
+        assertTrue(text.contains("QA 環境需要補 npm 離線快取"));
+        // 決定事項本身不算「沒列出來的細節」。
+        assertFalse(text.contains("human_decision"));
+    }
+
+    @Test void 完整模式也把決定事項放最前面() throws Exception {
+        String text = SlackReport.render(mapper.readTree(DECISION_REPORT.formatted("摘要")));
+        assertTrue(text.startsWith("*為什麼停下來*"));
+        assertFalse(text.contains("human_decision"));
+    }
+
+    @Test void 沒有決定事項時維持原本摘要() throws Exception {
+        var report = mapper.readTree("{\"execution_status\":\"COMPLETED\",\"summary\":\"完成\",\"human_decision\":null}");
+        assertFalse(SlackReport.hasDecision(report));
+        assertFalse(SlackReport.brief(report).contains("需要你決定"));
+    }
+
     @Test void 摘要模式同樣要遮蔽與跳脫() throws Exception {
         var report = mapper.createObjectNode().put("summary", "<@U123> & 完成");
 

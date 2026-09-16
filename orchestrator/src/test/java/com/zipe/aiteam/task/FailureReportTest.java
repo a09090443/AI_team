@@ -43,7 +43,25 @@ class FailureReportTest {
             assertThat(schema.path("properties").path("failure_report").path("required").size()).isEqualTo(8);
             assertThat(schema.path("properties").path("failure_report").path("type").toString())
                     .contains("null", "object");
+            // 需要真人決定時的白話選擇題，所有角色共用同一份格式。
+            assertThat(schema.path("required").toString()).contains("human_decision");
+            var decision = schema.path("properties").path("human_decision");
+            assertThat(decision.path("type").toString()).contains("null", "object");
+            assertThat(decision.path("required").toString())
+                    .contains("headline", "question", "options", "recommendation", "also_needed");
+            assertThat(decision.path("properties").path("options").path("items").path("required").toString())
+                    .contains("label", "consequence");
         }
+    }
+
+    @Test void instructionsTellAgentsToExplainDecisionsInPlainLanguage() {
+        assertThat(FailureReport.INSTRUCTIONS).contains("human_decision").contains("白話")
+                .contains("route=human").contains("also_needed");
+    }
+
+    @Test void reportsWithoutHumanDecisionStayValidSoOldReceiptsStillParse() throws Exception {
+        var completed = mapper.readTree("{\"execution_status\":\"COMPLETED\",\"failure_report\":null}");
+        assertThat(FailureReport.blockingReason("generic", completed)).isNull();
     }
 
     @Test void stageRunnerActuallySendsContractToRuntime() throws Exception {

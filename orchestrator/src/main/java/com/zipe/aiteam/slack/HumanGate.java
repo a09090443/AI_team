@@ -48,25 +48,42 @@ public final class HumanGate {
     }
 
     public static List<LayoutBlock> blocks(String taskId, String text, List<HumanOptions.Option> options) {
+        // action_id 在整則訊息的所有按鈕間都不重複，序號跨兩排共用。
+        int[] seq = {0};
+        List<BlockElement> decisions = new ArrayList<>();
+        for (HumanOptions.Option option : options) {
+            if (!option.button() || !HumanOptions.DECISION.equals(option.kind())
+                    || decisions.size() >= SlackReport.MAX_DECISION_OPTIONS) continue;
+            decisions.add(commandButton(taskId, option, seq[0]++, false));
+        }
+
         List<BlockElement> buttons = new ArrayList<>();
         boolean primaryUsed = false;
         for (HumanOptions.Option option : options) {
-            if (!option.button() || buttons.size() >= 4) continue;
-            String value = new Command(taskId, option.command()).value();
-            String actionId = ACTION_COMMAND + "_" + buttons.size();
+            if (!option.button() || HumanOptions.DECISION.equals(option.kind()) || buttons.size() >= 4) continue;
             // 只標一顆主要按鈕：系統建議的那一步（恢復、繼續或延長，依序只會出現其中之一）。
             boolean primary = !primaryUsed && java.util.Set.of(HumanOptions.RESTORE, HumanOptions.RESUME,
                     HumanOptions.EXTEND).contains(option.kind());
             primaryUsed |= primary;
-            buttons.add(button(b -> {
-                b.actionId(actionId).value(value).text(plainText(option.label()));
-                return primary ? b.style("primary") : b;
-            }));
+            buttons.add(commandButton(taskId, option, seq[0]++, primary));
         }
         buttons.add(button(b -> b.actionId(SlackBlocks.ACTION_ABORT).value(taskId).style("danger")
                 .text(plainText("中止任務"))));
-        return asBlocks(section(s -> s.text(markdownText(clip(text)))),
-                actions(a -> a.elements(buttons)));
+
+        List<LayoutBlock> blocks = new ArrayList<>(asBlocks(section(s -> s.text(markdownText(clip(text))))));
+        if (!decisions.isEmpty()) blocks.add(actions(a -> a.elements(decisions)));
+        blocks.add(actions(a -> a.elements(buttons)));
+        return blocks;
+    }
+
+    /** Slack 按鈕文字上限 75 字元。 */
+    private static BlockElement commandButton(String taskId, HumanOptions.Option option, int index, boolean primary) {
+        String value = new Command(taskId, option.command()).value();
+        String label = option.label().length() <= 70 ? option.label() : option.label().substring(0, 70) + "…";
+        return button(b -> {
+            b.actionId(ACTION_COMMAND + "_" + index).value(value).text(plainText(label));
+            return primary ? b.style("primary") : b;
+        });
     }
 
     /** section 的文字上限是 3000 字元，超過整則訊息會被 Slack 拒絕。 */

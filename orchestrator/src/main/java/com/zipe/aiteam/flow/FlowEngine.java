@@ -347,6 +347,14 @@ public class FlowEngine {
                 countedNode = null;
                 if (next.equals("human")) {
                     AutomaticHandoff.clear(flow);
+                    if (SlackReport.hasDecision(report)) {
+                        // 完整說明已由角色本人在上一則訊息貼出；這裡只放問題與按鈕，避免同一段話貼兩次。
+                        String role = flow.snapshot.definition().roles().get(node.role()).name();
+                        waitHuman(task, flow, "*" + role + " 需要你決定*\n"
+                                + Diagnostics.clip(report.path("human_decision").path("question").asText(), 600)
+                                + "\n（為什麼停下來、每個選項會怎樣，請看上方 " + role + " 的說明）");
+                        return;
+                    }
                     waitHuman(task, flow, block == null
                             ? describe(report) + fullReportHint(task, flow.node)
                             : "阻礙：" + Diagnostics.clip(block, 500) + "\n"

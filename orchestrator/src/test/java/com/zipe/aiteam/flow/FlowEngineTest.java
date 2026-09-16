@@ -132,6 +132,21 @@ class FlowEngineTest {
         assertThat(flow.blockedFindings).doesNotContainKey("intake").containsKey("triage");
     }
 
+    @Test void agentExplainsTheDecisionItselfAndTheStopMessageOffersTheChoicesAsButtons() throws Exception {
+        // #1014：triage 把三件事寫在 4000 字的 summary 裡，Slack 只露出前 500 字，
+        // 最後變成使用者要另外去問。需要人決定的事必須由角色本人完整說清楚，並能一鍵選擇。
+        mode = "blockedDecision";
+        engine.run(task);
+
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        verify(slack).postConfigured(any(), any(), any(), argThat((String t) ->
+                t.contains("*為什麼停下來*") && t.contains("smtps 這次要一起支援嗎？")
+                && t.contains("A．另開任務處理") && t.contains("重跑實作與驗收") && t.contains("建議另開任務")));
+        verify(slack).post(any(), any(), any(), argThat((String t) ->
+                t.contains("需要你決定") && t.contains("請看上方") && t.contains("直接選一個：另開任務處理／這次一起支援")
+                && !t.contains("A．另開任務處理")), any());
+    }
+
     @Test void deniedToolTurnsAnOtherwiseCleanReportIntoABlock() throws Exception {
         // #1014：coordinator 沒有 Bash，triage 卻回報查核完成並直接分流。
         deniedAt = "intake";
@@ -542,8 +557,10 @@ class FlowEngineTest {
                     : mode.equals("dirtyVerification") ? "verification"
                     : mode.equals("automaticRepair") ? "implementation" : mode.equals("change") ? "requirements"
                     : mode.equals("replan") ? "plan" : "human");
-            if ((mode.equals("blocked") && flow.node.equals("verification")) || firstAutomaticVerification || firstDirtyVerification)
+            if (((mode.equals("blocked") || mode.equals("blockedDecision")) && flow.node.equals("verification")) || firstAutomaticVerification || firstDirtyVerification)
                 ((ObjectNode)report).withArray("uncertainties").add("SMTP 無法核實");
+            if (mode.equals("blockedDecision") && flow.node.equals("triage"))
+                ((ObjectNode)report).set("human_decision", mapper.readTree("{\"headline\":\"驗收發現既有限制\",\"question\":\"smtps 這次要一起支援嗎？\",\"options\":[{\"label\":\"另開任務處理\",\"consequence\":\"照現況完成\"},{\"label\":\"這次一起支援\",\"consequence\":\"重跑實作與驗收\"}],\"recommendation\":\"建議另開任務\",\"also_needed\":[]}"));
             JsonNode denials = deniedAt != null && deniedAt.equals(flow.node)
                     ? mapper.readTree("[{\"tool_name\":\"Bash\",\"tool_use_id\":\"t1\",\"tool_input\":{\"command\":\"git show --stat 814c9b1\"}}]")
                     : null;

@@ -169,6 +169,64 @@ class HumanOptionsTest {
                 .noneMatch(o -> HumanOptions.RESUME.equals(o.kind()));
     }
 
+    // ---- agent 提出的選擇題 ----
+
+    private com.fasterxml.jackson.databind.JsonNode decisionReport() throws Exception {
+        return new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+                {"execution_status":"COMPLETED","route":"human",
+                 "human_decision":{"headline":"h","question":"smtps 要一起支援嗎？",
+                   "options":[{"label":"另開任務處理","consequence":"照現況完成"},
+                              {"label":"這次一起支援","consequence":"重跑實作與驗收"},
+                              {"label":"","consequence":"空標籤不應出現"}],
+                   "recommendation":"r","also_needed":[]}}
+                """);
+    }
+
+    @Test void decisionOptionsBecomeButtonsThatSendTheChoiceBackAsTheOwnersDecision() throws Exception {
+        flow.node = "triage";
+        flow.receipts.put("triage", decisionReport());
+
+        var decisions = HumanOptions.options(task, flow, true, true, null).stream()
+                .filter(o -> HumanOptions.DECISION.equals(o.kind())).toList();
+
+        assertThat(decisions).extracting(HumanOptions.Option::label).containsExactly("另開任務處理", "這次一起支援");
+        assertThat(decisions).allSatisfy(o -> assertThat(o.button()).isTrue());
+        assertThat(decisions.getFirst().command())
+                .startsWith("負責人決定：smtps 要一起支援嗎？")
+                .contains("選擇：另開任務處理").contains("照現況完成");
+    }
+
+    @Test void decisionCommandsCanNeverBeMistakenForAnApprovalCommand() throws Exception {
+        flow.node = "triage";
+        var report = (com.fasterxml.jackson.databind.node.ObjectNode) decisionReport();
+        ((com.fasterxml.jackson.databind.node.ObjectNode) report.path("human_decision").path("options").get(0))
+                .put("label", "核准延長自動交接 abc");
+        flow.receipts.put("triage", report);
+
+        assertThat(HumanOptions.options(task, flow, true, true, null))
+                .filteredOn(o -> HumanOptions.DECISION.equals(o.kind()))
+                .allSatisfy(o -> assertThat(o.command()).startsWith("負責人決定："));
+    }
+
+    @Test void newerBlockedFindingWinsOverAnOlderReceipt() throws Exception {
+        flow.node = "triage";
+        flow.receipts.put("triage", new com.fasterxml.jackson.databind.ObjectMapper().readTree("{\"route\":\"human\"}"));
+        flow.blockedFindings.put("triage", decisionReport());
+
+        assertThat(HumanOptions.options(task, flow, true, true, null))
+                .anyMatch(o -> HumanOptions.DECISION.equals(o.kind()));
+    }
+
+    @Test void textVersionListsDecisionLabelsCompactly() throws Exception {
+        flow.node = "triage";
+        flow.receipts.put("triage", decisionReport());
+
+        String text = HumanOptions.render(task, flow, true, true, null);
+
+        assertThat(text).contains("直接選一個：另開任務處理／這次一起支援");
+        assertThat(text).doesNotContain("負責人決定：");
+    }
+
     @Test void readOnlyReportOptionIsAButton() {
         var report = HumanOptions.options(task, flow, true, true, null).stream()
                 .filter(o -> HumanOptions.REPORT.equals(o.kind())).findFirst().orElseThrow();

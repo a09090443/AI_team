@@ -49,6 +49,49 @@ public final class SlackReport {
         return plain == null ? plain(route) : plain(plain) + "（" + plain(route) + "）";
     }
 
+    /** 報告是否帶有可顯示的真人決定事項。 */
+    public static boolean hasDecision(JsonNode report) {
+        JsonNode d = report == null ? null : report.get("human_decision");
+        return d != null && d.isObject() && !d.path("question").asText("").isBlank();
+    }
+
+    /** 最多幾個選項做成按鈕；Slack 一排放太多按鈕也難讀。 */
+    public static final int MAX_DECISION_OPTIONS = 4;
+
+    /**
+     * agent 需要真人決定時的完整白話說明，不做截斷摘要。
+     * 這一段是驗收負責人唯一會讀的東西：摘要模式把 summary 切在 500 字，
+     * #1014 三件待決事項因此只露出第一件的一小段，最後變成要人另外去翻完整報告。
+     */
+    public static String decision(JsonNode report) {
+        if (!hasDecision(report)) return "";
+        JsonNode d = report.get("human_decision");
+        StringBuilder out = new StringBuilder();
+        String headline = d.path("headline").asText("");
+        if (!headline.isBlank()) out.append("*為什麼停下來*\n").append(plain(clip(headline, 400))).append("\n\n");
+        out.append("*需要你決定*\n").append(plain(clip(d.path("question").asText(), 600))).append('\n');
+        int i = 0;
+        for (JsonNode option : d.path("options")) {
+            if (i >= MAX_DECISION_OPTIONS) break;
+            out.append("\n").append((char) ('A' + i++)).append("．")
+               .append(plain(clip(option.path("label").asText(), 40))).append("\n　")
+               .append(plain(clip(option.path("consequence").asText(), 500))).append('\n');
+        }
+        String recommendation = d.path("recommendation").asText("");
+        if (!recommendation.isBlank())
+            out.append("\n*建議*\n").append(plain(clip(recommendation, 500))).append('\n');
+        JsonNode also = d.path("also_needed");
+        if (also.isArray() && !also.isEmpty()) {
+            out.append("\n*另外也需要處理*\n");
+            for (JsonNode item : also) out.append("・").append(plain(clip(item.asText(), 300))).append('\n');
+        }
+        return Diagnostics.safe(out.toString().strip());
+    }
+
+    private static String clip(String text, int max) {
+        return text.length() <= max ? text : text.substring(0, max) + "…";
+    }
+
     /**
      * 只回報「要不要處理、處理什麼」所需的最少內容。
      *
@@ -62,6 +105,15 @@ public final class SlackReport {
      */
     public static String brief(JsonNode report) {
         if (report == null || report.isNull()) return "沒有有效報告";
+        // 需要人決定時，把決定事項放最前面、完整顯示；原本的摘要降為補充。
+        if (hasDecision(report)) {
+            String rest = briefBody(report);
+            return decision(report) + (rest.isBlank() ? "" : "\n\n———\n" + rest);
+        }
+        return briefBody(report);
+    }
+
+    private static String briefBody(JsonNode report) {
         StringBuilder out = new StringBuilder();
 
         String status = report.path("verdict").asText(report.path("execution_status").asText(""));
@@ -86,7 +138,7 @@ public final class SlackReport {
         if (!route.isBlank()) out.append("\n下一步：").append(routeLabel(route)).append('\n');
 
         int omitted = 0;
-        var shown = java.util.Set.of("verdict", "execution_status", "summary", "blockers", "route");
+        var shown = java.util.Set.of("verdict", "execution_status", "summary", "blockers", "route", "human_decision");
         for (var it = report.fieldNames(); it.hasNext(); ) if (!shown.contains(it.next())) omitted++;
         if (omitted > 0) out.append("\n（還有 ").append(omitted).append(" 項細節沒列出來，需要時可以叫出完整報告）");
 
@@ -114,12 +166,13 @@ public final class SlackReport {
     public static String render(JsonNode report) {
         if (report == null || report.isNull()) return "沒有有效報告";
         StringBuilder out = new StringBuilder();
+        if (hasDecision(report)) out.append(decision(report)).append("\n\n———\n");
         if (report.isObject()) {
             for (String key : new String[]{"execution_status", "summary", "blockers", "route"}) {
                 if (report.has(key)) field(out, key, report.get(key), 0);
             }
             report.fields().forEachRemaining(e -> {
-                if (!java.util.Set.of("execution_status", "summary", "blockers", "route").contains(e.getKey()))
+                if (!java.util.Set.of("execution_status", "summary", "blockers", "route", "human_decision").contains(e.getKey()))
                     field(out, e.getKey(), e.getValue(), 0);
             });
         } else value(out, report, 0);

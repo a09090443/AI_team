@@ -43,6 +43,9 @@ public final class HumanOptions {
         List<Option> options = new ArrayList<>();
         Workspace ws = workspace == null ? Workspace.NONE : workspace;
 
+        // agent 提出的選擇題放最前面：這是對方停下來最主要要回答的事。
+        options.addAll(decisionOptions(flow));
+
         String restorable = flow.snapshot == null ? null : ContractRecovery.candidate(flow, ws.head(), ws.clean());
         if (restorable != null)
             options.add(new Option(RESTORE, "恢復「" + restorable + "」的結果",
@@ -89,6 +92,42 @@ public final class HumanOptions {
         return List.copyOf(options);
     }
 
+    public static final String DECISION = "DECISION";
+
+    /**
+     * 目前節點最新報告裡的 human_decision 選項。
+     * 按下去送出的是一段「負責人決定」的補充文字（含選項後果），交由流程重新判斷；
+     * 以「負責人決定：」開頭，不會被當成任何「核准…」指令。
+     */
+    static List<Option> decisionOptions(FlowRun flow) {
+        com.fasterxml.jackson.databind.JsonNode report = latestReport(flow);
+        if (!com.zipe.aiteam.slack.SlackReport.hasDecision(report)) return List.of();
+        var d = report.get("human_decision");
+        String question = clip(d.path("question").asText(), 300);
+        List<Option> result = new ArrayList<>();
+        for (var option : d.path("options")) {
+            if (result.size() >= com.zipe.aiteam.slack.SlackReport.MAX_DECISION_OPTIONS) break;
+            String label = clip(option.path("label").asText().strip(), 40);
+            if (label.isBlank()) continue;
+            String consequence = clip(option.path("consequence").asText(), 300);
+            result.add(new Option(DECISION, label, consequence,
+                    "負責人決定：" + question + "　選擇：" + label + "（" + consequence + "）"));
+        }
+        return result;
+    }
+
+    /** 受阻發現比 receipt 新：節點受阻時不會清掉舊的成功 receipt。 */
+    private static com.fasterxml.jackson.databind.JsonNode latestReport(FlowRun flow) {
+        if (flow.blockedFindings != null && flow.blockedFindings.containsKey(flow.node))
+            return flow.blockedFindings.get(flow.node);
+        return flow.receipts.get(flow.node);
+    }
+
+    private static String clip(String text, int max) {
+        String value = text == null ? "" : text;
+        return value.length() <= max ? value : value.substring(0, max) + "…";
+    }
+
     /** 相容舊呼叫端：沒有工作區資訊時視為沒有工作區。 */
     public static List<Option> options(Task task, FlowRun flow, boolean canSupplement,
                                        boolean briefReports, String extensionToken) {
@@ -101,7 +140,12 @@ public final class HumanOptions {
         List<Option> options = options(task, flow, canSupplement, briefReports, extensionToken, workspace);
         if (options.isEmpty()) return "";
         StringBuilder out = new StringBuilder("\n\n你現在可以做的事：");
+        List<String> decisions = options.stream().filter(o -> DECISION.equals(o.kind())).map(Option::label).toList();
+        if (!decisions.isEmpty())
+            out.append("\n・直接選一個：").append(String.join("／", decisions))
+               .append("（按下方按鈕；都不合適就用下面的方式打字說明）");
         for (Option option : options) {
+            if (DECISION.equals(option.kind())) continue;
             out.append("\n・").append(option.label()).append("：").append(option.hint());
             if (option.button()) out.append("\n　按下方按鈕，或輸入：補充 #").append(task.id())
                     .append(' ').append(option.command());

@@ -33,6 +33,19 @@ public final class FailureReport {
         有非致命工具失敗但已用替代方式完成時可以 COMPLETED，需在 summary 說明
         替代操作與驗證結果；不可將尚未解除的阻礙放進 uncertainties 後宣稱完成。
         BLOCKED 會停止下游與 PR 發布、保留現場並向 PM 與需求提出者回報。
+
+        【需要真人決定或處理時：human_decision】
+        human_decision 必填：不需要真人時為 null。只要 route=human，或阻礙必須由真人／維運處理，
+        就必須填寫，因為系統會把它原樣貼給驗收負責人並做成按鈕，這是對方唯一會讀的說明。
+        一律用白話寫給不看程式與配置的人：不要用節點代號、欄位名、SC／REQ 編號當主詞，
+        必要時放在括號補充。
+        headline：一句話說為什麼停下來。
+        question：一次只問一件最需要對方決定的事，具體到對方能直接選。
+        options：2 到 4 個選項；label 是按鈕文字（15 字內），consequence 說選了之後會發生什麼、
+        要多花什麼、有什麼風險。
+        recommendation：你建議選哪個、為什麼。
+        also_needed：不是選擇題、但也需要真人或維運去做的事（例如補環境、給權限），每項一句；沒有就空陣列。
+        其他需要決定的事放進 also_needed，不要硬塞進同一題。
         """;
 
     /** 在送往 runtime 前擴充 schema，避免五份契約各自漂移。 */
@@ -53,7 +66,19 @@ public final class FailureReport {
         }
         ((ObjectNode) fields.get("cause_status")).putArray("enum").add("CONFIRMED").add("UNKNOWN");
         properties.set("failure_report", report);
-        root.withArray("required").add("execution_status").add("failure_report");
+        properties.set("human_decision", mapper.readTree("""
+            {"type":["object","null"],"additionalProperties":false,
+             "properties":{
+               "headline":{"type":"string","minLength":1},
+               "question":{"type":"string","minLength":1},
+               "options":{"type":"array","items":{"type":"object","additionalProperties":false,
+                  "properties":{"label":{"type":"string","minLength":1},"consequence":{"type":"string","minLength":1}},
+                  "required":["label","consequence"]}},
+               "recommendation":{"type":"string","minLength":1},
+               "also_needed":{"type":"array","items":{"type":"string","minLength":1}}},
+             "required":["headline","question","options","recommendation","also_needed"]}
+            """));
+        root.withArray("required").add("execution_status").add("failure_report").add("human_decision");
         return root.toString();
     }
 
