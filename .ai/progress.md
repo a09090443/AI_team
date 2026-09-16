@@ -709,3 +709,21 @@ SC-25 因 npm 離線快取不足被沙箱擋；QA 另確認 transport-protocol=s
 （原始碼 13 處 mail.smtp.、0 處 mail.smtps.，最早 5640ac3 即如此，屬既有限制而非本任務退化）。
 triage route=human。目前 AWAIT_HUMAN／triage，事件 9／10。舊 triage 報告沒有 human_decision，
 要讓 agent 以新格式說明，需再跑一次 triage（會用掉最後一個事件額度）。
+
+2026-09-16 22:0x 台北時間 Claude Code：使用者回報按了選項按鈕仍無法繼續。查證：新格式有效，triage
+兩次以 human_decision 白話提問（稽核 333、341），使用者按鈕選擇也送達（335、343、344）。但：
+(1) 選「一起修好 465」後 triage 改派 requirements，系統進入等待需求變更核准（changeTarget=intake），
+只接受「核准需求變更」；選項按鈕送「負責人決定：…」被閘門擋下，後兩次按鈕完全沒有前進。
+(2) 即使按鈕正確，#1014 已達硬上限：transitions 40／24、延長額度 6／6、handoffs 11／12、
+automaticHandoff 為 null，兩種受控恢復授權在總上限用盡時也一律拒絕；核准需求變更後 intake
+會立刻被防循環擋下，且無任何選項。
+修正並部署：等待需求變更核准時按鈕直接送核准指令（標「核准：…」）；閘門擋下輸入時重附正確按鈕；
+新增 exhausted 判斷，次數用盡時直接說明無法自動往下跑、成果所在 commit 與需人處理的事，不再給無效按鈕。
+PID=64240，JAR `a064e3424a3ac57e0b25cb4ba79df6aac5de605f397aedf6599f62349930e0b5`，備份
+`exhausted-notice-backup.YCjd51`；完整 package 360 項 0 失敗；部署前後任務資料一致；log 0 ERROR。
+
+#1014 結論：自動流程已走到設計上的硬上限，不應再繞過。成果在工作區 feature/ai-team-task-1014
+（HEAD fa96f9f，僅本機、未推送）：TLS 委派修正 + SC-01/06/18 斷言；系統獨立 `mvn -B clean verify`
+exit 0；QA 26／27 PASS，SC-25 為 npm 離線快取環境問題；smtps 為既有限制。使用者已表態要一起修 smtps
+（範圍：逾時、加密通道、帳密三類 + 混用情境）。建議：推送該分支，另開新任務以該分支為基礎處理 smtps
+與剩餘驗收；新任務需求須明寫基礎分支，否則會從 develop 重新開始。
