@@ -727,3 +727,16 @@ PID=64240，JAR `a064e3424a3ac57e0b25cb4ba79df6aac5de605f397aedf6599f62349930e0b
 exit 0；QA 26／27 PASS，SC-25 為 npm 離線快取環境問題；smtps 為既有限制。使用者已表態要一起修 smtps
 （範圍：逾時、加密通道、帳密三類 + 混用情境）。建議：推送該分支，另開新任務以該分支為基礎處理 smtps
 與剩餘驗收；新任務需求須明寫基礎分支，否則會從 develop 重新開始。
+
+2026-09-17 Claude Code：「承接成新任務」與跨專案通用化已部署。線上 PID=71074，JAR
+`be04686ff34d657dc2d164b71ed796c19fa352dce670bc273134398a2e9682af`，備份 `orchestrator-backup.XeUTYI`。
+首次使用通用部署腳本 `deploy/deploy-orchestrator.sh`（不指名任務，比對所有任務資料與所有工作區）。
+完整 package 375 項 0 失敗；兩份 team 靜態驗證無警告；部署前後資料一致；log 0 ERROR、5 角色連線。
+
+起因：使用者按「核准：全部一起修」後需求變更核准成功（稽核 346），但任務回到 intake 立即被防循環擋下。
+舊 exhausted 判斷只看剩餘事件額度（11／12），不知道 intake 不是受阻交接目標、那個額度用不上，
+因此仍提供了無效按鈕。已改為 FlowLimits 單一判斷，與引擎共用。
+
+#1014 現況：AWAIT_HUMAN／intake，transitions 40／24，automaticHandoff 無，intake 非受阻交接目標，
+工作區乾淨 HEAD=fa96f9f（feature/ai-team-task-1014）→ 符合承接條件。使用者下一步：
+在原討論串送 `補充 #1014 狀態` → 按「承接成新任務」→ 到頻道新討論串依序核准需求與測試計畫。
