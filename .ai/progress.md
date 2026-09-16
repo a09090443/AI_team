@@ -688,3 +688,11 @@ planApprovals 仍有 plan、automaticHandoff 已登記。恢復步驟：
 1. `補充 #1014 核准恢復前置契約 implementation fa96f9f9d2daf00ec8bc1da4d655f3b1e00cdbfe`
 2. 停止訊息出現「繼續執行」按鈕後按下（沿用同一受阻事件，只用一站轉手，不需延長額度）
 不要用 `核准人工修復重驗`（transitions 已超過上限會被拒，且會清掉計畫核准）。
+
+2026-09-16 21:1x 台北時間 Claude Code：使用者回報送出 `核准恢復前置契約` 後沒有任何回覆。
+查證：恢復本身成功（稽核 316，implementation receipt 與 heads 已寫入），但停止訊息同時帶
+「繼續執行」「看完整報告」兩顆指令按鈕且共用 action_id，Slack 以 invalid_blocks 整則拒收。
+已修正為每顆按鈕 action_id 帶序號、Listener 以樣式接收，並在版面被拒時改送純文字版。
+部署 PID=51593，JAR `919c9d0b9e6e552766d80bac3c4b392f319d6b7d51bb0c51f9f768ac9cab6976`，備份
+`blocks-fix-backup.YJLGzi`；完整 package 343 項 0 失敗；部署前後任務資料一致。
+#1014 仍 AWAIT_HUMAN／verification，下一步只需送 `補充 #1014 續跑`（同一受阻事件只用一站轉手）。
