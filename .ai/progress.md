@@ -696,3 +696,16 @@ planApprovals 仍有 plan、automaticHandoff 已登記。恢復步驟：
 部署 PID=51593，JAR `919c9d0b9e6e552766d80bac3c4b392f319d6b7d51bb0c51f9f768ac9cab6976`，備份
 `blocks-fix-backup.YJLGzi`；完整 package 343 項 0 失敗；部署前後任務資料一致。
 #1014 仍 AWAIT_HUMAN／verification，下一步只需送 `補充 #1014 續跑`（同一受阻事件只用一站轉手）。
+
+2026-09-16 Claude Code：使用者指出 #1014 需要決定的事應由 agent 在 Slack 告知，而非由維運者轉述。
+查證：triage 報告含 smtps 範圍、npm 離線快取、推送與 PR 三件事，但 summary 約 4000 字，摘要模式
+只顯示前 500 字，停止訊息也只有通用選項。已新增共用回報契約 `human_decision`（執行期加入 schema，
+既有任務適用）與對應呈現、選項按鈕。部署 PID=59140，JAR
+`16782cb9cd93b8fae380a42dcdd8325a2a2051a3401b385efebe27fa78087b1f`，備份 `human-decision-backup.SyoSBG`，
+完整 package 355 項 0 失敗，部署前後任務資料一致，啟動 log 0 筆 ERROR。
+
+#1014 本輪（9/16 13:12–13:25）：系統獨立驗證 `mvn -B clean verify` 在 fa96f9f exit 0；QA 26／27 PASS，
+SC-25 因 npm 離線快取不足被沙箱擋；QA 另確認 transport-protocol=smtps 時所有 mail.smtp.* 設定不生效
+（原始碼 13 處 mail.smtp.、0 處 mail.smtps.，最早 5640ac3 即如此，屬既有限制而非本任務退化）。
+triage route=human。目前 AWAIT_HUMAN／triage，事件 9／10。舊 triage 報告沒有 human_decision，
+要讓 agent 以新格式說明，需再跑一次 triage（會用掉最後一個事件額度）。
