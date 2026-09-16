@@ -667,3 +667,24 @@ coordinator 沒有 Bash 而工具遭拒，隨即回 AWAIT_HUMAN，未產生任�
 斷言固定值，另加「沒有 claude／codex／opencode 程序在跑」的檢查。過程中一度把 ERROR 檢查改成
 只看新行，但 `service.sh` 啟動時會覆寫 orchestrator.log，該改法會讓檢查永遠空過；已改回檢查整份
 （本來就只有本次啟動的內容）。
+
+2026-09-16 19:08 台北時間 Claude Code：ToolTrust 範圍修正與前置契約恢復已部署。線上 PID=47425，
+JAR SHA256=`a338780217ae98d96becfef279c32b0a51a00ce59431d555fe18f48ad22c2f9b`，備份=
+`/home/vboxuser/ai-team/contract-recovery-backup.ROzZc9`。隔離建置 `recovery-build`：check-source 通過、
+完整 package 341 項 0 失敗（10 opt-in 略過）、兩份 team 靜態驗證通過、teams 與線上無差異。
+部署前後六張表與 #1014 工作區雜湊一致，啟動 log 0 筆 ERROR。
+
+停止原因（我方缺陷）：上一版 ToolTrust 對所有節點套用。9/15 23:52 implementation 已 SUCCESS、
+verify 通過並提交 `fa96f9f`（TLS 委派修正 + SC-01/06/18 斷言，4 檔 +308/−37），卻因一個
+`for i in 1 2 3; do mvn ...; done` 迴圈不符白名單被改判受阻，用掉第 8 個事件額度；報告只進
+blockedFindings，verification 啟動前的前置契約檢查失敗，任務卡死。既有指令無法恢復，且
+`核准人工修復重驗` 會因 transitions 36／24 被拒並清掉已核准計畫。
+
+修正：ToolTrust 只套用 READ_ONLY；新增 `核准恢復前置契約 <節點> <commit>`（ContractRecovery）；
+前置契約可恢復時改為附按鈕停止；新增只在真的會前進時才出現的「繼續執行」按鈕。
+
+#1014 現況：AWAIT_HUMAN／verification、事件 8／8、hops 1／12、工作區乾淨 HEAD=fa96f9f、
+planApprovals 仍有 plan、automaticHandoff 已登記。恢復步驟：
+1. `補充 #1014 核准恢復前置契約 implementation fa96f9f9d2daf00ec8bc1da4d655f3b1e00cdbfe`
+2. 停止訊息出現「繼續執行」按鈕後按下（沿用同一受阻事件，只用一站轉手，不需延長額度）
+不要用 `核准人工修復重驗`（transitions 已超過上限會被拒，且會清掉計畫核准）。
