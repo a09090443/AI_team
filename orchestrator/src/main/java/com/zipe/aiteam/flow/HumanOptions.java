@@ -43,6 +43,13 @@ public final class HumanOptions {
         List<Option> options = new ArrayList<>();
         Workspace ws = workspace == null ? Workspace.NONE : workspace;
 
+        // 自動處理次數全部用完時，任何選項都不會讓任務往下跑；不要再提供看似可行的按鈕。
+        if (exhausted(flow)) {
+            if (briefReports) options.add(new Option(REPORT, "看完整報告",
+                    "只是把完整內容叫出來看，不會改變任務狀態。", "檢視完整報告"));
+            return List.copyOf(options);
+        }
+
         // agent 提出的選擇題放最前面：這是對方停下來最主要要回答的事。
         options.addAll(decisionOptions(flow));
 
@@ -104,14 +111,20 @@ public final class HumanOptions {
         if (!com.zipe.aiteam.slack.SlackReport.hasDecision(report)) return List.of();
         var d = report.get("human_decision");
         String question = clip(d.path("question").asText(), 300);
+        // 等待需求變更核准時，系統只接受「核准需求變更 <內容>」，其他補充一律擋下。
+        // 這時對方的選擇本身就是變更內容，按鈕必須直接送核准指令，按鈕文字也要明講是核准 ——
+        // #1014 的「全部一起修」按了兩次都被這個閘門擋掉，就是因為送成了一般補充。
+        boolean approvesChange = flow.changeTarget != null;
         List<Option> result = new ArrayList<>();
         for (var option : d.path("options")) {
             if (result.size() >= com.zipe.aiteam.slack.SlackReport.MAX_DECISION_OPTIONS) break;
             String label = clip(option.path("label").asText().strip(), 40);
             if (label.isBlank()) continue;
             String consequence = clip(option.path("consequence").asText(), 300);
-            result.add(new Option(DECISION, label, consequence,
-                    "負責人決定：" + question + "　選擇：" + label + "（" + consequence + "）"));
+            String choice = question + "　選擇：" + label + "（" + consequence + "）";
+            result.add(approvesChange
+                    ? new Option(DECISION, "核准：" + label, consequence, "核准需求變更 " + choice)
+                    : new Option(DECISION, label, consequence, "負責人決定：" + choice));
         }
         return result;
     }
@@ -134,16 +147,39 @@ public final class HumanOptions {
         return options(task, flow, canSupplement, briefReports, extensionToken, Workspace.NONE);
     }
 
+    /**
+     * 任務已經走到系統設計的硬上限：流程總次數超過上限、延長額度也已達硬上限，
+     * 而且沒有任何已登記事件、恢復授權可以讓下一步通過。這時不論按什麼、補充什麼，
+     * 下一個節點都會在啟動前被防循環保護擋下。
+     *
+     * #1014 在這個狀態下仍被提供「核准需求變更」等選項，按了卻完全不會前進 ——
+     * 系統知道走不下去，就必須直接說，而不是讓人一直按。
+     */
+    static boolean exhausted(FlowRun flow) {
+        if (flow.snapshot == null || flow.dialogue) return false;
+        if (flow.transitions < flow.snapshot.definition().maxTransitions()) return false;
+        if (flow.automaticHandoffExtraBudget < AutomaticHandoff.MAX_EXTRA_BUDGET) return false;
+        if (flow.automaticHandoffs < AutomaticHandoff.effectiveLimit(flow)) return false;
+        if (flow.recoveryGrants != null && !flow.recoveryGrants.isEmpty()) return false;
+        // 已登記的同一事件還有轉手站數時，仍可以前進。
+        return !(flow.automaticHandoff != null
+                && flow.automaticHandoffKeys.contains("incident:" + flow.automaticHandoff)
+                && flow.automaticHandoffHops < AutomaticHandoff.HOP_LIMIT);
+    }
+
     /** 純文字版本，給沒有按鈕的情境（或按鈕送不出去時）仍然看得到指令。 */
     public static String render(Task task, FlowRun flow, boolean canSupplement,
                                 boolean briefReports, String extensionToken, Workspace workspace) {
+        if (exhausted(flow)) return exhaustedNotice(task, flow, workspace, briefReports);
         List<Option> options = options(task, flow, canSupplement, briefReports, extensionToken, workspace);
         if (options.isEmpty()) return "";
         StringBuilder out = new StringBuilder("\n\n你現在可以做的事：");
         List<String> decisions = options.stream().filter(o -> DECISION.equals(o.kind())).map(Option::label).toList();
         if (!decisions.isEmpty())
             out.append("\n・直接選一個：").append(String.join("／", decisions))
-               .append("（按下方按鈕；都不合適就用下面的方式打字說明）");
+               .append(flow.changeTarget != null
+                       ? "（按下去就是核准需求變更，會回到需求階段重做，之後的測試計畫仍要你再核准；都不合適就打字說明）"
+                       : "（按下方按鈕；都不合適就用下面的方式打字說明）");
         for (Option option : options) {
             if (DECISION.equals(option.kind())) continue;
             out.append("\n・").append(option.label()).append("：").append(option.hint());
@@ -158,6 +194,25 @@ public final class HumanOptions {
     public static String render(Task task, FlowRun flow, boolean canSupplement,
                                 boolean briefReports, String extensionToken) {
         return render(task, flow, canSupplement, briefReports, extensionToken, Workspace.NONE);
+    }
+
+    private static String exhaustedNotice(Task task, FlowRun flow, Workspace workspace, boolean briefReports) {
+        Workspace ws = workspace == null ? Workspace.NONE : workspace;
+        StringBuilder out = new StringBuilder("\n\n*這個任務已經無法再自動往下跑*\n")
+                .append("系統允許的自動處理次數已經全部用完：整個任務換手 ").append(flow.transitions)
+                .append(" 次（上限 ").append(flow.snapshot.definition().maxTransitions()).append("）、")
+                .append("系統自己處理過的問題 ").append(flow.automaticHandoffs).append(" 件（上限 ")
+                .append(AutomaticHandoff.effectiveLimit(flow)).append("），延長也已經加到最多。")
+                .append("\n這是防止任務無限循環的保護，不是故障。現在不論按哪個按鈕、補充什麼，")
+                .append("下一步都會在開始前被擋下，所以這裡不再提供會讓人以為可以繼續的選項。")
+                .append("\n\n*目前的成果都還在*")
+                .append(ws.head() == null ? "\n任務工作區保留原樣。"
+                        : "\n任務工作區保留原樣，最新 commit=" + ws.head() + (ws.clean() ? "（已全部提交）" : "（有未提交的修改）"))
+                .append("\n\n*接下來需要人處理*")
+                .append("\n・剩下要做的事請另開新任務，並在需求裡寫明以這個任務的分支為基礎，否則新任務會從基準分支重新開始，看不到這裡的成果。")
+                .append("\n・這個任務已完成的部分若要交付，需要有 Git 推送權限的人把分支推上去並開 PR。");
+        if (briefReports) out.append("\n・想先看細節：補充 #").append(task.id()).append(" 檢視完整報告");
+        return out.toString();
     }
 
     private static String commandHint(String kind) {

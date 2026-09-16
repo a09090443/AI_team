@@ -53,11 +53,20 @@ public class FlowEngine {
     private void waitHuman(Task task, FlowRun flow, String reason, boolean canSupplement) {
         store.saveFlow(task.id(), flow);
         state(task, Task.State.AWAIT_HUMAN, "任務 #" + task.id() + " 等待人工，禁止發布");
+        postHumanOptions(task, flow, (flow.acceptanceOwner == null ? "" : "<@" + flow.acceptanceOwner + "> ")
+              + "任務 #" + task.id() + " 停下來了，現在沒有任何 agent 在跑，要等你決定怎麼做。\n"
+                + Diagnostics.clip(reason, 7000), canSupplement);
+    }
+
+    /**
+     * 貼出說明與目前真的可用的選項（含按鈕），不改任務狀態。
+     * 除了停止時使用，閘門擋下使用者的輸入時也用它 —— 否則使用者按了不適用的舊按鈕，
+     * 只會收到一句「不行」，卻不知道現在該按哪一個。
+     */
+    private void postHumanOptions(Task task, FlowRun flow, String lead, boolean canSupplement) {
         String token = extensionToken(task, flow);
         HumanOptions.Workspace workspace = workspaceState(task, flow);
-        String text = (flow.acceptanceOwner == null ? "" : "<@" + flow.acceptanceOwner + "> ")
-              + "任務 #" + task.id() + " 停下來了，現在沒有任何 agent 在跑，要等你決定怎麼做。\n"
-                + Diagnostics.clip(reason, 7000)
+        String text = lead
                 + HumanOptions.render(task, flow, canSupplement, props.briefReports(), token, workspace)
                 + (canSupplement ? ""
                     : "\n再補充一次不會解除上限。請先查核並修復原始阻礙，再評估要不要恢復；既有實作與核准都保留，不必重做。");
@@ -650,7 +659,11 @@ public class FlowEngine {
         }
         if (flow.changeTarget != null && (!user.equals(flow.acceptanceOwner) || feedback == null
                 || !feedback.startsWith("核准需求變更 ") || feedback.substring("核准需求變更 ".length()).isBlank())) {
-            slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "尚未核准需求變更；請由 <@" + flow.acceptanceOwner + "> 補充「核准需求變更 具體變更內容」。一般補充不會改寫需求基準。"); return;
+            postHumanOptions(task, flow, HumanOptions.exhausted(flow)
+                    ? "任務 #" + task.id() + " 剛才送出的內容沒有生效。"
+                    : "任務 #" + task.id() + " 正在等 <@" + flow.acceptanceOwner + "> 核准需求變更，"
+                    + "這時一般補充不會被採用（剛才送出的內容沒有生效）。\n請改按下方的「核准：…」按鈕，或輸入「核准需求變更 具體變更內容」。", true);
+            return;
         }
         if (flow.pendingPlanRevision != null && (!user.equals(flow.acceptanceOwner)
                 || feedback == null || feedback.isBlank() || feedback.trim().equals("續跑"))) {

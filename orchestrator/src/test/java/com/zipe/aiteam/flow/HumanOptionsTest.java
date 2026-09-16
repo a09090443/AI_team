@@ -227,6 +227,66 @@ class HumanOptionsTest {
         assertThat(text).doesNotContain("負責人決定：");
     }
 
+    @Test void whileWaitingForRequirementChangeApprovalTheChoiceIsTheApprovalItself() throws Exception {
+        // #1014：等待需求變更核准時只接受「核准需求變更」，送一般補充會被擋，按了兩次都沒反應。
+        flow.node = "triage";
+        flow.changeTarget = "intake";
+        flow.receipts.put("triage", decisionReport());
+
+        var decisions = HumanOptions.options(task, flow, true, true, null).stream()
+                .filter(o -> HumanOptions.DECISION.equals(o.kind())).toList();
+
+        assertThat(decisions).extracting(HumanOptions.Option::label)
+                .containsExactly("核准：另開任務處理", "核准：這次一起支援");
+        assertThat(decisions).allSatisfy(o -> assertThat(o.command()).startsWith("核准需求變更 smtps 要一起支援嗎？"));
+        assertThat(HumanOptions.render(task, flow, true, true, null)).contains("按下去就是核准需求變更");
+    }
+
+    // ---- 自動處理次數全部用完 ----
+
+    private void exhaust() {
+        flow.node = "triage";
+        flow.transitions = flow.snapshot.definition().maxTransitions() + 16;
+        flow.automaticHandoffExtraBudget = AutomaticHandoff.MAX_EXTRA_BUDGET;
+        flow.automaticHandoffs = AutomaticHandoff.effectiveLimit(flow);
+        flow.automaticHandoff = null;
+    }
+
+    @Test void exhaustedTaskSaysSoPlainlyAndOffersNoMisleadingButtons() throws Exception {
+        exhaust();
+        flow.changeTarget = "intake";
+        flow.receipts.put("triage", decisionReport());
+
+        var options = HumanOptions.options(task, flow, true, true, "t".repeat(64),
+                new HumanOptions.Workspace("fa96f9f", true));
+        assertThat(options).extracting(HumanOptions.Option::kind).containsExactly(HumanOptions.REPORT);
+
+        String text = HumanOptions.render(task, flow, true, true, "t".repeat(64), new HumanOptions.Workspace("fa96f9f", true));
+        assertThat(text).contains("這個任務已經無法再自動往下跑").contains("不是故障")
+                .contains("commit=fa96f9f（已全部提交）").contains("另開新任務").contains("以這個任務的分支為基礎")
+                .doesNotContain("核准：").doesNotContain("再給系統兩次機會");
+    }
+
+    @Test void notExhaustedWhileExtensionsRemain() {
+        exhaust();
+        flow.automaticHandoffExtraBudget = AutomaticHandoff.MAX_EXTRA_BUDGET - AutomaticHandoff.EXTENSION_SIZE;
+        assertThat(HumanOptions.exhausted(flow)).isFalse();
+    }
+
+    @Test void notExhaustedWhileARegisteredIncidentStillHasHops() {
+        exhaust();
+        flow.automaticHandoff = "a".repeat(64);
+        flow.automaticHandoffKeys.add("incident:" + flow.automaticHandoff);
+        flow.automaticHandoffHops = 3;
+        assertThat(HumanOptions.exhausted(flow)).isFalse();
+    }
+
+    @Test void notExhaustedBelowTheTotalStepLimit() {
+        exhaust();
+        flow.transitions = 0;
+        assertThat(HumanOptions.exhausted(flow)).isFalse();
+    }
+
     @Test void readOnlyReportOptionIsAButton() {
         var report = HumanOptions.options(task, flow, true, true, null).stream()
                 .filter(o -> HumanOptions.REPORT.equals(o.kind())).findFirst().orElseThrow();
