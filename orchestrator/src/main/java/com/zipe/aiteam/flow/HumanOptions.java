@@ -24,6 +24,13 @@ public final class HumanOptions {
         public boolean button() { return command != null; }
     }
 
+    /** 工作區現況；head 為 null 表示沒有工作區或取不到。 */
+    public record Workspace(String head, boolean clean) {
+        public static final Workspace NONE = new Workspace(null, true);
+    }
+
+    public static final String RESTORE = "RESTORE";
+    public static final String RESUME = "RESUME";
     public static final String EXTEND = "EXTEND";
     public static final String REPORT = "REPORT";
     public static final String PLAN = "PLAN";
@@ -32,11 +39,24 @@ public final class HumanOptions {
     public static final String SUPPLEMENT = "SUPPLEMENT";
 
     public static List<Option> options(Task task, FlowRun flow, boolean canSupplement,
-                                       boolean briefReports, String extensionToken) {
+                                       boolean briefReports, String extensionToken, Workspace workspace) {
         List<Option> options = new ArrayList<>();
-        String id = task.id();
+        Workspace ws = workspace == null ? Workspace.NONE : workspace;
 
-        if (extensionToken != null && !extensionToken.isBlank())
+        String restorable = flow.snapshot == null ? null : ContractRecovery.candidate(flow, ws.head(), ws.clean());
+        if (restorable != null)
+            options.add(new Option(RESTORE, "恢復「" + restorable + "」的結果",
+                    "那份結果先前被系統規則否決，但重新檢查已經通過。恢復後不會重跑、不會重設次數。",
+                    "核准恢復前置契約 " + restorable + (ws.head() == null ? "" : " " + ws.head())));
+
+        boolean resume = restorable == null && resumeWillProceed(flow);
+        if (resume)
+            options.add(new Option(RESUME, "繼續執行",
+                    "現在直接繼續就會開始處理，不需要其他授權，也不會多用掉一次自動處理的機會。",
+                    "續跑"));
+
+        // 直接續跑就能前進時，不再推延長額度 —— 那會讓人多做一步、白用一次授權。
+        if (!resume && extensionToken != null && !extensionToken.isBlank())
             options.add(new Option(EXTEND, "再給系統兩次機會",
                     "系統自己試過的次數已經用完。按下去只增加 " + AutomaticHandoff.EXTENSION_SIZE
                             + " 次，不會重設已經累積的次數，也不等於核准 PR。",
@@ -69,10 +89,16 @@ public final class HumanOptions {
         return List.copyOf(options);
     }
 
+    /** 相容舊呼叫端：沒有工作區資訊時視為沒有工作區。 */
+    public static List<Option> options(Task task, FlowRun flow, boolean canSupplement,
+                                       boolean briefReports, String extensionToken) {
+        return options(task, flow, canSupplement, briefReports, extensionToken, Workspace.NONE);
+    }
+
     /** 純文字版本，給沒有按鈕的情境（或按鈕送不出去時）仍然看得到指令。 */
     public static String render(Task task, FlowRun flow, boolean canSupplement,
-                                boolean briefReports, String extensionToken) {
-        List<Option> options = options(task, flow, canSupplement, briefReports, extensionToken);
+                                boolean briefReports, String extensionToken, Workspace workspace) {
+        List<Option> options = options(task, flow, canSupplement, briefReports, extensionToken, workspace);
         if (options.isEmpty()) return "";
         StringBuilder out = new StringBuilder("\n\n你現在可以做的事：");
         for (Option option : options) {
@@ -85,6 +111,11 @@ public final class HumanOptions {
         return out.toString();
     }
 
+    public static String render(Task task, FlowRun flow, boolean canSupplement,
+                                boolean briefReports, String extensionToken) {
+        return render(task, flow, canSupplement, briefReports, extensionToken, Workspace.NONE);
+    }
+
     private static String commandHint(String kind) {
         return switch (kind) {
             case REQUIREMENT -> "核准需求變更 <具體變更內容>";
@@ -92,6 +123,34 @@ public final class HumanOptions {
             case REMEDIATE -> "核准人工修復重驗 <驗收節點> <commit>";
             default -> "<你的說明或決定>";
         };
+    }
+
+    /**
+     * 直接續跑是否真的會開始處理，而不是又撞上某個閘門停下來。
+     * 只在確定會前進時才提供「繼續」按鈕 —— #1014 反覆送「續跑」卻原地踏步，
+     * 正是因為沒有人知道什麼時候續跑有用、什麼時候沒用。
+     */
+    static boolean resumeWillProceed(FlowRun flow) {
+        if (flow.snapshot == null || flow.dialogue || flow.changeTarget != null || flow.pendingPlanRevision != null)
+            return false;
+        Node node = flow.snapshot.definition().nodes().get(flow.node);
+        if (node == null || node.kind() != Kind.AGENT) return false;
+        // 這個節點已經在本輪做出判斷（成功或受阻）時，原樣重跑只會得到同樣的結論 ——
+        // 那正是 #1014 反覆「續跑」卻原地踏步的原因。只有還沒開始的節點才建議直接繼續。
+        if (flow.receipts.containsKey(flow.node)
+                || (flow.blockedFindings != null && flow.blockedFindings.containsKey(flow.node))) return false;
+        if (node.gate() == Gate.VERIFICATION && PlanApproval.blockingReason(flow, node.plan()) != null) return false;
+        if (node.requires() != null) for (String dependency : node.requires()) {
+            Node needed = flow.snapshot.definition().nodes().get(dependency);
+            if (needed == null || FlowGates.blockingReason(needed, flow.receipts.get(dependency), flow) != null) return false;
+        }
+        boolean overLimit = flow.transitions >= flow.snapshot.definition().maxTransitions()
+                || flow.visits.getOrDefault(flow.node, 0) >= node.maxVisits();
+        if (!overLimit || VerificationRecovery.permitted(flow, flow.node)) return true;
+        // 同一受阻事件已經登記過，續跑只會用掉一站轉手，不需要新的事件額度。
+        return flow.automaticHandoff != null
+                && flow.automaticHandoffKeys.contains("incident:" + flow.automaticHandoff)
+                && flow.automaticHandoffHops < AutomaticHandoff.HOP_LIMIT;
     }
 
     /** 驗收節點已用完重試次數、工作區又有可用 HEAD 時，人工修復重驗才是有意義的選項。 */

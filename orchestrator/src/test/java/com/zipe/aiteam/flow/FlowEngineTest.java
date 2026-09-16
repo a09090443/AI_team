@@ -144,6 +144,17 @@ class FlowEngineTest {
         assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
     }
 
+    @Test void deniedToolDoesNotBlockAWorkspaceNodeWhoseOutputIsAnArtifact() throws Exception {
+        // #1014：implementation 成功並提交，只因為 for 迴圈跑 mvn 被拒就被否決，導致 verification 永遠啟動不了。
+        deniedAt = "implementation";
+        engine.run(task);
+
+        var flow = store.flow(task.id()).orElseThrow();
+        assertThat(flow.receipts).containsKey("implementation");
+        assertThat(flow.blockedFindings).doesNotContainKey("implementation");
+        assertThat(calls).anyMatch(c -> c.startsWith("verification:"));
+    }
+
     @Test void deniedToolDoesNotDoubleBlockAnAlreadyBlockedReport() throws Exception {
         deniedAt = "verification";
         var blocked = blockedVerificationAtLimit();
@@ -231,7 +242,9 @@ class FlowEngineTest {
         assertThat(saved.activeNode).isNull();
         assertThat(saved.planApprovals).containsKey("plan");
         assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
-        verify(slack).post(any(),any(),any(),argThat((String t)->t.contains("本次未呼叫任何模型")&&t.contains("已還原")));
+        // 模型根本沒被呼叫，直接續跑就是正確的下一步，因此會附「繼續執行」按鈕。
+        verify(slack).post(any(),any(),any(),argThat((String t)->t.contains("本次未呼叫任何模型")&&t.contains("已還原")
+                &&t.contains("繼續執行")),any());
         verifyNoInteractions(publisher);
     }
     @Test void retryCapDoesNotConsumeAnotherVisitOrHideOriginalFailure() {

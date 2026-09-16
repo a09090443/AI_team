@@ -42,10 +42,14 @@ public final class HumanGate {
 
     public static List<LayoutBlock> blocks(String taskId, String text, List<HumanOptions.Option> options) {
         List<BlockElement> buttons = new ArrayList<>();
+        boolean primaryUsed = false;
         for (HumanOptions.Option option : options) {
             if (!option.button() || buttons.size() >= 4) continue;
             String value = new Command(taskId, option.command()).value();
-            boolean primary = HumanOptions.EXTEND.equals(option.kind());
+            // 只標一顆主要按鈕：系統建議的那一步（恢復、繼續或延長，依序只會出現其中之一）。
+            boolean primary = !primaryUsed && java.util.Set.of(HumanOptions.RESTORE, HumanOptions.RESUME,
+                    HumanOptions.EXTEND).contains(option.kind());
+            primaryUsed |= primary;
             buttons.add(button(b -> {
                 b.actionId(ACTION_COMMAND).value(value).text(plainText(option.label()));
                 return primary ? b.style("primary") : b;

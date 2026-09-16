@@ -54,17 +54,28 @@ public class FlowEngine {
         store.saveFlow(task.id(), flow);
         state(task, Task.State.AWAIT_HUMAN, "任務 #" + task.id() + " 等待人工，禁止發布");
         String token = extensionToken(task, flow);
+        HumanOptions.Workspace workspace = workspaceState(task, flow);
         String text = (flow.acceptanceOwner == null ? "" : "<@" + flow.acceptanceOwner + "> ")
               + "任務 #" + task.id() + " 停下來了，現在沒有任何 agent 在跑，要等你決定怎麼做。\n"
                 + Diagnostics.clip(reason, 7000)
-                + HumanOptions.render(task, flow, canSupplement, props.briefReports(), token)
+                + HumanOptions.render(task, flow, canSupplement, props.briefReports(), token, workspace)
                 + (canSupplement ? ""
                     : "\n再補充一次不會解除上限。請先查核並修復原始阻礙，再評估要不要恢復；既有實作與核准都保留，不必重做。");
-        var options = HumanOptions.options(task, flow, canSupplement, props.briefReports(), token);
+        var options = HumanOptions.options(task, flow, canSupplement, props.briefReports(), token, workspace);
         if (options.stream().anyMatch(HumanOptions.Option::button))
             slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), text,
                     HumanGate.blocks(task.id(), text, options));
         else slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), text);
+    }
+
+    /** 停止訊息要判斷恢復選項時用；取不到就當成沒有工作區，不讓訊息本身失敗。 */
+    private HumanOptions.Workspace workspaceState(Task task, FlowRun flow) {
+        try {
+            if (!flow.workspaceReady || !workspaces.exists(task.id())) return HumanOptions.Workspace.NONE;
+            return new HumanOptions.Workspace(workspaces.headSha(task.id()), workspaces.clean(task.id()));
+        } catch (Exception e) {
+            return HumanOptions.Workspace.NONE;
+        }
     }
 
     /** 額度已滿且現場可辨識時才有延長授權碼；其餘情況回傳 null，按鈕與文字都不會出現。 */
@@ -164,7 +175,21 @@ public class FlowEngine {
                     }
                     if (node.requires() != null) for (String dependency : node.requires()) {
                         String invalid = FlowGates.blockingReason(flow.snapshot.definition().nodes().get(dependency), flow.receipts.get(dependency), flow);
-                        if (invalid != null) throw new IllegalStateException("節點 " + flow.node + " 缺少有效前置契約 " + dependency + "：" + invalid);
+                        if (invalid == null) continue;
+                        // 能恢復就停下來讓人決定（附按鈕），不要丟成一般錯誤 —— 否則每次續跑都在同一處失敗。
+                        Node needed = flow.snapshot.definition().nodes().get(dependency);
+                        boolean workspaceNode = needed != null && needed.workspace() && workspaces.exists(task.id());
+                        String head = workspaceNode ? workspaces.headSha(task.id()) : null;
+                        boolean clean = !workspaceNode || workspaces.clean(task.id());
+                        if (ContractRecovery.blockingReason(flow, dependency, head, clean) == null) {
+                            waitHuman(task, flow, "「" + flow.node + "」要開始前，需要「" + dependency + "」的有效結果，但系統手上沒有。"
+                                    + "\n原因是「" + dependency + "」的報告先前被系統規則否決了，而那份報告本身是合格的"
+                                    + "（重新檢查已通過該階段的閘門）。"
+                                    + (head == null ? "" : "\n目前工作區乾淨，commit=" + head)
+                                    + "\n\n如果你確認這份結果可以用，按下方按鈕把它恢復成有效結果；不會重跑、不會重設任何次數。");
+                            return;
+                        }
+                        throw new IllegalStateException("節點 " + flow.node + " 缺少有效前置契約 " + dependency + "：" + invalid);
                     }
                     boolean recoveryPermitted = VerificationRecovery.permitted(flow,flow.node);
                     boolean overLimit = flow.transitions >= flow.snapshot.definition().maxTransitions()
@@ -276,7 +301,9 @@ public class FlowEngine {
                 audit.record(task.id(), node.role(), AuditLog.ACTION_RUNTIME, "節點=" + flow.node + "；配置=" + flow.snapshot.revision(), result.costEstimate(), result.sessionId());
                 if (result.permissionDenials() != null && !result.permissionDenials().isEmpty()) audit.record(task.id(), node.role(), AuditLog.ACTION_DENIED, Diagnostics.toolFailures(result.permissionDenials()));
                 String block = FlowGates.blockingReason(node, report, flow);
-                if (block == null) {
+                // 只有產出是「主張」的唯讀節點才需要這條規則；產物型節點的 commit 與測試結果
+                // 由下游獨立驗證再查一次。#1014 的 implementation 就是因為一個 for 迴圈被誤判。
+                if (block == null && node.scope() == Scope.READ_ONLY) {
                     block = ToolTrust.blockingReason(flow.snapshot.definition().roles().get(node.role()), result.permissionDenials());
                     if (block != null) audit.record(task.id(), node.role(), AuditLog.ACTION_DENIED,
                             "節點 " + flow.node + " 回報未受阻但本輪有工具遭拒，系統改判受阻；不採信其查核結論。");
@@ -453,6 +480,37 @@ public class FlowEngine {
                         "任務 #" + task.id() + " 已取得一次性自動交接延長並排入中央佇列；只增加 "
                                 + AutomaticHandoff.EXTENSION_SIZE + " 個事件額度，沒有重設歷史計數或略過既有核准。");
                 enqueue.accept(() -> run(store.find(task.id()).orElseThrow()));
+            } catch (Exception e) {
+                slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), Diagnostics.describe(e));
+            }
+            return;
+        }
+        if (feedback != null && feedback.startsWith("核准恢復前置契約")) {
+            if (from != Task.State.AWAIT_HUMAN || !user.equals(flow.acceptanceOwner)) return;
+            String[] parts = feedback.trim().split("\\s+");
+            try {
+                if (parts.length != 3 || !parts[0].equals("核准恢復前置契約"))
+                    throw new IllegalArgumentException("格式：核准恢復前置契約 <前置節點> <commit>");
+                String dependency = parts[1];
+                Node needed = flow.snapshot.definition().nodes().get(dependency);
+                String head = null; boolean clean = true;
+                if (needed != null && needed.workspace()) {
+                    requireWorkspace(task, flow);
+                    head = workspaces.headSha(task.id());
+                    clean = workspaces.clean(task.id());
+                    if (!head.equals(parts[2])) throw new IllegalArgumentException("commit 與目前工作區 HEAD 不符，請重新查核");
+                }
+                String invalid = ContractRecovery.blockingReason(flow, dependency, head, clean);
+                if (invalid != null) throw new IllegalArgumentException(invalid);
+                ContractRecovery.restore(flow, dependency, head);
+                store.saveFlow(task.id(), flow);
+                audit.record(task.id(), user, AuditLog.ACTION_RECOVERY,
+                        "核准恢復被系統規則否決的前置契約 " + dependency + "；commit=" + head
+                                + "；原始報告已重新通過節點閘門；未重跑、未重設任何計數或核准");
+                // 不自動續跑：恢復後通常還需要另一項授權（例如驗收次數已滿），
+                // 直接跑只會撞上上限、給出令人困惑的停止訊息。改為明講下一步並附按鈕。
+                waitHuman(task, flow, "已把「" + dependency + "」的結果恢復為有效（commit=" + head + "）。"
+                        + "沒有重跑，也沒有重設任何次數。\n任務仍停在「" + flow.node + "」，還需要你再決定下一步。");
             } catch (Exception e) {
                 slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), Diagnostics.describe(e));
             }
