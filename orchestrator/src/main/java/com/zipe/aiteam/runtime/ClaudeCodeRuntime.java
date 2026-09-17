@@ -103,7 +103,6 @@ public class ClaudeCodeRuntime implements AgentRuntime {
             cli.add("--session-id");
             cli.add(session);
         }
-        sessionStarted.accept(session);
         List<String> cmd = sandbox.wrap(unit, req.sandboxPolicy(), req.workingDirectory(), cli);
         Path logDir = props.logsPath().resolve(req.taskId());
         Path stderrLog = logDir.resolve(req.role() + ".stderr.log");
@@ -135,6 +134,9 @@ public class ClaudeCodeRuntime implements AgentRuntime {
                     cmd.size(), req.timeout());
 
             process = pb.start();
+            // 行程真的啟動後才回報 session。先回報的話，啟動前就失敗（例如參數過長）時，
+            // checkpoint 會記下一個從未建立的 session，之後每次續跑都 --resume 到不存在的對話而失敗。
+            sessionStarted.accept(session);
 
             // 提示從 stdin 送入，寫完即關閉讓 claude 開始處理。
             // 放在 argv 會受 Linux 單一參數 131072 位元組上限限制：#1016 分流節點的提示 131772 位元組，
@@ -158,6 +160,12 @@ public class ClaudeCodeRuntime implements AgentRuntime {
             QuotaExceeded.check(id(), stdout, stdoutLog.toString());
 
             if (exit != 0) {
+                if (missingResumeSession(req, stdout, stderrLog)) {
+                    // 要接續的對話不存在（從未建立或已被清除）。每一輪的提示都包含完整交接內容，
+                    // 改開新對話不會遺失流程資訊；不處理的話，任務會永遠卡在同一個錯誤。
+                    log.warn("[{}] 要接續的 Claude session {} 不存在，改以新對話重新執行", req.taskId(), req.resumeSessionId());
+                    return execute(withoutResume(req), sessionStarted);
+                }
                 throw new RuntimeExecutionException(describeFailure(exit, stdout, stdoutLog));
             }
             return parse(stdout, stderrLog);
@@ -173,6 +181,25 @@ public class ClaudeCodeRuntime implements AgentRuntime {
             throw new RuntimeExecutionException("無法執行 Claude Code；stdout=" + stdoutLog
                     + "；stderr=" + stderrLog, e);
         }
+    }
+
+    static final String MISSING_SESSION = "No conversation found with session ID";
+
+    /** 續跑時 CLI 明確回報找不到該對話；只認這個訊息，其他失敗照常回報。 */
+    static boolean missingResumeSession(RuntimeRequest req, String stdout, Path stderrLog) {
+        if (req.resumeSessionId() == null || req.resumeSessionId().isBlank()) return false;
+        try {
+            String stderr = Files.exists(stderrLog) ? Files.readString(stderrLog, StandardCharsets.UTF_8) : "";
+            return (stderr + "\n" + stdout).contains(MISSING_SESSION);
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    static RuntimeRequest withoutResume(RuntimeRequest req) {
+        return new RuntimeRequest(req.taskId(), req.role(), req.workingDirectory(), req.systemPromptFile(),
+                req.prompt(), req.allowedTools(), req.jsonSchema(), null, req.maxTurns(), req.timeout(),
+                req.sandboxPolicy(), req.model(), req.reasoningEffort());
     }
 
     /**
