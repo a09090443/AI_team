@@ -740,3 +740,15 @@ exit 0；QA 26／27 PASS，SC-25 為 npm 離線快取環境問題；smtps 為既
 #1014 現況：AWAIT_HUMAN／intake，transitions 40／24，automaticHandoff 無，intake 非受阻交接目標，
 工作區乾淨 HEAD=fa96f9f（feature/ai-team-task-1014）→ 符合承接條件。使用者下一步：
 在原討論串送 `補充 #1014 狀態` → 按「承接成新任務」→ 到頻道新討論串依序核准需求與測試計畫。
+
+2026-09-17 Claude Code：#1016（承接 #1014）卡在測試計畫節點。承接本身成功（工作區從 fa96f9f 起，需求與設計皆通過），
+但 plan 節點連三次受阻到上限（visits 3／3），使用者之後按的選項每次都立刻停回。
+根因三層：(1) spring-starters 測試規範要求建目錄、解壓文件快照、比對 llms，但操作契約只有不含管線的
+git archive，計畫無法綁定 operation_ids；(2) agent 把「請配置負責人補配置」做成選擇題，按鈕無法完成；
+(3) 系統在節點卡上限時仍提供選項與按鈕。另外計畫節點誤以為需要 plan_revision（角色提示共用 verify.md）。
+修正並部署：補操作（qa-docs-dir／snapshot／extract／compare-llms／compare-llms-full，requiredTools 加 mkdir，
+已在拋棄式副本實測）；契約限制選項必須可由負責人選擇完成；卡上限時改提供「檢視配置更新→核准配置更新→
+重新執行這一步」，受控恢復擴大到任何卡上限的 agent 節點；重複問題不再給按鈕；計畫節點告知 plan_revision 非輸入。
+PID=84852，JAR `e21bbc45d7c40ccde047cabeafe5b2f6c9d265c57ef83d0b5f93da90d72cf72b`，備份 `orchestrator-backup.8TPOgn`，
+379 項 0 失敗，工具鏈自檢含 mkdir，log 0 ERROR。#1016 快照資產與線上配置一致，可原地套用配置更新。
+仍待維運：QA 環境 npm 離線快取不足（文件建置驗收會因此受阻）。
