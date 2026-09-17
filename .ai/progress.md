@@ -764,3 +764,13 @@ session 再啟動行程，參數過長時 session 從未建立卻寫入 checkpoi
 #1016 QA 本輪：24 PASS／8 FAIL／1 BLOCKED；文件副本離線安裝、建置與兩份 llms 比對皆成功（npm 快取未再成為阻礙）。
 FAIL 多為 SMTPS 讀寫逾時、多階段截止、合法憑證送達、防洩漏情境缺測試，及文件語意逐項核對；
 完整離線 reactor verify exit 1 待查。#1016 目前 AWAIT_HUMAN／triage，使用者續跑即可。
+
+2026-09-18 Claude Code：#1016 分流連續三輪被系統自判失敗（visits 3／3）。被拒的是
+`git -C <路徑> log`、`java -version` 與含管線的指令；分流角色其實有 git 唯讀權限，只是呼叫形式不符白名單。
+舊 ToolTrust 把「有任何工具被拒」一律視為證據不可信，導致每輪重跑到用完次數。
+修正並部署：ToolTrust 只在被拒工具完全不在角色配置時才作廢（#1014 的情況仍會被擋）；形式不符改記稽核。
+提示中明列該角色可用的指令樣式並禁止 -C／管線／&&／for。兩份配置的唯讀查核角色補上 `git -C * ...` 樣式
+（已實測 Claude Code 支援該樣式，費用 US$0.03）。PID=108044，JAR
+`02cc7e4e7753e993dcccdca7f44f44cb4d2870b1573b712f3fcd8aaf6d4f08d4`，備份 `orchestrator-backup.s6eWiO`，
+385 項 0 失敗，log 0 ERROR。#1016 快照資產與線上一致，可原地套用配置更新；
+因 triage 已達 3／3，需走「檢視配置更新 → 核准配置更新 → 重新執行這一步」才能再跑。
