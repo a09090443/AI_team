@@ -105,3 +105,23 @@ Error loading config.toml: unknown configuration field `active_permission_profil
 
 隔離建置：275 項測試、0 失敗、10 項 opt-in 略過；Codex runtime 針對性
 測試 25/25，兩份 team 靜態驗證與 `check-source.sh` 均通過。
+
+## 2026-09-17 提示一律由 stdin 傳入（Claude Code 與 Codex）
+
+**症狀**：#1016 分流節點啟動即失敗，`IOException: Cannot run program "systemd-run": error: 7 (Argument list too long)`，
+任何重試都一樣。提示 131,772 位元組，超過 Linux 單一參數上限 `MAX_ARG_STRLEN` 131,072。
+長任務累積的需求基準、測試計畫、交接紀錄與受阻發現都在提示裡，任何專案跑得夠久都會碰到。
+
+**修正**：提示不再放 argv。
+- Claude Code：`claude -p ...`（不帶提示引數），啟動後把提示寫入 stdin 並關閉。
+- Codex：`codex exec ... -` 與 `codex exec resume ... <SESSION_ID> -`，啟動後寫入 stdin 並關閉。
+  stdin 必須關閉，否則 codex 會等待 EOF 直到逾時（既有陷阱）。
+- 外層 `systemd-run --user --wait --pipe` 會轉接 stdin，不需額外設定。
+
+**實測**（VM，經 `systemd-run --user --wait --pipe`）：
+- Claude Code 2.1.252：441,104 位元組提示由 stdin 送入，正確回覆指定字串（exit 0，費用 US$0.48）。
+- codex-cli 0.153.4：151,331 位元組提示以 `-` 由 stdin 送入，正確回覆指定字串（exit 0）。
+  注意 `systemd-run` 不會帶入呼叫端的 `PATH`，codex 的啟動腳本需要 `node`；正式執行路徑由 `ExecutionSandbox` 設定環境。
+
+**未涵蓋**：opencode runtime 仍以 argv 傳遞提示；其 stdin 行為未在 VM 實測，維持「未驗證」。
+換 CLI 版本時須重驗 stdin 提示行為。

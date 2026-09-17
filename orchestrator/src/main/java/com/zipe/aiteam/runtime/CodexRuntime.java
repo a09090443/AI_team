@@ -41,6 +41,8 @@ public class CodexRuntime implements AgentRuntime {
     @Override public boolean permitsCommand(List<String> tools, List<String> argv) { return true; }
 
     private static final Logger log = LoggerFactory.getLogger(CodexRuntime.class);
+    /** codex exec 與 exec resume 的 PROMPT 引數為 "-" 時從 stdin 讀取。 */
+    static final String STDIN_PROMPT = "-";
 
     private final AiTeamProperties props;
     private final ExecutionSandbox sandbox;
@@ -135,10 +137,11 @@ public class CodexRuntime implements AgentRuntime {
 
             process = pb.start();
 
-            // 這一步不是形式。codex exec 偵測到 stdin 是 pipe 就會等 EOF，
-            // 印一行 Reading additional input from stdin 然後靜靜掛到逾時 ——
+            // 提示從 stdin 送入，寫完一定要關閉：codex exec 偵測到 stdin 是 pipe 就會等 EOF，
+            // 不關閉會印一行 Reading additional input from stdin 然後靜靜掛到逾時 ——
             // 沒有錯誤、沒有結束碼，實測踩過。
             try (OutputStream stdin = process.getOutputStream()) {
+                stdin.write(buildPromptWithRole(req).getBytes(StandardCharsets.UTF_8));
                 stdin.flush();
             }
 
@@ -286,7 +289,10 @@ public class CodexRuntime implements AgentRuntime {
         if (resuming) cmd.add(req.resumeSessionId());
 
         // 已實測：即使這裡放成 danger-full-access，越界寫入仍然被外層擋下。
-        cmd.add(buildPromptWithRole(req));
+        // 提示用 "-" 從 stdin 讀入。放在 argv 會受 Linux 單一參數 131072 位元組上限限制，
+        // 長任務累積的需求、計畫與交接紀錄超過後，連 CLI 都啟動不了（#1016 分流節點即是）。
+        // 已實測 codex-cli 0.153.4：151KB 提示經 systemd-run --pipe 由 stdin 送入可正常讀取。
+        cmd.add(STDIN_PROMPT);
         return cmd;
     }
 

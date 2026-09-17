@@ -136,8 +136,12 @@ public class ClaudeCodeRuntime implements AgentRuntime {
 
             process = pb.start();
 
-            // prompt 已作為 argv 傳入，關閉 stdin 讓 claude 不再等待輸入
+            // 提示從 stdin 送入，寫完即關閉讓 claude 開始處理。
+            // 放在 argv 會受 Linux 單一參數 131072 位元組上限限制：#1016 分流節點的提示 131772 位元組，
+            // systemd-run 直接以 Argument list too long 拒絕，任何重試都一樣失敗。
+            // 已實測 Claude Code 2.1.252：441KB 提示經 systemd-run --pipe 由 stdin 送入可正常讀取。
             try (OutputStream stdin = process.getOutputStream()) {
+                stdin.write(req.prompt().getBytes(StandardCharsets.UTF_8));
                 stdin.flush();
             }
 
@@ -178,8 +182,8 @@ public class ClaudeCodeRuntime implements AgentRuntime {
     private List<String> buildCommand(RuntimeRequest req) {
         List<String> cmd = new ArrayList<>();
         cmd.add(props.claudeBin().toString());
+        // 提示不放 argv，由 execute 經 stdin 送入（見該處說明）。
         cmd.add("-p");
-        cmd.add(req.prompt());
 
         cmd.add("--append-system-prompt-file");
         cmd.add(req.systemPromptFile().toString());

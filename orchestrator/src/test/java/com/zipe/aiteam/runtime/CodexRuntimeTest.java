@@ -53,6 +53,23 @@ class CodexRuntimeTest {
             assertThat(cmd).containsSubsequence("-m", "gpt-5.6-sol", "-c", "model_reasoning_effort=\"medium\"");
         }
     }
+    @Test void promptNeverGoesIntoArgvSoLongTasksCanStillLaunch() {
+        // Linux 單一參數上限 131072 位元組；長任務的提示超過後，連 CLI 都啟動不了。
+        var props = org.mockito.Mockito.mock(com.zipe.aiteam.config.AiTeamProperties.class);
+        org.mockito.Mockito.when(props.codexBin()).thenReturn(Path.of("codex"));
+        String huge = "需求與交接紀錄".repeat(40_000);
+        for (String session : new String[]{null, "saved-session"}) {
+            var req = new AgentRuntime.RuntimeRequest("42", "triage", tmp, tmp.resolve("qa.md"), huge,
+                    List.of(), null, session, 1, Duration.ofSeconds(10),
+                    new SandboxPolicy(List.of(), List.of(), 256, 100, 32), "", "");
+            List<String> cmd = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                    new CodexRuntime(props, null), "buildCommand", req, null);
+            assertThat(cmd.getLast()).isEqualTo("-");
+            assertThat(cmd).noneMatch(arg -> arg.contains("需求與交接紀錄"));
+            assertThat(cmd.stream().mapToInt(a -> a.getBytes(java.nio.charset.StandardCharsets.UTF_8).length).max().orElse(0))
+                    .isLessThan(131_072);
+        }
+    }
     @Test void oldRequestDoesNotOverrideEffort() {
         var props = org.mockito.Mockito.mock(com.zipe.aiteam.config.AiTeamProperties.class);
         org.mockito.Mockito.when(props.codexBin()).thenReturn(Path.of("codex"));
