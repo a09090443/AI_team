@@ -29,12 +29,24 @@ class ToolTrustTest {
         assertThat(reason).doesNotContain("有配置但本次呼叫方式不符");
     }
 
-    @Test void deniedToolGrantedByPatternIsReportedAsCallShapeProblem() throws Exception {
-        String reason = ToolTrust.blockingReason(role(List.of("Read", "Bash(git show *)")),
-                denials("[{\"tool_name\":\"Bash\",\"tool_use_id\":\"t1\",\"tool_input\":{\"command\":\"for c in a b; do git show $c; done\"}}]"));
+    @Test void callShapeMismatchIsRecordedButDoesNotInvalidateTheConclusion() throws Exception {
+        // #1016：分流有 git 權限，只是用了 `git -C <路徑> log`。它用 Read／Grep 做出的判斷仍然成立；
+        // 作廢只會讓它每輪重跑到用完次數。
+        var withGit = role(List.of("Read", "Bash(git show *)"));
+        var denied = denials("[{\"tool_name\":\"Bash\",\"tool_use_id\":\"t1\","
+                + "\"tool_input\":{\"command\":\"git -C /work log --oneline -5\"}}]");
 
-        assertThat(reason).contains("有配置但本次呼叫方式不符白名單").contains("Bash");
-        assertThat(reason).doesNotContain("完全沒有這些工具");
+        assertThat(ToolTrust.blockingReason(withGit, denied)).isNull();
+        assertThat(ToolTrust.caveat(withGit, denied)).contains("呼叫方式不符白名單樣式").contains("Bash")
+                .contains("未因此作廢");
+    }
+
+    @Test void noCaveatWhenTheToolIsMissingEntirely() throws Exception {
+        var noBash = role(List.of("Read", "Grep", "Glob"));
+        var denied = denials("[{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git log\"}}]");
+
+        assertThat(ToolTrust.caveat(noBash, denied)).isNull();
+        assertThat(ToolTrust.blockingReason(noBash, denied)).contains("完全沒有這些工具");
     }
 
     @Test void roleWithoutToolListFailsClosed() throws Exception {

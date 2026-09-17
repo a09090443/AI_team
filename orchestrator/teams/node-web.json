@@ -61,7 +61,12 @@
         "Bash(git log *)",
         "Bash(git show *)",
         "Bash(git diff *)",
-        "Bash(git rev-parse *)"
+        "Bash(git rev-parse *)",
+        "Bash(git -C * status *)",
+        "Bash(git -C * log *)",
+        "Bash(git -C * show *)",
+        "Bash(git -C * diff *)",
+        "Bash(git -C * rev-parse *)"
       ]
     },
     "builder": {
@@ -113,7 +118,10 @@
         "Glob",
         "Bash(git diff *)",
         "Bash(git log *)",
-        "Bash(git show *)"
+        "Bash(git show *)",
+        "Bash(git -C * diff *)",
+        "Bash(git -C * log *)",
+        "Bash(git -C * show *)"
       ]
     },
     "frontend": {

@@ -251,7 +251,13 @@ class FlowEngineTest {
     }
 
     @Test void deniedToolTurnsAnOtherwiseCleanReportIntoABlock() throws Exception {
-        // #1014：coordinator 沒有 Bash，triage 卻回報查核完成並直接分流。
+        // #1014：coordinator 完全沒有 Bash，triage 卻回報查核完成並直接分流。
+        var flowBefore = store.flow(task.id()).orElseThrow();
+        ObjectNode definition = mapper.valueToTree(flowBefore.snapshot.definition());
+        ((ObjectNode) definition.path("roles").path("coordinator")).putArray("tools").add("Read").add("Grep").add("Glob");
+        flowBefore.snapshot = new TeamDefinition.Snapshot(flowBefore.snapshot.revision(),
+                mapper.treeToValue(definition, TeamDefinition.class), flowBefore.snapshot.repository(), flowBefore.snapshot.assets());
+        store.saveFlow(task.id(), flowBefore);
         deniedAt = "intake";
         engine.run(task);
 
@@ -260,6 +266,16 @@ class FlowEngineTest {
         assertThat(flow.receipts).doesNotContainKey("intake");
         assertThat(flow.lastBlockReason).contains("本輪有工具呼叫遭拒").contains("Bash");
         assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
+    }
+
+    @Test void callShapeMismatchDoesNotBlockAReadOnlyNode() throws Exception {
+        // #1016：分流有 git 權限但用了 `git -C <路徑> log`；不該因此每輪重跑到用完次數。
+        deniedAt = "intake";
+        engine.run(task);
+
+        var flow = store.flow(task.id()).orElseThrow();
+        assertThat(flow.receipts).containsKey("intake");
+        assertThat(flow.blockedFindings).doesNotContainKey("intake");
     }
 
     @Test void deniedToolDoesNotBlockAWorkspaceNodeWhoseOutputIsAnArtifact() throws Exception {

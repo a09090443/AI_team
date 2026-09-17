@@ -329,9 +329,13 @@ public class FlowEngine {
                 // 只有產出是「主張」的唯讀節點才需要這條規則；產物型節點的 commit 與測試結果
                 // 由下游獨立驗證再查一次。#1014 的 implementation 就是因為一個 for 迴圈被誤判。
                 if (block == null && node.scope() == Scope.READ_ONLY) {
-                    block = ToolTrust.blockingReason(flow.snapshot.definition().roles().get(node.role()), result.permissionDenials());
+                    Role acting = flow.snapshot.definition().roles().get(node.role());
+                    block = ToolTrust.blockingReason(acting, result.permissionDenials());
                     if (block != null) audit.record(task.id(), node.role(), AuditLog.ACTION_DENIED,
                             "節點 " + flow.node + " 回報未受阻但本輪有工具遭拒，系統改判受阻；不採信其查核結論。");
+                    String caveat = ToolTrust.caveat(acting, result.permissionDenials());
+                    if (block == null && caveat != null)
+                        audit.record(task.id(), node.role(), AuditLog.ACTION_DENIED, caveat);
                 }
                 slack.postConfigured(flow.snapshot.definition().roles().get(node.role()), task.slackChannel(), task.slackThreadTs(),
                         "任務 #" + task.id() + "｜" + flow.snapshot.definition().roles().get(node.role()).name()

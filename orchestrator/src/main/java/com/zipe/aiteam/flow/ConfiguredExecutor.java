@@ -57,6 +57,7 @@ public class ConfiguredExecutor {
                 + "\n測試規範：" + flow.snapshot.definition().project().testInstructions() + "\n補充與已知阻礙：\n" + flow.context);
         if (evidence != null) context.append("\n系統派工前證據（不是建置成功或真人核准）：").append(evidence);
         if (!flow.dialogue) context.append("\n本階段可使用／規畫的操作契約：").append(availableOperations(flow, node));
+        if (!flow.dialogue) context.append(commandPatterns(role));
         // 同一角色常同時負責訂計畫與驗收，角色提示會提到驗收要引用 plan_revision；
         // 但 plan_revision 是系統在計畫完成後依計畫內容計算的，訂計畫時本來就不存在。
         if (!flow.dialogue && node.gate() == Gate.TEST_PLAN)
@@ -102,6 +103,24 @@ public class ConfiguredExecutor {
                 node.maxTurns(), Duration.ofSeconds(node.timeoutSeconds()), selectedPolicy, cp.model(), role.reasoningEffort());
         return runtime.execute(request, session -> store.saveCheckpoint(cp.withSession(session)));
     }
+    /**
+     * 明講這個角色能執行哪些指令樣式。
+     *
+     * agent 看不到自己的白名單，只能猜：實際發生過 `git -C <路徑> log`、`java -version`、
+     * 管線與 for 迴圈被拒，然後整輪重跑（#1016 分流連續三輪如此）。
+     * 先講清楚比事後判失敗便宜得多。
+     */
+    static String commandPatterns(Role role) {
+        List<String> patterns = role.tools() == null ? List.of() : role.tools().stream()
+                .filter(tool -> tool != null && tool.startsWith("Bash")).toList();
+        if (patterns.isEmpty()) return "\n你這個角色不能執行任何指令，只能讀檔與搜尋；"
+                + "不要嘗試執行指令，也不得宣稱執行過任何指令的輸出。";
+        return "\n你這個角色只能執行下列樣式的指令：" + patterns
+                + "。必須完全符合樣式，工作目錄已經是上述工作目錄："
+                + "不要加 `-C <路徑>`、管線、`&&`、`for` 迴圈或重新導向，那些都會被拒絕而白跑一輪。"
+                + "被拒時不要宣稱執行過該指令，改用允許的方式或如實回報。";
+    }
+
     /**
      * 未解除的受阻發現必定送達，且不佔用 context 的長度預算。
      * 受阻報告不會寫入 receipts、context 又會淘汰舊段落，少了這段就會出現
