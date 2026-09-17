@@ -8,9 +8,13 @@
       "docs-install": {"nodes": ["implementation"], "directory": "doc-site", "argv": ["npm", "ci"], "writes": ["doc-site/node_modules"]},
       "qa-java": {"nodes": ["verification"], "directory": ".", "argv": ["mvn", "-B", "-o", "-pl", "base-spring-boot-starter", "verify"], "writes": ["base-spring-boot-starter/target"]},
       "qa-reactor": {"nodes": ["verification"], "directory": ".", "argv": ["mvn", "-B", "-o", "verify"], "writes": ["target", "base-spring-boot-starter/target", "db-spring-boot-starter/target", "example-keycloak/target", "iam-spring-boot-starter/target", "job-spring-boot-starter/target", "keycloak-spring-boot-starter/target", "logon-spring-boot-starter/target", "starters_example/target", "web-service-spring-boot-starter/target", "web-spring-boot-starter/target"]},
-      "qa-docs-snapshot": {"nodes": ["verification"], "directory": ".", "argv": ["git", "archive", "HEAD", "doc-site", "llms.txt", "llms-full.txt"], "writes": ["target"]},
+      "qa-docs-dir": {"nodes": ["verification"], "directory": ".", "argv": ["mkdir", "-p", "target/qa-docs"], "writes": ["target"]},
+      "qa-docs-snapshot": {"nodes": ["verification"], "directory": ".", "argv": ["git", "archive", "--output=target/qa-docs/snapshot.tar", "HEAD", "doc-site", "llms.txt", "llms-full.txt"], "writes": ["target"]},
+      "qa-docs-extract": {"nodes": ["verification"], "directory": ".", "argv": ["tar", "-x", "-f", "target/qa-docs/snapshot.tar", "-C", "target/qa-docs"], "writes": ["target"]},
       "qa-docs-install": {"nodes": ["verification"], "directory": ".", "argv": ["npm", "--prefix", "target/qa-docs/doc-site", "ci", "--offline", "--ignore-scripts", "--no-audit", "--no-fund"], "writes": ["target"]},
       "qa-docs-build": {"nodes": ["verification"], "directory": ".", "argv": ["npm", "--prefix", "target/qa-docs/doc-site", "run", "build"], "writes": ["target"]},
+      "qa-docs-compare-llms": {"nodes": ["verification"], "directory": ".", "argv": ["git", "diff", "--no-index", "--exit-code", "target/qa-docs/doc-site/build/llms.txt", "llms.txt"], "writes": []},
+      "qa-docs-compare-llms-full": {"nodes": ["verification"], "directory": ".", "argv": ["git", "diff", "--no-index", "--exit-code", "target/qa-docs/doc-site/build/llms-full.txt", "llms-full.txt"], "writes": []},
       "docs-build": {"nodes": ["implementation"], "directory": "doc-site", "argv": ["npm", "run", "build"], "writes": ["doc-site/build", "doc-site/.docusaurus", "llms.txt", "llms-full.txt"]}
     },
     "requiredTools": [
@@ -19,13 +23,14 @@
       "node",
       "npm",
       "git",
-      "tar"
+      "tar",
+      "mkdir"
     ],
     "name": "zipe-spring-boot-starters",
     "repositoryEnv": "AI_TEAM_REPO",
     "baseBranch": "develop",
     "buildInstructions": "依 AGENTS.md 與專案 skills；mvn -B verify。需生成的文件必須依規定產生，未完成不能宣稱通過。文件建置請在 doc-site 目錄執行 npm ci（有 lockfile）或 npm install（無 lockfile），再執行 npm run build；使用 PATH 上的 npm，不使用 npx 或絕對路徑替代。",
-    "testInstructions": "先制定情境測試計畫，再驗收；不得只看程式或單元測試數量。QA localTestNetwork 僅開放隔離 namespace 內本機測試，不連外。Maven 使用 -o。文件在隔離產物副本建置：先 mkdir -p target/qa-docs，再 git archive HEAD doc-site llms.txt llms-full.txt | tar -x -C target/qa-docs；依序 npm --prefix target/qa-docs/doc-site ci --offline --ignore-scripts --no-audit --no-fund 與 npm --prefix target/qa-docs/doc-site run build。不要在原 doc-site 執行 npm ci/build。快取不足須回報，不得下載或繞過沙箱；根目錄 llms.txt/llms-full.txt 與原始文件保持唯讀，比對 target/qa-docs/doc-site/build 產物驗證同步狀態。",
+    "testInstructions": "先制定情境測試計畫，再驗收；不得只看程式或單元測試數量。QA localTestNetwork 僅開放隔離 namespace 內本機測試，不連外。Maven 使用 -o。文件在隔離產物副本建置與比對，依序使用操作 qa-docs-dir、qa-docs-snapshot、qa-docs-extract、qa-docs-install、qa-docs-build，再以 qa-docs-compare-llms 與 qa-docs-compare-llms-full 比對副本建置出的 llms 產物與根目錄提交的版本（結束碼 0 表示一致）。不要在原 doc-site 執行 npm ci/build。快取不足須回報，不得下載或繞過沙箱；根目錄 llms.txt/llms-full.txt 與原始文件保持唯讀。",
     "protectedPaths": [
       "**/src/main/**",
       "**/pom.xml"

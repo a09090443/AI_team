@@ -321,6 +321,37 @@ class HumanOptionsTest {
         assertThat(HumanOptions.render(task, flow, true, true, null)).contains("已由 *任務 #1016* 承接");
     }
 
+    @Test void answeredQuestionAskedAgainGetsNoButtonsButAnExplanation() throws Exception {
+        flow.node = "triage";
+        flow.receipts.put("triage", decisionReport());
+        flow.context = FlowContext.append("", "使用者 u 補充：負責人決定：smtps 要一起支援嗎？　選擇：另開任務處理（照現況完成）");
+
+        assertThat(HumanOptions.options(task, flow, true, true, null))
+                .noneMatch(o -> HumanOptions.DECISION.equals(o.kind()));
+        assertThat(HumanOptions.render(task, flow, true, true, null)).contains("這個問題你已經回答過了");
+    }
+
+    @Test void stuckAtLimitOffersNoDecisionSupplementOrContinue() throws Exception {
+        flow.node = "plan";
+        flow.visits.put("plan", flow.snapshot.definition().nodes().get("plan").maxVisits());
+        flow.receipts.put("plan", decisionReport());
+
+        var options = HumanOptions.options(task, flow, true, true, null);
+
+        assertThat(options).extracting(HumanOptions.Option::kind)
+                .doesNotContain(HumanOptions.DECISION, HumanOptions.SUPPLEMENT, HumanOptions.RESUME);
+        assertThat(HumanOptions.render(task, flow, true, true, null))
+                .contains("這一步已經重試到上限").contains("目前沒有可用的恢復方式");
+    }
+
+    @Test void stuckAtLimitWithADeployedConfigOffersToReviewIt() {
+        flow.node = "plan";
+        flow.visits.put("plan", flow.snapshot.definition().nodes().get("plan").maxVisits());
+
+        assertThat(HumanOptions.options(task, flow, true, true, null, HumanOptions.Workspace.NONE, true))
+                .anyMatch(o -> HumanOptions.CONFIG_UPDATE.equals(o.kind()) && "檢視配置更新".equals(o.command()));
+    }
+
     @Test void readOnlyReportOptionIsAButton() {
         var report = HumanOptions.options(task, flow, true, true, null).stream()
                 .filter(o -> HumanOptions.REPORT.equals(o.kind())).findFirst().orElseThrow();

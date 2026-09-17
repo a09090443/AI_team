@@ -62,7 +62,8 @@ public final class HumanGate {
         for (HumanOptions.Option option : options) {
             if (!option.button() || HumanOptions.DECISION.equals(option.kind()) || buttons.size() >= 4) continue;
             // 只標一顆主要按鈕：系統建議的那一步（恢復、繼續或延長，依序只會出現其中之一）。
-            boolean primary = !primaryUsed && java.util.Set.of(HumanOptions.SUCCESSOR, HumanOptions.RESTORE,
+            boolean primary = !primaryUsed && java.util.Set.of(HumanOptions.SUCCESSOR, HumanOptions.RECOVER,
+                    HumanOptions.CONFIG_APPROVE, HumanOptions.CONFIG_UPDATE, HumanOptions.RESTORE,
                     HumanOptions.RESUME, HumanOptions.EXTEND).contains(option.kind());
             primaryUsed |= primary;
             buttons.add(commandButton(taskId, option, seq[0]++, primary));

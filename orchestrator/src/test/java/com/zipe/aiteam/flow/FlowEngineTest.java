@@ -513,6 +513,42 @@ class FlowEngineTest {
         assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
         assertThat(jobs).isEmpty(); verifyNoInteractions(executor, publisher);
     }
+    @Test void nodeStuckAtItsLimitByAConfigGapCanRunAgainAfterTheConfigIsFixed() throws Exception {
+        // #1016：測試計畫節點缺少文件驗收操作，連續受阻到重試上限。按選項、補充都不會重新執行；
+        // 管理者補好配置並部署後，必須有一條「檢視 → 核准 → 重新執行這一步」的路。
+        var flow = store.flow(task.id()).orElseThrow();
+        var old = flow.snapshot;
+        flow.node = "plan";
+        flow.visits.put("plan", old.definition().nodes().get("plan").maxVisits());
+        flow.receipts.put("intake", report(TeamDefinition.Gate.REQUIREMENTS));
+        store.saveFlow(task.id(), flow);
+        task.state(Task.State.AWAIT_HUMAN); store.save(task);
+        List<Runnable> jobs = new ArrayList<>();
+
+        // 卡在上限、尚無新配置：不提供會讓人誤以為能繼續的選項。
+        engine.resume(task, "狀態", "u", jobs::add);
+        verify(slack, atLeastOnce()).post(any(), any(), any(), argThat((String t) ->
+                t.contains("這一步已經重試到上限") && t.contains("目前沒有可用的恢復方式") && !t.contains("繼續執行")));
+
+        ObjectNode definition = mapper.valueToTree(old.definition());
+        ((ObjectNode)definition.path("project")).put("testInstructions", "補上文件驗收操作");
+        var next = new TeamDefinition.Snapshot("next", mapper.treeToValue(definition, TeamDefinition.class), old.repository(), old.assets());
+        when(catalog.snapshot()).thenReturn(next);
+
+        engine.resume(task, "狀態", "u", jobs::add);
+        verify(slack, atLeastOnce()).post(any(), any(), any(), argThat((String t) -> t.contains("請先按「檢視配置更新」")), any());
+
+        engine.resume(task, "核准配置更新 " + TeamMigration.preview(old, next).token(), "u", jobs::add);
+        verify(slack, atLeastOnce()).post(any(), any(), any(), argThat((String t) -> t.contains("重新執行這一步")), any());
+        assertThat(jobs).isEmpty();
+
+        engine.resume(task, "核准恢復驗收 plan next", "u", jobs::add);
+        var saved = store.flow(task.id()).orElseThrow();
+        assertThat(saved.recoveryGrants).containsEntry("plan", "next");
+        assertThat(saved.visits.get("plan")).isEqualTo(old.definition().nodes().get("plan").maxVisits());
+        assertThat(jobs).hasSize(1);
+    }
+
     @Test void planApprovalQueuesExactlyOnceButDoesNotPublish() throws Exception {
         var flow = store.flow(task.id()).orElseThrow();
         ObjectNode definition = mapper.valueToTree(flow.snapshot.definition());

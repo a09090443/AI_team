@@ -39,9 +39,36 @@ public final class HumanOptions {
     public static final String SUPPLEMENT = "SUPPLEMENT";
     public static final String SUCCESSOR = "SUCCESSOR";
     public static final String SUCCESSOR_COMMAND = "承接成新任務";
+    public static final String RECOVER = "RECOVER";
+    public static final String CONFIG_UPDATE = "CONFIG_UPDATE";
+    public static final String CONFIG_APPROVE = "CONFIG_APPROVE";
 
     public static List<Option> options(Task task, FlowRun flow, boolean canSupplement,
                                        boolean briefReports, String extensionToken, Workspace workspace) {
+        return options(task, flow, canSupplement, briefReports, extensionToken, workspace, false);
+    }
+
+    /**
+     * 目前這一步卡在重試上限：引擎一定會在啟動前擋下，而且延長額度也幫不上忙。
+     * 這時選擇題、補充說明、「繼續」都不會讓任何東西重新執行 —— #1016 的測試計畫節點
+     * 就是這樣，使用者連按三次選項，每次都立刻停回來。
+     */
+    static boolean stuckAtLimit(FlowRun flow) {
+        if (flow.snapshot == null || flow.dialogue) return false;
+        Node node = flow.snapshot.definition().nodes().get(flow.node);
+        if (node == null || node.kind() != Kind.AGENT) return false;
+        return !FlowLimits.canStart(flow, node) && !AutomaticHandoff.extensionWouldHelp(flow);
+    }
+
+    /** 配置修正並核准後，可以授權目前這一步再跑一次；與授權本身同一套規則。 */
+    static String recoverableNode(FlowRun flow) {
+        if (flow.snapshot == null) return null;
+        return VerificationRecovery.blockingReason(flow, flow.node, flow.snapshot.revision(), flow.acceptanceOwner) == null
+                ? flow.node : null;
+    }
+
+    public static List<Option> options(Task task, FlowRun flow, boolean canSupplement, boolean briefReports,
+                                       String extensionToken, Workspace workspace, boolean configUpdate) {
         List<Option> options = new ArrayList<>();
         Workspace ws = workspace == null ? Workspace.NONE : workspace;
 
@@ -58,8 +85,19 @@ public final class HumanOptions {
             return List.copyOf(options);
         }
 
-        // agent 提出的選擇題放最前面：這是對方停下來最主要要回答的事。
-        options.addAll(decisionOptions(flow));
+        boolean stuck = stuckAtLimit(flow);
+
+        String recoverable = recoverableNode(flow);
+        if (recoverable != null)
+            options.add(new Option(RECOVER, "重新執行這一步",
+                    "新配置已經套用。按下去會依新配置讓「" + recoverable + "」再跑一次，不會重設任何歷史次數。",
+                    "核准恢復驗收 " + recoverable + " " + flow.snapshot.revision()));
+        if (configUpdate)
+            options.add(new Option(CONFIG_UPDATE, "檢視配置更新",
+                    "管理者已經部署新的配置。按下去會列出差異，確認後才會套用。", "檢視配置更新"));
+
+        // agent 提出的選擇題放最前面：這是對方停下來最主要要回答的事。卡在上限時選了也不會重新執行。
+        if (!stuck) options.addAll(decisionOptions(flow));
 
         String restorable = flow.snapshot == null ? null : ContractRecovery.candidate(flow, ws.head(), ws.clean());
         if (restorable != null)
@@ -67,14 +105,14 @@ public final class HumanOptions {
                     "那份結果先前被系統規則否決，但重新檢查已經通過。恢復後不會重跑、不會重設次數。",
                     "核准恢復前置契約 " + restorable + (ws.head() == null ? "" : " " + ws.head())));
 
-        boolean resume = restorable == null && resumeWillProceed(flow);
+        boolean resume = !stuck && restorable == null && resumeWillProceed(flow);
         if (resume)
             options.add(new Option(RESUME, "繼續執行",
                     "現在直接繼續就會開始處理，不需要其他授權，也不會多用掉一次自動處理的機會。",
                     "續跑"));
 
         // 直接續跑就能前進時，不再推延長額度 —— 那會讓人多做一步、白用一次授權。
-        if (!resume && extensionToken != null && !extensionToken.isBlank())
+        if (!stuck && !resume && extensionToken != null && !extensionToken.isBlank())
             options.add(new Option(EXTEND, "再給系統兩次機會",
                     "系統自己試過的次數已經用完。按下去只增加 " + AutomaticHandoff.EXTENSION_SIZE
                             + " 次，不會重設已經累積的次數，也不等於核准 PR。",
@@ -96,7 +134,7 @@ public final class HumanOptions {
                     "工作區必須乾淨，而且 commit 要等於目前的 HEAD；重驗之後仍須重新核准測試計畫。",
                     null));
 
-        if (canSupplement) options.add(new Option(SUPPLEMENT, "告訴它還缺什麼",
+        if (canSupplement && !stuck) options.add(new Option(SUPPLEMENT, "告訴它還缺什麼",
                 "你寫的內容會進入流程脈絡，交由分流重新判斷。"
                         + "如果你知道還有沒修好的問題，直接把問題寫進來，系統才派得出去；"
                         + "只寫「續跑」不會改變上一輪的判斷依據。", null));
@@ -114,9 +152,20 @@ public final class HumanOptions {
      * 按下去送出的是一段「負責人決定」的補充文字（含選項後果），交由流程重新判斷；
      * 以「負責人決定：」開頭，不會被當成任何「核准…」指令。
      */
+    /**
+     * 同一個問題已經回答過（交接紀錄裡有對應的決定），agent 卻又原封不動地問一次。
+     * 再給同樣的按鈕只會讓人重複按、流程原地重跑；這時不提供選項，改說明原因。
+     */
+    static boolean repeatedDecision(FlowRun flow) {
+        com.fasterxml.jackson.databind.JsonNode report = latestReport(flow);
+        if (!com.zipe.aiteam.slack.SlackReport.hasDecision(report) || flow.context == null) return false;
+        String question = clip(report.get("human_decision").path("question").asText(), 300);
+        return flow.context.contains("負責人決定：" + question) || flow.context.contains("核准需求變更 " + question);
+    }
+
     static List<Option> decisionOptions(FlowRun flow) {
         com.fasterxml.jackson.databind.JsonNode report = latestReport(flow);
-        if (!com.zipe.aiteam.slack.SlackReport.hasDecision(report)) return List.of();
+        if (!com.zipe.aiteam.slack.SlackReport.hasDecision(report) || repeatedDecision(flow)) return List.of();
         var d = report.get("human_decision");
         String question = clip(d.path("question").asText(), 300);
         // 等待需求變更核准時，系統只接受「核准需求變更 <內容>」，其他補充一律擋下。
@@ -170,13 +219,35 @@ public final class HumanOptions {
     /** 純文字版本，給沒有按鈕的情境（或按鈕送不出去時）仍然看得到指令。 */
     public static String render(Task task, FlowRun flow, boolean canSupplement,
                                 boolean briefReports, String extensionToken, Workspace workspace) {
+        return render(task, flow, canSupplement, briefReports, extensionToken, workspace, false);
+    }
+
+    public static String render(Task task, FlowRun flow, boolean canSupplement, boolean briefReports,
+                                String extensionToken, Workspace workspace, boolean configUpdate) {
         if (flow.successor != null)
             return "\n\n這個任務已由 *任務 #" + flow.successor + "* 承接，之後請到頻道裡「任務 #" + flow.successor
                     + "」的討論串操作；這裡不會再有任何動作。";
         if (exhausted(flow)) return exhaustedNotice(task, flow, workspace, briefReports);
-        List<Option> options = options(task, flow, canSupplement, briefReports, extensionToken, workspace);
-        if (options.isEmpty()) return "";
-        StringBuilder out = new StringBuilder("\n\n你現在可以做的事：");
+        List<Option> options = options(task, flow, canSupplement, briefReports, extensionToken, workspace, configUpdate);
+        StringBuilder out = new StringBuilder();
+        if (stuckAtLimit(flow)) {
+            Node node = flow.snapshot.definition().nodes().get(flow.node);
+            out.append("\n\n*這一步已經重試到上限*\n「").append(flow.node).append("」已經跑了 ")
+               .append(flow.visits.getOrDefault(flow.node, 0)).append(" 次（上限 ").append(node.maxVisits())
+               .append("），再按選項或補充都不會讓它重新執行。");
+            if (recoverableNode(flow) != null)
+                out.append("\n新配置已經套用，可以按「重新執行這一步」依新配置再跑一次。");
+            else if (configUpdate)
+                out.append("\n管理者已經部署新的配置，請先按「檢視配置更新」確認差異並核准，之後就能重新執行這一步。");
+            else
+                out.append("\n目前沒有可用的恢復方式。若 agent 回報需要調整配置、環境或權限，要由管理者修正並部署新配置；")
+                   .append("部署後在這裡送「補充 #").append(task.id()).append(" 狀態」，就會出現「檢視配置更新」。");
+        } else if (repeatedDecision(flow)) {
+            out.append("\n\n*這個問題你已經回答過了*\nagent 收到你的選擇後仍停在同一個地方，代表光靠選擇解決不了。")
+               .append("請看 agent 說明裡「另外也需要處理」的項目，那通常需要管理者或維運去做。");
+        }
+        if (options.isEmpty()) return out.toString();
+        out.append("\n\n你現在可以做的事：");
         List<String> decisions = options.stream().filter(o -> DECISION.equals(o.kind())).map(Option::label).toList();
         if (!decisions.isEmpty())
             out.append("\n・直接選一個：").append(String.join("／", decisions))

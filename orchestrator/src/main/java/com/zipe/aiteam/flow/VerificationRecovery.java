@@ -5,29 +5,47 @@ import static com.zipe.aiteam.flow.TeamDefinition.*;
 
 /** 能力配置經真人核准後，另一個明確指令授予一次驗收；不重設歷史計數。 */
 public final class VerificationRecovery {
+    /**
+     * 配置修正並經負責人核准遷移後，授予指定節點一次越過重試上限的機會；不重設任何歷史計數。
+     *
+     * 原本只允許驗收節點。但因能力配置缺口而卡在重試上限的，可能是任何節點 ——
+     * #1016 的測試計畫節點缺少文件驗收操作，連續三次受阻後停在上限；配置補好之後，
+     * 若只有驗收節點能恢復，這個節點就永遠無法再跑。
+     */
     public static void authorize(FlowRun flow, String nodeId, String revision, String user) {
-        if (!Objects.equals(user,flow.acceptanceOwner) || !Objects.equals(revision,flow.snapshot.revision())
-                || flow.activeNode!=null || flow.dialogue || flow.changeTarget!=null || flow.pendingPlanRevision!=null)
-            throw new IllegalArgumentException("恢復負責人、配置版本或等待狀態不符");
-        if(flow.migrationHistory.isEmpty() || flow.recoveryRevisions.contains(revision))
-            throw new IllegalArgumentException("此配置尚未核准遷移，或一次恢復授權已使用");
-        var preview=TeamMigration.preview(flow.migrationHistory.getLast(),flow.snapshot);
-        if(preview.changes().isEmpty())throw new IllegalArgumentException("配置未修正任何能力");
-        Node node=flow.snapshot.definition().nodes().get(nodeId);
-        if(node==null || node.gate()!=Gate.VERIFICATION || !flow.snapshot.definition().project().requirePlanApproval())
-            throw new IllegalArgumentException("只允許恢復需真人計畫核准的驗收節點");
-        if(flow.transitions>=flow.snapshot.definition().maxTransitions())
-            throw new IllegalArgumentException("流程總上限已用盡，不授予恢復");
-        for(String dep:node.requires()) {
-            String block=FlowGates.blockingReason(flow.snapshot.definition().nodes().get(dep),flow.receipts.get(dep),flow);
-            if(block!=null)throw new IllegalArgumentException("前置契約 "+dep+" 無效："+block);
-        }
+        String invalid = blockingReason(flow, nodeId, revision, user);
+        if (invalid != null) throw new IllegalArgumentException(invalid);
+        Node node = flow.snapshot.definition().nodes().get(nodeId);
         flow.recoveryRevisions.add(revision);
         flow.recoveryGrants.clear();flow.recoveryGrants.put(nodeId,revision);
         flow.remediationRecoveryGrants.clear();
         flow.node=nodeId;flow.activeNode=null;
-        // 即使已有新版本核准，仍呈現計畫，要求此次恢復再核准後才派工。
-        flow.planApprovals.clear();
+        // 驗收節點：即使已有新版本核准，仍呈現計畫，要求此次恢復再核准後才派工。
+        if (node.gate() == Gate.VERIFICATION) flow.planApprovals.clear();
+    }
+
+    /** null 表示可以授權；停止訊息用它決定要不要提供「重新執行這一步」按鈕，與授權本身同一套規則。 */
+    public static String blockingReason(FlowRun flow, String nodeId, String revision, String user) {
+        if (!Objects.equals(user,flow.acceptanceOwner) || !Objects.equals(revision,flow.snapshot.revision())
+                || flow.activeNode!=null || flow.dialogue || flow.changeTarget!=null || flow.pendingPlanRevision!=null)
+            return "恢復負責人、配置版本或等待狀態不符";
+        if(flow.migrationHistory.isEmpty() || flow.recoveryRevisions.contains(revision))
+            return "此配置尚未核准遷移，或一次恢復授權已使用";
+        var preview=TeamMigration.preview(flow.migrationHistory.getLast(),flow.snapshot);
+        if(preview.changes().isEmpty()) return "配置未修正任何能力";
+        Node node=flow.snapshot.definition().nodes().get(nodeId);
+        if(node==null || node.kind()!=Kind.AGENT) return "只允許恢復流程中的 agent 節點";
+        if(node.gate()==Gate.VERIFICATION && !flow.snapshot.definition().project().requirePlanApproval())
+            return "只允許恢復需真人計畫核准的驗收節點";
+        if(node.gate()!=Gate.VERIFICATION && flow.visits.getOrDefault(nodeId,0)<node.maxVisits())
+            return "此節點尚未達重試上限，請直接續跑";
+        if(flow.transitions>=flow.snapshot.definition().maxTransitions())
+            return "流程總上限已用盡，不授予恢復";
+        if (node.requires() != null) for(String dep:node.requires()) {
+            String block=FlowGates.blockingReason(flow.snapshot.definition().nodes().get(dep),flow.receipts.get(dep),flow);
+            if(block!=null) return "前置契約 "+dep+" 無效："+block;
+        }
+        return null;
     }
 
     /**

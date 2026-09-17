@@ -66,11 +66,10 @@ public class FlowEngine {
     private void postHumanOptions(Task task, FlowRun flow, String lead, boolean canSupplement) {
         String token = extensionToken(task, flow);
         HumanOptions.Workspace workspace = workspaceState(task, flow);
+        boolean configUpdate = configUpdateAvailable(flow);
         String text = lead
-                + HumanOptions.render(task, flow, canSupplement, props.briefReports(), token, workspace)
-                + (canSupplement ? ""
-                    : "\n再補充一次不會解除上限。請先查核並修復原始阻礙，再評估要不要恢復；既有實作與核准都保留，不必重做。");
-        var options = HumanOptions.options(task, flow, canSupplement, props.briefReports(), token, workspace);
+                + HumanOptions.render(task, flow, canSupplement, props.briefReports(), token, workspace, configUpdate);
+        var options = HumanOptions.options(task, flow, canSupplement, props.briefReports(), token, workspace, configUpdate);
         String sent = null;
         if (options.stream().anyMatch(HumanOptions.Option::button)) {
             sent = slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), text,
@@ -81,6 +80,18 @@ public class FlowEngine {
                     "停止訊息的按鈕版面送出失敗，改送純文字版");
         }
         if (sent == null) slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), text);
+    }
+
+    /** 管理者已部署新配置，且差異屬於可原地套用的能力調整（與「檢視配置更新」同一套判斷）。 */
+    private boolean configUpdateAvailable(FlowRun flow) {
+        try {
+            if (flow.dialogue || flow.changeTarget != null || !catalog.enabled()) return false;
+            var target = catalog.snapshot();
+            return !target.revision().equals(flow.snapshot.revision())
+                    && !TeamMigration.preview(flow.snapshot, target).changes().isEmpty();
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /** 停止訊息要判斷恢復選項時用；取不到就當成沒有工作區，不讓訊息本身失敗。 */
@@ -682,12 +693,21 @@ public class FlowEngine {
             try {
                 if(parts.length!=3 || !parts[0].equals("核准恢復驗收")) throw new IllegalArgumentException("格式：核准恢復驗收 <驗收節點> <配置版本>");
                 VerificationRecovery.authorize(flow,parts[1],parts[2],user);
+                Node recovered = flow.snapshot.definition().nodes().get(parts[1]);
                 if (!store.claimState(task.id(),from,Task.State.RESUME_QUEUED)) return;
                 store.saveFlow(task.id(),flow);
-                if(store.claimState(task.id(),Task.State.RESUME_QUEUED,Task.State.AWAIT_HUMAN)) task.state(Task.State.AWAIT_HUMAN);
-                audit.record(task.id(),user,AuditLog.ACTION_BUTTON,"核准一次受控恢復 "+parts[1]+"，配置="+parts[2]+"；未重設計數，待重新核准測試計畫");
-                slack.post(Identity.SYSTEM,task.slackChannel(),task.slackThreadTs(),"已授權此配置一次受控驗收，不清空歷史次數；尚未派工。請重新審閱並核准下列測試計畫，核准後才會自動執行 QA。");
-                presentPlan(task,flow,flow.snapshot.definition().nodes().get(parts[1]).plan());
+                if (recovered.gate() == Gate.VERIFICATION) {
+                    if(store.claimState(task.id(),Task.State.RESUME_QUEUED,Task.State.AWAIT_HUMAN)) task.state(Task.State.AWAIT_HUMAN);
+                    audit.record(task.id(),user,AuditLog.ACTION_BUTTON,"核准一次受控恢復 "+parts[1]+"，配置="+parts[2]+"；未重設計數，待重新核准測試計畫");
+                    slack.post(Identity.SYSTEM,task.slackChannel(),task.slackThreadTs(),"已授權此配置一次受控驗收，不清空歷史次數；尚未派工。請重新審閱並核准下列測試計畫，核准後才會自動執行 QA。");
+                    presentPlan(task,flow,recovered.plan());
+                } else {
+                    // 其他節點沒有計畫卡要重新核准，直接照新配置重新執行這一步。
+                    task.state(Task.State.RESUME_QUEUED);
+                    audit.record(task.id(),user,AuditLog.ACTION_BUTTON,"核准一次受控恢復 "+parts[1]+"，配置="+parts[2]+"；未重設計數，已排入重新執行");
+                    slack.post(Identity.SYSTEM,task.slackChannel(),task.slackThreadTs(),"已依新配置重新執行「"+parts[1]+"」一次，不清空歷史次數。");
+                    enqueue.accept(() -> run(store.find(task.id()).orElseThrow()));
+                }
             } catch(IllegalArgumentException e) { slack.post(Identity.SYSTEM,task.slackChannel(),task.slackThreadTs(),e.getMessage()); }
             return;
         }
@@ -757,8 +777,15 @@ public class FlowEngine {
                 if (feedback.equals("檢視配置更新")) {
                     String detail = String.join("\n", preview.changes());
                     if (detail.length() > 5000) { slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "配置差異超過 Slack 可安全完整呈現的長度，請管理者縮小變更；未產生核准指令。"); return; }
-                    slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "配置差異（尚未套用）：\n" + detail
-                            + "\n核准配置更新 " + preview.token() + "\n套用後保留歷史及工作區，失效舊驗收／核准證據，不自動續跑。"); return;
+                    String text = "*配置有更新（尚未套用）*\n" + detail
+                            + "\n\n套用後保留歷史與工作區，舊的驗收與核准證據會失效，不會自動續跑。"
+                            + "\n確認沒問題就按「核准配置更新」，或輸入：補充 #" + task.id() + " 核准配置更新 " + preview.token();
+                    var approve = new HumanOptions.Option(HumanOptions.CONFIG_APPROVE, "核准配置更新",
+                            "套用新配置", "核准配置更新 " + preview.token());
+                    if (slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), text,
+                            HumanGate.blocks(task.id(), text, java.util.List.of(approve))) == null)
+                        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), text);
+                    return;
                 }
                 if (!feedback.equals("核准配置更新 " + preview.token())) throw new IllegalArgumentException("核准指令或版本不符，請重新檢視配置更新");
                 TeamMigration.apply(flow, target, preview.token());
@@ -766,11 +793,7 @@ public class FlowEngine {
                 store.saveFlow(task.id(), flow);
                 audit.record(task.id(), user, AuditLog.ACTION_BUTTON, "核准配置更新 " + preview);
                 if (store.claimState(task.id(), Task.State.RESUME_QUEUED, Task.State.AWAIT_HUMAN)) task.state(Task.State.AWAIT_HUMAN);
-                String recovery = target.definition().nodes().entrySet().stream().filter(e -> e.getValue().gate()==Gate.VERIFICATION)
-                        .map(e -> "\n若要在此配置授權一次受控驗收（不重設歷史次數），請送出：補充 #"+task.id()
-                                +" 核准恢復驗收 "+e.getKey()+" "+target.revision()).collect(java.util.stream.Collectors.joining());
-                slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "已套用配置並保存原快照；尚未續跑，舊計畫核准已失效。"
-                        + recovery + "\n系統將重新呈現測試計畫；你核准計畫後才派工。PR 仍需另行核准。");
+                postHumanOptions(task, flow, "已套用新配置並保存原快照；還沒有重新執行，舊的計畫核准已失效。PR 仍需另行核准。", true);
             } catch (IllegalArgumentException e) { slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), e.getMessage()); }
             return;
         }

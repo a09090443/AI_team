@@ -57,6 +57,11 @@ public class ConfiguredExecutor {
                 + "\n測試規範：" + flow.snapshot.definition().project().testInstructions() + "\n補充與已知阻礙：\n" + flow.context);
         if (evidence != null) context.append("\n系統派工前證據（不是建置成功或真人核准）：").append(evidence);
         if (!flow.dialogue) context.append("\n本階段可使用／規畫的操作契約：").append(availableOperations(flow, node));
+        // 同一角色常同時負責訂計畫與驗收，角色提示會提到驗收要引用 plan_revision；
+        // 但 plan_revision 是系統在計畫完成後依計畫內容計算的，訂計畫時本來就不存在。
+        if (!flow.dialogue && node.gate() == Gate.TEST_PLAN)
+            context.append("\n本階段是訂定測試計畫：plan_revision 由系統在計畫完成後依計畫內容計算，")
+                    .append("不是本階段的輸入，不得因為沒有收到 plan_revision 而回報受阻。");
         context.append("\n系統固定需求基準 baseline_revision：").append(flow.baselineRevision)
                 .append("\n真人需求／驗收負責人：").append(flow.acceptanceOwner)
                 .append("\n系統獨立驗證收據（不是模型自陳）：").append(receiptView(flow, node));
