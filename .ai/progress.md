@@ -752,3 +752,15 @@ git archive，計畫無法綁定 operation_ids；(2) agent 把「請配置負責
 PID=84852，JAR `e21bbc45d7c40ccde047cabeafe5b2f6c9d265c57ef83d0b5f93da90d72cf72b`，備份 `orchestrator-backup.8TPOgn`，
 379 項 0 失敗，工具鏈自檢含 mkdir，log 0 ERROR。#1016 快照資產與線上配置一致，可原地套用配置更新。
 仍待維運：QA 環境 npm 離線快取不足（文件建置驗收會因此受阻）。
+
+2026-09-17～18 Claude Code：#1016 兩次系統缺陷修正並部署。
+(1) 分流節點啟動即 `Argument list too long`：提示 131,772 位元組超過 Linux 單一參數上限 131,072。
+Claude Code 與 Codex 改由 stdin 傳提示（VM 經 systemd-run --pipe 實測：Claude 2.1.252 收 441KB、
+codex 0.153.4 收 151KB 皆正確；Claude 測試費用 US$0.48）。opencode 未改、未驗證。PID=97535，381 項。
+(2) 修好後續跑仍 3 秒內 exit 1：`No conversation found with session ID`。ClaudeCodeRuntime 先回報預先產生的
+session 再啟動行程，參數過長時 session 從未建立卻寫入 checkpoint。改為行程啟動後才回報；續跑遇到
+該訊息改開新對話重跑一次。PID=101474，JAR `005bfc0d5a88cb483c2772d4dad5927e6408e958f7153a02459b36e7e9bf422d`，
+備份 `orchestrator-backup.FilGoB`，383 項 0 失敗，log 0 ERROR。
+#1016 QA 本輪：24 PASS／8 FAIL／1 BLOCKED；文件副本離線安裝、建置與兩份 llms 比對皆成功（npm 快取未再成為阻礙）。
+FAIL 多為 SMTPS 讀寫逾時、多階段截止、合法憑證送達、防洩漏情境缺測試，及文件語意逐項核對；
+完整離線 reactor verify exit 1 待查。#1016 目前 AWAIT_HUMAN／triage，使用者續跑即可。
