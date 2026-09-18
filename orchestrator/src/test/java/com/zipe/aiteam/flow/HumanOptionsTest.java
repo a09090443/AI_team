@@ -153,6 +153,19 @@ class HumanOptionsTest {
         assertThat(options).anyMatch(o -> HumanOptions.EXTEND.equals(o.kind()));
     }
 
+    @Test void offersContinueWhenTheNodeWasInterruptedBeforeReportingAgain() throws Exception {
+        // 上一輪留下的受阻結論還在，但這一輪已啟動、尚未交出報告就被系統層打斷。
+        flow.node = "intake";
+        flow.blockedFindings.put("intake", new com.fasterxml.jackson.databind.ObjectMapper().readTree("{\"detail\":\"上一輪\"}"));
+        assertThat(HumanOptions.options(task, flow, true, true, null))
+                .noneMatch(o -> HumanOptions.RESUME.equals(o.kind()));
+
+        flow.activeNode = "intake";
+
+        assertThat(HumanOptions.options(task, flow, true, true, null))
+                .anyMatch(o -> HumanOptions.RESUME.equals(o.kind()) && "續跑".equals(o.command()));
+    }
+
     @Test void doesNotOfferContinueWhenTheIncidentIsNew() {
         overLimitAtTriageWithRegisteredIncident();
         flow.automaticHandoffKeys.clear();

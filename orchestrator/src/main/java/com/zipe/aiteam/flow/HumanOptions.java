@@ -311,8 +311,11 @@ public final class HumanOptions {
         if (node == null || node.kind() != Kind.AGENT) return false;
         // 這個節點已經在本輪做出判斷（成功或受阻）時，原樣重跑只會得到同樣的結論 ——
         // 那正是 #1014 反覆「續跑」卻原地踏步的原因。只有還沒開始的節點才建議直接繼續。
-        if (flow.receipts.containsKey(flow.node)
-                || (flow.blockedFindings != null && flow.blockedFindings.containsKey(flow.node))) return false;
+        // 但 activeNode 仍是這個節點，代表它這一輪已經啟動、還沒交出報告就被系統層打斷
+        // （例如系統獨立驗證失敗）；手上的結論是上一輪的，重跑會得到新的判斷。#1016 就是這樣沒有「繼續」可按。
+        boolean interrupted = flow.node.equals(flow.activeNode);
+        if (!interrupted && (flow.receipts.containsKey(flow.node)
+                || (flow.blockedFindings != null && flow.blockedFindings.containsKey(flow.node)))) return false;
         if (node.gate() == Gate.VERIFICATION && PlanApproval.blockingReason(flow, node.plan()) != null) return false;
         if (node.requires() != null) for (String dependency : node.requires()) {
             Node needed = flow.snapshot.definition().nodes().get(dependency);
