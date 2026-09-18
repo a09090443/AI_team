@@ -172,4 +172,39 @@ class ConfiguredExecutorTest {
         assertThatThrownBy(() -> executor.execute(new Task("42", "c", "t", "u", "mail"), flow, flow.snapshot.definition().nodes().get("frontend")))
                 .hasMessageContaining("禁止截斷驗收契約");
     }
+
+    // ---- 提示中的指令權限說明必須和實際授予的一致 ----
+
+    private TeamDefinition springDefinition() throws Exception {
+        Path repo = tmp.resolve("spring-repo");
+        Files.createDirectories(repo.resolve(".git"));
+        return TeamCatalog.load(Path.of("teams/spring-starters.json"), key -> repo.toString()).definition();
+    }
+
+    @Test void grantedOperationsAreListedSoTheAgentDoesNotRefuseThem() throws Exception {
+        var definition = springDefinition();
+        AgentRuntime codex = mock(AgentRuntime.class);
+        when(codex.permitsCommand(any(), any())).thenReturn(true);
+
+        String text = ConfiguredExecutor.commandPatterns(definition.roles().get("tester"), codex,
+                OperationContract.forNode(definition, "verification"));
+
+        // #1016：只看到「只能 mvn／git／ls」，驗收 agent 就沒去執行已授予的文件隔離操作。
+        assertThat(text).contains("qa-docs-dir").contains("mkdir -p target/qa-docs").contains("qa-docs-snapshot")
+                .contains("不以樣式白名單限制").doesNotContain("只能執行下列樣式");
+    }
+
+    @Test void claudeRolesStillSeeTheirPatternsAndAnyOperationTheyCannotRun() throws Exception {
+        var definition = springDefinition();
+        var claude = new ClaudeCodeRuntime(null, null);
+        var builder = definition.roles().get("builder");
+
+        String text = ConfiguredExecutor.commandPatterns(builder, claude, Map.of(
+                "docs-install", new TeamDefinition.Operation(List.of("implementation"), "doc-site", List.of("npm", "ci"), List.of()),
+                "publish", new TeamDefinition.Operation(List.of("implementation"), ".", List.of("npm", "publish"), List.of())));
+
+        assertThat(text).contains("只能執行下列樣式").contains("Bash(npm ci)");
+        assertThat(text.substring(0, text.indexOf("執行不了"))).contains("docs-install").doesNotContain("publish");
+        assertThat(text.substring(text.indexOf("執行不了"))).contains("publish");
+    }
 }

@@ -57,7 +57,7 @@ public class ConfiguredExecutor {
                 + "\n測試規範：" + flow.snapshot.definition().project().testInstructions() + "\n補充與已知阻礙：\n" + flow.context);
         if (evidence != null) context.append("\n系統派工前證據（不是建置成功或真人核准）：").append(evidence);
         if (!flow.dialogue) context.append("\n本階段可使用／規畫的操作契約：").append(availableOperations(flow, node));
-        if (!flow.dialogue) context.append(commandPatterns(role));
+        if (!flow.dialogue) context.append(commandPatterns(role, runtime, OperationContract.forNode(flow.snapshot.definition(), flow.node)));
         // 同一角色常同時負責訂計畫與驗收，角色提示會提到驗收要引用 plan_revision；
         // 但 plan_revision 是系統在計畫完成後依計畫內容計算的，訂計畫時本來就不存在。
         if (!flow.dialogue && node.gate() == Gate.TEST_PLAN)
@@ -110,15 +110,31 @@ public class ConfiguredExecutor {
      * 管線與 for 迴圈被拒，然後整輪重跑（#1016 分流連續三輪如此）。
      * 先講清楚比事後判失敗便宜得多。
      */
-    static String commandPatterns(Role role) {
+    static String commandPatterns(Role role, AgentRuntime runtime, Map<String, Operation> operations) {
+        // 本階段配置的固定操作是管理者明確授予的，必須列為可執行 ——
+        // 只列角色樣式時，#1016 的驗收 agent 讀到「只能 mvn／git／ls」，就不敢執行已授予的
+        // 文件隔離驗收操作（mkdir、git archive、npm），整段驗收自判受阻；上一輪沒有這段提示時是跑得成功的。
+        List<String> granted = new ArrayList<>(), unusable = new ArrayList<>();
+        operations.forEach((id, op) -> {
+            String line = id + "：在 `" + op.directory() + "` 執行 `" + String.join(" ", op.argv()) + "`";
+            (runtime.permitsCommand(role.tools(), op.argv()) ? granted : unusable).add(line);
+        });
+        StringBuilder text = new StringBuilder();
+        if (!granted.isEmpty()) text.append("\n本階段已授予的固定操作，照 argv 原樣執行即可，不需其他授權：\n・")
+                .append(String.join("\n・", granted));
+        if (!unusable.isEmpty()) text.append("\n下列固定操作有配置，但你這個角色的指令權限執行不了；這是配置缺口，"
+                + "請如實回報並寫進 also_needed，不要自行改寫成其他指令：\n・").append(String.join("\n・", unusable));
+        // Codex／opencode 不以指令樣式過濾，限制來自沙箱的寫入範圍；對它們列樣式只會誤導。
+        if (runtime.permitsCommand(List.of(), List.of("__ai_team_probe__")))
+            return text.append("\n你的指令不以樣式白名單限制，寫入範圍由沙箱限制；越界寫入會失敗，失敗時如實回報。").toString();
         List<String> patterns = role.tools() == null ? List.of() : role.tools().stream()
                 .filter(tool -> tool != null && tool.startsWith("Bash")).toList();
-        if (patterns.isEmpty()) return "\n你這個角色不能執行任何指令，只能讀檔與搜尋；"
-                + "不要嘗試執行指令，也不得宣稱執行過任何指令的輸出。";
-        return "\n你這個角色只能執行下列樣式的指令：" + patterns
-                + "。必須完全符合樣式，工作目錄已經是上述工作目錄："
-                + "不要加 `-C <路徑>`、管線、`&&`、`for` 迴圈或重新導向，那些都會被拒絕而白跑一輪。"
-                + "被拒時不要宣稱執行過該指令，改用允許的方式或如實回報。";
+        if (patterns.isEmpty() && granted.isEmpty()) return text.append("\n你這個角色不能執行任何指令，只能讀檔與搜尋；"
+                + "不要嘗試執行指令，也不得宣稱執行過任何指令的輸出。").toString();
+        return text.append("\n除上述固定操作外，你這個角色只能執行下列樣式的指令：").append(patterns)
+                .append("。必須完全符合樣式，工作目錄已經是上述工作目錄：")
+                .append("不要加 `-C <路徑>`、管線、`&&`、`for` 迴圈或重新導向，那些都會被拒絕而白跑一輪。")
+                .append("被拒時不要宣稱執行過該指令，改用允許的方式或如實回報。").toString();
     }
 
     /**
