@@ -799,3 +799,9 @@ clone／逾時／環境缺件仍停給人。隔離建置 400 項 0 失敗、10 �
 2026-09-18 Claude Code：#1016 停止訊息沒有「繼續」按鈕——驗收節點留有上一輪 QA 的受阻結論，被當成本輪已有結論。
 改為 activeNode 仍是該節點（本輪被系統層打斷）時照樣提供繼續。401 項 0 失敗。部署 PID=140589，
 JAR `067aecd2e9181766301831f321c83b61990ac6cb615de03f8c35104c526a8198`，備份 `orchestrator-backup.sowkwa`，資料一致、0 ERROR。
+
+2026-09-18 Claude Code：#1016 驗收把文件隔離驗收（SC-030～033）自判受阻，並非權限不足：驗收節點已被授予 qa-docs 固定操作，
+上一輪也跑成功；是先前加入的提示只列角色樣式「只能 mvn／git／ls」，Codex 驗收 agent 因此不敢執行。
+改為提示依 runtime 列出已授予的固定操作與執行不了的配置缺口，Codex／opencode 不再列樣式。403 項 0 失敗。
+部署 PID=153236，JAR `d2c3dbb3f5e011799102915aa569c6a641ff82b18bcbb5af3ca84a5cde36f678`，備份 `orchestrator-backup.sZaFBs`，資料一致、0 ERROR。
+另：Mockito self-attach（SC-023）已由實作 commit b11767a 修正，待驗收複驗。
