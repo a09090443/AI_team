@@ -787,3 +787,9 @@ PR 與需求變更仍真人核准。(4) 共用回報契約明列只有產品取�
 備份 `orchestrator-backup.ffY19G`，任務資料與工作區前後一致，log 0 ERROR，沙箱與工具鏈自檢通過。
 #1016 實作已成功（verify_passed=true），停在驗收前等測試計畫核准；其快照是舊配置，沒有自動核准旗標，
 這一次仍需使用者按計畫卡的核准按鈕（或套用配置更新後才會自動核准）。新任務會直接套用新配置。
+
+2026-09-18 Claude Code：#1016 在系統獨立驗證停下（`mvn -B clean verify` exit 1：
+`MailServiceSmtpsTimeoutTest.smtpsOverallTimeout_boundsTotalElapsedTime_repeatedly:142` 失敗）。
+使用者指出程式錯誤應交回負責的 agent 修，而不是停給人。修正：配置檢查指令非零結束且 log 無環境缺件字樣時，
+改拋 `CheckFailed`，引擎把失敗摘要存為受阻發現並自動交回實作節點（由配置推導，不寫死節點名），修好後重驗。
+clone／逾時／環境缺件仍停給人。隔離建置 400 項 0 失敗、10 項 opt-in 略過；check-source 通過。

@@ -336,6 +336,9 @@ public class FlowEngine {
                                 + " 正由系統在全新 clone 執行獨立驗證；收據會先交驗收角色核對。");
                         try (var progress = new StageProgress(slack, store, task, "系統獨立驗證", props.progressIntervalSeconds())) {
                             flow.independentEvidence = verifier.verify(task, flow);
+                        } catch (IndependentVerifier.CheckFailed failed) {
+                            if (routeFailedCheck(task, flow, node, failed)) continue;
+                            throw failed;
                         }
                         store.saveFlow(task.id(), flow);
                         audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "獨立驗證收據：" + flow.independentEvidence);
@@ -509,12 +512,9 @@ public class FlowEngine {
         List<String> changed = workspaces.auditPaths(task.id(), flow.beforeHead);
         if (changed.isEmpty() || changed.stream().anyMatch(path -> !PathRules.allows(node.writablePaths(), path)
                 || PathRules.allows(flow.snapshot.definition().project().protectedPaths(), path))) return false;
-        String targetId = null;
-        Node coordinator = flow.snapshot.definition().nodes().get(node.blocked());
-        if (coordinator != null && coordinator.routes() != null) targetId = coordinator.routes().get("implementation");
-        Node target = targetId == null ? null : flow.snapshot.definition().nodes().get(targetId);
-        if (target == null || target.kind() != Kind.AGENT || target.gate() != Gate.IMPLEMENTATION
-                || target.scope() != Scope.WORKSPACE || !target.workspace()) return false;
+        String targetId = implementationOwner(flow, node);
+        if (targetId == null) return false;
+        Node target = flow.snapshot.definition().nodes().get(targetId);
         String reason = "驗收節點產生了限寫範圍內的未提交變更：" + changed
                 + "。請只核對並提交這些既有變更，完成配置建置後交回驗收；不得降低標準。";
         flow.lastBlockReason = reason;
@@ -530,6 +530,62 @@ public class FlowEngine {
         store.saveFlow(task.id(), flow);
         return true;
     }
+    /**
+     * 負責修改程式的節點：優先採受阻分流節點配置的 implementation 路由，
+     * 否則取流程中唯一具工作區寫入權的實作節點；有多個且無法由配置判定時回傳 null。
+     */
+    static String implementationOwner(FlowRun flow, Node node) {
+        var nodes = flow.snapshot.definition().nodes();
+        Node coordinator = node.blocked() == null ? null : nodes.get(node.blocked());
+        String routed = coordinator == null || coordinator.routes() == null ? null : coordinator.routes().get("implementation");
+        if (routed != null && ownsCode(nodes.get(routed))) return routed;
+        List<String> owners = nodes.entrySet().stream().filter(e -> ownsCode(e.getValue())).map(Map.Entry::getKey).toList();
+        return owners.size() == 1 ? owners.getFirst() : null;
+    }
+    private static boolean ownsCode(Node node) {
+        return node != null && node.kind() == Kind.AGENT && node.gate() == Gate.IMPLEMENTATION
+                && node.scope() == Scope.WORKSPACE && node.workspace();
+    }
+
+    /**
+     * 系統獨立驗證的配置指令失敗 = 程式或測試沒過，是實作的責任。
+     * 自動把失敗摘要交回實作節點修正，而不是停下來等人轉達；受阻發現會一路帶到驗收重新通過為止。
+     * 仍受節點重跑、事件額度與整輪換手上限約束；找不到可歸責的實作節點時照舊停給真人。
+     */
+    private boolean routeFailedCheck(Task task, FlowRun flow, Node node, IndependentVerifier.CheckFailed failed) throws Exception {
+        String targetId = implementationOwner(flow, node);
+        if (targetId == null) return false;
+        Node target = flow.snapshot.definition().nodes().get(targetId);
+        String head = workspaces.headSha(task.id());
+        String reason = "系統在全新 clone 執行配置的驗證指令失敗（" + String.join(" ", failed.argv()) + "，exit=" + failed.exitCode()
+                + "，commit=" + head + "）。這代表程式或測試沒有通過，不是環境問題。"
+                + "\n請找出原因修正後提交，完成後會交回驗收重新驗證。不得刪除、停用、跳過失敗的測試或放寬斷言來讓它通過；"
+                + "若判定是測試本身不穩定（例如時間門檻過緊），要修成穩定且仍能驗到原需求，並在報告說明依據。"
+                + "\n失敗摘要：\n" + failed.summary()
+                + "\n完整紀錄：" + failed.log();
+        var finding = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode()
+                .put("source", "系統獨立驗證").put("commit", head).put("exit_code", failed.exitCode())
+                .put("failure_summary", failed.summary()).put("log", failed.log());
+        flow.lastBlockReason = Diagnostics.clip(reason, 4500);
+        flow.blockedFindings.put(flow.node, finding);
+        flow.context = FlowContext.append(flow.context, "系統獨立驗證未通過：\n" + reason);
+        flow.independentEvidence = null;
+        AutomaticHandoff.begin(flow, flow.node, reason, head);
+        flow.activeNode = null;
+        task.continuation(null);
+        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY,
+                "獨立驗證指令失敗，自動交回實作節點 " + targetId + " 修正；commit=" + head + "；紀錄=" + failed.log());
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                "任務 #" + task.id() + " 系統驗證沒有通過：有程式或測試失敗。已自動交回"
+                        + flow.snapshot.definition().roles().get(target.role()).name()
+                        + "修正，修好後會再驗一次；這一步不需要你處理。\n失敗摘要：\n"
+                        + Diagnostics.clip(failed.summary(), 900));
+        handoff(task, flow, node, target, true);
+        flow.node = targetId;
+        store.saveFlow(task.id(), flow);
+        return true;
+    }
+
     /** 依設定決定貼摘要或完整報告；預設摘要。 */
     private String describe(JsonNode report, FlowRun flow, Node node) {
         var routes = routeLabels(flow, node);

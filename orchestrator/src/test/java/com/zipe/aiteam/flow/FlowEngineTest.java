@@ -822,6 +822,27 @@ class FlowEngineTest {
         assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
         assertThat(calls).doesNotContain("review:security_auditor"); verifyNoInteractions(publisher);
     }
+    @Test void failedCodeCheckGoesBackToTheImplementerInsteadOfStopping() throws Exception {
+        var failure = new IndependentVerifier.CheckFailed(List.of("npm", "test"), 1, "/runs/check-0.log",
+                "[ERROR]   MailTimeoutTest.boundsElapsed:142");
+        doThrow(failure).doAnswer(c -> {
+            FlowRun f = c.getArgument(1);
+            return new IndependentVerifier.Receipt(workspaceHead, f.baselineRevision, f.snapshot.revision(), "start", "end", List.of());
+        }).when(verifier).verify(any(), any());
+
+        engine.run(task);
+
+        // 程式沒過是實作的責任：系統自己交回去修，修好後重驗，全程不需要人轉達。
+        assertThat(calls.stream().filter("implementation:builder"::equals)).hasSize(2);
+        assertThat(calls).endsWith("verification:tester", "review:security_auditor");
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        verify(verifier, times(2)).verify(any(), any());
+        var saved = store.flow(task.id()).orElseThrow();
+        assertThat(saved.blockedFindings).doesNotContainKey("verification");
+        assertThat(saved.context).contains("MailTimeoutTest.boundsElapsed:142");
+        verify(slack).post(any(), any(), any(), contains("已自動交回"));
+        verifyNoInteractions(publisher);
+    }
     @Test void corruptedEvidenceAfterApprovalNeverPublishes() throws Exception {
         engine.run(task); when(verifier.blockingReason(any(), anyString())).thenReturn("log 雜湊不符");
         List<Runnable> jobs = new ArrayList<>(); engine.approve(task, "u", jobs::add); jobs.get(0).run();

@@ -21,6 +21,7 @@ class IndependentVerifierTest {
     List<List<String>> calls = new ArrayList<>();
     List<SandboxPolicy> policies = new ArrayList<>();
     boolean fail;
+    String exitLog;
     String head = "a".repeat(40);
     @BeforeEach void setup() throws Exception {
         Files.createDirectories(tmp.resolve("source/.git"));
@@ -37,6 +38,10 @@ class IndependentVerifierTest {
                 if (argv.contains("checkout")) Files.writeString(cwd.resolve("package.json"), "{}");
                 Files.writeString(log, "observed execution");
                 if (fail && argv.getFirst().equals("npm")) throw new IllegalStateException("exit=1; log=" + log);
+                if (exitLog != null && argv.getFirst().equals("npm")) {
+                    Files.writeString(log, exitLog);
+                    throw new CommandExit(argv, 1, log);
+                }
             }
         };
     }
@@ -86,5 +91,41 @@ class IndependentVerifierTest {
         doThrow(new IllegalStateException("sandbox not ready")).when(sandbox).requireReadyForCodeChanges();
         assertThatThrownBy(this::verifyNow).hasMessageContaining("sandbox not ready");
         assertThat(calls).isEmpty();
+    }
+
+    // ---- 程式失敗與環境失敗要分開：前者交回實作，後者才需要人 ----
+
+    @Test void summaryPicksTheFailingTestsOutOfALongBuildLog() {
+        String log = "[INFO] noise\n".repeat(2000)
+                + "[ERROR] Tests run: 6, Failures: 1, Errors: 0, Skipped: 0 <<< FAILURE! -- in MailTimeoutTest\n"
+                + "[ERROR] MailTimeoutTest.boundsElapsed -- Time elapsed: 2.6 s <<< FAILURE!\n"
+                + "[ERROR] Failures: \n[ERROR]   MailTimeoutTest.boundsElapsed:142 \n"
+                + "[INFO] BUILD FAILURE\n";
+        String summary = IndependentVerifier.summarize(log);
+        assertThat(summary).contains("MailTimeoutTest.boundsElapsed:142").contains("<<< FAILURE!")
+                .doesNotContain("[INFO] noise");
+    }
+
+    @Test void summaryFallsBackToTheTailWhenNothingIsRecognised() {
+        String log = "line\n".repeat(100) + "last words";
+        assertThat(IndependentVerifier.summarize(log)).endsWith("last words").hasLineCount(40);
+    }
+
+    @Test void missingDependenciesAreAnEnvironmentProblemNotACodeFailure() {
+        assertThat(IndependentVerifier.environmental("[ERROR] Failed to execute goal on project x: "
+                + "Could not resolve dependencies for project com.zipe:x")).isTrue();
+        assertThat(IndependentVerifier.environmental("[ERROR]   MailTimeoutTest.boundsElapsed:142")).isFalse();
+    }
+
+    @Test void aFailingTestBecomesACheckFailureTheImplementerCanFix() {
+        exitLog = "[ERROR] Failures: \n[ERROR]   MailTimeoutTest.boundsElapsed:142 \n[INFO] BUILD FAILURE\n";
+        assertThatThrownBy(this::verifyNow).isInstanceOf(IndependentVerifier.CheckFailed.class)
+                .satisfies(e -> assertThat(((IndependentVerifier.CheckFailed) e).summary()).contains("MailTimeoutTest.boundsElapsed:142"));
+        assertThat(flow.independentEvidence).isNull();
+    }
+
+    @Test void aBuildThatCannotFetchDependenciesStaysAnEnvironmentFailure() {
+        exitLog = "[ERROR] Failed to execute goal: Could not resolve dependencies for project x\n";
+        assertThatThrownBy(this::verifyNow).isNotInstanceOf(IndependentVerifier.CheckFailed.class).hasMessageContaining("exit=1");
     }
 }

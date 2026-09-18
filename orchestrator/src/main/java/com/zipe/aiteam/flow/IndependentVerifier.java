@@ -5,6 +5,7 @@ import com.zipe.aiteam.sandbox.*;
 import com.zipe.aiteam.task.Task;
 import com.zipe.aiteam.workspace.WorkspaceManager;
 import org.springframework.stereotype.Component;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.security.MessageDigest;
 import java.time.Instant;
@@ -17,6 +18,51 @@ public class IndependentVerifier {
     public record CommandResult(List<String> argv, int exitCode, String log, String sha256) {}
     public record Receipt(String head, String baseline, String configuration, String startedAt, String completedAt,
                           List<CommandResult> commands) {}
+
+    /**
+     * 管理者配置的檢查指令執行完畢但結束碼不為 0：產品程式或測試沒有通過，屬於實作的責任，
+     * 不是驗證機制故障。clone、checkout、逾時、輸出過大與環境缺件（相依套件抓不到、磁碟滿等）
+     * 仍以一般例外回報，交由真人判斷。
+     */
+    public static final class CheckFailed extends IllegalStateException {
+        private final List<String> argv; private final int exitCode; private final String log; private final String summary;
+        CheckFailed(List<String> argv, int exitCode, String log, String summary) {
+            super("獨立驗證失敗，exit=" + exitCode + "；指令=" + argv + "；紀錄：" + log);
+            this.argv = List.copyOf(argv); this.exitCode = exitCode; this.log = log; this.summary = summary;
+        }
+        public List<String> argv() { return argv; }
+        public int exitCode() { return exitCode; }
+        public String log() { return log; }
+        public String summary() { return summary; }
+    }
+
+    /** 出現這些字樣表示是環境缺件，交給實作也修不好。 */
+    private static final List<String> ENVIRONMENT_SIGNATURES = List.of(
+            "Could not resolve dependencies", "Non-resolvable", "Could not transfer artifact",
+            "Could not find artifact", "UnknownHostException", "No space left on device",
+            "unable to create native thread", "command not found", "Failed to start transient");
+
+    static boolean environmental(String log) {
+        return ENVIRONMENT_SIGNATURES.stream().anyMatch(log::contains);
+    }
+
+    /** 指令執行完畢但結束碼不為 0；是否算程式失敗由 classify 依紀錄內容判定。 */
+    static class CommandExit extends IllegalStateException {
+        final List<String> argv; final int exitCode; final Path log;
+        CommandExit(List<String> argv, int exitCode, Path log) {
+            super("獨立驗證失敗，exit=" + exitCode + "；指令=" + argv + "；紀錄：" + log);
+            this.argv = List.copyOf(argv); this.exitCode = exitCode; this.log = log;
+        }
+    }
+
+    /** 配置檢查指令的非零結束：看得出是環境缺件就原樣回報給人，其餘視為程式或測試失敗。 */
+    static IllegalStateException classify(CommandExit exit) {
+        String text;
+        try { text = new String(Files.readAllBytes(exit.log), StandardCharsets.UTF_8); }
+        catch (Exception e) { return exit; }
+        if (environmental(text)) return exit;
+        return new CheckFailed(exit.argv, exit.exitCode, exit.log.toString(), summarize(text));
+    }
     private final AiTeamProperties props;
     private final ExecutionSandbox sandbox;
     private final WorkspaceManager workspaces;
@@ -54,7 +100,8 @@ public class IndependentVerifier {
         List<CommandResult> results = new ArrayList<>();
         for (List<String> argv : spec.commands()) {
             Path log = run.resolve("check-" + results.size() + ".log");
-            execute(argv, repo, home, policy, log, deadline);
+            try { execute(argv, repo, home, policy, log, deadline); }
+            catch (CommandExit exit) { throw classify(exit); }
             results.add(new CommandResult(List.copyOf(argv), 0, log.toString(), hash(log)));
         }
         if (!head.equals(workspaces.headSha(task.id())) || !workspaces.clean(task.id())) throw new IllegalStateException("驗證期間來源工作區變更，收據作廢");
@@ -98,8 +145,8 @@ public class IndependentVerifier {
             while (!process.waitFor(200, TimeUnit.MILLISECONDS)) {
                 if (System.nanoTime() >= deadline || Files.size(log) > 8_000_000) throw new IllegalStateException("獨立驗證超時或輸出超過 8 MB；紀錄：" + log);
             }
-            if (Files.size(log) > 8_000_000 || process.exitValue() != 0)
-                throw new IllegalStateException("獨立驗證失敗，exit=" + process.exitValue() + "；指令=" + argv + "；紀錄：" + log);
+            if (Files.size(log) > 8_000_000) throw new IllegalStateException("獨立驗證輸出超過 8 MB；紀錄：" + log);
+            if (process.exitValue() != 0) throw new CommandExit(argv, process.exitValue(), log);
         } finally {
             // 停止整個 unit，不只結束 systemd-run 用戶端；RuntimeMaxSec 是第二道上限。
             ProcessBuilder stop = new ProcessBuilder("systemctl", "--user", "stop", unit).redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD);
@@ -107,6 +154,25 @@ public class IndependentVerifier {
             try { Process stopping = stop.start(); if (!stopping.waitFor(5, TimeUnit.SECONDS)) stopping.destroyForcibly(); }
             finally { if (process.isAlive()) process.destroyForcibly(); }
         }
+    }
+    /**
+     * 從建置紀錄挑出失敗的測試與編譯錯誤，讓負責修的 agent 不必先翻兩千行 log。
+     * 挑不到時退回最後 40 行。
+     */
+    static String summarize(String log) {
+        List<String> picked = new ArrayList<>();
+        String[] lines = log.split("\\R");
+        for (String line : lines) {
+            if (line.contains("<<< FAILURE!") || line.contains("<<< ERROR!") || line.startsWith("[ERROR]   ")
+                    || line.contains("COMPILATION ERROR") || line.matches("\\[ERROR\\] .*\\.(java|kt|ts|js):.*")
+                    || line.matches("\\[ERROR\\] Tests run:.*"))
+                if (!picked.contains(line)) picked.add(line);
+            if (picked.size() >= 40) break;
+        }
+        if (picked.isEmpty())
+            picked = Arrays.asList(lines).subList(Math.max(0, lines.length - 40), lines.length);
+        String joined = String.join("\n", picked);
+        return joined.length() > 3000 ? joined.substring(0, 3000) + "\n…（其餘見完整紀錄）" : joined;
     }
     private static void sanitize(ProcessBuilder builder) {
         var inherited = new HashMap<>(builder.environment()); builder.environment().clear();
