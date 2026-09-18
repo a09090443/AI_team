@@ -805,3 +805,10 @@ JAR `067aecd2e9181766301831f321c83b61990ac6cb615de03f8c35104c526a8198`，備份 
 改為提示依 runtime 列出已授予的固定操作與執行不了的配置缺口，Codex／opencode 不再列樣式。403 項 0 失敗。
 部署 PID=153236，JAR `d2c3dbb3f5e011799102915aa569c6a641ff82b18bcbb5af3ca84a5cde36f678`，備份 `orchestrator-backup.sZaFBs`，資料一致、0 ERROR。
 另：Mockito self-attach（SC-023）已由實作 commit b11767a 修正，待驗收複驗。
+
+2026-09-19 Claude Code：#1016／#1017 反覆 IllegalStateException「verification 缺少有效前置契約 implementation」。
+實作其實 SUCCESS，但把「文件隔離驗收操作沒授予我」寫進 boundary_conflict，閘門判未完成、收據未存；分流再送驗收即拋例外，
+且停止訊息無繼續可按，使用者承接成 #1017 後重演。修正：缺前置結果且該節點為 agent 時自動退回重做（受既有上限約束），
+停止訊息同步提供繼續；實作階段指示說明其他節點的驗收做不了不算邊界衝突。405 項 0 失敗。
+部署 PID=161131，JAR `5437998563f8d4972dfc6d6d336c1da01090688adf37faf487b27ae93f2e7288`，備份 `orchestrator-backup.LSduG5`，資料一致、0 ERROR。
+#1016 已由 #1017 承接（不再接受操作）；#1017 按繼續即會退回實作重做。
