@@ -447,3 +447,8 @@ AWAIT_HUMAN／triage、activeNode=null、transitions=29、automaticHandoffs=6，
 候選版本重建為 315 項測試、JAR SHA256
 `ceb72a5736c32ca065ddae635e05c2342b80f05c601bb4aada3efd966e33ac37`，
 部署腳本已同步更新並複製到 VM。仍待使用者自行執行部署指令。
+
+2026-09-18 12:35 Claude Code：自主化修改已 commit（3530948，未 push），隔離建置目錄
+`/home/vboxuser/ai-team/autonomy2-build.RPwoYv`（394 項 0 失敗）。尚未部署：#1016 於 04:32 UTC 額度續跑後
+正在 implementation，部署會中斷 agent，需等它停下（AWAIT_HUMAN 等）再執行
+`bash ~/ai-team/deploy-orchestrator.sh /home/vboxuser/ai-team/autonomy2-build.RPwoYv`。
