@@ -795,3 +795,7 @@ PR 與需求變更仍真人核准。(4) 共用回報契約明列只有產品取�
 clone／逾時／環境缺件仍停給人。隔離建置 400 項 0 失敗、10 項 opt-in 略過；check-source 通過。
 部署（13:08 UTC）：PID=136960，JAR `4be44798b668df812ce345fd99a6f1e19f0645d946cb6caaab0c1d15606c5b4b`，
 備份 `orchestrator-backup.UlwOYh`，資料與工作區前後一致，log 0 ERROR，自檢通過。#1016 續跑後會自動交回實作修正。
+
+2026-09-18 Claude Code：#1016 停止訊息沒有「繼續」按鈕——驗收節點留有上一輪 QA 的受阻結論，被當成本輪已有結論。
+改為 activeNode 仍是該節點（本輪被系統層打斷）時照樣提供繼續。401 項 0 失敗。部署 PID=140589，
+JAR `067aecd2e9181766301831f321c83b61990ac6cb615de03f8c35104c526a8198`，備份 `orchestrator-backup.sowkwa`，資料一致、0 ERROR。
