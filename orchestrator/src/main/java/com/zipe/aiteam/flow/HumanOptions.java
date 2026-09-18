@@ -319,7 +319,9 @@ public final class HumanOptions {
         if (node.gate() == Gate.VERIFICATION && PlanApproval.blockingReason(flow, node.plan()) != null) return false;
         if (node.requires() != null) for (String dependency : node.requires()) {
             Node needed = flow.snapshot.definition().nodes().get(dependency);
-            if (needed == null || FlowGates.blockingReason(needed, flow.receipts.get(dependency), flow) != null) return false;
+            // 前置結果無效但它是 agent 節點時，引擎會自動退回那一步重做，繼續就會前進。
+            if (needed == null || (FlowGates.blockingReason(needed, flow.receipts.get(dependency), flow) != null
+                    && needed.kind() != Kind.AGENT)) return false;
         }
         // 與引擎共用同一套上限判斷；只接受「不必再消耗新事件額度」的情況。
         if (!FlowLimits.overLimit(flow, node) || VerificationRecovery.permitted(flow, flow.node)) return true;

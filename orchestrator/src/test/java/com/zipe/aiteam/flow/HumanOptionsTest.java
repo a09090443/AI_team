@@ -166,6 +166,13 @@ class HumanOptionsTest {
                 .anyMatch(o -> HumanOptions.RESUME.equals(o.kind()) && "續跑".equals(o.command()));
     }
 
+    @Test void offersContinueWhenAMissingPrerequisiteWillBeRedoneAutomatically() {
+        flow.node = "review";
+
+        assertThat(HumanOptions.options(task, flow, true, true, null))
+                .anyMatch(o -> HumanOptions.RESUME.equals(o.kind()));
+    }
+
     @Test void doesNotOfferContinueWhenTheIncidentIsNew() {
         overLimitAtTriageWithRegisteredIncident();
         flow.automaticHandoffKeys.clear();

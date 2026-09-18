@@ -843,6 +843,20 @@ class FlowEngineTest {
         verify(slack).post(any(), any(), any(), contains("已自動交回"));
         verifyNoInteractions(publisher);
     }
+    @Test void missingPrerequisiteResultSendsTheFlowBackInsteadOfFailing() {
+        // #1016／#1017：分流把流程送到驗收，實作的報告卻沒被採用；舊版每次都丟 IllegalStateException。
+        var flow = store.flow(task.id()).orElseThrow();
+        flow.node = "verification";
+        store.saveFlow(task.id(), flow);
+
+        engine.run(task);
+
+        assertThat(calls.getFirst()).isNotEqualTo("verification:tester");
+        assertThat(calls).endsWith("verification:tester", "review:security_auditor");
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        verify(slack, atLeastOnce()).post(any(), any(), any(), contains("系統自動退回"));
+        verifyNoInteractions(publisher);
+    }
     @Test void corruptedEvidenceAfterApprovalNeverPublishes() throws Exception {
         engine.run(task); when(verifier.blockingReason(any(), anyString())).thenReturn("log 雜湊不符");
         List<Runnable> jobs = new ArrayList<>(); engine.approve(task, "u", jobs::add); jobs.get(0).run();

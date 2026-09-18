@@ -224,6 +224,7 @@ public class FlowEngine {
                         flow.changeTarget = flow.node;
                         waitHuman(task, flow, "重新建立需求基準需要原需求負責人明確核准。請補充「核准需求變更 具體變更內容」。"); return;
                     }
+                    String redo = null;
                     if (node.requires() != null) for (String dependency : node.requires()) {
                         String invalid = FlowGates.blockingReason(flow.snapshot.definition().nodes().get(dependency), flow.receipts.get(dependency), flow);
                         if (invalid == null) continue;
@@ -240,7 +241,28 @@ public class FlowEngine {
                                     + "\n\n如果你確認這份結果可以用，按下方按鈕把它恢復成有效結果；不會重跑、不會重設任何次數。");
                             return;
                         }
+                        // 前置步驟沒有有效結果，就回去把它做完 —— 那是它的責任，不是真人的。
+                        // 舊版直接丟例外，而此時也沒有「繼續」可按：#1016 與承接它的 #1017 都卡在這裡，
+                        // 分流把流程送到驗收，實作的報告卻因回報矛盾沒被採用。
+                        // 重做仍受節點重跑、整輪換手上限約束，不會無限來回。
+                        if (needed != null && needed.kind() == Kind.AGENT) { redo = dependency; break; }
                         throw new IllegalStateException("節點 " + flow.node + " 缺少有效前置契約 " + dependency + "：" + invalid);
+                    }
+                    if (redo != null) {
+                        String invalid = FlowGates.blockingReason(flow.snapshot.definition().nodes().get(redo), flow.receipts.get(redo), flow);
+                        String reason = "「" + flow.node + "」要開始前需要「" + redo + "」的有效結果，但目前沒有："
+                                + Diagnostics.clip(invalid, 800)
+                                + "\n系統自動回到「" + redo + "」把它完成；請依上述原因修正回報或成果，不要重複同樣的回報。";
+                        flow.lastBlockReason = Diagnostics.clip(reason, 4500);
+                        flow.context = FlowContext.append(flow.context, "系統責任路由：" + reason);
+                        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY,
+                                "節點 " + flow.node + " 缺少有效前置結果 " + redo + "，自動退回重做；未重設任何計數或核准");
+                        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                                "任務 #" + task.id() + "：「" + flow.node + "」需要的「" + redo + "」結果不成立，"
+                                        + "系統自動退回「" + redo + "」重做，這一步不需要你處理。\n原因：" + Diagnostics.clip(invalid, 400));
+                        flow.node = redo;
+                        store.saveFlow(task.id(), flow);
+                        continue;
                     }
                     boolean recoveryPermitted = VerificationRecovery.permitted(flow,flow.node);
                     // 先算這次的輸入指紋：只有「輸入完全相同的重跑」才算原地打轉。

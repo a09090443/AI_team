@@ -60,6 +60,13 @@ public class ConfiguredExecutor {
         if (!flow.dialogue) context.append(commandPatterns(role, runtime, OperationContract.forNode(flow.snapshot.definition(), flow.node)));
         // 同一角色常同時負責訂計畫與驗收，角色提示會提到驗收要引用 plan_revision；
         // 但 plan_revision 是系統在計畫完成後依計畫內容計算的，訂計畫時本來就不存在。
+        // boundary_conflict 會讓整份實作不被採用。#1016／#1017 的實作都成功了，卻把
+        // 「文件隔離驗收操作沒授予給我」寫進這欄 —— 那是驗收節點的工作，結果實作被否決、驗收無從開始。
+        if (!flow.dialogue && node.gate() == Gate.IMPLEMENTATION)
+            context.append("\nboundary_conflict 只在「完成需求就必須越界」時填寫：要改動邊界外或保護路徑的檔案、")
+                    .append("改公開 API、增改相依、或需要你沒有的權限才能完成你自己的工作。填了就代表實作不被採用。")
+                    .append("其他節點負責的驗收或操作（例如驗收節點的固定操作）你執行不了，不是邊界衝突，")
+                    .append("也不需要由你代做；寫在 summary 說明即可，boundary_conflict 填 null。");
         if (!flow.dialogue && node.gate() == Gate.TEST_PLAN)
             context.append("\n本階段是訂定測試計畫：plan_revision 由系統在計畫完成後依計畫內容計算，")
                     .append("不是本階段的輸入，不得因為沒有收到 plan_revision 而回報受阻。");
