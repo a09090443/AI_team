@@ -50,6 +50,20 @@ public class FlowRun {
     public IndependentVerifier.Receipt independentEvidence;
     public List<JsonNode> baselineHistory = new ArrayList<>();
     public Map<String,Integer> visits = new LinkedHashMap<>();
+    /**
+     * 各節點上次啟動時的輸入指紋，以及「輸入完全相同的連續重跑」次數。
+     * 防循環要擋的是原地打轉，不是正常往前推進：輸入變了（新 commit、新的前置結果、
+     * 新的受阻證據）就是有進展，不該佔用重試次數。
+     */
+    public Map<String,String> nodeFingerprints = new LinkedHashMap<>();
+    public Map<String,Integer> repeats = new LinkedHashMap<>();
+    /** 系統自身失敗（啟動不了、暫時性錯誤）的自動重試次數；不佔用節點重試次數。 */
+    public Map<String,Integer> systemRetries = new LinkedHashMap<>();
+    /**
+     * 真人補充的次數。納入節點輸入指紋，讓「人給了新資訊」一定算成新的輸入；
+     * agent 自己每輪追加的受阻紀錄則不算，否則防循環會失效。
+     */
+    public int supplements;
     public Map<String,JsonNode> receipts = new LinkedHashMap<>();
     /**
      * 尚未解除的受阻發現，以節點 ID 為鍵（因此筆數受配置節點數限制，不會無限成長）。

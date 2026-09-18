@@ -117,6 +117,30 @@ public class FlowEngine {
             return null;
         }
     }
+    /**
+     * 計畫通過系統的機械檢查時自動核准（由配置 autoApprovePlanWhenValid 開啟）。
+     *
+     * 檢查的是同一份 Traceability 規則：涵蓋全部原子驗收項目、每條情境有反例、
+     * 操作契約可執行。不是放寬標準，是不要在系統已經驗過的地方再等人按一次。
+     * 發布與需求變更仍然必須真人核准。
+     */
+    private void autoApprovePlan(Task task, FlowRun flow, String plan) {
+        if (plan == null || !flow.snapshot.definition().project().autoApprovePlanWhenValid()) return;
+        if (PlanApproval.blockingReason(flow, plan) == null) return;
+        var report = flow.receipts.get(plan);
+        if (report == null || Traceability.planReason(report, flow) != null) return;
+        String digest = Traceability.digest(report);
+        flow.planApprovals.put(plan, new PlanApproval(plan, digest, flow.baselineRevision,
+                flow.snapshot.revision(), flow.acceptanceOwner, java.time.Instant.now().toString()));
+        store.saveFlow(task.id(), flow);
+        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE,
+                "測試計畫通過系統機械檢查，依配置自動核准：" + plan + "／" + digest
+                        + "；未降低驗收標準，PR 仍需真人核准");
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                "測試計畫已通過系統檢查（涵蓋全部驗收項目、每條情境都有反例、操作可執行），依設定自動核准並接著執行驗收。"
+                        + "\n要看內容：補充 #" + task.id() + " 檢視測試計畫。發布仍然需要你核准。");
+    }
+
     private void presentPlan(Task task, FlowRun flow, String plan) {
         try {
             var pages = PlanReview.pages(task.id(), plan, flow.receipts.get(plan));
@@ -177,6 +201,7 @@ public class FlowEngine {
                 Node node = flow.snapshot.definition().nodes().get(flow.node);
                 if (node == null) throw new IllegalStateException("快照缺少節點，禁止猜測恢復路徑");
                 if (node.gate() == Gate.VERIFICATION) {
+                    autoApprovePlan(task, flow, node.plan());
                     String approvalBlock = PlanApproval.blockingReason(flow, node.plan());
                     if (approvalBlock != null) { waitHuman(task, flow, approvalBlock); presentPlan(task, flow, node.plan()); return; }
                 }
@@ -218,7 +243,13 @@ public class FlowEngine {
                         throw new IllegalStateException("節點 " + flow.node + " 缺少有效前置契約 " + dependency + "：" + invalid);
                     }
                     boolean recoveryPermitted = VerificationRecovery.permitted(flow,flow.node);
-                    boolean overLimit = FlowLimits.overLimit(flow, node);
+                    // 先算這次的輸入指紋：只有「輸入完全相同的重跑」才算原地打轉。
+                    String inputHead = node.workspace() && flow.workspaceReady && workspaces.exists(task.id())
+                            ? workspaces.headSha(task.id()) : null;
+                    String fingerprint = NodeInput.fingerprint(flow, node, inputHead);
+                    boolean repeatedInput = NodeInput.repeated(flow, fingerprint);
+                    boolean overLimit = flow.transitions >= flow.snapshot.definition().maxTransitions()
+                            || (repeatedInput && flow.repeats.getOrDefault(flow.node, 0) >= node.maxVisits());
                     usedAutomaticHandoff = null;
                     if (overLimit && !recoveryPermitted) {
                         AutomaticHandoff.restoreLegacyBlockedTarget(flow);
@@ -243,6 +274,7 @@ public class FlowEngine {
                     }
                     flow.transitions++;
                     flow.visits.merge(flow.node, 1, Integer::sum);
+                    NodeInput.record(flow, fingerprint);
                     countedNode = flow.node; usedRecovery = false; usedRemediationHead = null;
                     if (usedAutomaticHandoff != null) {
                         audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY,
@@ -319,6 +351,8 @@ public class FlowEngine {
                 }
                 catch (Exception e) { auditScope(task, flow, node); throw e; }
                 if (aborted(task)) return;
+                // 這一步真的跑起來了：系統層重試次數歸零，之後若再遇到環境問題還有完整的自動重試。
+                flow.systemRetries.remove(flow.node);
                 auditScope(task, flow, node);
                 if (result.isError()) throw new IllegalStateException("runtime 回報 isError；診斷：" + result.diagnosticsLog());
                 JsonNode report = result.structuredOutput();
@@ -430,9 +464,34 @@ public class FlowEngine {
                       + (usedAutomaticHandoff != null ? "及自動責任交接額度" : "")
                       + "已還原，額度與真人核准不受影響。"
                       + "\n修正部署後直接續跑即可，不需重新核准。\n" + Diagnostics.describe(e));
+            } else if (countedNode != null && SystemFailure.transientFailure(e)
+                    && flow.systemRetries.getOrDefault(countedNode, 0) < SystemFailure.RETRY_LIMIT) {
+                // 系統自己沒跑起來，不是工作有問題：還原本輪計數與一次性授權後自動再試一次，
+                // 不必等人按。連續失敗到上限才交給人。
+                flow.visits.merge(countedNode, -1, Integer::sum);
+                flow.transitions = Math.max(0, flow.transitions - 1);
+                flow.repeats.merge(countedNode, -1, Integer::sum);
+                if (usedRecovery) {
+                    flow.recoveryGrants.put(countedNode, flow.snapshot.revision());
+                    if (usedRemediationHead == null) flow.recoveryRevisions.remove(flow.snapshot.revision());
+                    else {
+                        flow.remediationRecoveryGrants.put(countedNode, usedRemediationHead);
+                        flow.remediationRecoveryKeys.remove(VerificationRecovery.remediationKey(flow,countedNode,usedRemediationHead));
+                    }
+                }
+                AutomaticHandoff.restore(flow, usedAutomaticHandoff);
+                flow.activeNode = null; task.continuation(null);
+                int attempt = flow.systemRetries.merge(countedNode, 1, Integer::sum);
+                store.saveFlow(task.id(), flow);
+                audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_ERROR,
+                        "系統層失敗，第 " + attempt + "／" + SystemFailure.RETRY_LIMIT + " 次自動重試；"
+                                + "已還原本輪計數與一次性授權。" + Diagnostics.describe(e));
+                run(task);
             } else {
                 audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_ERROR, Diagnostics.describe(e));
-                waitHuman(task, flow, Diagnostics.describe(e));
+                waitHuman(task, flow, (SystemFailure.transientFailure(e)
+                        ? "系統連續 " + SystemFailure.RETRY_LIMIT + " 次都沒能把這一步跑起來，這是系統或環境問題，不是工作內容有問題。\n"
+                        : "") + Diagnostics.describe(e));
             }
         }
     }
@@ -823,6 +882,8 @@ public class FlowEngine {
             audit.record(task.id(), user, AuditLog.ACTION_STATE, "核准需求變更，原基準=" + flow.baselineRevision + "；內容=" + feedback);
         }
         flow.context = FlowContext.append(flow.context, "使用者 " + user + " 補充：" + Objects.toString(feedback, "額度恢復，續跑原階段"));
+        // 真人給了新資訊，一定算成新的輸入，否則節點會因為「輸入相同」而拒絕重跑。
+        flow.supplements++;
         store.saveFlow(task.id(), flow);
         enqueue.accept(() -> run(store.find(task.id()).orElseThrow()));
         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id() + " 已排隊，將使用原配置與節點續跑，不代表已核准 PR。");

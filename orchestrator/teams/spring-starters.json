@@ -3,6 +3,7 @@
   "id": "spring-starters",
   "project": {
     "requirePlanApproval": true,
+    "autoApprovePlanWhenValid": true,
     "operations": {
       "java-verify": {"nodes": ["implementation"], "directory": ".", "argv": ["mvn", "-B", "verify"], "writes": ["."]},
       "docs-install": {"nodes": ["implementation"], "directory": "doc-site", "argv": ["npm", "ci"], "writes": ["doc-site/node_modules"]},

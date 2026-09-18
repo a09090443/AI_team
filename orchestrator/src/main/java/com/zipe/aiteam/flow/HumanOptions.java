@@ -331,7 +331,7 @@ public final class HumanOptions {
         return flow.snapshot.definition().nodes().entrySet().stream().anyMatch(entry -> {
             Node node = entry.getValue();
             return (node.gate() == Gate.VERIFICATION || node.gate() == Gate.REVIEW)
-                    && flow.visits.getOrDefault(entry.getKey(), 0) >= node.maxVisits();
+                    && flow.repeats.getOrDefault(entry.getKey(), 0) >= node.maxVisits();
         });
     }
 }

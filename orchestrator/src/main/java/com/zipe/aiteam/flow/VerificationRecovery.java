@@ -37,7 +37,7 @@ public final class VerificationRecovery {
         if(node==null || node.kind()!=Kind.AGENT) return "只允許恢復流程中的 agent 節點";
         if(node.gate()==Gate.VERIFICATION && !flow.snapshot.definition().project().requirePlanApproval())
             return "只允許恢復需真人計畫核准的驗收節點";
-        if(node.gate()!=Gate.VERIFICATION && flow.visits.getOrDefault(nodeId,0)<node.maxVisits())
+        if(node.gate()!=Gate.VERIFICATION && flow.repeats.getOrDefault(nodeId,0)<node.maxVisits())
             return "此節點尚未達重試上限，請直接續跑";
         if(flow.transitions>=flow.snapshot.definition().maxTransitions())
             return "流程總上限已用盡，不授予恢復";

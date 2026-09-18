@@ -1,0 +1,43 @@
+package com.zipe.aiteam.flow;
+
+import java.io.IOException;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Set;
+
+/**
+ * 分辨「系統自己沒跑起來」與「工作本身有問題」。
+ *
+ * 前者不該拿去問人：#1014／#1016 的 52 次停止裡，有 15 次是啟動失敗、參數過長、
+ * 要接續的對話不存在這類系統問題，每次都要人按一下才會再試。這些應該自己重試，
+ * 連續失敗才交給人。後者（agent 回報受阻、越權、契約不符）維持原本的處理。
+ */
+final class SystemFailure {
+    private SystemFailure() {}
+
+    /** 同一個節點最多自動重試幾次；超過就交給人，避免把同一個壞掉的環境重跑到底。 */
+    static final int RETRY_LIMIT = 2;
+
+    private static final List<String> SIGNATURES = List.of(
+            "Cannot run program",            // 連執行檔都起不來
+            "Argument list too long",
+            "No conversation found with session ID",
+            "Temporary failure in name resolution",
+            "Connection reset",
+            "Connection refused",
+            "Broken pipe",
+            "Failed to start transient service",  // systemd-run 暫時性失敗
+            "Read timed out");
+
+    /** 只認明確的系統層訊號；認不出來的一律當成工作問題，交給人。 */
+    static boolean transientFailure(Throwable error) {
+        Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (Throwable e = error; e != null && seen.add(e); e = e.getCause()) {
+            String message = e.getMessage();
+            if (message != null && SIGNATURES.stream().anyMatch(message::contains)) return true;
+            if (e instanceof IOException && message != null && message.contains("systemd-run")) return true;
+        }
+        return false;
+    }
+}

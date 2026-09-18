@@ -8,12 +8,24 @@ public record TeamDefinition(int version, String id, Project project, Map<String
                              String entry, int maxTransitions, Map<String, Node> nodes) {
     public record Project(String name, String repositoryEnv, String baseBranch,
                           String buildInstructions, String testInstructions, List<String> protectedPaths, List<String> cachePaths, List<String> requiredTools,
-                          Verification verification, Map<String, Operation> operations, boolean requirePlanApproval) {
+                          Verification verification, Map<String, Operation> operations, boolean requirePlanApproval,
+                          /**
+                           * 計畫通過系統的機械檢查（覆蓋全部驗收項目、每條情境有反例、操作可執行）時自動核准，
+                           * 不再等真人按。發布仍必須由真人核准，需求變更也仍要真人同意。
+                           */
+                          boolean autoApprovePlanWhenValid) {
         public Project(String name, String repositoryEnv, String baseBranch, String buildInstructions,
                        String testInstructions, List<String> protectedPaths, List<String> cachePaths,
                        List<String> requiredTools, Verification verification) {
             this(name, repositoryEnv, baseBranch, buildInstructions, testInstructions, protectedPaths,
-                    cachePaths, requiredTools, verification, null, false);
+                    cachePaths, requiredTools, verification, null, false, false);
+        }
+        public Project(String name, String repositoryEnv, String baseBranch, String buildInstructions,
+                       String testInstructions, List<String> protectedPaths, List<String> cachePaths,
+                       List<String> requiredTools, Verification verification,
+                       Map<String, Operation> operations, boolean requirePlanApproval) {
+            this(name, repositoryEnv, baseBranch, buildInstructions, testInstructions, protectedPaths,
+                    cachePaths, requiredTools, verification, operations, requirePlanApproval, false);
         }
     }
     /** 管理者宣告各節點的必要操作；不接受模型新增權限。writes 相對於 repository 根目錄。 */

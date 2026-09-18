@@ -12,9 +12,13 @@ import static com.zipe.aiteam.flow.TeamDefinition.*;
 final class FlowLimits {
     private FlowLimits() {}
 
+    /**
+     * 節點層級的上限只看「輸入完全相同的連續重跑」；輸入變了代表有新的依據，不算原地打轉。
+     * 整輪 maxTransitions 仍是硬上限，維持不變。
+     */
     static boolean overLimit(FlowRun flow, Node node) {
         return flow.transitions >= flow.snapshot.definition().maxTransitions()
-                || flow.visits.getOrDefault(flow.node, 0) >= node.maxVisits();
+                || flow.repeats.getOrDefault(flow.node, 0) >= node.maxVisits();
     }
 
     /** 下一次啟動目前節點時，能不能通過防循環檢查（不含計畫核准等其他閘門）。 */

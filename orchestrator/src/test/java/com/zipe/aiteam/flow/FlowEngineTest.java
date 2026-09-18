@@ -308,7 +308,7 @@ class FlowEngineTest {
         engine.resume(task,"核准測試計畫 plan "+Traceability.digest(waiting.receipts.get("plan")),"u",jobs::add);
         mode="blocked";jobs.getFirst().run();
         var blocked=store.flow(task.id()).orElseThrow();
-        blocked.visits.put("verification",blocked.snapshot.definition().nodes().get("verification").maxVisits());
+        blocked.visits.put("verification",blocked.snapshot.definition().nodes().get("verification").maxVisits()); blocked.repeats.put("verification",blocked.snapshot.definition().nodes().get("verification").maxVisits());
         blocked.recoveryRevisions.add(blocked.snapshot.revision());
         store.saveFlow(task.id(),blocked);
         assertThat(blocked.attemptHeads).containsEntry("verification","head1");
@@ -326,7 +326,7 @@ class FlowEngineTest {
         var flow=store.flow(task.id()).orElseThrow();
         ((ObjectNode)def.path("project")).put("testInstructions","fixed capability instructions");
         var target=new TeamDefinition.Snapshot("after",mapper.treeToValue(def,TeamDefinition.class),flow.snapshot.repository(),flow.snapshot.assets());
-        flow.node="triage";flow.visits.put("verification",3);
+        flow.node="triage";flow.visits.put("verification",3); flow.repeats.put("verification",3);
         TeamMigration.apply(flow,target,TeamMigration.preview(flow.snapshot,target).token());store.saveFlow(task.id(),flow);
         List<Runnable> jobs=new ArrayList<>();
         engine.resume(task,"核准恢復驗收 verification wrong","u",jobs::add);
@@ -358,7 +358,7 @@ class FlowEngineTest {
         var flow=store.flow(task.id()).orElseThrow();
         ((ObjectNode)def.path("project")).put("testInstructions","fixed capability instructions");
         var target=new TeamDefinition.Snapshot("after",mapper.treeToValue(def,TeamDefinition.class),flow.snapshot.repository(),flow.snapshot.assets());
-        flow.node="triage";flow.visits.put("verification",3);
+        flow.node="triage";flow.visits.put("verification",3); flow.repeats.put("verification",3);
         TeamMigration.apply(flow,target,TeamMigration.preview(flow.snapshot,target).token());store.saveFlow(task.id(),flow);
         List<Runnable> jobs=new ArrayList<>();
         engine.resume(task,"核准恢復驗收 verification after","u",jobs::add);
@@ -385,7 +385,7 @@ class FlowEngineTest {
         when(props.briefReports()).thenReturn(true);
         var flow = store.flow(task.id()).orElseThrow();
         int limit = flow.snapshot.definition().nodes().get(flow.node).maxVisits();
-        flow.visits.put(flow.node, limit); flow.transitions = 9;
+        flow.visits.put(flow.node, limit); flow.repeats.put(flow.node, limit); flow.transitions = 9;
         flow.lastBlockReason = "QA bwrap: Can't mkdir .agents: Read-only file system";
         store.saveFlow(task.id(), flow);
         engine.run(task); engine.run(task);
@@ -404,7 +404,7 @@ class FlowEngineTest {
         var flow = store.flow(task.id()).orElseThrow();
         flow.node = "triage";
         flow.lastBlockReason = "verification：SC-04 缺少精確失敗測試";
-        flow.visits.put("triage", flow.snapshot.definition().nodes().get("triage").maxVisits());
+        flow.visits.put("triage", flow.snapshot.definition().nodes().get("triage").maxVisits()); flow.repeats.put("triage", flow.snapshot.definition().nodes().get("triage").maxVisits());
         flow.transitions = flow.snapshot.definition().maxTransitions();
         store.saveFlow(task.id(), flow);
 
@@ -438,7 +438,7 @@ class FlowEngineTest {
         flow.lastBlockReason = "同一阻礙仍未解除";
         flow.automaticHandoff = "evidence";
         flow.automaticHandoffs = AutomaticHandoff.LIMIT;
-        flow.visits.put("triage", flow.snapshot.definition().nodes().get("triage").maxVisits());
+        flow.visits.put("triage", flow.snapshot.definition().nodes().get("triage").maxVisits()); flow.repeats.put("triage", flow.snapshot.definition().nodes().get("triage").maxVisits());
         store.saveFlow(task.id(), flow);
 
         engine.run(task);
@@ -456,7 +456,7 @@ class FlowEngineTest {
                 second + ":verification:8", second + ":triage:6",
                 "incident:" + "c".repeat(64), "incident:" + "d".repeat(64)));
         flow.automaticHandoffs = 6;
-        flow.visits.put("triage", flow.snapshot.definition().nodes().get("triage").maxVisits());
+        flow.visits.put("triage", flow.snapshot.definition().nodes().get("triage").maxVisits()); flow.repeats.put("triage", flow.snapshot.definition().nodes().get("triage").maxVisits());
         store.saveFlow(task.id(), flow);
 
         engine.run(task);
@@ -474,7 +474,7 @@ class FlowEngineTest {
         flow.node = "triage"; flow.lastBlockReason = "第七個獨立問題"; flow.automaticHandoff = "seventh";
         for (int i = 0; i < AutomaticHandoff.LIMIT; i++) flow.automaticHandoffKeys.add("incident:used-" + i);
         flow.automaticHandoffs = AutomaticHandoff.LIMIT;
-        flow.visits.put("triage", flow.snapshot.definition().nodes().get("triage").maxVisits());
+        flow.visits.put("triage", flow.snapshot.definition().nodes().get("triage").maxVisits()); flow.repeats.put("triage", flow.snapshot.definition().nodes().get("triage").maxVisits());
         store.saveFlow(task.id(), flow); engine.run(task);
         String token = AutomaticHandoff.extensionToken(store.flow(task.id()).orElseThrow(), null);
         List<Runnable> jobs = new ArrayList<>();
@@ -494,7 +494,7 @@ class FlowEngineTest {
         flow.node = "triage"; flow.automaticHandoff = "same-incident";
         flow.automaticHandoffKeys.add("incident:same-incident");
         flow.automaticHandoffs = 4; flow.automaticHandoffHops = AutomaticHandoff.HOP_LIMIT;
-        flow.visits.put("triage", flow.snapshot.definition().nodes().get("triage").maxVisits());
+        flow.visits.put("triage", flow.snapshot.definition().nodes().get("triage").maxVisits()); flow.repeats.put("triage", flow.snapshot.definition().nodes().get("triage").maxVisits());
         store.saveFlow(task.id(), flow);
 
         engine.run(task);
@@ -535,7 +535,7 @@ class FlowEngineTest {
         var flow = store.flow(task.id()).orElseThrow();
         var old = flow.snapshot;
         flow.node = "plan";
-        flow.visits.put("plan", old.definition().nodes().get("plan").maxVisits());
+        flow.visits.put("plan", old.definition().nodes().get("plan").maxVisits()); flow.repeats.put("plan", old.definition().nodes().get("plan").maxVisits());
         flow.receipts.put("intake", report(TeamDefinition.Gate.REQUIREMENTS));
         store.saveFlow(task.id(), flow);
         task.state(Task.State.AWAIT_HUMAN); store.save(task);
@@ -575,7 +575,7 @@ class FlowEngineTest {
         assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
         assertThat(calls).doesNotContain("verification:tester", "review:security_auditor");
         var waiting = store.flow(task.id()).orElseThrow();
-        waiting.visits.put("triage", 3); store.saveFlow(task.id(), waiting);
+        waiting.visits.put("triage", 3); waiting.repeats.put("triage", 3); store.saveFlow(task.id(), waiting);
         when(slack.post(any(), any(), any(), anyString())).thenReturn("sent");
         List<Runnable> displayJobs = new ArrayList<>();
         engine.resume(task, "檢視測試計畫", "u", displayJobs::add);
@@ -700,8 +700,10 @@ class FlowEngineTest {
             }
             if (firstAutomaticVerification) {
                 flow.transitions = flow.snapshot.definition().maxTransitions();
-                for (String id : List.of("triage", "implementation", "verification", "review"))
-                    flow.visits.put(id, flow.snapshot.definition().nodes().get(id).maxVisits());
+                for (String id : List.of("triage", "implementation", "verification", "review")) {
+                    int limit = flow.snapshot.definition().nodes().get(id).maxVisits();
+                    flow.visits.put(id, limit); flow.repeats.put(id, limit);
+                }
             }
             if (node.gate() == TeamDefinition.Gate.TEST_PLAN || node.gate() == TeamDefinition.Gate.VERIFICATION)
                 ((ObjectNode) report).put("baseline_revision", flow.baselineRevision);

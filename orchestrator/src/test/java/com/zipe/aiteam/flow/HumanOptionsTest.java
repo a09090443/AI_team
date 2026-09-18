@@ -42,13 +42,13 @@ class HumanOptionsTest {
         assertThat(text()).doesNotContain("請它重驗");
 
         var verification = flow.snapshot.definition().nodes().get("verification");
-        flow.visits.put("verification", verification.maxVisits());
+        flow.visits.put("verification", verification.maxVisits()); flow.repeats.put("verification", verification.maxVisits());
         assertThat(text()).contains("請它重驗").contains("核准人工修復重驗 <驗收節點> <commit>");
     }
 
     @Test void remediationIsNotOfferedWithoutAWorkspace() {
         var verification = flow.snapshot.definition().nodes().get("verification");
-        flow.visits.put("verification", verification.maxVisits());
+        flow.visits.put("verification", verification.maxVisits()); flow.repeats.put("verification", verification.maxVisits());
         assertThat(text()).doesNotContain("請它重驗");
     }
 
@@ -88,7 +88,7 @@ class HumanOptionsTest {
     @Test void freeTextOptionsAreNeverTurnedIntoButtons() {
         flow.changeTarget = "intake";
         flow.workspaceReady = true;
-        flow.visits.put("verification", flow.snapshot.definition().nodes().get("verification").maxVisits());
+        flow.visits.put("verification", flow.snapshot.definition().nodes().get("verification").maxVisits()); flow.repeats.put("verification", flow.snapshot.definition().nodes().get("verification").maxVisits());
 
         assertThat(HumanOptions.options(task, flow, true, true, "t".repeat(64)))
                 .filteredOn(o -> java.util.Set.of(HumanOptions.REQUIREMENT, HumanOptions.REMEDIATE,
@@ -333,7 +333,7 @@ class HumanOptionsTest {
 
     @Test void stuckAtLimitOffersNoDecisionSupplementOrContinue() throws Exception {
         flow.node = "plan";
-        flow.visits.put("plan", flow.snapshot.definition().nodes().get("plan").maxVisits());
+        flow.visits.put("plan", flow.snapshot.definition().nodes().get("plan").maxVisits()); flow.repeats.put("plan", flow.snapshot.definition().nodes().get("plan").maxVisits());
         flow.receipts.put("plan", decisionReport());
 
         var options = HumanOptions.options(task, flow, true, true, null);
@@ -346,7 +346,7 @@ class HumanOptionsTest {
 
     @Test void stuckAtLimitWithADeployedConfigOffersToReviewIt() {
         flow.node = "plan";
-        flow.visits.put("plan", flow.snapshot.definition().nodes().get("plan").maxVisits());
+        flow.visits.put("plan", flow.snapshot.definition().nodes().get("plan").maxVisits()); flow.repeats.put("plan", flow.snapshot.definition().nodes().get("plan").maxVisits());
 
         assertThat(HumanOptions.options(task, flow, true, true, null, HumanOptions.Workspace.NONE, true))
                 .anyMatch(o -> HumanOptions.CONFIG_UPDATE.equals(o.kind()) && "檢視配置更新".equals(o.command()));
