@@ -812,3 +812,13 @@ JAR `067aecd2e9181766301831f321c83b61990ac6cb615de03f8c35104c526a8198`，備份 
 停止訊息同步提供繼續；實作階段指示說明其他節點的驗收做不了不算邊界衝突。405 項 0 失敗。
 部署 PID=161131，JAR `5437998563f8d4972dfc6d6d336c1da01090688adf37faf487b27ae93f2e7288`，備份 `orchestrator-backup.LSduG5`，資料一致、0 ERROR。
 #1016 已由 #1017 承接（不再接受操作）；#1017 按繼續即會退回實作重做。
+
+2026-09-25 Claude Code：依使用者要求升級 CLI 並將 Backend Agent（builder）改用 opus。
+(1) VM CLI：Claude Code 2.1.252→2.1.282、Codex 0.153.4→0.156.1；舊版備份 `cli-backup.rZATUB/cli-before.tgz`。
+重驗：`CodexSandboxVmTest` 4/4、`OperationPreflightVmTest` 3/3（於 redo-build.beY8Ey，與線上 JAR 相同）；
+Claude 以 runtime 同旗標實測 stdin 提示、--session-id／--resume、--json-schema、opus（modelUsage=claude-opus-5-5）皆正常，
+無效模型仍 exit 1；dontAsk 下非白名單寫入指令新舊版皆拒絕並列入 permission_denials（whoami／find 等唯讀指令兩版皆內建放行）。
+實測費用約 US$0.41。Codex 登入狀態仍有效。
+(2) 兩份 team 配置 builder model sonnet→opus；VM teams 備份 `teams-backup.lDcHgQ`，只替換兩份 JSON。
+重啟 PID=235683，新配置版本 `524752dd...`，沙箱與工具鏈自檢通過，五角色 Socket Mode 啟動，log 0 ERROR。JAR 未變。
+#1014／#1016／#1017 狀態與 updated_at 未變；舊任務仍用凍結快照（builder=sonnet），要套用需走配置更新核准。

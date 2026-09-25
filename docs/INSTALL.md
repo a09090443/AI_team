@@ -83,12 +83,12 @@ export PATH="$HOME/.local/node/bin:$JAVA_HOME/bin:$HOME/.local/maven/bin:$HOME/.
 
 ## 3. CLI 與登入
 
-歷史測試版本是 Claude Code 2.1.252、Codex CLI 0.153.4。先確認 registry 有該版本；若無，停止並重新驗證可用版本的契約，不靜默換 latest。
+目前實測版本是 Claude Code 2.1.282、Codex CLI 0.156.1（2026-09-25 由 2.1.252／0.153.4 升級並重驗契約）。先確認 registry 有該版本；若無，停止並重新驗證可用版本的契約，不靜默換 latest。
 
 ```bash
 export MAKEFLAGS=-j1 JOBS=1
 unset npm_config_jobs
-npm install --global --prefix "$HOME/.local/node" @anthropic-ai/claude-code@2.1.252 @openai/codex@0.153.4
+npm install --global --prefix "$HOME/.local/node" @anthropic-ai/claude-code@2.1.282 @openai/codex@0.156.1
 claude --version
 codex --version
 ```

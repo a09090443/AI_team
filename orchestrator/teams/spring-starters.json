@@ -92,7 +92,7 @@
     "builder": {
       "name": "Backend Agent",
       "runtime": "claude-code",
-      "model": "sonnet",
+      "model": "opus",
       "prompt": "prompts/implement.md",
       "botTokenEnv": "SLACK_BOT_TOKEN_BACKEND",
       "appTokenEnv": "SLACK_APP_TOKEN_BACKEND",

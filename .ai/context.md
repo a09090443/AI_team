@@ -451,3 +451,10 @@ AWAIT_HUMAN／triage、activeNode=null、transitions=29、automaticHandoffs=6，
 2026-09-18 12:35 Claude Code：自主化修改已 commit（3530948，未 push），隔離建置目錄
 `/home/vboxuser/ai-team/autonomy2-build.RPwoYv`（394 項 0 失敗）。04:46 UTC 已部署（見 progress）。
 #1016 在驗收前等測試計畫核准（舊快照無自動核准旗標）。
+
+2026-09-25 Claude Code：#1017 於 09-24 17:37 停在 AWAIT_HUMAN（implementation 耗盡 80 回合，
+自動交接 6／6）。停因是 `MailServiceTimeoutAndLimitsTest.overallTimeout_boundsWholeOperation_acrossMultipleSmtpStages`
+間歇失敗，實作 agent 用 for 迴圈／重導／find 等非白名單形式重跑被拒而耗盡回合；工作區 HEAD=5d27899，
+另有 MailServiceImpl.java 未提交修改（+133/-4）。同日已升級 CLI（Claude 2.1.282、Codex 0.156.1）並將
+builder 改 opus（PID=235683）。#1017 快照仍是 sonnet，套用新模型需走配置更新核准；下一步待使用者決定
+先分析該測試失敗，或改善 builder 重跑單一測試的能力／回合耗盡處理。
