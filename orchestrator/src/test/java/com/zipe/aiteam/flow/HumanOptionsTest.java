@@ -19,6 +19,21 @@ class HumanOptionsTest {
 
     private String text() { return HumanOptions.render(task, flow, true, true, null); }
 
+    @Test void stoppedAtTheTestPlanOffersARequirementChangeWithACopyableFormat() {
+        flow.node = "plan"; flow.baselineRevision = "baseline-1";
+
+        assertThat(HumanOptions.options(task, flow, true, true, null))
+                .anyMatch(o -> o.kind().equals(HumanOptions.REQUIREMENT) && o.label().equals("需求要改"));
+        assertThat(text()).contains("需求清單本身有問題").contains("補充 #1014 核准需求變更 <要怎麼改與原因");
+    }
+
+    @Test void noRequirementChangeOptionBeforeThereIsABaseline() {
+        flow.node = "plan"; flow.baselineRevision = null;
+
+        assertThat(HumanOptions.options(task, flow, true, true, null))
+                .noneMatch(o -> o.kind().equals(HumanOptions.REQUIREMENT));
+    }
+
     @Test void alwaysExplainsThatPlainResumeChangesNothing() {
         assertThat(text()).contains("你現在可以做的事")
                 .contains("告訴它還缺什麼")
@@ -34,7 +49,7 @@ class HumanOptionsTest {
     @Test void offersRequirementChangeApprovalOnlyWhenPending() {
         assertThat(text()).doesNotContain("需求要改");
         flow.changeTarget = "intake";
-        assertThat(text()).contains("需求要改").contains("核准需求變更 <具體變更內容>");
+        assertThat(text()).contains("需求要改").contains("核准需求變更 <要怎麼改與原因");
     }
 
     @Test void offersRemediationRecoveryOnlyAfterVerificationExhaustedItsRetries() {

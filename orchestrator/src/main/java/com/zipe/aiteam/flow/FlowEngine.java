@@ -416,6 +416,8 @@ public class FlowEngine {
                         }
                         store.saveFlow(task.id(), flow);
                         audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "獨立驗證收據：" + flow.independentEvidence);
+                        // 驗證指令全數正常結束才會走到這裡，收據有效可保留；但不再啟動驗收角色。
+                        if (stopForInterrupt(task, flow)) return;
                     }
                     String invalid = verifier.blockingReason(flow, workspaces.headSha(task.id()));
                     if (invalid != null) { flow.independentEvidence = null; throw new IllegalStateException(invalid + "；續跑時將重新執行系統驗證"); }
@@ -428,6 +430,13 @@ public class FlowEngine {
                 }
                 catch (Exception e) { auditScope(task, flow, node); throw e; }
                 if (aborted(task)) return;
+                // 被要求中斷時，runtime 可能以結束碼 0 交回半成品（#1019：Codex 被停下時交出開頭一句「我會先核對…」，
+                // 被當成正式測試計畫而顯示「沒有情境」）。無法分辨是剛好做完還是被截斷，一律不採用；
+                // 寫入範圍稽核照常執行，越界不因中斷而被掩蓋。
+                if (interruptRequests.containsKey(task.id())) {
+                    auditScope(task, flow, node);
+                    if (stopForInterrupt(task, flow)) return;
+                }
                 // 這一步真的跑起來了：系統層重試次數歸零，之後若再遇到環境問題還有完整的自動重試。
                 flow.systemRetries.remove(flow.node);
                 auditScope(task, flow, node);
@@ -508,7 +517,8 @@ public class FlowEngine {
             if (aborted(task)) return;
             // 程序是被要求停掉的，失敗訊息只是結果，不走系統重試或錯誤回報。activeNode 保留，
             // 停止訊息會提供「繼續執行」，續跑沿用原 session 且不再計次。
-            if (stopForInterrupt(task, flow)) return;
+            // 越界寫入等安全問題不能被「使用者要求中斷」掩蓋，照原本的錯誤處理停下並記錄。
+            if (!(e instanceof SecurityException) && stopForInterrupt(task, flow)) return;
             QuotaExceeded quota = QuotaExceeded.find(e);
             com.zipe.aiteam.runtime.RuntimeUsageError usage = com.zipe.aiteam.runtime.RuntimeUsageError.find(e);
             if (quota != null && store.checkpoint(task.id()).isPresent()) {
@@ -1037,6 +1047,14 @@ public class FlowEngine {
                     + "這時一般補充不會被採用（剛才送出的內容沒有生效）。\n請改按下方的「核准：…」按鈕，或輸入「核准需求變更 具體變更內容」。", true);
             return;
         }
+        // 需求負責人主動發起需求變更。以前只有 PM 提議（changeTarget）時才接受，
+        // 但 QA 發現需求本身驗不了而直接停給人時（#1019 的 REQ-016），沒有任何人會提議，任務就卡死。
+        if (flow.changeTarget == null && feedback != null && feedback.startsWith("核准需求變更 ")
+                && !feedback.substring("核准需求變更 ".length()).isBlank()) {
+            String block = ownerChangeBlock(task, flow, from, user);
+            if (block != null) { slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), block); return; }
+            flow.changeTarget = requirementsNode(flow);
+        }
         if (flow.pendingPlanRevision != null && (!user.equals(flow.acceptanceOwner)
                 || feedback == null || feedback.isBlank() || feedback.trim().equals("續跑"))) {
             slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "請原負責人先補充測試計畫的具體修改意見；目前不執行 QA。"); return;
@@ -1058,6 +1076,25 @@ public class FlowEngine {
         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id() + " 已排隊，將使用原配置與節點續跑，不代表已核准 PR。");
     }
 
+    /** 配置中唯一的需求節點；沒有或不唯一時回 null。 */
+    private static String requirementsNode(FlowRun flow) {
+        List<String> ids = flow.snapshot.definition().nodes().entrySet().stream()
+                .filter(entry -> entry.getValue().gate() == Gate.REQUIREMENTS).map(Map.Entry::getKey).toList();
+        return ids.size() == 1 ? ids.getFirst() : null;
+    }
+    /** 回傳不能由負責人直接發起需求變更的白話原因；可以時回 null。 */
+    private String ownerChangeBlock(Task task, FlowRun flow, Task.State from, String user) {
+        if (from != Task.State.AWAIT_HUMAN)
+            return "任務 #" + task.id() + " 目前不是停下來等你的狀態，需求變更要等它停下後再送。";
+        if (!user.equals(flow.acceptanceOwner))
+            return "只有這個任務的需求負責人 <@" + flow.acceptanceOwner + "> 可以核准需求變更，剛才的內容沒有生效。";
+        if (flow.baselineRevision == null)
+            return "任務 #" + task.id() + " 還沒有確定的需求清單，不需要走需求變更；直接用「補充 #"
+                    + task.id() + " <你的說明>」告訴它即可。";
+        if (requirementsNode(flow) == null)
+            return "這個團隊配置沒有唯一的需求整理步驟，系統無法重訂需求；請通知管理者。";
+        return null;
+    }
     private void requirePlanQueueTarget(FlowRun flow, String plan) {
         Node current = flow.snapshot.definition().nodes().get(flow.node);
         if (flow.dialogue || flow.changeTarget != null || current == null || current.gate() != Gate.VERIFICATION

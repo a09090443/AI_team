@@ -871,3 +871,14 @@ permission_denials 為空，費用 US$0.04；另實測 `ls -laR /usr/share` 符�
   備份 `orchestrator-backup.h8BVIA`），0 ERROR、任務資料一致。
 - 另：整理 DiagnosticsTest 時曾以 Write 覆蓋既有檔案，已由 git 還原原 4 項測試再附加新測試。
 - #1017：待使用者送「補充 #1017 狀態」後按「保存未提交的修改並承接」。Slack 實際按鈕尚未實測。
+
+2026-09-25 Claude Code：#1019 卡住原因修正（已部署）。
+- #1019 由 #1017「保存未提交修改並承接」建立（15:20，af38b00 含 3 個 QA 測試檔）。15:28 計畫受阻：intake 寫入流程需求 REQ-016，
+  QA 無操作可驗；15:34 使用者首次實際使用「中斷這一輪」，Codex 交回半句話被當正式計畫（中斷 bug）。
+- 修正：中斷後結果不採用（含 verifier 正常返回）；負責人可直接「核准需求變更」；停在計畫時提供「需求要改」；
+  plan.blocked→triage、triage 需附 human_decision、intake 不寫流程需求且核准刪除照做。
+- 隔離建置 `requirement-change-build.q9fdK4`：439 項 0 失敗、10 opt-in 略過；check-source 通過。
+  #1019 真實資料唯讀演練：停止選項含「需求要改」與可複製格式。
+- 部署 15:43：先備份 teams（`teams-backup.BPe2a3`）並替換 2 份 JSON 與 triage.md、intake.md；以 deploy-jar-safe.sh 部署 JAR
+  （PID 314114，JAR `10f664c0996817f0f14592e6b1323804e37fe32376440bc5574042d7010ef339`，備份 `orchestrator-backup.y7dmdl`），0 ERROR、資料一致。
+- 下一步：使用者在 #1019 送「補充 #1019 核准需求變更 移除 REQ-016…」。Slack 端尚未實測。

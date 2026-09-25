@@ -142,12 +142,18 @@ public final class HumanOptions {
                             + " 次，不會重設已經累積的次數，也不等於核准 PR。",
                     "核准延長自動交接 " + extensionToken));
 
+        Node current = flow.snapshot == null ? null : flow.snapshot.definition().nodes().get(flow.node);
         if (flow.changeTarget != null)
             options.add(new Option(REQUIREMENT, "需求要改",
                     "只有需求負責人可以核准；核准後會回到需求節點重做，既有驗收證據會失效。",
                     null));
+        // 停在測試計畫：需求本身有問題（例如有一條根本測不了）最常在這裡浮現，而此時沒有人會替你提出修改。
+        else if (current != null && current.gate() == Gate.TEST_PLAN && flow.baselineRevision != null)
+            options.add(new Option(REQUIREMENT, "需求要改",
+                    "如果是需求清單本身有問題（例如有一條需求根本無法測試），需求負責人可以直接核准修改。"
+                            + "之後會重新整理需求，再重跑設計、測試計畫、實作、驗收與審查；PR 仍需要你核准。",
+                    null));
 
-        Node current = flow.snapshot == null ? null : flow.snapshot.definition().nodes().get(flow.node);
         String planNode = current == null ? null : current.plan();
         if (planNode != null && PlanApproval.blockingReason(flow, planNode) != null)
             options.add(new Option(PLAN, "核准測試計畫",
@@ -326,7 +332,7 @@ public final class HumanOptions {
 
     private static String commandHint(String kind) {
         return switch (kind) {
-            case REQUIREMENT -> "核准需求變更 <具體變更內容>";
+            case REQUIREMENT -> "核准需求變更 <要怎麼改與原因，例如：移除 REQ-016，因為版本追溯由系統負責、不是產品需求>";
             case PLAN -> "核准測試計畫 <計畫節點> <計畫版本>";
             case REMEDIATE -> "核准人工修復重驗 <驗收節點> <commit>";
             default -> "<你的說明或決定>";

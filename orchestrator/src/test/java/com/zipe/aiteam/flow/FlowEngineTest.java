@@ -990,7 +990,9 @@ class FlowEngineTest {
         engine.run(task);
         assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
     }
-    @Test void interruptRequestedAfterTheAgentFinishedStopsBeforeTheNextStep() throws Exception {
+    @Test void resultReturnedAfterAnInterruptIsNotUsed() throws Exception {
+        // #1019：Codex 被停下時以結束碼 0 交出開頭一句「我會先核對…」，被當成正式計畫而顯示「沒有情境」。
+        // 無法分辨剛好做完或被截斷，一律不採用，停在原節點並明講是依要求中斷。
         engine.unitStopper = id -> true;
         mode = "interruptAfter";
 
@@ -998,7 +1000,75 @@ class FlowEngineTest {
 
         assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
         assertThat(calls).last().isEqualTo("implementation:builder");
-        assertThat(store.flow("42").orElseThrow().receipts).containsKey("implementation");
+        var flow = store.flow("42").orElseThrow();
+        assertThat(flow.receipts).doesNotContainKey("implementation");
+        assertThat(flow.node).isEqualTo("implementation");
+        assertThat(flow.activeNode).isEqualTo("implementation");
+        verify(slack).post(any(), eq("c"), eq("t"), contains("已依 <@u> 的要求中斷「implementation」"), any());
+    }
+    @Test void interruptDuringASuccessfulIndependentCheckKeepsTheReceiptButDoesNotStartTheTester() throws Exception {
+        engine.unitStopper = id -> true;
+        doAnswer(c -> {
+            engine.interrupt(c.getArgument(0), "u");
+            FlowRun f = c.getArgument(1);
+            return new IndependentVerifier.Receipt(workspaceHead, f.baselineRevision, f.snapshot.revision(), "start", "end", List.of());
+        }).when(verifier).verify(any(), any());
+
+        engine.run(task);
+
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        assertThat(calls).noneMatch(c -> c.startsWith("verification:"));
+        assertThat(store.flow("42").orElseThrow().independentEvidence).isNotNull();
+    }
+    @Test void requirementOwnerCanStartARequirementChangeWhileStoppedAtThePlan() {
+        // #1019：需求裡有一條測不了的流程要求（REQ-016），計畫受阻直接停給人；沒有 PM 提議時舊版沒有任何路可以改需求。
+        task.state(Task.State.AWAIT_HUMAN); store.save(task);
+        var flow = store.flow(task.id()).orElseThrow();
+        flow.node = "plan"; flow.activeNode = null; flow.baselineRevision = "baseline-1";
+        store.saveFlow(task.id(), flow);
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(task, "核准需求變更 移除 REQ-016：版本追溯由系統負責，不是產品需求", "someone-else", jobs::add);
+        assertThat(jobs).isEmpty();
+
+        when(props.allowedUsers()).thenReturn(Set.of("u", "someone-else"));
+        engine.resume(task, "核准需求變更 移除 REQ-016：版本追溯由系統負責，不是產品需求", "someone-else", jobs::add);
+        assertThat(jobs).isEmpty();
+        verify(slack).post(any(), eq("c"), eq("t"), contains("只有這個任務的需求負責人"));
+
+        engine.resume(task, "核准需求變更 移除 REQ-016：版本追溯由系統負責，不是產品需求", "u", jobs::add);
+
+        var changed = store.flow(task.id()).orElseThrow();
+        assertThat(jobs).hasSize(1);
+        assertThat(changed.node).isEqualTo("intake");
+        assertThat(changed.changeAuthorized).isTrue();
+        assertThat(changed.changeTarget).isNull();
+        assertThat(changed.context).contains("移除 REQ-016");
+        verify(audit).record(eq("42"), eq("u"), eq(AuditLog.ACTION_STATE), contains("核准需求變更"));
+    }
+    @Test void requirementChangeBeforeAnyBaselineIsExplainedInsteadOfQueued() {
+        task.state(Task.State.AWAIT_HUMAN); store.save(task);
+        var flow = store.flow(task.id()).orElseThrow();
+        flow.node = "plan"; flow.baselineRevision = null; store.saveFlow(task.id(), flow);
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(task, "核准需求變更 移除 R1", "u", jobs::add);
+
+        assertThat(jobs).isEmpty();
+        assertThat(store.flow(task.id()).orElseThrow().node).isEqualTo("plan");
+        verify(slack).post(any(), eq("c"), eq("t"), contains("還沒有確定的需求清單"));
+    }
+    @Test void newConfigurationSendsABlockedTestPlanToTriageFirst() {
+        for (String team : List.of("teams/spring-starters.json", "teams/node-web.json")) {
+            var definition = assertDoesNotThrowLoad(team);
+            definition.nodes().forEach((id, node) -> {
+                if (node.gate() == TeamDefinition.Gate.TEST_PLAN) assertThat(node.blocked()).as(team + " " + id).isEqualTo("triage");
+            });
+        }
+    }
+    private TeamDefinition assertDoesNotThrowLoad(String team) {
+        try { return TeamCatalog.load(Path.of(team), key -> tmp.resolve("repo").toString()).definition(); }
+        catch (Exception e) { throw new AssertionError(e); }
     }
     @Test void missingPrerequisiteResultSendsTheFlowBackInsteadOfFailing() {
         // #1016／#1017：分流把流程送到驗收，實作的報告卻沒被採用；舊版每次都丟 IllegalStateException。

@@ -177,7 +177,7 @@
       "writablePaths": [],
       "plan": null,
       "next": "implementation",
-      "blocked": "human",
+      "blocked": "triage",
       "routes": {},
       "requires": [
         "intake"
