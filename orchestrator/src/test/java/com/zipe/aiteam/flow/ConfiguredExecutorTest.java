@@ -207,4 +207,34 @@ class ConfiguredExecutorTest {
         assertThat(text.substring(0, text.indexOf("執行不了"))).contains("docs-install").doesNotContain("publish");
         assertThat(text.substring(text.indexOf("執行不了"))).contains("publish");
     }
+
+    @Test void claudeRolesAreToldTheAllowedWayToRepeatCommandsAndReadLongOutput() throws Exception {
+        var definition = springDefinition();
+        var claude = new ClaudeCodeRuntime(null, null);
+
+        String text = ConfiguredExecutor.commandPatterns(definition.roles().get("builder"), claude, Map.of());
+
+        // #1017：為了重跑不穩定測試用迴圈、> /tmp、Bash grep 讀長輸出檔，全部被拒到回合耗盡。
+        assertThat(text).contains("分成多次工具呼叫").contains("工作目錄外的路徑")
+                .contains("用 Read 或 Grep 工具讀那個檔案").contains("用 Read／Grep／Glob 工具");
+    }
+
+    @Test void alternativesOnlyMentionToolsTheRoleActuallyHas() {
+        var role = new TeamDefinition.Role("Runner", "claude-code", "", "p.md", null, null,
+                List.of("Bash(npm test)"), null);
+
+        String text = ConfiguredExecutor.allowedAlternatives(role);
+
+        assertThat(text).contains("分成多次工具呼叫").doesNotContain("Read").doesNotContain("Grep").doesNotContain("Glob");
+    }
+
+    @Test void codexRolesDoNotGetPatternAdvice() throws Exception {
+        var definition = springDefinition();
+        AgentRuntime codex = mock(AgentRuntime.class);
+        when(codex.permitsCommand(any(), any())).thenReturn(true);
+
+        String text = ConfiguredExecutor.commandPatterns(definition.roles().get("tester"), codex, Map.of());
+
+        assertThat(text).doesNotContain("分成多次工具呼叫");
+    }
 }

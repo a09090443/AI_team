@@ -138,10 +138,36 @@ public class ConfiguredExecutor {
                 .filter(tool -> tool != null && tool.startsWith("Bash")).toList();
         if (patterns.isEmpty() && granted.isEmpty()) return text.append("\n你這個角色不能執行任何指令，只能讀檔與搜尋；"
                 + "不要嘗試執行指令，也不得宣稱執行過任何指令的輸出。").toString();
-        return text.append("\n除上述固定操作外，你這個角色只能執行下列樣式的指令：").append(patterns)
+        text.append("\n除上述固定操作外，你這個角色只能執行下列樣式的指令：").append(patterns)
                 .append("。必須完全符合樣式，工作目錄已經是上述工作目錄：")
-                .append("不要加 `-C <路徑>`、管線、`&&`、`for` 迴圈或重新導向，那些都會被拒絕而白跑一輪。")
-                .append("被拒時不要宣稱執行過該指令，改用允許的方式或如實回報。").toString();
+                .append("不要加 `-C <路徑>`、管線、`&&`、`for` 迴圈、`timeout`／`echo` 串接或重新導向，那些都會被拒絕而白跑一輪。")
+                .append("被拒時不要宣稱執行過該指令，改用允許的方式或如實回報。");
+        return text.append(allowedAlternatives(role)).toString();
+    }
+
+    /**
+     * 只講「不能做什麼」不夠：被拒的指令多半有正當需求，agent 找不到允許的做法就一直換寫法重試，
+     * 回合耗盡後整輪失敗（#1017 實作節點為了重跑不穩定測試，連續用迴圈、`> /tmp`、以 Bash grep 讀長輸出檔被拒）。
+     * 這裡只說明白名單內本來就能做到的方式，不新增任何權限。
+     */
+    static String allowedAlternatives(Role role) {
+        List<String> tools = role.tools() == null ? List.of() : role.tools();
+        boolean read = tools.contains("Read"), grep = tools.contains("Grep"), glob = tools.contains("Glob");
+        StringBuilder text = new StringBuilder("\n需要做到下列事情時，用允許的方式：")
+                .append("\n・重複執行同一指令（例如確認測試是否不穩定）：分成多次工具呼叫，每次執行同一條完全符合樣式的指令，")
+                .append("自己記錄每次結果；每次呼叫都會用掉一個回合，次數以足以判斷為限。")
+                // 已實測 Claude Code 2.1.282：`ls -laR /usr/share` 符合 Bash(ls *) 仍被拒，同一指令改指工作目錄內就放行。
+                .append("\n・指令只操作工作目錄內的路徑；指向工作目錄外的路徑（例如 /tmp、家目錄）即使符合樣式也會被拒絕。");
+        if (read || grep)
+            text.append("\n・輸出太長：系統會自動把完整輸出存成檔案並告訴你路徑，用 ")
+                    .append(read && grep ? "Read 或 Grep" : read ? "Read" : "Grep")
+                    .append(" 工具讀那個檔案；不要自己重新導向到 /tmp，也不要用 Bash 的 grep／cat／tail 去讀。");
+        if (read || grep || glob)
+            text.append("\n・查看或搜尋檔案：用 ")
+                    .append(String.join("／", java.util.stream.Stream.of(read ? "Read" : null, grep ? "Grep" : null, glob ? "Glob" : null)
+                            .filter(java.util.Objects::nonNull).toList()))
+                    .append(" 工具，不要用 find、cat、jar 等指令。");
+        return text.toString();
     }
 
     /**

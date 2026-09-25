@@ -60,8 +60,24 @@ final class AutomaticHandoff {
         String evidence = pendingEvidence(flow);
         return evidence != null && flow.automaticHandoffHops < HOP_LIMIT
                 && !flow.automaticHandoffKeys.contains("incident:" + evidence)
-                && flow.automaticHandoffs >= effectiveLimit(flow)
-                && flow.automaticHandoffExtraBudget < MAX_EXTRA_BUDGET;
+                && extensionGrantsRoom(flow);
+    }
+
+    /**
+     * 按一次延長後的額外額度：以「目前實際已用」為基準再加 EXTENSION_SIZE，總上限仍是 LIMIT + MAX_EXTRA_BUDGET。
+     *
+     * 舊做法是在既有額外額度上加 2。但套用配置更新會把額外額度歸零、已用次數卻保留，
+     * 於是按一次後上限仍低於已用次數，任務立刻又停 —— #1017 已用 10、上限回到 6，要連按三次才會真的跑。
+     */
+    static int extraBudgetAfterExtension(FlowRun flow) {
+        int alreadyNeeded = Math.max(flow.automaticHandoffExtraBudget, flow.automaticHandoffs - LIMIT);
+        return Math.min(MAX_EXTRA_BUDGET, Math.max(0, alreadyNeeded) + EXTENSION_SIZE);
+    }
+
+    /** 額度已用完，而且延長一次之後確實至少能再處理一件；到硬上限就不再提供延長，改由承接新任務。 */
+    static boolean extensionGrantsRoom(FlowRun flow) {
+        return flow.automaticHandoffs >= effectiveLimit(flow)
+                && LIMIT + extraBudgetAfterExtension(flow) > flow.automaticHandoffs;
     }
 
     static Claim claim(FlowRun flow) {
@@ -134,11 +150,15 @@ final class AutomaticHandoff {
             throw new IllegalArgumentException("此自動交接延長授權已使用，不能重放");
         if (flow.automaticHandoffs < effectiveLimit(flow))
             throw new IllegalArgumentException("自動交接事件額度尚未用完，不需要延長");
-        if (flow.automaticHandoffExtraBudget >= MAX_EXTRA_BUDGET)
+        if (!extensionGrantsRoom(flow))
             throw new IllegalArgumentException("人工延長已達硬上限，必須人工檢查流程或建立新任務");
         flow.automaticHandoffExtensionKeys.add(suppliedToken);
-        flow.automaticHandoffExtraBudget = Math.min(MAX_EXTRA_BUDGET,
-                flow.automaticHandoffExtraBudget + EXTENSION_SIZE);
+        flow.automaticHandoffExtraBudget = extraBudgetAfterExtension(flow);
+    }
+
+    /** 延長後還能再自動處理幾件；給訊息用，避免「增加 2」與實際可用數不符。 */
+    static int remaining(FlowRun flow) {
+        return Math.max(0, effectiveLimit(flow) - flow.automaticHandoffs);
     }
 
     private static String digest(String value) {

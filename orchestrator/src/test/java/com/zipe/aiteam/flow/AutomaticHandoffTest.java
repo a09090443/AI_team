@@ -62,4 +62,38 @@ class AutomaticHandoffTest {
         assertThatThrownBy(() -> AutomaticHandoff.authorizeExtension(flow, token, "other-head"))
                 .hasMessageContaining("不符");
     }
+
+    @Test void oneExtensionAlwaysLetsWorkContinueEvenAfterBudgetWasResetByConfigUpdate() {
+        // 套用配置更新會把額外額度歸零、已用次數保留（#1017：已用 10、上限回到 6）。
+        // 舊做法按一次只到 8，任務立刻又停；現在以已用次數為基準，按一次就能再處理 2 件。
+        FlowRun flow = new FlowRun();
+        flow.snapshot = new TeamDefinition.Snapshot("config", null, null, null);
+        flow.automaticHandoff = "blocked-evidence";
+        flow.automaticHandoffs = 10;
+        flow.automaticHandoffExtraBudget = 0;
+        assertThat(AutomaticHandoff.extensionGrantsRoom(flow)).isTrue();
+
+        AutomaticHandoff.authorizeExtension(flow, AutomaticHandoff.extensionToken(flow, "head"), "head");
+
+        assertThat(AutomaticHandoff.remaining(flow)).isEqualTo(2);
+        assertThat(AutomaticHandoff.effectiveLimit(flow))
+                .isEqualTo(AutomaticHandoff.LIMIT + AutomaticHandoff.MAX_EXTRA_BUDGET);
+    }
+
+    @Test void extensionNearTheHardCapGivesWhatIsLeftAndThenStopsBeingOffered() {
+        FlowRun flow = new FlowRun();
+        flow.snapshot = new TeamDefinition.Snapshot("config", null, null, null);
+        flow.automaticHandoff = "blocked-evidence";
+        int hardCap = AutomaticHandoff.LIMIT + AutomaticHandoff.MAX_EXTRA_BUDGET;
+
+        flow.automaticHandoffs = hardCap - 1;
+        AutomaticHandoff.authorizeExtension(flow, AutomaticHandoff.extensionToken(flow, "head"), "head");
+        assertThat(AutomaticHandoff.remaining(flow)).isEqualTo(1);
+
+        // 總上限不因延長而放寬：用到硬上限後不再提供延長，按了也會被拒。
+        flow.automaticHandoffs = hardCap;
+        assertThat(AutomaticHandoff.extensionGrantsRoom(flow)).isFalse();
+        assertThatThrownBy(() -> AutomaticHandoff.authorizeExtension(flow, AutomaticHandoff.extensionToken(flow, "head2"), "head2"))
+                .hasMessageContaining("硬上限");
+    }
 }

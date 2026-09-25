@@ -141,8 +141,7 @@ public class FlowEngine {
 
     /** 額度已滿且現場可辨識時才有延長授權碼；其餘情況回傳 null，按鈕與文字都不會出現。 */
     private String extensionToken(Task task, FlowRun flow) {
-        if (flow.automaticHandoffs < AutomaticHandoff.effectiveLimit(flow)
-                || flow.automaticHandoffExtraBudget >= AutomaticHandoff.MAX_EXTRA_BUDGET) return null;
+        if (!AutomaticHandoff.extensionGrantsRoom(flow)) return null;
         try {
             String head = flow.workspaceReady && workspaces.exists(task.id()) ? workspaces.headSha(task.id()) : null;
             return AutomaticHandoff.extensionToken(flow, head);
@@ -812,11 +811,11 @@ public class FlowEngine {
                 task.state(Task.State.RESUME_QUEUED);
                 store.saveFlow(task.id(), flow);
                 audit.record(task.id(), user, AuditLog.ACTION_RECOVERY,
-                        "核准目前受阻證據增加 " + AutomaticHandoff.EXTENSION_SIZE + " 個自動交接事件額度；目前上限="
+                        "核准目前受阻證據延長自動交接；已用 " + flow.automaticHandoffs + "，目前上限="
                                 + AutomaticHandoff.effectiveLimit(flow) + "；未重設歷史計數、核准或節點上限");
                 slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
-                        "任務 #" + task.id() + " 已取得一次性自動交接延長並排入中央佇列；只增加 "
-                                + AutomaticHandoff.EXTENSION_SIZE + " 個事件額度，沒有重設歷史計數或略過既有核准。");
+                        "任務 #" + task.id() + " 已取得一次性自動交接延長並排入中央佇列；現在還能再自動處理 "
+                                + AutomaticHandoff.remaining(flow) + " 件，沒有重設歷史計數或略過既有核准。");
                 enqueue.accept(() -> run(store.find(task.id()).orElseThrow()));
             } catch (Exception e) {
                 slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), Diagnostics.describe(e));

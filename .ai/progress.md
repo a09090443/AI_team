@@ -840,3 +840,12 @@ LinuxVerificationSmokeTest 3/3（首跑 1 項在測試夾具 `git rev-parse HEAD
 回傳 `[roles.builder.model："sonnet" → "opus"]`。部署 05:02（PID 267221，JAR `56248295ebd61de6d054249d753782a896df53c364e47f6028774a4f814607a0`，
 備份 `orchestrator-backup.JxZ8y8`），自檢通過、log 0 ERROR、任務資料前後一致。
 #1017 仍 AWAIT_HUMAN；需使用者在原討論串送「補充 #1017 檢視配置更新」再按核准。Slack 端按鈕與實際中斷尚未實測。
+
+2026-09-25 Claude Code：延長一次即生效＋Claude 角色允許做法提示，已部署。
+(1) 延長額度改以已用事件數為基準；對 #1017 真實資料以新邏輯計算：按一次上限 6→12、可再處理 2 件（舊版需連按三次）。
+(2) `ConfiguredExecutor.allowedAlternatives`：分次重跑、長輸出以 Read／Grep 讀自動存檔、Read／Grep／Glob 查檔、只操作工作目錄內路徑。
+VM 以 Claude Code 2.1.282＋haiku 實測（`Read,Grep,Glob,Bash(ls *),Bash(git *)`）：三次獨立 git status、354KB 長輸出自動存檔後以 Grep 找到答案，
+permission_denials 為空，費用 US$0.04；另實測 `ls -laR /usr/share` 符合 Bash(ls *) 仍因工作目錄外路徑被拒（已寫入提示）。
+隔離建置 `extension-guidance-build.v7IvS2`：420 項 0 失敗、10 項 opt-in 略過；check-source 通過。
+部署 13:32（PID 282847，JAR `f531abe8b4b239a7e367e70ed3aabed0b2846636f085ba8aa43807877a9e1208`，備份 `orchestrator-backup.cFwHEr`），
+自檢通過、0 ERROR、任務資料前後一致。#1017 仍 AWAIT_HUMAN（triage，builder=opus），待使用者按一次延長。
