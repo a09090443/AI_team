@@ -38,8 +38,19 @@ class TeamMigrationTest {
         assertThat(flow.automaticHandoffExtraBudget).isZero();
         assertThat(flow.automaticHandoffExtensionKeys).containsExactly("used-token");
     }
-    @Test void modelOrApprovalPolicyChangesCannotSneakIntoCapabilityMigration() throws Exception {
-        ((ObjectNode)target.path("roles").path("builder")).put("model", "other");
+    @Test void modelChangeWithinSameRuntimeIsListedAndStartsFreshSession() throws Exception {
+        String before = original.definition().roles().get("builder").model();
+        ((ObjectNode)target.path("roles").path("builder")).put("model", "haiku");
+        var next = snapshot(); var preview = TeamMigration.preview(original, next);
+        assertThat(preview.changes()).containsExactly("roles.builder.model：\"" + before + "\" → \"haiku\"");
+        FlowRun flow = new FlowRun(original); flow.node = "implementation"; flow.activeNode = "implementation";
+        TeamMigration.apply(flow, next, preview.token());
+        assertThat(flow.snapshot.definition().roles().get("builder").model()).isEqualTo("haiku");
+        // 下一步開新對話，不以新模型接續舊模型的 session。
+        assertThat(flow.activeNode).isNull();
+    }
+    @Test void runtimeOrApprovalPolicyChangesCannotSneakIntoCapabilityMigration() throws Exception {
+        ((ObjectNode)target.path("roles").path("builder")).put("runtime", "codex").put("model", "gpt-5.6-sol");
         assertThatThrownBy(() -> TeamMigration.preview(original, snapshot())).hasMessageContaining("非能力設定");
         target = mapper.valueToTree(original.definition());
         ((ObjectNode)target.path("project")).put("requirePlanApproval", false);

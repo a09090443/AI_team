@@ -19,15 +19,20 @@ public final class TeamMigration {
         }
         if (!before.definition().roles().keySet().equals(after.definition().roles().keySet()))
             throw new IllegalArgumentException("角色清單已變更，不能原地遷移");
-        for (String role : before.definition().roles().keySet())
+        for (String role : before.definition().roles().keySet()) {
             compareRemove((ObjectNode)left.path("roles").get(role), (ObjectNode)right.path("roles").get(role), "tools", "roles." + role + ".", changes);
+            // 同一 runtime 內換模型（例如 sonnet → opus）只影響之後的派工：套用時 activeNode 清空，
+            // 下一步開新對話，不會以新模型 --resume 舊模型的 session。runtime 仍在下方整體比對，換引擎照樣拒絕。
+            // #1017 續跑時才發現 Backend 還是舊快照的 sonnet，而這是唯一的差異，卻只能另建任務。
+            compareRemove((ObjectNode)left.path("roles").get(role), (ObjectNode)right.path("roles").get(role), "model", "roles." + role + ".", changes);
+        }
         if (!before.definition().nodes().keySet().equals(after.definition().nodes().keySet()))
             throw new IllegalArgumentException("節點清單已變更，不能原地遷移");
         for (String node : before.definition().nodes().keySet()) {
             for (String field : List.of("writablePaths", "localTestNetwork"))
                 compareRemove((ObjectNode)left.path("nodes").get(node), (ObjectNode)right.path("nodes").get(node), field, "nodes." + node + ".", changes);
         }
-        if (!left.equals(right)) throw new IllegalArgumentException("含模型、節點、基準分支、核准政策或其他非能力設定變更；請另建任務");
+        if (!left.equals(right)) throw new IllegalArgumentException("含 runtime、節點、基準分支、核准政策或其他非能力設定變更；請另建任務");
         var token = MAPPER.createObjectNode().put("from", before.revision()).put("to", after.revision());
         token.set("target", MAPPER.valueToTree(after));
         return new Preview(Traceability.digest(token), before.revision(), after.revision(), List.copyOf(changes));

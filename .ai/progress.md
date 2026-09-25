@@ -831,3 +831,12 @@ Claude 以 runtime 同旗標實測 stdin 提示、--session-id／--resume、--js
 LinuxVerificationSmokeTest 3/3（首跑 1 項在測試夾具 `git rev-parse HEAD` 逾時、重跑通過，同時段 #1017 正在 VM 上執行），
 實測驗證 unit 名為 `ai-team-check-900001-<uuid>`。候選 JAR SHA256
 `5770f650483d194089d16ad4ea054128ed70c6a95237db62e5676254416d4871`。
+
+2026-09-25 Claude Code：「中斷這一輪」與「配置更新可換模型」已部署。
+(1) 中斷功能部署於 03:48（PID 262239，JAR `5770f650...`，備份 `orchestrator-backup.g5X8No`），#1017 當時已自行停在 AWAIT_HUMAN，未需手動中斷。
+(2) 使用者發現 #1017 沒有「檢視配置更新」：TeamMigration 刻意拒絕模型變更。以唯讀 MigrationCheck 用真實 preview 確認
+#1017 快照與現行配置唯一差異是 `roles.builder.model：sonnet → opus`。改為允許同一 runtime 內換模型。
+隔離建置 `model-migration-build.AmUOaX`：415 項 0 失敗、10 項 opt-in 略過；check-source 通過；對 #1017 真實快照 preview
+回傳 `[roles.builder.model："sonnet" → "opus"]`。部署 05:02（PID 267221，JAR `56248295ebd61de6d054249d753782a896df53c364e47f6028774a4f814607a0`，
+備份 `orchestrator-backup.JxZ8y8`），自檢通過、log 0 ERROR、任務資料前後一致。
+#1017 仍 AWAIT_HUMAN；需使用者在原討論串送「補充 #1017 檢視配置更新」再按核准。Slack 端按鈕與實際中斷尚未實測。
