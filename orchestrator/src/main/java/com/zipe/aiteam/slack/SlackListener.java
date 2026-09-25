@@ -38,7 +38,7 @@ public class SlackListener {
             candidate = value.substring(1, value.length() - 1).trim();
         }
         // 只解開整則已知管理指令；不從一般問題或程式範例中擷取指令。
-        return candidate.matches("(?s)^(補充|處理)\\s+#\\d+(?:\\s+.*)?$") ? candidate : value;
+        return candidate.matches("(?s)^(補充|處理|中斷)\\s+#\\d+(?:\\s+.*)?$") ? candidate : value;
     }
 
     private final AiTeamProperties props;
@@ -85,7 +85,7 @@ public class SlackListener {
 
         for (String action : new String[]{
                 SlackBlocks.ACTION_APPROVE, SlackBlocks.ACTION_REDO, SlackBlocks.ACTION_ABORT,
-                SlackBlocks.ACTION_CONTINUE}) {
+                SlackBlocks.ACTION_CONTINUE, SlackBlocks.ACTION_INTERRUPT}) {
             app.blockAction(action, (req, ctx) -> {
                 try {
                     handleButton(req.getPayload().getUser().getId(),
@@ -190,6 +190,17 @@ public class SlackListener {
             return;
         }
 
+        // 與按鈕同一條路：只停這一輪、任務保留。沒有按鈕可按時（例如進度訊息還沒貼出）用打字的。
+        var interrupt = Pattern.compile("^中斷\\s+#(\\d+)\\s*$").matcher(text);
+        if (interrupt.matches()) {
+            Task existing = orchestrator.lookup(interrupt.group(1)).orElse(null);
+            if (existing == null || !existing.slackChannel().equals(e.getChannel()) || !existing.slackThreadTs().equals(threadTs)) {
+                notifier.post(SlackNotifier.Identity.SYSTEM, e.getChannel(), threadTs, "請在該任務原討論串送出中斷指令，未變更任何任務。");
+                return;
+            }
+            orchestrator.interrupt(existing, e.getUser());
+            return;
+        }
         var triage = Pattern.compile("^(處理|補充)\\s+#(\\d+)(?:\\s+([\\s\\S]+))?$").matcher(text);
         if (triage.matches()) {
             Task existing = orchestrator.lookup(triage.group(2)).orElse(null);
@@ -295,6 +306,7 @@ public class SlackListener {
                         userId);
             }
             case SlackBlocks.ACTION_ABORT -> orchestrator.abort(task, userId);
+            case SlackBlocks.ACTION_INTERRUPT -> orchestrator.interrupt(task, userId);
             default -> log.warn("未知的 action：{}", action);
         }
     }

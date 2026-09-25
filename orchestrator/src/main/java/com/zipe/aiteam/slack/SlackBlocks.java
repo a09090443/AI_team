@@ -24,6 +24,16 @@ public final class SlackBlocks {
     public static final String ACTION_REDO    = "ai_team_redo";
     public static final String ACTION_ABORT   = "ai_team_abort";
     public static final String ACTION_CONTINUE = "ai_team_continue";
+    /** 只停目前這一輪、任務保留可續跑；和 ACTION_ABORT（終止任務）刻意分開。 */
+    public static final String ACTION_INTERRUPT = "ai_team_interrupt";
+
+    /** 執行中的定期狀態訊息：附一顆「中斷這一輪」。 */
+    public static List<LayoutBlock> progressBlocks(String taskId, String text) {
+        return asBlocks(section(s -> s.text(markdownText(clip(text, 2900)))),
+                actions(a -> a.elements(asElements(
+                        button(b -> b.actionId(ACTION_INTERRUPT).value(taskId)
+                                .text(plainText("中斷這一輪")))))));
+    }
 
     public static List<LayoutBlock> quotaBlocks(String taskId, String text) {
         return asBlocks(section(s -> s.text(markdownText(clip(text, 2900)))),

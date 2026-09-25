@@ -27,6 +27,17 @@ class StageProgressTest {
         progress.close(); clearInvocations(slack);
         progress.tick(); progress.close(); verifyNoInteractions(slack);
     }
+    @Test void 可中斷階段附按鈕且結束後移除() {
+        var slack = mock(SlackNotifier.class); var store = mock(TaskStore.class);
+        var task = new Task("42", "c", "t", "u", "request"); task.state(Task.State.STAGE_RUNNING);
+        when(store.find("42")).thenReturn(Optional.of(task));
+        when(slack.post(any(), eq("c"), eq("t"), anyString(), anyList())).thenReturn("card");
+        var progress = new StageProgress(slack, store, task, "Backend／implementation", 300, true);
+        verify(slack).post(any(), eq("c"), eq("t"), contains("任務不會被中止"),
+                argThat(blocks -> blocks != null && blocks.toString().contains(SlackBlocks.ACTION_INTERRUPT)));
+        progress.close();
+        verify(slack).update(any(), eq("c"), eq("card"), contains("定期回報已結束"), isNull());
+    }
     @Test void 中止後停止心跳不宣稱成功() {
         var slack = mock(SlackNotifier.class); var store = mock(TaskStore.class);
         var task = new Task("42", "c", "t", "u", "request"); task.state(Task.State.STAGE_RUNNING);

@@ -32,7 +32,8 @@ class IndependentVerifierTest {
         when(workspace.pathFor("42")).thenReturn(tmp.resolve("source"));
         // 此層只模擬子行程；測收據與權限組裝，不冒充 Linux/systemd 實測。
         verifier = new IndependentVerifier(props, sandbox, workspace) {
-            @Override void execute(List<String> argv, Path cwd, Path home, SandboxPolicy policy, Path log, long deadline) throws Exception {
+            @Override void execute(String taskId, List<String> argv, Path cwd, Path home, SandboxPolicy policy, Path log, long deadline) throws Exception {
+                assertThat(taskId).isEqualTo("42");
                 calls.add(argv); policies.add(policy);
                 if (argv.contains("clone")) Files.createDirectories(Path.of(argv.getLast()).resolve(".git"));
                 if (argv.contains("checkout")) Files.writeString(cwd.resolve("package.json"), "{}");

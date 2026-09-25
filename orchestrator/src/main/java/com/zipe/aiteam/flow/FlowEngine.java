@@ -40,6 +40,41 @@ public class FlowEngine {
         store.saveFlow(task.id(), flow);
         audit.record(task.id(), task.requesterUserId(), AuditLog.ACTION_STATE, "固定配置版本 " + catalog.snapshot().revision());
     }
+    /**
+     * 使用者在 Slack 要求中斷的任務 → 要求者。只放在記憶體：服務重啟時執行中的那一輪本來就會中斷。
+     * 與「中止任務」不同，中斷只停這一輪，任務回到 AWAIT_HUMAN，工作區、次數與 session 都保留。
+     */
+    private final Map<String, String> interruptRequests = new java.util.concurrent.ConcurrentHashMap<>();
+    /** 測試替換用；正式環境停掉該任務的 systemd unit。 */
+    java.util.function.Predicate<String> unitStopper = com.zipe.aiteam.sandbox.TaskUnits::stop;
+
+    /** 只接受正在執行的一般流程任務；排隊、等人或角色對話都沒有「這一輪」可停。 */
+    public void interrupt(Task task, String user) {
+        Task current = store.find(task.id()).orElse(task);
+        FlowRun flow = store.flow(task.id()).orElse(null);
+        if (flow == null || flow.dialogue || !current.state().isRunning()) {
+            slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                    "任務 #" + task.id() + " 目前沒有正在執行的一輪（狀態 " + current.state() + "），不需要中斷。");
+            return;
+        }
+        if (interruptRequests.putIfAbsent(task.id(), user) != null) return;
+        audit.record(task.id(), user, AuditLog.ACTION_BUTTON, "要求中斷節點 " + flow.node + " 這一輪");
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                "⏸ <@" + user + "> 要求中斷任務 #" + task.id() + " 的「" + flow.node + "」這一輪，正在停止執行中的程序；"
+                        + "停下後會貼出可用選項。任務不會被中止，工作區與未提交的修改都保留。");
+        if (!unitStopper.test(task.id()))
+            slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                    "⚠️ 停止執行單元的指令沒有成功結束；這一輪可能要等 agent 自己結束才會停下。若持續沒有停，請通知管理者查核。");
+    }
+    /** 中斷已生效：交給人決定，不自動重試、不算系統失敗。回傳 true 表示已停下。 */
+    private boolean stopForInterrupt(Task task, FlowRun flow) {
+        String user = interruptRequests.remove(task.id());
+        if (user == null) return false;
+        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "依要求中斷，停在節點 " + flow.node);
+        waitHuman(task, flow, "已依 <@" + user + "> 的要求中斷「" + flow.node + "」這一輪。"
+                + "\n這一輪已計入的次數不會再重扣；工作區裡沒有提交的修改都還在，請先確認再繼續。");
+        return true;
+    }
     private boolean aborted(Task task) { return store.find(task.id()).map(t -> t.state() == Task.State.ABORTED).orElse(false); }
     private void state(Task task, Task.State state, String text) {
         if (aborted(task)) return;
@@ -181,6 +216,10 @@ public class FlowEngine {
               + (flow.workspacePath == null ? "\n尚未建立任務工作區" : "\n工作區=" + flow.workspacePath + "\ncommit=" + workspaces.headSha(task.id())));
     }
     public void run(Task task) {
+        // 中斷要求只對當下這一輪有效；任務若以其他方式先停下，不能留到下一次續跑才生效。
+        try { runFlow(task); } finally { interruptRequests.remove(task.id()); }
+    }
+    private void runFlow(Task task) {
         FlowRun flow = store.flow(task.id()).orElseThrow();
         AutomaticHandoff.Normalization normalization = AutomaticHandoff.normalizeLegacyKeys(flow);
         if (normalization.changed()) {
@@ -196,6 +235,8 @@ public class FlowEngine {
             if (aborted(task)) return;
             if (task.statusMessageTs() == null) { task.statusMessageTs(slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "配置流程 #" + task.id() + " 開始處理")); store.save(task); }
             while (!aborted(task)) {
+                // 中斷時 agent 剛好已經交出結果：照常處理結果，停在下一步開始前。
+                if (stopForInterrupt(task, flow)) return;
                 if (flow.dialogue) { runDialogue(task, flow); return; }
                 if (flow.node.equals("end")) { AutomaticHandoff.clear(flow); store.saveFlow(task.id(), flow); state(task, Task.State.COMPLETED, "任務 #" + task.id() + " 已結束（未發布）"); return; }
                 Node node = flow.snapshot.definition().nodes().get(flow.node);
@@ -356,9 +397,11 @@ public class FlowEngine {
                     if (flow.independentEvidence == null) {
                         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id()
                                 + " 正由系統在全新 clone 執行獨立驗證；收據會先交驗收角色核對。");
-                        try (var progress = new StageProgress(slack, store, task, "系統獨立驗證", props.progressIntervalSeconds())) {
+                        try (var progress = new StageProgress(slack, store, task, "系統獨立驗證", props.progressIntervalSeconds(), true)) {
                             flow.independentEvidence = verifier.verify(task, flow);
                         } catch (IndependentVerifier.CheckFailed failed) {
+                            // 被中斷的驗證也會以非零結束，不能當成程式錯誤交回實作。
+                            if (interruptRequests.containsKey(task.id())) throw failed;
                             if (routeFailedCheck(task, flow, node, failed)) continue;
                             throw failed;
                         }
@@ -371,7 +414,7 @@ public class FlowEngine {
                 AgentRuntime.RuntimeResult result;
                 long started = System.nanoTime();
                 try (var progress = new StageProgress(slack, store, task,
-                        flow.snapshot.definition().roles().get(node.role()).executionLabel() + "／" + flow.node, props.progressIntervalSeconds())) {
+                        flow.snapshot.definition().roles().get(node.role()).executionLabel() + "／" + flow.node, props.progressIntervalSeconds(), true)) {
                     result = executor.execute(task, flow, node);
                 }
                 catch (Exception e) { auditScope(task, flow, node); throw e; }
@@ -454,6 +497,9 @@ public class FlowEngine {
             }
         } catch (Exception e) {
             if (aborted(task)) return;
+            // 程序是被要求停掉的，失敗訊息只是結果，不走系統重試或錯誤回報。activeNode 保留，
+            // 停止訊息會提供「繼續執行」，續跑沿用原 session 且不再計次。
+            if (stopForInterrupt(task, flow)) return;
             QuotaExceeded quota = QuotaExceeded.find(e);
             com.zipe.aiteam.runtime.RuntimeUsageError usage = com.zipe.aiteam.runtime.RuntimeUsageError.find(e);
             if (quota != null && store.checkpoint(task.id()).isPresent()) {

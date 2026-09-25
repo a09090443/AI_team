@@ -677,6 +677,14 @@ class FlowEngineTest {
             FlowRun flow = c.getArgument(1); TeamDefinition.Node node = c.getArgument(2); calls.add(flow.node + ":" + node.role());
             Task executing = c.getArgument(0);
             if (executing.continuation() != null) resumed.add(flow.node + ":" + executing.continuation().sessionId());
+            if (mode.equals("interrupt") && flow.node.equals("implementation") && executing.continuation() == null) {
+                store.saveCheckpoint(new Checkpoint("42", flow.node, "claude-code", "sonnet", "kept-session", "context", "head1", null));
+                engine.interrupt(executing, "u");
+                // 被停掉的程序看起來像連線中斷；若沒有中斷旗標，這會被系統自動重試。
+                throw new AgentRuntime.RuntimeExecutionException("Connection reset; 結束碼 143");
+            }
+            // agent 已經交出結果才收到中斷：結果照常採用，停在下一步開始前。
+            if (mode.equals("interruptAfter") && flow.node.equals("implementation")) engine.interrupt(executing, "u");
             if (mode.equals("usage") && flow.node.equals("verification"))
                 throw new RuntimeUsageError("Codex CLI 用法錯誤，指令未送達模型（結束碼 2）：error: unexpected argument '-P' found");
             if (mode.equals("quota") && flow.node.equals("verification")) {
@@ -842,6 +850,65 @@ class FlowEngineTest {
         assertThat(saved.context).contains("MailTimeoutTest.boundsElapsed:142");
         verify(slack).post(any(), any(), any(), contains("已自動交回"));
         verifyNoInteractions(publisher);
+    }
+    @Test void interruptStopsOnlyThisRoundAndResumeContinuesTheSameSession() throws Exception {
+        List<String> stopped = new ArrayList<>();
+        engine.unitStopper = id -> { stopped.add(id); return true; };
+        mode = "interrupt";
+
+        engine.run(task);
+
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        assertThat(stopped).containsExactly("42");
+        var flow = store.flow("42").orElseThrow();
+        assertThat(flow.node).isEqualTo("implementation");
+        assertThat(flow.activeNode).isEqualTo("implementation");
+        assertThat(flow.visits.get("implementation")).isEqualTo(1);
+        assertThat(flow.systemRetries).doesNotContainKey("implementation");
+        assertThat(calls.stream().filter(s -> s.startsWith("implementation:"))).containsExactly("implementation:builder");
+        verify(audit, never()).record(eq("42"), eq(AuditLog.ACTOR_SYSTEM), eq(AuditLog.ACTION_ERROR), anyString());
+        verify(slack).post(any(), eq("c"), eq("t"), contains("已依 <@u> 的要求中斷「implementation」"), any());
+
+        List<Runnable> jobs = new ArrayList<>();
+        engine.resume(task, "續跑", "u", jobs::add); jobs.forEach(Runnable::run);
+
+        assertThat(resumed).startsWith("implementation:kept-session");
+        assertThat(store.flow("42").orElseThrow().visits.get("implementation")).isEqualTo(1);
+    }
+    @Test void interruptedVerificationIsNotSentBackToTheImplementer() throws Exception {
+        engine.unitStopper = id -> true;
+        doAnswer(c -> {
+            engine.interrupt(c.getArgument(0), "u");
+            throw new IndependentVerifier.CheckFailed(List.of("npm", "test"), 143, "/runs/check-0.log", "Terminated");
+        }).when(verifier).verify(any(), any());
+
+        engine.run(task);
+
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        assertThat(calls.stream().filter("implementation:builder"::equals)).hasSize(1);
+        verify(slack, never()).post(any(), any(), any(), contains("已自動交回"));
+        verify(verifier, times(1)).verify(any(), any());
+    }
+    @Test void interruptIsIgnoredWhenNothingIsRunning() throws Exception {
+        List<String> stopped = new ArrayList<>();
+        engine.unitStopper = id -> { stopped.add(id); return true; };
+
+        engine.interrupt(task, "u");
+
+        assertThat(stopped).isEmpty();
+        verify(slack).post(any(), eq("c"), eq("t"), contains("目前沒有正在執行的一輪"));
+        engine.run(task);
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+    }
+    @Test void interruptRequestedAfterTheAgentFinishedStopsBeforeTheNextStep() throws Exception {
+        engine.unitStopper = id -> true;
+        mode = "interruptAfter";
+
+        engine.run(task);
+
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        assertThat(calls).last().isEqualTo("implementation:builder");
+        assertThat(store.flow("42").orElseThrow().receipts).containsKey("implementation");
     }
     @Test void missingPrerequisiteResultSendsTheFlowBackInsteadOfFailing() {
         // #1016／#1017：分流把流程送到驗收，實作的報告卻沒被採用；舊版每次都丟 IllegalStateException。

@@ -296,8 +296,17 @@ public class TaskOrchestrator {
         task.state(Task.State.ABORTED);
         store.save(task);
         audit.stateChange(task, from, task.state(), byUser);
+        // 以前只改狀態，執行中的 agent 會在背景繼續跑到結束。
+        if (from.isRunning()) com.zipe.aiteam.sandbox.TaskUnits.stop(task.id());
         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
                 "🛑 任務 #" + task.id() + " 已由 <@" + byUser + "> 中止。");
+    }
+
+    /** 只停目前這一輪，任務保留可續跑；與 abort 不同，見 FlowEngine.interrupt。 */
+    public void interrupt(Task task, String byUser) {
+        if (flowEngine != null && flowEngine.owns(task.id())) { flowEngine.interrupt(task, byUser); return; }
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                "任務 #" + task.id() + " 是舊版管線任務，不支援中斷這一輪；只能等它結束或中止任務。");
     }
 
     /**

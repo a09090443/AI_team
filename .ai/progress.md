@@ -822,3 +822,12 @@ Claude 以 runtime 同旗標實測 stdin 提示、--session-id／--resume、--js
 (2) 兩份 team 配置 builder model sonnet→opus；VM teams 備份 `teams-backup.lDcHgQ`，只替換兩份 JSON。
 重啟 PID=235683，新配置版本 `524752dd...`，沙箱與工具鏈自檢通過，五角色 Socket Mode 啟動，log 0 ERROR。JAR 未變。
 #1014／#1016／#1017 狀態與 updated_at 未變；舊任務仍用凍結快照（builder=sonnet），要套用需走配置更新核准。
+
+2026-09-25 Claude Code：新增 Slack「中斷這一輪」（尚未部署）。
+執行中狀態訊息附「中斷這一輪」按鈕，或在原討論串 `@主機器人 中斷 #id`；停掉該任務的 agent／系統驗證 unit，
+任務回 AWAIT_HUMAN，可按「繼續執行」沿用原 session、不重扣次數。系統驗證 unit 改名 `ai-team-check-<id>-<uuid>`。
+「中止任務」也改為停掉程序。新增 TaskUnits、FlowEngine.interrupt，文件見 docs/pm-triage.md。
+隔離建置 `interrupt-build.DK19cq`：完整 package 414 項 0 失敗、10 項 opt-in 略過；check-source 通過；
+LinuxVerificationSmokeTest 3/3（首跑 1 項在測試夾具 `git rev-parse HEAD` 逾時、重跑通過，同時段 #1017 正在 VM 上執行），
+實測驗證 unit 名為 `ai-team-check-900001-<uuid>`。候選 JAR SHA256
+`5770f650483d194089d16ad4ea054128ed70c6a95237db62e5676254416d4871`。

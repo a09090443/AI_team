@@ -85,9 +85,9 @@ public class IndependentVerifier {
         Instant started = Instant.now();
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(spec.timeoutSeconds());
         var setupPolicy = new SandboxPolicy(List.of(writable), List.of(), 2048, 200, 256);
-        execute(List.of("git", "-c", "core.hooksPath=/dev/null", "clone", "--no-local", "--no-checkout", "--",
+        execute(task.id(), List.of("git", "-c", "core.hooksPath=/dev/null", "clone", "--no-local", "--no-checkout", "--",
                 workspaces.pathFor(task.id()).toAbsolutePath().toString(), repo.toString()), writable, home, setupPolicy, run.resolve("clone.log"), deadline);
-        execute(List.of("git", "-c", "core.hooksPath=/dev/null", "checkout", "--detach", head), repo, home, setupPolicy, run.resolve("checkout.log"), deadline);
+        execute(task.id(), List.of("git", "-c", "core.hooksPath=/dev/null", "checkout", "--detach", head), repo, home, setupPolicy, run.resolve("checkout.log"), deadline);
         List<Path> pins = new ArrayList<>(); pins.add(repo.resolve(".git"));
         // 全新 checkout 只有版控檔；釘住每個檔案，避免測試指令先改產品／測試再回報成功。
         try (var files = Files.walk(repo)) {
@@ -100,7 +100,7 @@ public class IndependentVerifier {
         List<CommandResult> results = new ArrayList<>();
         for (List<String> argv : spec.commands()) {
             Path log = run.resolve("check-" + results.size() + ".log");
-            try { execute(argv, repo, home, policy, log, deadline); }
+            try { execute(task.id(), argv, repo, home, policy, log, deadline); }
             catch (CommandExit exit) { throw classify(exit); }
             results.add(new CommandResult(List.copyOf(argv), 0, log.toString(), hash(log)));
         }
@@ -126,9 +126,13 @@ public class IndependentVerifier {
         return null;
     }
     void execute(List<String> argv, Path cwd, Path home, SandboxPolicy policy, Path log, long deadline) throws Exception {
+        execute(null, argv, cwd, home, policy, log, deadline);
+    }
+    /** unit 名帶任務編號，Slack 的「中斷這一輪」才能只停這個任務的驗證（見 TaskUnits）。 */
+    void execute(String taskId, List<String> argv, Path cwd, Path home, SandboxPolicy policy, Path log, long deadline) throws Exception {
         long seconds = Math.max(1, TimeUnit.NANOSECONDS.toSeconds(deadline - System.nanoTime()));
         if (System.nanoTime() >= deadline) throw new IllegalStateException("獨立驗證超時；紀錄：" + log.getParent());
-        String unit = "ai-team-check-" + UUID.randomUUID();
+        String unit = "ai-team-check-" + (taskId == null ? "" : taskId + "-") + UUID.randomUUID();
         List<String> isolated = new ArrayList<>(List.of("env", "-i", "PATH=" + System.getenv("PATH"), "HOME=" + home,
                 "LANG=C.UTF-8", "CI=true", "MAKEFLAGS=-j1", "JOBS=1", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_TERMINAL_PROMPT=0"));
         // JVM 的 user.home 不會隨 HOME 改變；否則 Maven 仍讀寫真實帳號的 .m2。
