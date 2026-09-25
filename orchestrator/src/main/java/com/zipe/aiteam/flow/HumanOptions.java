@@ -25,8 +25,25 @@ public final class HumanOptions {
     }
 
     /** 工作區現況；head 為 null 表示沒有工作區或取不到。 */
-    public record Workspace(String head, boolean clean) {
+    /**
+     * uncommitted／fingerprint 只在工作區不乾淨時有值：用來列出是哪些檔案，
+     * 並讓「保存並承接」按鈕綁定使用者看到的那一版內容。
+     */
+    public record Workspace(String head, boolean clean, List<String> uncommitted, String fingerprint) {
         public static final Workspace NONE = new Workspace(null, true);
+        public Workspace(String head, boolean clean) { this(head, clean, List.of(), null); }
+        public Workspace {
+            uncommitted = uncommitted == null ? List.of() : List.copyOf(uncommitted);
+        }
+        /** 列出未提交的檔案，最多 max 個，其餘以數量表示。 */
+        public String listUncommitted(int max) {
+            if (uncommitted.isEmpty()) return "";
+            StringBuilder out = new StringBuilder();
+            uncommitted.stream().limit(max).forEach(path -> out.append("\n　・").append(path));
+            if (uncommitted.size() > max) out.append("\n　・…以及另外 ").append(uncommitted.size() - max).append(" 個檔案");
+            return out.toString();
+        }
+        boolean canSaveAndContinue() { return !clean && fingerprint != null && !uncommitted.isEmpty(); }
     }
 
     public static final String RESTORE = "RESTORE";
@@ -39,6 +56,8 @@ public final class HumanOptions {
     public static final String SUPPLEMENT = "SUPPLEMENT";
     public static final String SUCCESSOR = "SUCCESSOR";
     public static final String SUCCESSOR_COMMAND = "承接成新任務";
+    /** 承接時一併保存未提交修改的指令前綴；後面接 fingerprint。 */
+    public static final String SUCCESSOR_SAVE_COMMAND = SUCCESSOR_COMMAND + " 保存";
     public static final String RECOVER = "RECOVER";
     public static final String CONFIG_UPDATE = "CONFIG_UPDATE";
     public static final String CONFIG_APPROVE = "CONFIG_APPROVE";
@@ -77,7 +96,12 @@ public final class HumanOptions {
 
         // 自動處理次數全部用完時，任何選項都不會讓任務往下跑；只提供承接成新任務。
         if (exhausted(flow)) {
-            options.add(new Option(SUCCESSOR, "承接成新任務",
+            if (ws.canSaveAndContinue())
+                options.add(new Option(SUCCESSOR, "保存未提交的修改並承接",
+                        "工作區有 " + ws.uncommitted().size() + " 個檔案改了但還沒 commit。按下去系統會先把它們 commit 到這個任務，"
+                                + "再開新任務接著做；新任務仍會重新驗收與審查，不會把這些修改當成已通過。",
+                        SUCCESSOR_SAVE_COMMAND + " " + ws.fingerprint()));
+            else options.add(new Option(SUCCESSOR, "承接成新任務",
                     "開一個新任務，從這個任務的最新 commit 接著做，並帶入已做過的決定；次數重新計算，"
                             + "需求、測試計畫與 PR 仍要重新核准。", SUCCESSOR_COMMAND));
             if (briefReports) options.add(new Option(REPORT, "看完整報告",
@@ -280,8 +304,18 @@ public final class HumanOptions {
                 .append("下一步都會在開始前被擋下。")
                 .append("\n\n*目前的成果都還在*")
                 .append(ws.head() == null ? "\n任務工作區保留原樣。"
-                        : "\n任務工作區保留原樣，最新 commit=" + ws.head() + (ws.clean() ? "（已全部提交）" : "（有未提交的修改，承接前請先處理）"))
-                .append("\n\n*怎麼繼續*")
+                        : "\n任務工作區保留原樣，最新 commit=" + ws.head() + (ws.clean() ? "（已全部提交）" : ""));
+        if (ws.canSaveAndContinue())
+            out.append("\n另外有 ").append(ws.uncommitted().size()).append(" 個檔案改了但還沒 commit（還沒存進版本紀錄）：")
+               .append(ws.listUncommitted(10))
+               .append("\n這通常是某個角色改了檔案，但它沒有 commit 的權限。承接新任務只會帶走已 commit 的內容，")
+               .append("所以要先把這些修改存起來。")
+               .append("\n\n*怎麼繼續*")
+               .append("\n按「保存未提交的修改並承接」：系統先把上面這些檔案 commit 到這個任務，再開一個新任務從那裡接著做，")
+               .append("並帶入這個任務的交接紀錄與你做過的決定。次數重新計算；新任務會重新驗收與審查這些修改，")
+               .append("需求、測試計畫與 PR 仍會請你重新核准。新任務會在頻道開新的討論串。")
+               .append("\n或輸入：補充 #").append(task.id()).append(' ').append(SUCCESSOR_SAVE_COMMAND).append(' ').append(ws.fingerprint());
+        else out.append("\n\n*怎麼繼續*")
                 .append("\n按「承接成新任務」：開一個新任務，工作區從上面這個 commit 接著做，")
                 .append("並帶入這個任務的交接紀錄與你做過的決定（包含已核准的需求變更）。次數重新計算；")
                 .append("需求、測試計畫與 PR 仍會請你重新核准。新任務會在頻道開新的討論串。")

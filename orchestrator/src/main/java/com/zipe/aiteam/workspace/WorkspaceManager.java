@@ -378,6 +378,54 @@ public class WorkspaceManager {
         return out.lines().filter(s -> !s.isBlank()).toList();
     }
 
+    // ------------------------------------------------------------------ 未提交的修改
+
+    /** 相對 HEAD 修改、刪除或新增（未追蹤、未忽略）的檔案，排序後回傳；乾淨時為空。 */
+    public List<String> uncommittedPaths(String taskId) throws WorkspaceException {
+        Path ws = pathFor(taskId);
+        String dirty = gitOutput(ws, "diff", "--no-renames", "--name-only", "-z", "HEAD");
+        String untracked = gitOutput(ws, "ls-files", "--others", "--exclude-standard", "-z");
+        return java.util.stream.Stream.of(dirty, untracked)
+                .flatMap(s -> java.util.Arrays.stream(s.split("\u0000")))
+                .filter(s -> !s.isEmpty()).distinct().sorted().toList();
+    }
+
+    /**
+     * 未提交修改的內容指紋：HEAD、已追蹤檔的完整差異、每個未追蹤檔的內容雜湊。
+     * 停止訊息的「保存並承接」按鈕綁定這個值：訊息貼出後內容若又變動，按鈕就失效，
+     * 避免使用者同意的是 A、系統實際保存的是 B。
+     */
+    public String uncommittedFingerprint(String taskId) throws WorkspaceException {
+        Path ws = pathFor(taskId);
+        StringBuilder material = new StringBuilder(headSha(taskId)).append('\n')
+                .append(gitOutput(ws, "diff", "--no-renames", "--binary", "HEAD")).append('\n');
+        String untracked = gitOutput(ws, "ls-files", "--others", "--exclude-standard", "-z");
+        for (String path : untracked.split("\u0000")) {
+            if (path.isEmpty()) continue;
+            material.append(path).append('\u0000').append(gitOutput(ws, "hash-object", "--", path)).append('\n');
+        }
+        try {
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(material.toString().getBytes(StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new WorkspaceException("無法計算未提交修改的指紋", e);
+        }
+    }
+
+    /**
+     * 以工作區設定的身分 commit 指定路徑（含刪除與新增），回傳新的 HEAD。
+     * 停用 repository 自帶的 hooks：這是系統代使用者保存，不讓專案腳本在 orchestrator 身分下執行。
+     */
+    public String commitPaths(String taskId, List<String> paths, String message) throws WorkspaceException {
+        if (paths == null || paths.isEmpty()) throw new WorkspaceException("沒有要保存的檔案");
+        Path ws = pathFor(taskId);
+        List<String> add = new ArrayList<>(List.of("add", "-A", "--"));
+        add.addAll(paths);
+        git(ws, add.toArray(String[]::new));
+        git(ws, "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-m", message);
+        return headSha(taskId);
+    }
+
     /** 工作區是否存在且是 git repository。 */
     public boolean exists(String taskId) {
         return Files.isDirectory(pathFor(taskId).resolve(".git"));

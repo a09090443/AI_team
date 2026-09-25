@@ -37,6 +37,22 @@ public final class Diagnostics {
     }
 
     /** 底層先顯示，避免外層訊息與截斷掩蓋真正的系統錯誤。 */
+    /**
+     * 回給使用者看的版本：不出現例外類別名與呼叫脈絡，那些寫進稽核紀錄給管理者。
+     *
+     * 本專案以 IllegalArgumentException 表示「這個操作現在不能做」，訊息本來就是寫給人看的句子，原樣回覆；
+     * 其他例外是系統本身出錯，明講不是使用者的操作造成的。
+     * #1017 使用者收到「沒有建立承接任務：IllegalArgumentException: …」而看不懂，就是少了這一層。
+     */
+    public static String forUser(Throwable error) {
+        if (error instanceof IllegalArgumentException && error.getMessage() != null && !error.getMessage().isBlank())
+            return error.getMessage();
+        String message = error == null ? null : error.getMessage();
+        return "系統處理時發生錯誤，不是你的操作造成的"
+                + (message == null || message.isBlank() ? "。" : "：" + clip(message, 300))
+                + "\n完整細節已記錄在稽核紀錄，請通知管理者查看。";
+    }
+
     public static String describe(Throwable error) {
         var causes = new ArrayList<String>();
         Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());

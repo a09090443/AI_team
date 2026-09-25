@@ -263,6 +263,37 @@ class WorkspaceManagerTest {
                 .as("設定為 master 時不該拿到 develop 的內容").doesNotExist();
     }
 
+    @Test
+    void 未提交修改_列出修改刪除與新增_指紋隨內容改變_保存後工作區乾淨() throws Exception {
+        Path ws = manager.provision(task("5001"));
+        Files.writeString(ws.resolve("old.txt"), "會被刪掉\n", StandardCharsets.UTF_8);
+        run(ws, "git", "add", "old.txt");
+        run(ws, "git", "commit", "--quiet", "-m", "加入 old.txt");
+        String before = manager.headSha("5001");
+
+        Files.writeString(ws.resolve("README.md"), "改過的內容\n", StandardCharsets.UTF_8);
+        Files.delete(ws.resolve("old.txt"));
+        Files.createDirectories(ws.resolve("src/test"));
+        Files.writeString(ws.resolve("src/test/NewTest.java"), "class NewTest {}\n", StandardCharsets.UTF_8);
+
+        assertThat(manager.uncommittedPaths("5001")).containsExactly("README.md", "old.txt", "src/test/NewTest.java");
+        String fingerprint = manager.uncommittedFingerprint("5001");
+        assertThat(manager.uncommittedFingerprint("5001")).as("內容沒變，指紋要穩定").isEqualTo(fingerprint);
+
+        // 只改未追蹤檔的內容，指紋也必須改變：按鈕綁定的是使用者看到的那一版。
+        Files.writeString(ws.resolve("src/test/NewTest.java"), "class NewTest { int changed; }\n", StandardCharsets.UTF_8);
+        assertThat(manager.uncommittedFingerprint("5001")).isNotEqualTo(fingerprint);
+
+        String head = manager.commitPaths("5001", manager.uncommittedPaths("5001"), "保存未提交修改");
+
+        assertThat(head).isNotEqualTo(before);
+        assertThat(manager.clean("5001")).isTrue();
+        assertThat(manager.uncommittedPaths("5001")).isEmpty();
+        assertThat(out(ws, "git", "log", "-1", "--format=%an|%s")).isEqualTo("AI Team|保存未提交修改");
+        assertThat(out(ws, "git", "show", "--name-status", "--format=", "HEAD"))
+                .contains("M\tREADME.md").contains("D\told.txt").contains("A\tsrc/test/NewTest.java");
+    }
+
     // ------------------------------------------------------------------ 輔助
 
     private static Task task(String id) {

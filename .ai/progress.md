@@ -858,3 +858,16 @@ permission_denials 為空，費用 US$0.04；另實測 `ls -laR /usr/share` 符�
 對 #1017 真實資料：授權碼 `4c0b5e08…`、選項含延長；模擬按一次後上限 12、claim 成功、剩 1 件。
 隔離建置 `extension-token-build.Z1nDTK`：421 項 0 失敗、10 opt-in 略過；check-source 通過。
 部署 13:48（PID 286676，JAR `c57cddbfe73af76add4e91cbcb006554e6b471f7526a6e73d4cd30c13a4119b2`，備份 `orchestrator-backup.1yxQL2`），0 ERROR、資料一致。
+
+2026-09-25 Claude Code：使用者看得懂的訊息＋承接前保存未提交修改（已部署）。
+- `Diagnostics.forUser`、FlowEngine `tellUser`；WorkspaceManager `uncommittedPaths`／`uncommittedFingerprint`／`commitPaths`；
+  HumanOptions「保存未提交的修改並承接」；對話提示回覆規則與原任務工作區現況。
+- 以 #1017 真實工作區唯讀演練：停止訊息列出 3 個 QA 測試檔（皆在 src/test，不在保護路徑），出現保存按鈕；演練未改任何狀態。
+- 第一次部署（15:10，JAR `b32771c2…`）啟動失敗：插入 DIALOGUE_REPLY_RULES 時把 ConfiguredExecutor 的 @Autowired 隔到常數上，
+  Spring 找不到建構子（NoSuchMethodException）。15:13 以備份 `orchestrator-backup.sy85vI` 回復 `c57cddbf`，停機約 2.5 分鐘，任務資料未受影響。
+  修正並新增 `SpringWiringTest`（先以錯誤版本確認會失敗，再確認修正後通過）。
+- 修正版隔離建置 `plain-message-fix-build.8FOaGY`：433 項 0 失敗、10 opt-in 略過；check-source 通過。
+  以新腳本 `deploy/deploy-jar-safe.sh` 部署 15:16（PID 308645，JAR `d97b99ece5387e59028f9ff20e9a7781a1e056dbd3fe16c2a319be0748ed58ca`，
+  備份 `orchestrator-backup.h8BVIA`），0 ERROR、任務資料一致。
+- 另：整理 DiagnosticsTest 時曾以 Write 覆蓋既有檔案，已由 git 還原原 4 項測試再附加新測試。
+- #1017：待使用者送「補充 #1017 狀態」後按「保存未提交的修改並承接」。Slack 實際按鈕尚未實測。

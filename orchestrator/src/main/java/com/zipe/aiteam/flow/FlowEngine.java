@@ -75,6 +75,13 @@ public class FlowEngine {
                 + "\n這一輪已計入的次數不會再重扣；工作區裡沒有提交的修改都還在，請先確認再繼續。");
         return true;
     }
+    /** 使用者的操作沒有成功：技術細節進稽核紀錄，Slack 只講看得懂的原因。 */
+    private void tellUser(Task task, String lead, Exception e) {
+        audit.record(task.id(), AuditLog.ACTOR_SYSTEM,
+                e instanceof IllegalArgumentException ? AuditLog.ACTION_REJECTED : AuditLog.ACTION_ERROR,
+                lead + Diagnostics.describe(e));
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), lead + Diagnostics.forUser(e));
+    }
     private boolean aborted(Task task) { return store.find(task.id()).map(t -> t.state() == Task.State.ABORTED).orElse(false); }
     private void state(Task task, Task.State state, String text) {
         if (aborted(task)) return;
@@ -133,7 +140,10 @@ public class FlowEngine {
     private HumanOptions.Workspace workspaceState(Task task, FlowRun flow) {
         try {
             if (!flow.workspaceReady || !workspaces.exists(task.id())) return HumanOptions.Workspace.NONE;
-            return new HumanOptions.Workspace(workspaces.headSha(task.id()), workspaces.clean(task.id()));
+            String head = workspaces.headSha(task.id());
+            if (workspaces.clean(task.id())) return new HumanOptions.Workspace(head, true);
+            return new HumanOptions.Workspace(head, false, workspaces.uncommittedPaths(task.id()),
+                    workspaces.uncommittedFingerprint(task.id()));
         } catch (Exception e) {
             return HumanOptions.Workspace.NONE;
         }
@@ -703,6 +713,35 @@ public class FlowEngine {
      * 會帶入原任務的交接紀錄與未解除的受阻發現，負責人做過的決定（例如已核准的需求變更）
      * 就在交接紀錄裡，必須納入新任務的需求。新任務開在新的頂層討論串，避免同一串有兩個工作任務。
      */
+    /**
+     * 承接前由系統代為 commit 未提交的修改（真人按鈕同意）。常見來源是有寫檔權、沒有 commit 權的角色
+     * （例如 LIMITED 驗收補的測試）在任務用完次數時留下的修改。
+     * 綁定使用者看到的那一版內容；保護路徑與 .git 一律拒絕。新任務仍會重新驗收與審查這個 commit。
+     */
+    private void saveUncommitted(Task task, FlowRun flow, String user, String fingerprint) throws Exception {
+        if (!FlowLimits.exhausted(flow))
+            throw new IllegalArgumentException("這個任務還能繼續，不需要承接；請依停止訊息的選項操作。");
+        if (!flow.workspaceReady || !workspaces.exists(task.id()))
+            throw new IllegalArgumentException("這個任務沒有工作區，沒有需要保存的修改。");
+        requireWorkspace(task, flow);
+        List<String> paths = workspaces.uncommittedPaths(task.id());
+        if (paths.isEmpty()) throw new IllegalArgumentException("工作區已經沒有未提交的修改了，直接按「承接成新任務」即可。");
+        if (!workspaces.uncommittedFingerprint(task.id()).equals(fingerprint))
+            throw new IllegalArgumentException("未提交的修改在訊息貼出後又變動了，為了只保存你看過的內容，這次沒有保存。"
+                    + "請送「補充 #" + task.id() + " 狀態」看最新的檔案清單再按一次。");
+        List<String> blocked = paths.stream().filter(path -> path.equals(".git") || path.startsWith(".git/")
+                || PathRules.allows(flow.snapshot.definition().project().protectedPaths(), path)).toList();
+        if (!blocked.isEmpty())
+            throw new IllegalArgumentException("有檔案位在受保護的路徑，系統不能代為保存：" + String.join("、", blocked)
+                    + "。請管理者檢查這些修改是否應該保留。");
+        String head = workspaces.commitPaths(task.id(), paths,
+                "保存任務 #" + task.id() + " 未提交的修改（" + user + " 於承接時核准）");
+        audit.record(task.id(), user, AuditLog.ACTION_RECOVERY, "承接前保存未提交修改 " + paths.size() + " 個檔案："
+                + String.join(", ", paths) + "；commit=" + head + "；新任務將重新驗收與審查");
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                "已把 " + paths.size() + " 個未提交的檔案存成 commit " + head.substring(0, Math.min(7, head.length()))
+                        + "，接著建立承接任務。");
+    }
     private void succeed(Task task, FlowRun flow, String user, Consumer<Runnable> enqueue) throws Exception {
         if (flow.dialogue) throw new IllegalArgumentException("角色對話不能承接");
         if (!FlowLimits.exhausted(flow))
@@ -788,13 +827,20 @@ public class FlowEngine {
             postHumanOptions(task, flow, "任務 #" + task.id() + " 目前停在「" + flow.node + "」，沒有 agent 在跑。", true);
             return;
         }
-        if (command.equals(HumanOptions.SUCCESSOR_COMMAND)) {
+        if (command.equals(HumanOptions.SUCCESSOR_COMMAND) || command.startsWith(HumanOptions.SUCCESSOR_SAVE_COMMAND + " ")) {
             if (from != Task.State.AWAIT_HUMAN || !user.equals(flow.acceptanceOwner)) return;
             try {
+                if (command.startsWith(HumanOptions.SUCCESSOR_SAVE_COMMAND + " "))
+                    saveUncommitted(task, flow, user, command.substring(HumanOptions.SUCCESSOR_SAVE_COMMAND.length()).trim());
+                else if (FlowLimits.exhausted(flow) && flow.workspaceReady && workspaces.exists(task.id()) && !workspaces.clean(task.id())) {
+                    // 以前丟例外字串「原任務工作區有未提交的修改，請先處理再承接」，沒說是哪些檔案、也沒有可按的出路。
+                    postHumanOptions(task, flow, "任務 #" + task.id() + " 還沒有承接：工作區有檔案改了但還沒 commit，"
+                            + "承接只會帶走已 commit 的內容。下面列出是哪些檔案，以及怎麼一起保存後再承接。", false);
+                    return;
+                }
                 succeed(task, flow, user, enqueue);
             } catch (Exception e) {
-                slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
-                        "沒有建立承接任務：" + Diagnostics.describe(e));
+                tellUser(task, "沒有建立承接任務：", e);
             }
             return;
         }
@@ -818,7 +864,7 @@ public class FlowEngine {
                                 + AutomaticHandoff.remaining(flow) + " 件，沒有重設歷史計數或略過既有核准。");
                 enqueue.accept(() -> run(store.find(task.id()).orElseThrow()));
             } catch (Exception e) {
-                slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), Diagnostics.describe(e));
+                tellUser(task, "", e);
             }
             return;
         }
@@ -849,7 +895,7 @@ public class FlowEngine {
                 waitHuman(task, flow, "已把「" + dependency + "」的結果恢復為有效（commit=" + head + "）。"
                         + "沒有重跑，也沒有重設任何次數。\n任務仍停在「" + flow.node + "」，還需要你再決定下一步。");
             } catch (Exception e) {
-                slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), Diagnostics.describe(e));
+                tellUser(task, "", e);
             }
             return;
         }
@@ -870,7 +916,7 @@ public class FlowEngine {
                 audit.record(task.id(),user,AuditLog.ACTION_BUTTON,"核准人工修復後一次重驗 "+parts[1]+"，配置="+flow.snapshot.revision()+"；commit="+head+"；未重設計數，待重新核准測試計畫");
                 slack.post(Identity.SYSTEM,task.slackChannel(),task.slackThreadTs(),"已依人工修復 commit 授權一次重驗，不清空歷史次數；尚未派工。請重新審閱並核准下列測試計畫，核准後才會執行 QA。\ncommit="+head);
                 presentPlan(task,flow,flow.snapshot.definition().nodes().get(parts[1]).plan());
-            } catch(Exception e) { slack.post(Identity.SYSTEM,task.slackChannel(),task.slackThreadTs(),Diagnostics.describe(e)); }
+            } catch(Exception e) { tellUser(task, "", e); }
             return;
         }
         if (feedback != null && feedback.startsWith("核准恢復驗收")) {

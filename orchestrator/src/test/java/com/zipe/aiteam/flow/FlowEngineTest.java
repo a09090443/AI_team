@@ -204,6 +204,68 @@ class FlowEngineTest {
         assertThat(store.flow(task.id()).orElseThrow().successor).isEqualTo(parent.successor);
     }
 
+    private void leaveUncommittedQaTests(List<String> paths) throws Exception {
+        workspaceClean = false;
+        when(workspace.uncommittedPaths("42")).thenReturn(paths);
+        when(workspace.uncommittedFingerprint("42")).thenReturn("fp-seen");
+        when(workspace.commitPaths(eq("42"), anyList(), anyString())).thenAnswer(c -> { workspaceClean = true; return "head2abcdef"; });
+    }
+
+    @Test void continuationWithUncommittedChangesExplainsWhichFilesAndOffersToSaveThem() throws Exception {
+        // #1017：只回「沒有建立承接任務：IllegalArgumentException: 原任務工作區有未提交的修改，請先處理再承接」，沒有出路。
+        exhaustAtTriage();
+        leaveUncommittedQaTests(List.of("tests/mail-failover.test.js", "tests/mail-timeout.test.js"));
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(task, "承接成新任務", "u", jobs::add);
+
+        assertThat(store.flow(task.id()).orElseThrow().successor).isNull();
+        assertThat(jobs).isEmpty();
+        verify(workspace, never()).commitPaths(any(), any(), any());
+        var text = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(slack, atLeastOnce()).post(any(), eq("c"), eq("t"), text.capture(), any());
+        assertThat(text.getAllValues()).anySatisfy(t -> assertThat(t)
+                .contains("還沒有承接").contains("tests/mail-failover.test.js").contains("tests/mail-timeout.test.js")
+                .contains("保存未提交的修改並承接").doesNotContain("Exception"));
+    }
+
+    @Test void savingUncommittedChangesCommitsExactlyThoseFilesThenCreatesTheSuccessor() throws Exception {
+        exhaustAtTriage();
+        leaveUncommittedQaTests(List.of("tests/mail-failover.test.js"));
+        when(slack.post(any(), eq("c"), isNull(), anyString())).thenReturn("new-thread");
+        when(workspace.provisionFrom(any(), any(), anyString(), anyString(), anyString(), anyString())).thenReturn(tmp);
+        when(workspace.pathFor(argThat((String id) -> !"42".equals(id)))).thenReturn(tmp.resolve("child"));
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(task, "承接成新任務 保存 fp-seen", "u", jobs::add);
+
+        verify(workspace).commitPaths(eq("42"), eq(List.of("tests/mail-failover.test.js")), contains("u 於承接時核准"));
+        assertThat(store.flow(task.id()).orElseThrow().successor).isNotNull();
+        assertThat(jobs).hasSize(1);
+        verify(audit).record(eq("42"), eq("u"), eq(AuditLog.ACTION_RECOVERY), contains("承接前保存未提交修改 1 個檔案"));
+    }
+
+    @Test void savingIsRefusedWhenTheChangesMovedAfterTheMessageOrTouchProtectedPaths() throws Exception {
+        exhaustAtTriage();
+        leaveUncommittedQaTests(List.of("tests/mail-failover.test.js"));
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(task, "承接成新任務 保存 fp-old", "u", jobs::add);
+        verify(slack).post(any(), eq("c"), eq("t"), contains("又變動了"));
+
+        var protectedPath = store.flow(task.id()).orElseThrow().snapshot.definition().project().protectedPaths().getFirst()
+                .replace("**", "x").replace("*", "x");
+        when(workspace.uncommittedPaths("42")).thenReturn(List.of(protectedPath));
+        engine.resume(task, "承接成新任務 保存 fp-seen", "u", jobs::add);
+        verify(slack).post(any(), eq("c"), eq("t"), contains("受保護的路徑"));
+
+        engine.resume(task, "承接成新任務 保存 fp-seen", "someone-else", jobs::add);
+
+        verify(workspace, never()).commitPaths(any(), any(), any());
+        assertThat(store.flow(task.id()).orElseThrow().successor).isNull();
+        assertThat(jobs).isEmpty();
+    }
+
     @Test void continuationIsRefusedWhileTheTaskCanStillProceed() throws Exception {
         task.state(Task.State.AWAIT_HUMAN); store.save(task);
         List<Runnable> jobs = new ArrayList<>();
@@ -224,7 +286,8 @@ class FlowEngineTest {
         engine.resume(task, "承接成新任務", "u", jobs::add);
 
         assertThat(store.flow(task.id()).orElseThrow().successor).isNull();
-        verify(slack).post(any(), any(), any(), contains("未提交的修改"));
+        // 改為貼出含選項的停止訊息（白話說明＋保存按鈕），不再是單行例外字串。
+        verify(slack).post(any(), any(), any(), contains("還沒 commit"), any());
     }
 
     @Test void onlyTheAcceptanceOwnerCanContinueATask() throws Exception {

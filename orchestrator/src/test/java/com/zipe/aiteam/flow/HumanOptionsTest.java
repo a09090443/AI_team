@@ -292,6 +292,27 @@ class HumanOptionsTest {
                 .doesNotContain("核准：").doesNotContain("再給系統兩次機會");
     }
 
+    @Test void exhaustedTaskWithUncommittedFilesNamesThemAndOffersToSaveBeforeContinuing() {
+        exhaust();
+        var ws = new HumanOptions.Workspace("f2a7d9b", false,
+                java.util.List.of("src/test/MailFailoverTest.java", "src/test/MailTimeoutTest.java"), "fp123");
+
+        var options = HumanOptions.options(task, flow, true, true, null, ws);
+
+        assertThat(options.getFirst().label()).isEqualTo("保存未提交的修改並承接");
+        assertThat(options.getFirst().command()).isEqualTo("承接成新任務 保存 fp123");
+        String text = HumanOptions.render(task, flow, true, true, null, ws);
+        assertThat(text).contains("2 個檔案改了但還沒 commit").contains("src/test/MailFailoverTest.java")
+                .contains("沒有 commit 的權限").contains("保存未提交的修改並承接")
+                .doesNotContain("承接前請先處理");
+    }
+
+    @Test void longUncommittedListIsShortenedWithACount() {
+        var paths = java.util.stream.IntStream.range(0, 13).mapToObj(i -> "f" + i).toList();
+        String listed = new HumanOptions.Workspace("h", false, paths, "fp").listUncommitted(10);
+        assertThat(listed).contains("f9").doesNotContain("f10").contains("另外 3 個檔案");
+    }
+
     @Test void exhaustedEvenWithOneEventLeftWhenTheStoppedNodeCannotUseIt() {
         // #1014：核准需求變更後停在需求節點，還剩一個事件額度，但需求節點不是任何節點的受阻交接目標，
         // 那個額度根本用不上。舊判斷只看剩幾次，於是仍提供按鈕，按了立刻被擋。

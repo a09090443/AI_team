@@ -131,6 +131,25 @@ class ConfiguredExecutorTest {
         when(runtime.escalationPins(any())).thenReturn(List.of());
         executor = new ConfiguredExecutor(props, new RuntimeRegistry(List.of(runtime)), mock(ExecutionSandbox.class), workspace, store, preflight);
     }
+    @Test void dialogueSeesTheParentWorkspaceStateIncludingUncommittedFiles() throws Exception {
+        // #1017：QA 對話只看到最新 commit，就答「不是沒有 commit」，漏掉它上一輪留下的 3 個未提交測試檔。
+        FlowRun parent = new FlowRun(flow.snapshot); parent.workspaceReady = true;
+        when(store.flow("41")).thenReturn(java.util.Optional.of(parent));
+        when(workspace.exists("41")).thenReturn(true);
+        when(workspace.headSha("41")).thenReturn("f2a7d9b");
+        when(workspace.uncommittedPaths("41")).thenReturn(List.of("tests/a.test.js", "tests/b.test.js"));
+        flow.dialogue = true; flow.parentId = "41";
+
+        assertThat(executor.parentWorkspaceState(flow)).contains("系統查得").contains("最新 commit=f2a7d9b")
+                .contains("有 2 個檔案改了但尚未 commit：tests/a.test.js、tests/b.test.js");
+
+        when(workspace.uncommittedPaths("41")).thenReturn(List.of());
+        assertThat(executor.parentWorkspaceState(flow)).contains("沒有未提交的修改");
+    }
+    @Test void dialogueRepliesMustBePlainAndEndWithWhatTheUserCanDo() {
+        assertThat(ConfiguredExecutor.DIALOGUE_REPLY_RULES).contains("第一句直接回答問題").contains("用白話")
+                .contains("不可只看最新 commit").contains("你可以怎麼做").contains("不確定就說不確定");
+    }
     @Test void arbitraryRoleRuntimePromptAndToolsComeFromSnapshot() throws Exception {
         flow.node = "frontend"; Task task = new Task("42", "c", "t", "u", "新增畫面");
         AtomicReference<AgentRuntime.RuntimeRequest> captured = new AtomicReference<>();

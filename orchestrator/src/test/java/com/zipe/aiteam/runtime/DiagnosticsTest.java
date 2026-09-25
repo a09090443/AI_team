@@ -37,4 +37,22 @@ class DiagnosticsTest {
         assertThat(detail).contains("error_max_turns", "15", "尚未確認", "另查 Git", Path.of("/logs/stdout.json").toString())
                 .doesNotContain("未 commit", "可能是任務太大");
     }
+
+    @Test void rejectedOperationShowsOnlyTheSentenceWrittenForPeople() {
+        String text = Diagnostics.forUser(new IllegalArgumentException("這個任務還能繼續，不需要承接。"));
+
+        assertThat(text).isEqualTo("這個任務還能繼續，不需要承接。").doesNotContain("Exception");
+    }
+
+    @Test void systemFailureSaysItIsNotTheUsersFaultAndHidesTheClassName() {
+        String text = Diagnostics.forUser(new IllegalStateException("git 逾時：git rev-parse HEAD", new IOException("inner")));
+
+        assertThat(text).startsWith("系統處理時發生錯誤，不是你的操作造成的：git 逾時")
+                .contains("請通知管理者").doesNotContain("Exception").doesNotContain("呼叫脈絡");
+    }
+
+    @Test void systemFailureWithoutMessageStillReadsAsASentence() {
+        assertThat(Diagnostics.forUser(new NullPointerException()))
+                .startsWith("系統處理時發生錯誤，不是你的操作造成的。").doesNotContain("null");
+    }
 }

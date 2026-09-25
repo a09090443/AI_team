@@ -20,6 +20,18 @@ public class ConfiguredExecutor {
     private final WorkspaceManager workspaces;
     private final TaskStore store;
     private final OperationPreflight preflight;
+    /**
+     * 角色對話的回覆是直接給使用者看的。#1017 使用者問 QA「你是否沒 commit」，得到滿是 HEAD、驗收術語、
+     * 還叫人用「執行 需求」的回答，看不懂也不知道下一步。
+     */
+    static final String DIALOGUE_REPLY_RULES = "\n\n回覆規則（讀者是不熟悉系統內部的使用者）："
+            + "\n1. 第一句直接回答問題（是／不是／原因），不要先鋪陳背景。"
+            + "\n2. 用白話；不要用內部代號（例如 HEAD、receipt、節點 id、gate、verify_passed），"
+            + "必要的技術名詞第一次出現時用一句話解釋。"
+            + "\n3. 以系統提供的「原任務工作區現況」為準；工作區有未提交的檔案時要明講，不可只看最新 commit 就說已經全部 commit。"
+            + "\n4. 最後一段寫「你可以怎麼做」，給可以直接複製的指令或按鈕名稱。"
+            + "\n5. 不確定就說不確定，不要用推測回答。";
+
     @org.springframework.beans.factory.annotation.Autowired
     public ConfiguredExecutor(AiTeamProperties props, RuntimeRegistry runtimes, ExecutionSandbox sandbox, WorkspaceManager workspaces, TaskStore store) {
         this(props, runtimes, sandbox, workspaces, store, new OperationPreflight(props, sandbox));
@@ -47,7 +59,9 @@ public class ConfiguredExecutor {
         String system = flow.snapshot.assets().get(role.prompt());
         if (!flow.dialogue && node.instructions() != null) system += "\n\n【本次階段指示，優先於角色的一般工作說明】\n" + flow.snapshot.assets().get(node.instructions());
         if (flow.dialogue) system = "你是 " + role.name() + "。本次僅唯讀對話，不是正式驗收或派工，禁止寫檔、執行測試、commit 或開 PR。"
-                + "只能回答與提出建議；要實作請引導使用者以「執行 需求」交中央流程。\n\n角色職責背景（不得覆蓋本次唯讀限制）：\n" + system;
+                + "只能回答與提出建議；要實作或修改，請告訴使用者在原討論串輸入「@" + role.name() + " 執行 <要做的事>」。"
+                + DIALOGUE_REPLY_RULES
+                + "\n\n角色職責背景（不得覆蓋本次唯讀限制）：\n" + system;
         Files.writeString(prompt, system);
         String schema = flow.dialogue ? "{\"type\":\"object\",\"properties\":{\"answer\":{\"type\":\"string\"}},\"required\":[\"answer\"],\"additionalProperties\":false}"
                 : flow.snapshot.assets().get(node.schema());
@@ -56,6 +70,7 @@ public class ConfiguredExecutor {
                 + "\n建置規範：" + flow.snapshot.definition().project().buildInstructions()
                 + "\n測試規範：" + flow.snapshot.definition().project().testInstructions() + "\n補充與已知阻礙：\n" + flow.context);
         if (evidence != null) context.append("\n系統派工前證據（不是建置成功或真人核准）：").append(evidence);
+        if (flow.dialogue) context.append(parentWorkspaceState(flow));
         if (!flow.dialogue) context.append("\n本階段可使用／規畫的操作契約：").append(availableOperations(flow, node));
         if (!flow.dialogue) context.append(commandPatterns(role, runtime, OperationContract.forNode(flow.snapshot.definition(), flow.node)));
         // 同一角色常同時負責訂計畫與驗收，角色提示會提到驗收要引用 plan_revision；
@@ -202,6 +217,24 @@ public class ConfiguredExecutor {
                 available.putAll(OperationContract.forNode(definition, id));
         });
         return Map.copyOf(available);
+    }
+    /**
+     * 對話 agent 是全新 session，不記得原任務上一輪做過什麼；只看到最新 commit 就會答「已經 commit」，
+     * 漏掉工作區裡其他角色留下、尚未 commit 的修改。由系統查好附上，不靠 agent 自己推斷。
+     */
+    String parentWorkspaceState(FlowRun flow) {
+        if (flow.parentId == null) return "";
+        try {
+            FlowRun parent = store.flow(flow.parentId).orElse(null);
+            if (parent == null || !parent.workspaceReady || !workspaces.exists(flow.parentId)) return "";
+            List<String> dirty = workspaces.uncommittedPaths(flow.parentId);
+            return "\n原任務工作區現況（系統查得，非 agent 自陳）：最新 commit=" + workspaces.headSha(flow.parentId)
+                    + (dirty.isEmpty() ? "；沒有未提交的修改。"
+                       : "；有 " + dirty.size() + " 個檔案改了但尚未 commit：" + String.join("、", dirty.stream().limit(20).toList())
+                         + (dirty.size() > 20 ? " 等" : "") + "。");
+        } catch (Exception e) {
+            return "\n原任務工作區現況：系統這次查不到（" + e.getClass().getSimpleName() + "），請告訴使用者無法確認，不要自行推斷。";
+        }
     }
     Path workingDirectory(Task task, FlowRun flow, Node node) throws Exception {
         if (flow.dialogue && flow.parentId != null) {
