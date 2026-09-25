@@ -136,9 +136,15 @@ final class AutomaticHandoff {
         return LIMIT + Math.max(0, Math.min(flow.automaticHandoffExtraBudget, MAX_EXTRA_BUDGET));
     }
 
+    /**
+     * 授權碼綁定「下一次啟動會用的受阻證據」，與 extensionWouldHelp、引擎的 restoreLegacyBlockedTarget 同一來源。
+     * 以前只讀 automaticHandoff：套用配置更新會把它清空，於是判斷「可以延長」卻產生不出授權碼，
+     * 停止訊息既沒有延長也沒有承接按鈕（#1017）。
+     */
     static String extensionToken(FlowRun flow, String head) {
-        if (flow.automaticHandoff == null) return null;
-        return digest("extend\n" + flow.snapshot.revision() + "\n" + flow.automaticHandoff + "\n" + String.valueOf(head));
+        String evidence = pendingEvidence(flow);
+        if (evidence == null) return null;
+        return digest("extend\n" + flow.snapshot.revision() + "\n" + evidence + "\n" + String.valueOf(head));
     }
 
     static void authorizeExtension(FlowRun flow, String suppliedToken, String head) {

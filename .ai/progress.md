@@ -849,3 +849,12 @@ permission_denials 為空，費用 US$0.04；另實測 `ls -laR /usr/share` 符�
 隔離建置 `extension-guidance-build.v7IvS2`：420 項 0 失敗、10 項 opt-in 略過；check-source 通過。
 部署 13:32（PID 282847，JAR `f531abe8b4b239a7e367e70ed3aabed0b2846636f085ba8aa43807877a9e1208`，備份 `orchestrator-backup.cFwHEr`），
 自檢通過、0 ERROR、任務資料前後一致。#1017 仍 AWAIT_HUMAN（triage，builder=opus），待使用者按一次延長。
+
+2026-09-25 Claude Code：修正「延長」按鈕不出現（已部署）。
+使用者回報 #1017 停止訊息沒有「再給系統兩次機會」。原因：套用配置更新清空 automaticHandoff，
+`extensionToken` 只讀該欄位而產生不出授權碼；`extensionWouldHelp` 卻用 pendingEvidence（可由 lastBlockReason 重建）判定可延長，
+兩者依據不一致，於是延長與承接都不出現。上一輪的唯讀檢查自行塞入假授權碼，未發現此問題（驗證方法錯誤，已改為使用系統實際產生的授權碼）。
+修正：授權碼改用 pendingEvidence，與判斷及引擎恢復同一來源。新增 FlowEngineTest 重現 #1017 配置更新後狀態：停止訊息含延長按鈕、按一次即啟動分流。
+對 #1017 真實資料：授權碼 `4c0b5e08…`、選項含延長；模擬按一次後上限 12、claim 成功、剩 1 件。
+隔離建置 `extension-token-build.Z1nDTK`：421 項 0 失敗、10 opt-in 略過；check-source 通過。
+部署 13:48（PID 286676，JAR `c57cddbfe73af76add4e91cbcb006554e6b471f7526a6e73d4cd30c13a4119b2`，備份 `orchestrator-backup.1yxQL2`），0 ERROR、資料一致。

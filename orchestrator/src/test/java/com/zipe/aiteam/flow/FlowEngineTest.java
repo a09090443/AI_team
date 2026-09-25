@@ -489,6 +489,33 @@ class FlowEngineTest {
         engine.resume(task, "核准延長自動交接 " + token, "u", jobs::add);
         assertThat(jobs).hasSize(1);
     }
+    @Test void afterConfigUpdateTheStopMessageOffersAnExtensionThatActuallyRunsTheNextStep() {
+        // #1017：套用配置更新會清空 automaticHandoff 與額外額度，已用 10 件保留、上限回到 6。
+        // 舊版判斷「可以延長」卻產生不出授權碼，停止訊息沒有延長也沒有承接；修正前即使有碼也要連按三次。
+        task.state(Task.State.AWAIT_HUMAN); store.save(task);
+        var flow = store.flow(task.id()).orElseThrow();
+        flow.node = "triage"; flow.activeNode = null; flow.automaticHandoff = null;
+        flow.lastBlockReason = "review：提前停止備援的產品缺陷";
+        for (int i = 0; i < 10; i++) flow.automaticHandoffKeys.add("incident:used-" + i);
+        flow.automaticHandoffs = 10; flow.automaticHandoffExtraBudget = 0;
+        flow.transitions = flow.snapshot.definition().maxTransitions() + 27;
+        store.saveFlow(task.id(), flow);
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(task, "狀態", "u", jobs::add);
+
+        String token = AutomaticHandoff.extensionToken(store.flow(task.id()).orElseThrow(), null);
+        assertThat(token).isNotNull();
+        verify(slack).post(any(), eq("c"), eq("t"), anyString(),
+                argThat(blocks -> blocks != null && blocks.toString().contains("核准延長自動交接 " + token)));
+
+        engine.resume(task, "核准延長自動交接 " + token, "u", jobs::add);
+        assertThat(jobs).hasSize(1);
+        jobs.getFirst().run();
+
+        assertThat(calls).first().isEqualTo("triage:coordinator");
+        assertThat(store.flow(task.id()).orElseThrow().automaticHandoffs).isGreaterThanOrEqualTo(11);
+    }
     @Test void sameBlockedIncidentCanTraverseConfiguredNodesButStillHasHopLimit() {
         var flow = store.flow(task.id()).orElseThrow();
         flow.node = "triage"; flow.automaticHandoff = "same-incident";
