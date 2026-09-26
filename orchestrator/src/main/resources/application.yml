@@ -23,4 +23,4 @@ logging:
     com.zipe.aiteam: DEBUG
     com.slack.api: WARN
   pattern:
-    console: "%d{HH:mm:ss} %-5level %-28logger{0} %msg%n"
+    console: "%d{HH:mm:ss, Asia/Taipei} %-5level %-28logger{0} %msg%n"

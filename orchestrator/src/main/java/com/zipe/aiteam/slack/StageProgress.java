@@ -1,6 +1,7 @@
 package com.zipe.aiteam.slack;
 
 import com.zipe.aiteam.task.Task;
+import com.zipe.aiteam.task.TaipeiTime;
 import com.zipe.aiteam.store.TaskStore;
 import java.time.Instant;
 import java.util.concurrent.*;
@@ -52,7 +53,7 @@ public final class StageProgress implements AutoCloseable {
     private void publish(String status, boolean withInterrupt) {
         String text = "任務 #" + task.id() + "｜" + label + "\n" + status
                 + "\n本次階段耗時：" + TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - started)
-                + " 秒\n狀態更新時間（UTC）：" + Instant.now();
+                + " 秒\n狀態更新時間：" + TaipeiTime.seconds(Instant.now());
         // 結束時以 null blocks 更新，按鈕隨之消失，避免之後誤按到舊訊息。
         var blocks = withInterrupt ? SlackBlocks.progressBlocks(task.id(), text) : null;
         if (messageTs == null) messageTs = blocks == null

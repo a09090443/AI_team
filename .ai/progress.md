@@ -2,6 +2,17 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-09-26 — Claude Code（顯示時間改台北時間）
+
+- 新增 `TaipeiTime`（分／秒兩種格式），`QuotaMessage.taipei` 改委派；階段心跳由
+  「狀態更新時間（UTC）：ISO」改為「狀態更新時間：yyyy-MM-dd HH:mm:ss（台北時間）」；
+  console log 時戳改 `Asia/Taipei`。DB 仍存 UTC。
+- 驗證：本機 JDK 單檔驗證 `TaipeiTime` 跨日換算正確；新增 `TaipeiTimeTest`。
+- 隔離建置 `taipei-time-build.WMvDAW`：check-source 通過；完整 package 449 項 0 失敗、10 opt-in 略過。
+- 22:29 台北時間以 deploy-jar-safe.sh 部署（PID 443620，JAR `09b04b6219372357ea77ef9576f586549d59d4bf7156669054cde0f6f049a04a`，
+  備份 `orchestrator-backup.RyHk3A`），0 ERROR、任務資料前後一致；log 時戳已為台北時間。
+  Slack 心跳訊息尚待下次任務執行時實際確認。未 push。
+
 ## 2026-09-11 — Claude Code（資料模型文件與 schema 註解）
 
 使用者指出 DDL 只有零星註解、四張 JSON 快照表（task_checkpoint／direct_request／

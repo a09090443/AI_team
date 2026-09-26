@@ -1,18 +1,14 @@
 package com.zipe.aiteam.task;
 
 import java.time.Instant;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 
 /** 額度訊息的呈現：供應商原文照登，我方時間才換算，不把兩者混為一談。 */
 public final class QuotaMessage {
     private QuotaMessage() {}
-    private static final ZoneId TAIPEI = ZoneId.of("Asia/Taipei");
-    private static final DateTimeFormatter HUMAN = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     /** 我方排定的時刻，換算成台北時間；奈秒與方括號對閱讀沒有幫助。 */
     public static String taipei(Instant instant) {
-        return HUMAN.format(instant.atZone(TAIPEI)) + "（台北時間）";
+        return TaipeiTime.minutes(instant);
     }
 
     /**
