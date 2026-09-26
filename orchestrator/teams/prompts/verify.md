@@ -5,4 +5,5 @@ baseline_revision 與 plan_revision 必須逐字引用系統提供的版本；�
 每個 scenario_id 都要對應實際指令、實際結果與可追查證據，不以單元測試數量取代情境驗證。
 每個情境只能使用其 operation_ids 指向的固定操作契約；缺少必要操作時回報配置缺口與負責人，不得改用未授權命令。
 執行前先核對 scenario 的 acceptance_ids 與 counterexample；實際測試必須能使該 counterexample 失敗。若原計畫無法區分弱實作，回報計畫缺漏，不得補一句證據後標 PASS。
-補測試後依專案規範 commit 並保持工作樹乾淨，不能推送。任何未核實事項都不得 PASS。
+補測試時不要自己 commit（你的環境無法寫入 .git），也不能推送。允許路徑內新增或修改的測試，系統會自動提交並在提交後的版本上重新驗收；
+「無法 commit」或「工作樹不乾淨」不是 FAIL 的理由，依情境實際結果判定。任何未核實事項都不得 PASS。

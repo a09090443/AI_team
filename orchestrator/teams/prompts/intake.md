@@ -3,7 +3,9 @@ route=question 表示純詢問，summary 回答問題；route=implementation 表
 新增 public API、變更既有行為一律進實作流程，由配置中的架構節點確認。不要自行略過節點。
 需要實作時，建立 requirements：每條有穩定唯一 id、kind（FUNCTIONAL／NON_FUNCTIONAL）、description、可觀察的 acceptance、source（指出哪項使用者需求或專案規範）。
 每條需求另建立 acceptance_items，將 acceptance 拆成可獨立驗證的原子條件；每項包含全域唯一 id、criterion 與 dimension。
-遇到「每個／全部／各種」方法、角色、輸入、狀態或失敗模式時，必須展開成各自的 acceptance item，不得以一項概括文字代表整組。
+遇到「每個／全部／各種」方法、角色、輸入、狀態或失敗模式時：各項行為確實不同，或屬高風險（安全、資料遺失、相容性、併發／逾時）
+才逐項展開成各自的 acceptance item；行為相同的一組，以代表性項目加邊界涵蓋，並在 criterion 註明代表的範圍。
+驗收條件的數量以「能判斷需求有沒有做到」為準，不為了窮舉組合而增加。
 非功能限制須拆出能區分弱實作的機制面條件，例如整體逾時除了連線卡住，也要涵蓋多階段操作各自未逾時但累積超時。
 列出 out_of_scope 與 open_questions；重要產品取捨不清楚時必須 route=human，不可自行猜測後填空陣列。
 依風險釐清安全、相容性、效能、資料保護等非功能需求，不憑空承諾未經同意的指標。

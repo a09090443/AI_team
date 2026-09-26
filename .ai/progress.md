@@ -892,3 +892,9 @@ permission_denials 為空，費用 US$0.04；另實測 `ls -laR /usr/share` 符�
   停給人（手動續跑成功），已將該訊號列為系統層失敗自動重試。
 - 隔離建置 `explainer-final2-build.uvX6tc`：445 項 0 失敗、10 opt-in 略過；check-source 通過；JAR `57f3a6f36d77ee357de400ceffe4bacffa9a05ba20e2a51c496cc75c97490598`。
 - 部署時 #1019 正在執行（implementation），deploy-jar-safe.sh 依設計拒絕部署；待任務空檔再部署。
+
+2026-09-26 Claude Code：讓實作／驗收／審查收斂（已建置，待 #1019 空檔部署）。
+- 分析 #1019 06:00～12:16 八輪循環（見 decisions）。改動：review.md 收斂規則、verify.md 與 ConfiguredExecutor 不再要求 QA commit、
+  intake.md／plan.md 控制規模、FlowEngine 代為提交 QA 測試（commitVerificationChanges）與審查建議段落（reviewSuggestions）。
+- 隔離建置 `converge-build.Y4iBji`：447 項 0 失敗、10 opt-in 略過；check-source 通過；JAR `45bbbf9c3467256eb6452f9e9c2ec46a159a5e27cd9f4bc4300646f17829b806`。
+- 部署時 #1019 正在驗收（工作區有 QA 未提交的 MailServiceFailoverTest.java），背景等空檔後先替換 teams 提示再以 deploy-jar-safe.sh 部署。

@@ -739,6 +739,7 @@ class FlowEngineTest {
     boolean provisioned;
     boolean workspaceClean;
     String workspaceHead;
+    String dirtyPath = "base-spring-boot-starter/src/test/java/com/example/MailTest.java";
     @BeforeEach void setup(TestInfo info) throws Exception {
         Files.createDirectories(tmp.resolve("repo/.git"));
         var ds = new org.sqlite.SQLiteDataSource(); ds.setUrl("jdbc:sqlite:" + tmp.resolve("db"));
@@ -764,6 +765,9 @@ class FlowEngineTest {
         when(workspace.currentBranch("42")).thenReturn("feature/task42"); when(workspace.baseBranch("42")).thenReturn("main");
         when(workspace.auditPaths(eq("42"), anyString())).thenAnswer(c -> workspaceClean ? List.of()
                 : List.of("base-spring-boot-starter/src/test/java/com/example/MailTest.java"));
+        when(workspace.uncommittedPaths("42")).thenAnswer(c -> workspaceClean ? List.of() : List.of(dirtyPath));
+        when(workspace.commitPaths(eq("42"), anyList(), anyString())).thenAnswer(c -> {
+            workspaceClean = true; workspaceHead = "head-qa-tests"; return workspaceHead; });
         when(executor.execute(any(), any(), any())).thenAnswer(c -> {
             FlowRun flow = c.getArgument(1); TeamDefinition.Node node = c.getArgument(2); calls.add(flow.node + ":" + node.role());
             Task executing = c.getArgument(0);
@@ -859,18 +863,41 @@ class FlowEngineTest {
         assertThat(calls).contains("triage:coordinator").doesNotContain("review:security_auditor");
         assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN); verifyNoInteractions(publisher);
     }
-    @Test void springDirtyLimitedVerificationRoutesToConfiguredGitWriterAndReturnsToQa() throws Exception {
+    @Test void springQaTestsLeftUncommittedAreCommittedBySystemAndReverifiedWithoutTheImplementer() throws Exception {
+        // #1019：QA 跑在 Codex，.git 唯讀，補的測試永遠無法自己提交；舊做法每次交給實作節點提交，多繞一整輪。
         mode = "dirtyVerification";
 
         engine.run(task);
 
-        assertThat(calls).containsSubsequence("verification:tester", "triage:coordinator",
-                "implementation:builder", "verification:tester", "review:inspector");
-        assertThat(workspaceClean).isTrue();
-        assertThat(workspaceHead).isEqualTo("head2");
+        assertThat(calls).containsSubsequence("verification:tester", "verification:tester", "review:inspector");
+        assertThat(calls.stream().filter("implementation:builder"::equals)).hasSize(1);
+        verify(workspace).commitPaths(eq("42"), eq(List.of(dirtyPath)), contains("系統代為提交"));
+        assertThat(workspaceHead).isEqualTo("head-qa-tests");
         assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
-        verify(audit).record(eq("42"), eq(AuditLog.ACTOR_SYSTEM), eq(AuditLog.ACTION_RECOVERY),
-                contains("具 Git 寫入能力"));
+        verify(audit).record(eq("42"), eq(AuditLog.ACTOR_SYSTEM), eq(AuditLog.ACTION_RECOVERY), contains("未消耗自動處理額度"));
+        verify(slack).post(any(), eq("c"), eq("t"), contains("系統已代為提交"));
+    }
+    @Test void springChangesOutsideTheQaWritablePathsAreNeverCommittedBySystem() throws Exception {
+        dirtyPath = "base-spring-boot-starter/src/main/java/com/example/MailService.java";
+        mode = "dirtyVerification";
+
+        engine.run(task);
+
+        verify(workspace, never()).commitPaths(any(), any(), any());
+        // 維持原本的路由：交給具 Git 寫入能力的實作節點處理。
+        verify(audit).record(eq("42"), eq(AuditLog.ACTOR_SYSTEM), eq(AuditLog.ACTION_RECOVERY), contains("具 Git 寫入能力"));
+    }
+    @Test void reviewSuggestionsAreListedForTheOwnerButDoNotBlock() throws Exception {
+        var flow = store.flow(task.id()).orElseThrow();
+        flow.receipts.put("review", mapper.readTree("{\"verdict\":\"COMMENT\",\"findings\":["
+                + "{\"severity\":\"MEDIUM\",\"detail\":\"SC-017 可再多測一位收件人\"},"
+                + "{\"severity\":\"LOW\",\"detail\":\"日誌措辭可更一致\"}]}"));
+
+        String text = FlowEngine.reviewSuggestions(flow, 8);
+
+        assertThat(text).contains("審查建議（未擋發布").contains("・建議：SC-017 可再多測一位收件人")
+                .contains("・小建議：日誌措辭可更一致");
+        assertThat(FlowEngine.reviewSuggestions(new FlowRun(flow.snapshot), 8)).isEmpty();
     }
     @Test void humanFeedbackResumesConfiguredRepairNotWholePipeline() {
         mode = "blocked"; engine.run(task); calls.clear(); mode = "repair";

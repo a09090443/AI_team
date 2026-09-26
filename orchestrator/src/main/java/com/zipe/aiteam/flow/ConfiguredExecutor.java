@@ -90,7 +90,8 @@ public class ConfiguredExecutor {
                 .append("\n系統獨立驗證收據（不是模型自陳）：").append(receiptView(flow, node));
         context.append("\n若系統獨立驗證收據含管理者固定命令、exitCode=0 且版本仍有效，"
                 + "它就是該完整建置操作的主要證據；不得只因本節點操作契約未重複提供同一命令而回報受阻。"
-                + "本節點若補了測試但不能寫 Git，須明確回報未提交路徑，由系統交給具 Git 寫入能力的節點；不得要求放寬 .git 權限。");
+                + "本節點若補了測試，不要自己 commit，在 summary 列出新增或修改的測試路徑即可：允許路徑內的修改由系統自動提交，"
+                + "並在提交後的版本重新驗收；「無法 commit」「工作樹不乾淨」不是判定 FAIL 或受阻的理由。不得要求放寬 .git 權限。");
         context.append("\n系統保存的真人測試計畫核准收據（以版本綁定；不同於測試結果）：").append(flow.planApprovals)
                 .append("\n人工核准不等於測試 PASS。請依目前 HEAD 重新執行本階段驗收，不得把補核准直接當作全部通過。");
         context.append("\n系統獨立驗證收據是建置／測試證據，不是真人核准紀錄；不得以它為 null 推論無人核准。")

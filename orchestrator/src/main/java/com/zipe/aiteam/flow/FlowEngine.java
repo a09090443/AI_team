@@ -302,7 +302,8 @@ public class FlowEngine {
                     flow.approvalHead = head; store.saveFlow(task.id(), flow);
                     state(task, Task.State.AWAIT_PR_APPROVAL, "任務 #" + task.id() + " 等待人工核准 PR");
                     String message = "任務 #" + task.id() + " 已完成配置中的檢查，請核准才會推分支與開 PR（不代表產品已交付）。\ncommit=" + head
-                            + "\n需求基準=" + flow.baselineRevision + "\n需求／驗收負責人=<@" + flow.acceptanceOwner + ">";
+                            + "\n需求基準=" + flow.baselineRevision + "\n需求／驗收負責人=<@" + flow.acceptanceOwner + ">"
+                            + reviewSuggestions(flow, 8);
                     slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), message, SlackBlocks.approvalBlocks(task.id(), message));
                     return;
                 }
@@ -632,8 +633,16 @@ public class FlowEngine {
                 throw new SecurityException("限寫階段越權，禁止下游與發布：" + path);
         }
     }
-    /** LIMITED 驗收可補測試，但 Git metadata 保持唯讀；安全變更交由配置中的 builder 收斂。 */
+    /**
+     * 驗收或審查開始前工作區有未提交修改。
+     *
+     * LIMITED 驗收可以補測試，但驗收角色跑在 Codex，其沙箱預設 .git 唯讀，永遠無法自己 commit。
+     * 舊做法把修改交給實作節點提交，每次多繞「分析 → 實作 → 驗收」一整輪並消耗自動處理額度（#1019 三次）。
+     * 修改全都在驗收節點允許寫入的路徑內、且不碰保護路徑時，由系統代為提交，回到驗收節點在新版本上重驗；
+     * 否則維持原本的路由。
+     */
     private boolean routeDirtyVerification(Task task, FlowRun flow, Node node) throws Exception {
+        if (commitVerificationChanges(task, flow)) return true;
         if (node.gate() != Gate.VERIFICATION || node.scope() != Scope.LIMITED || flow.beforeHead == null) return false;
         List<String> changed = workspaces.auditPaths(task.id(), flow.beforeHead);
         if (changed.isEmpty() || changed.stream().anyMatch(path -> !PathRules.allows(node.writablePaths(), path)
@@ -654,6 +663,52 @@ public class FlowEngine {
         handoff(task, flow, node, target, true);
         flow.node = targetId;
         store.saveFlow(task.id(), flow);
+        return true;
+    }
+    /**
+     * 審查列為 MEDIUM／LOW 的建議不擋發布，但要讓人在核准前看到，並寫進 PR 說明。
+     * 審查規則把「測試驗得不夠細」這類改為建議而非必改，這裡是它們的去處，不會因此消失。
+     */
+    static String reviewSuggestions(FlowRun flow, int max) {
+        List<String> lines = new ArrayList<>();
+        flow.snapshot.definition().nodes().forEach((id, node) -> {
+            if (node.gate() != Gate.REVIEW || flow.receipts.get(id) == null) return;
+            for (JsonNode finding : flow.receipts.get(id).path("findings")) {
+                String severity = finding.path("severity").asText();
+                if (!Set.of("MEDIUM", "LOW").contains(severity)) continue;
+                lines.add("・" + ("MEDIUM".equals(severity) ? "建議" : "小建議") + "："
+                        + Diagnostics.clip(finding.path("detail").asText(), 300));
+            }
+        });
+        if (lines.isEmpty()) return "";
+        return "\n\n審查建議（未擋發布，可另開任務處理）：\n" + String.join("\n", lines.stream().limit(max).toList())
+                + (lines.size() > max ? "\n・…另有 " + (lines.size() - max) + " 項，見完整審查報告" : "");
+    }
+    /** 系統代為提交驗收補的測試；成功時已把流程指回驗收節點。 */
+    private boolean commitVerificationChanges(Task task, FlowRun flow) throws Exception {
+        var nodes = flow.snapshot.definition().nodes();
+        List<String> limited = nodes.entrySet().stream()
+                .filter(e -> e.getValue().gate() == Gate.VERIFICATION && e.getValue().scope() == Scope.LIMITED)
+                .map(Map.Entry::getKey).toList();
+        if (limited.size() != 1) return false;
+        String verificationId = limited.getFirst();
+        Node verification = nodes.get(verificationId);
+        List<String> paths = workspaces.uncommittedPaths(task.id());
+        if (paths.isEmpty() || paths.stream().anyMatch(path -> path.equals(".git") || path.startsWith(".git/")
+                || !PathRules.allows(verification.writablePaths(), path)
+                || PathRules.allows(flow.snapshot.definition().project().protectedPaths(), path))) return false;
+        String head = workspaces.commitPaths(task.id(), paths, "測試: 保存驗收補充的測試（系統代為提交）");
+        flow.independentEvidence = null;
+        flow.node = verificationId;
+        flow.activeNode = null;
+        task.continuation(null);
+        store.saveFlow(task.id(), flow);
+        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY,
+                "驗收補充的測試在允許路徑內，系統代為提交 " + paths.size() + " 個檔案：" + String.join(", ", paths)
+                        + "；commit=" + head + "；回到 " + verificationId + " 在新版本重驗，未消耗自動處理額度");
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                "任務 #" + task.id() + "：QA 補寫了 " + paths.size() + " 個測試檔，但它沒有 commit 的權限，"
+                        + "系統已代為提交（" + head.substring(0, Math.min(7, head.length())) + "），接著在新版本上重新驗收。這一步不需要你處理。");
         return true;
     }
     /**
@@ -1198,7 +1253,8 @@ public class FlowEngine {
                         || !flow.snapshot.definition().project().baseBranch().equals(workspaces.baseBranch(task.id()))) throw new SecurityException("Git 發布目標與配置快照不一致");
                 var result = publisher.publish(task.id(), "任務 #" + task.id() + " " + Diagnostics.clip(task.requestText().replace('\n', ' '), 90),
                         "配置版本：" + flow.snapshot.revision() + "\n需求基準：" + flow.baselineRevision + "\n驗收負責人：" + flow.acceptanceOwner
-                                + "\n\n" + task.requestText() + "\n\n驗收紀錄：\n" + flow.receipts + "\n\n系統獨立驗證：\n" + flow.independentEvidence, flow.branch);
+                                + "\n\n" + task.requestText() + reviewSuggestions(flow, 50)
+                                + "\n\n驗收紀錄：\n" + flow.receipts + "\n\n系統獨立驗證：\n" + flow.independentEvidence, flow.branch);
                 flow.prUrl = result.prUrl(); flow.publishedHead = head; store.saveFlow(task.id(), flow);
                 state(task, Task.State.PR_CREATED, "PR 已建立，尚未確認合併／發布／產品驗收：" + result.prUrl());
                 slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), result.prUrl());
