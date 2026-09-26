@@ -27,11 +27,13 @@ public class FlowEngine {
     private final AuditLog audit;
     private final PullRequestPublisher publisher;
     private final IndependentVerifier verifier;
+    private final ErrorExplainer explainer;
     public FlowEngine(TeamCatalog catalog, AiTeamProperties props, TaskStore store, ConfiguredExecutor executor,
-                      WorkspaceManager workspaces, SlackNotifier slack, AuditLog audit, PullRequestPublisher publisher, IndependentVerifier verifier) {
+                      WorkspaceManager workspaces, SlackNotifier slack, AuditLog audit, PullRequestPublisher publisher,
+                      IndependentVerifier verifier, ErrorExplainer explainer) {
         this.catalog = catalog; this.props = props; this.store = store; this.executor = executor;
         this.workspaces = workspaces; this.slack = slack; this.audit = audit; this.publisher = publisher;
-        this.verifier = verifier;
+        this.verifier = verifier; this.explainer = explainer;
     }
     public boolean enabled() { return catalog.enabled(); }
     public boolean owns(String id) { return store.flow(id).isPresent(); }
@@ -75,12 +77,47 @@ public class FlowEngine {
                 + "\n這一輪已計入的次數不會再重扣；工作區裡沒有提交的修改都還在，請先確認再繼續。");
         return true;
     }
-    /** 使用者的操作沒有成功：技術細節進稽核紀錄，Slack 只講看得懂的原因。 */
+    /**
+     * 使用者的操作沒有成功。IllegalArgumentException 是本專案寫給人看的拒絕原因，原樣回覆；
+     * 其他例外是程式錯誤，交給 agent 依錯誤紀錄寫白話說明。技術細節都進稽核紀錄。
+     */
     private void tellUser(Task task, String lead, Exception e) {
-        audit.record(task.id(), AuditLog.ACTOR_SYSTEM,
-                e instanceof IllegalArgumentException ? AuditLog.ACTION_REJECTED : AuditLog.ACTION_ERROR,
-                lead + Diagnostics.describe(e));
-        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), lead + Diagnostics.forUser(e));
+        if (e instanceof IllegalArgumentException) {
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_REJECTED, lead + Diagnostics.describe(e));
+            slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), lead + Diagnostics.forUser(e));
+            return;
+        }
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                lead + explainer.explain(task, "系統處理你剛才的操作時", e, List.of()));
+    }
+    /**
+     * 例外停給人：前面是系統確定的事實（例如次數已還原），後面是 agent 依錯誤紀錄寫的白話說明。
+     * 說明只能引用這次停止訊息真的會提供的選項，所以先算出選項再請它說明。
+     */
+    private void waitHumanForError(Task task, FlowRun flow, String lead, Throwable e) {
+        List<String> options;
+        try {
+            // 連同系統對每個選項的說明一起給：實測 agent 只拿到名稱時，會自行補充「不用重跑」這類沒有根據的效果。
+            options = HumanOptions.options(task, flow, true, props.briefReports(), extensionToken(task, flow),
+                    workspaceState(task, flow), configUpdateAvailable(flow)).stream()
+                    .map(option -> option.label() + "：" + option.hint()).toList();
+        } catch (Exception ignored) { options = List.of(); }
+        String explained = explainer.explain(task, "任務在「" + stepName(flow) + "」這一步執行時", e, options);
+        waitHuman(task, flow, (lead == null || lead.isBlank() ? "" : lead + "\n\n") + explained);
+    }
+    /** 給人看的步驟名稱：節點 id 是配置裡的英文代號，說明裡用中文。 */
+    private static String stepName(FlowRun flow) {
+        Node node = flow.snapshot == null ? null : flow.snapshot.definition().nodes().get(flow.node);
+        if (node == null || node.gate() == null) return flow.node;
+        return switch (node.gate()) {
+            case REQUIREMENTS -> "需求整理";
+            case TEST_PLAN -> "測試計畫";
+            case IMPLEMENTATION -> "實作";
+            case VERIFICATION -> "驗收";
+            case REVIEW -> "審查";
+            case REPORT -> "分析";
+            default -> flow.node;
+        };
     }
     private boolean aborted(Task task) { return store.find(task.id()).map(t -> t.state() == Task.State.ABORTED).orElse(false); }
     private void state(Task task, Task.State state, String text) {
@@ -527,8 +564,10 @@ public class FlowEngine {
                 state(task, Task.State.WAITING_QUOTA, "任務 #" + task.id() + " 等待額度，原節點與配置已保存");
                 String message = "任務 #" + task.id() + " 已因額度停止。\n"
                         + com.zipe.aiteam.task.QuotaMessage.resetLine(quota.getMessage())
-                        + "系統將安排自動續跑並另行回報嘗試時間，也可手動按繼續。沿用原角色、runtime 與配置。\n"
-                        + Diagnostics.describe(e);
+                        + "系統將安排自動續跑並另行回報嘗試時間，也可手動按繼續。沿用原角色、runtime 與配置。"
+                        + "\n（技術細節已記錄在稽核紀錄。）";
+                // 額度用完時不呼叫說明 agent：同一個帳號的額度也用完了，只會白等逾時。
+                audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "額度停止：" + Diagnostics.describe(e));
                 slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), message, SlackBlocks.quotaBlocks(task.id(), message));
             } else if (usage != null && countedNode != null) {
                 // 參數沒被 CLI 接受，模型完全沒被呼叫：把本輪的計數與一次性授權還原，
@@ -548,12 +587,12 @@ public class FlowEngine {
                 audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_ERROR,
                         "CLI 用法錯誤，未呼叫模型；已還原節點 " + countedNode + " 的次數"
                       + (usedRecovery ? "與一次受控恢復授權" : "") + "。" + Diagnostics.describe(e));
-                waitHuman(task, flow, "本次未呼叫任何模型：執行參數被 CLI 拒絕，屬於本專案的缺陷。"
-                      + "\n節點 " + countedNode + " 的重跑次數"
+                waitHumanForError(task, flow, "本次沒有真的執行 agent：系統送出的執行參數被工具拒絕，這是系統本身的缺陷，不是你或 agent 的問題。"
+                      + "\n這一步（" + countedNode + "）的重跑次數"
                       + (usedRecovery ? "與一次性受控恢復授權" : "")
-                      + (usedAutomaticHandoff != null ? "及自動責任交接額度" : "")
-                      + "已還原，額度與真人核准不受影響。"
-                      + "\n修正部署後直接續跑即可，不需重新核准。\n" + Diagnostics.describe(e));
+                      + (usedAutomaticHandoff != null ? "及自動處理額度" : "")
+                      + "已還原，用量與你的核准都不受影響。"
+                      + "\n管理者修正並部署後直接續跑即可，不需重新核准。", e);
             } else if (countedNode != null && SystemFailure.transientFailure(e)
                     && flow.systemRetries.getOrDefault(countedNode, 0) < SystemFailure.RETRY_LIMIT) {
                 // 系統自己沒跑起來，不是工作有問題：還原本輪計數與一次性授權後自動再試一次，
@@ -578,10 +617,10 @@ public class FlowEngine {
                                 + "已還原本輪計數與一次性授權。" + Diagnostics.describe(e));
                 run(task);
             } else {
-                audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_ERROR, Diagnostics.describe(e));
-                waitHuman(task, flow, (SystemFailure.transientFailure(e)
-                        ? "系統連續 " + SystemFailure.RETRY_LIMIT + " 次都沒能把這一步跑起來，這是系統或環境問題，不是工作內容有問題。\n"
-                        : "") + Diagnostics.describe(e));
+                // 技術細節由 explainer 寫進稽核紀錄（ERROR），這裡不重複記錄。
+                waitHumanForError(task, flow, SystemFailure.transientFailure(e)
+                        ? "系統連續 " + SystemFailure.RETRY_LIMIT + " 次都沒能把這一步跑起來，這是系統或環境問題，不是工作內容有問題。"
+                        : "", e);
             }
         }
     }
@@ -1163,7 +1202,7 @@ public class FlowEngine {
                 flow.prUrl = result.prUrl(); flow.publishedHead = head; store.saveFlow(task.id(), flow);
                 state(task, Task.State.PR_CREATED, "PR 已建立，尚未確認合併／發布／產品驗收：" + result.prUrl());
                 slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), result.prUrl());
-            } catch (Exception e) { waitHuman(task, flow, "發布停止；請查核後重新取得人工核准：\n" + Diagnostics.describe(e)); }
+            } catch (Exception e) { waitHumanForError(task, flow, "推分支、開 PR 沒有完成，任務沒有發布出去；確認下面的原因後，需要重新核准 PR。", e); }
         });
     }
     public void recover(Task task) {

@@ -440,7 +440,7 @@ class FlowEngineTest {
         assertThat(saved.planApprovals).containsKey("plan");
         assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
         // 模型根本沒被呼叫，直接續跑就是正確的下一步，因此會附「繼續執行」按鈕。
-        verify(slack).post(any(),any(),any(),argThat((String t)->t.contains("本次未呼叫任何模型")&&t.contains("已還原")
+        verify(slack).post(any(),any(),any(),argThat((String t)->t.contains("本次沒有真的執行 agent")&&t.contains("已還原")
                 &&t.contains("繼續執行")),any());
         verifyNoInteractions(publisher);
     }
@@ -729,6 +729,7 @@ class FlowEngineTest {
     AuditLog audit = mock(AuditLog.class);
     PullRequestPublisher publisher = mock(PullRequestPublisher.class);
     IndependentVerifier verifier = mock(IndependentVerifier.class);
+    ErrorExplainer explainer = mock(ErrorExplainer.class);
     FlowEngine engine;
     Task task = new Task("42", "c", "t", "u", "email failover");
     List<String> calls = new ArrayList<>();
@@ -825,7 +826,9 @@ class FlowEngineTest {
             FlowRun f = c.getArgument(1);
             return new IndependentVerifier.Receipt(workspaceHead, f.baselineRevision, f.snapshot.revision(), "start", "end", List.of());
         });
-        engine = new FlowEngine(catalog, props, store, executor, workspace, slack, audit, publisher, verifier);
+        // 說明 agent 以固定後備文字代替，不呼叫模型；專門的行為在 ErrorExplainerTest。
+        when(explainer.explain(any(), any(), any(), any())).thenAnswer(c -> ErrorExplainer.fallback(c.getArgument(2)));
+        engine = new FlowEngine(catalog, props, store, executor, workspace, slack, audit, publisher, verifier, explainer);
         engine.prepare(task); store.save(task);
     }
     JsonNode report(TeamDefinition.Gate gate) throws Exception {
@@ -989,6 +992,22 @@ class FlowEngineTest {
         verify(slack).post(any(), eq("c"), eq("t"), contains("目前沒有正在執行的一輪"));
         engine.run(task);
         assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+    }
+    @Test void runtimeFailureIsExplainedInPlainWordsInsteadOfAnExceptionDump() throws Exception {
+        when(explainer.explain(any(), any(), any(), any())).thenReturn("*發生了什麼*\nagent 在限定的步數內沒做完這一步。");
+        doThrow(new AgentRuntime.RuntimeExecutionException("已確認：Claude Code 回報 error_max_turns，結束碼 1"))
+                .when(executor).execute(any(), any(), any());
+
+        engine.run(task);
+
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        var text = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(slack, atLeastOnce()).post(any(), eq("c"), eq("t"), text.capture(), any());
+        assertThat(text.getAllValues()).anySatisfy(t -> assertThat(t)
+                .contains("agent 在限定的步數內沒做完這一步").doesNotContain("RuntimeExecutionException"));
+        // 說明只能引用這次停止訊息真的會提供的選項。
+        verify(explainer).explain(eq(task), contains("需求整理"), any(AgentRuntime.RuntimeExecutionException.class),
+                argThat(options -> options != null && options.stream().anyMatch(o -> o.startsWith("告訴它還缺什麼："))));
     }
     @Test void resultReturnedAfterAnInterruptIsNotUsed() throws Exception {
         // #1019：Codex 被停下時以結束碼 0 交出開頭一句「我會先核對…」，被當成正式計畫而顯示「沒有情境」。

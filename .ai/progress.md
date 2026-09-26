@@ -882,3 +882,13 @@ permission_denials 為空，費用 US$0.04；另實測 `ls -laR /usr/share` 符�
 - 部署 15:43：先備份 teams（`teams-backup.BPe2a3`）並替換 2 份 JSON 與 triage.md、intake.md；以 deploy-jar-safe.sh 部署 JAR
   （PID 314114，JAR `10f664c0996817f0f14592e6b1323804e37fe32376440bc5574042d7010ef339`，備份 `orchestrator-backup.y7dmdl`），0 ERROR、資料一致。
 - 下一步：使用者在 #1019 送「補充 #1019 核准需求變更 移除 REQ-016…」。Slack 端尚未實測。
+
+2026-09-26 Claude Code：系統例外改由 agent 白話說明（已建置，待 #1019 空檔部署）。
+- 新增 ErrorExplainer 與設定 AI_TEAM_EXPLAINER_MODEL（haiku）／AI_TEAM_EXPLAINER_ENABLED；FlowEngine 例外停止、發布失敗、
+  操作時系統錯誤、角色對話失敗改走白話說明；步驟名稱改中文；額度停止只移除技術內容。
+- VM 以 #1017 真實 error_max_turns 紀錄實測 haiku 兩輪：第一輪洩漏路徑、英文術語、自行補充選項效果（US$0.049）；
+  調整規則並提供選項說明後第二輪符合（US$0.028）。
+- #1019 已依使用者核准移除 REQ-016（新基準 af0fdb2f…），計畫自動核准、實作、獨立驗證通過；9/25 23:12、23:18 兩次因 Codex 串流被切斷
+  停給人（手動續跑成功），已將該訊號列為系統層失敗自動重試。
+- 隔離建置 `explainer-final2-build.uvX6tc`：445 項 0 失敗、10 opt-in 略過；check-source 通過；JAR `57f3a6f36d77ee357de400ceffe4bacffa9a05ba20e2a51c496cc75c97490598`。
+- 部署時 #1019 正在執行（implementation），deploy-jar-safe.sh 依設計拒絕部署；待任務空檔再部署。

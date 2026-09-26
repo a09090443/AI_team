@@ -15,6 +15,13 @@ class SystemFailureTest {
         assertThat(SystemFailure.transientFailure(new IOException("slack.com: Temporary failure in name resolution"))).isTrue();
     }
 
+    @Test void droppedStreamToTheModelServiceIsRetriedAutomatically() {
+        // #1019：Codex 串流被服務端切斷，CLI 重連 5 次後結束碼 1；兩次都停給人，手動續跑即成功。
+        assertThat(SystemFailure.transientFailure(new com.zipe.aiteam.runtime.AgentRuntime.RuntimeExecutionException(
+                "Codex 結束碼 1（Reconnecting... 2/5 (stream disconnected before completion: "
+                        + "websocket closed by server before response.completed)"))).isTrue();
+    }
+
     @Test void looksThroughTheCauseChain() {
         var wrapped = new IllegalStateException("無法執行 Claude Code",
                 new IOException("Cannot run program \"systemd-run\""));

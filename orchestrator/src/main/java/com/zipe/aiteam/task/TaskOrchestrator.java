@@ -52,6 +52,8 @@ public class TaskOrchestrator {
     private final PullRequestPublisher publisher;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.zipe.aiteam.flow.FlowEngine flowEngine;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.zipe.aiteam.flow.ErrorExplainer explainer;
 
     private final LinkedBlockingQueue<Runnable> work = new LinkedBlockingQueue<>();
     private final Semaphore slots;
@@ -159,8 +161,11 @@ public class TaskOrchestrator {
             if (pauseForQuota(task, e)) return;
             task.failure(Diagnostics.describe(e)); store.save(task);
             audit.record(task.id(), direct.role().name(), AuditLog.ACTION_ERROR, Diagnostics.describe(e));
-            slack.post(direct.role(), task.slackChannel(), task.slackThreadTs(), "對話 #" + task.id() + " 無法完成，目前沒有 agent 在處理；原工作任務未變更。\n" + Diagnostics.describe(e));
-            slack.update(Identity.SYSTEM, task.slackChannel(), task.statusMessageTs(), "角色對話 #" + task.id() + " 失敗，請查上述證據後重新提問", null);
+            String explained = explainer == null ? Diagnostics.forUser(e)
+                    : explainer.explain(task, "回答你的提問時", e, List.of("在同一討論串重新提問"));
+            slack.post(direct.role(), task.slackChannel(), task.slackThreadTs(), "對話 #" + task.id()
+                    + " 沒有完成，目前沒有 agent 在處理；原本的工作任務沒有被改動。\n\n" + explained);
+            slack.update(Identity.SYSTEM, task.slackChannel(), task.statusMessageTs(), "角色對話 #" + task.id() + " 沒有完成，原因見討論串說明", null);
         }
     }
 

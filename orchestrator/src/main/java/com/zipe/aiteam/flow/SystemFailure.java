@@ -28,7 +28,10 @@ final class SystemFailure {
             "Connection refused",
             "Broken pipe",
             "Failed to start transient service",  // systemd-run 暫時性失敗
-            "Read timed out");
+            "Read timed out",
+            // Codex 與服務端的串流被切斷（#1019 兩次停給人、使用者手動續跑都成功）；CLI 自己重連 5 次仍失敗才會結束。
+            "stream disconnected before completion",
+            "websocket closed by server");
 
     /** 只認明確的系統層訊號；認不出來的一律當成工作問題，交給人。 */
     static boolean transientFailure(Throwable error) {

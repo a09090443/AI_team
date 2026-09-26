@@ -172,6 +172,18 @@ public class AiTeamProperties {
     @Value("${AI_TEAM_TASK_TIMEOUT_SECONDS:0}")
     private long taskTimeoutSeconds;
 
+    /**
+     * 系統出錯時請 agent 以白話說明錯誤所用的模型（claude-code runtime）。每次停給人呼叫一次，
+     * 說明不需要深度推理，預設用便宜快速的 haiku。設 AI_TEAM_EXPLAINER_ENABLED=false 則一律用固定的後備文字。
+     */
+    @Value("${AI_TEAM_EXPLAINER_MODEL:haiku}")
+    private String explainerModel = "haiku";
+    @Value("${AI_TEAM_EXPLAINER_ENABLED:true}")
+    private boolean explainerEnabled = true;
+
+    public String explainerModel() { return explainerModel == null || explainerModel.isBlank() ? "haiku" : explainerModel.trim(); }
+    public boolean explainerEnabled() { return explainerEnabled; }
+
     @Value("${AI_TEAM_PROGRESS_INTERVAL_SECONDS:300}")
     private long progressIntervalSeconds = 300;
 
