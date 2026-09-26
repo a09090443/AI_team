@@ -27,6 +27,15 @@ class HumanOptionsTest {
         assertThat(text()).contains("需求清單本身有問題").contains("補充 #1014 核准需求變更 <要怎麼改與原因");
     }
 
+    @Test void aStoppedTaskCanAlwaysMoveToANewTaskWithTheLatestRules() {
+        assertThat(HumanOptions.options(task, flow, true, true, null))
+                .anyMatch(o -> o.kind().equals(HumanOptions.SUCCESSOR) && o.label().equals("改用新任務繼續")
+                        && HumanOptions.SUCCESSOR_COMMAND.equals(o.command()));
+        var dirty = new HumanOptions.Workspace("h", false, java.util.List.of("src/test/A.java"), "fp9");
+        assertThat(HumanOptions.options(task, flow, true, true, null, dirty))
+                .anyMatch(o -> o.label().equals("保存修改並改用新任務繼續") && o.command().equals("承接成新任務 保存 fp9"));
+    }
+
     @Test void noRequirementChangeOptionBeforeThereIsABaseline() {
         flow.node = "plan"; flow.baselineRevision = null;
 
@@ -72,11 +81,13 @@ class HumanOptionsTest {
         assertThat(text()).contains("核准測試計畫");
     }
 
-    @Test void saysNothingWhenNoOptionIsAvailable() throws Exception {
+    @Test void whenNothingElseAppliesTheOnlyWayOutIsANewTask() throws Exception {
         flow.node = "triage";
-        // triage 已經做出結論，原樣重跑沒有意義，所以連「繼續」也不提供。
+        // triage 已經做出結論，原樣重跑沒有意義，所以連「繼續」也不提供；但停下的任務不能沒有出路。
         flow.receipts.put("triage", new com.fasterxml.jackson.databind.ObjectMapper().readTree("{\"route\":\"human\"}"));
-        assertThat(HumanOptions.render(task, flow, false, false, null)).isEmpty();
+        assertThat(HumanOptions.options(task, flow, false, false, null)).extracting(HumanOptions.Option::kind)
+                .containsExactly(HumanOptions.SUCCESSOR);
+        assertThat(HumanOptions.render(task, flow, false, false, null)).contains("改用新任務繼續").doesNotContain("繼續執行");
     }
 
     // ---- 按鈕 ----

@@ -266,16 +266,27 @@ class FlowEngineTest {
         assertThat(jobs).isEmpty();
     }
 
-    @Test void continuationIsRefusedWhileTheTaskCanStillProceed() throws Exception {
+    @Test void ownerCanMoveAStoppedTaskToANewTaskWithTheLatestRulesEvenBeforeItIsExhausted() throws Exception {
+        // #1019：還能延長，但舊快照的審查規則只會繼續退回；改進後的規則只能透過新任務套用。
         task.state(Task.State.AWAIT_HUMAN); store.save(task);
+        var flow = store.flow(task.id()).orElseThrow();
+        flow.workspaceReady = true; flow.workspacePath = tmp.resolve("work").toString(); store.saveFlow(task.id(), flow);
+        provisioned = true;
+        when(slack.post(any(), eq("c"), isNull(), anyString())).thenReturn("new-thread");
+        when(workspace.provisionFrom(any(), any(), anyString(), anyString(), anyString(), anyString())).thenReturn(tmp);
+        when(workspace.pathFor(argThat((String id) -> !"42".equals(id)))).thenReturn(tmp.resolve("child"));
         List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(task, "承接成新任務", "someone-else", jobs::add);
+        assertThat(store.flow(task.id()).orElseThrow().successor).isNull();
 
         engine.resume(task, "承接成新任務", "u", jobs::add);
 
-        assertThat(store.flow(task.id()).orElseThrow().successor).isNull();
-        assertThat(jobs).isEmpty();
-        verify(slack).post(any(), any(), any(), contains("還能繼續，不需要承接"));
-        verify(workspace, never()).provisionFrom(any(), any(), anyString(), anyString(), anyString(), anyString());
+        var parent = store.flow(task.id()).orElseThrow();
+        assertThat(parent.successor).isNotNull();
+        assertThat(jobs).hasSize(1);
+        verify(slack).post(any(), eq("c"), isNull(), contains("決定改用新任務繼續，套用目前最新的團隊規則"));
+        assertThat(store.flow(parent.successor).orElseThrow().context).contains("負責人決定以新任務、最新配置繼續原任務");
     }
 
     @Test void continuationRefusesADirtyWorkspace() throws Exception {

@@ -169,6 +169,17 @@ public final class HumanOptions {
                         + "如果你知道還有沒修好的問題，直接把問題寫進來，系統才派得出去；"
                         + "只寫「續跑」不會改變上一輪的判斷依據。", null));
 
+        // 任務還能繼續時也允許承接：舊任務永遠用建立時的配置，改進後的團隊規則只能透過新任務套用。
+        if (flow.snapshot != null && !flow.dialogue) {
+            if (ws.canSaveAndContinue())
+                options.add(new Option(SUCCESSOR, "保存修改並改用新任務繼續",
+                        "工作區有 " + ws.uncommitted().size() + " 個檔案改了但還沒 commit，系統會先代為提交；之後同「改用新任務繼續」。",
+                        SUCCESSOR_SAVE_COMMAND + " " + ws.fingerprint()));
+            else options.add(new Option(SUCCESSOR, "改用新任務繼續",
+                    "開一個新任務，從目前最新的成果接著做，並改用最新的團隊規則與配置；這個任務會停在這裡不再處理。"
+                            + "次數重新計算，需求、測試計畫與 PR 仍要重新核准。", SUCCESSOR_COMMAND));
+        }
+
         if (briefReports) options.add(new Option(REPORT, "看完整報告",
                 "只是把完整內容叫出來看，不會改變任務狀態。", "檢視完整報告"));
 

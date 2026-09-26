@@ -898,3 +898,10 @@ permission_denials 為空，費用 US$0.04；另實測 `ls -laR /usr/share` 符�
   intake.md／plan.md 控制規模、FlowEngine 代為提交 QA 測試（commitVerificationChanges）與審查建議段落（reviewSuggestions）。
 - 隔離建置 `converge-build.Y4iBji`：447 項 0 失敗、10 opt-in 略過；check-source 通過；JAR `45bbbf9c3467256eb6452f9e9c2ec46a159a5e27cd9f4bc4300646f17829b806`。
 - 部署時 #1019 正在驗收（工作區有 QA 未提交的 MailServiceFailoverTest.java），背景等空檔後先替換 teams 提示再以 deploy-jar-safe.sh 部署。
+
+2026-09-26 Claude Code：收斂改動已部署；另開放隨時改用新任務繼續（已部署）。
+- 13:03 背景自動部署收斂改動（JAR `45bbbf9c…`，teams 規則備份 `teams-backup.beBI2A`），0 ERROR、資料一致。
+- #1019 13:01 停下：審查第 9 次退回（SC-018 測試資料 2 組 vs 計畫 3 組），自動處理 8/8；因舊快照仍用舊審查規則。
+- 使用者同意：承接不再限於次數用完；停止訊息一律提供「改用新任務繼續」。隔離建置 `successor-build.idexn9` 448 項 0 失敗；
+  部署 13:09（PID 421644，JAR `281ca8060e389d82064e884fbf2f79f3c9f03b267db6262c31a6d0bee6e911d4`，備份 `orchestrator-backup.5fto7Y`），0 ERROR、資料一致。
+- 下一步：使用者在 #1019 送「補充 #1019 狀態」後按「改用新任務繼續」。

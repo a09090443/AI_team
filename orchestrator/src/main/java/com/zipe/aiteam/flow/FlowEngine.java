@@ -823,8 +823,6 @@ public class FlowEngine {
      * 綁定使用者看到的那一版內容；保護路徑與 .git 一律拒絕。新任務仍會重新驗收與審查這個 commit。
      */
     private void saveUncommitted(Task task, FlowRun flow, String user, String fingerprint) throws Exception {
-        if (!FlowLimits.exhausted(flow))
-            throw new IllegalArgumentException("這個任務還能繼續，不需要承接；請依停止訊息的選項操作。");
         if (!flow.workspaceReady || !workspaces.exists(task.id()))
             throw new IllegalArgumentException("這個任務沒有工作區，沒有需要保存的修改。");
         requireWorkspace(task, flow);
@@ -848,8 +846,9 @@ public class FlowEngine {
     }
     private void succeed(Task task, FlowRun flow, String user, Consumer<Runnable> enqueue) throws Exception {
         if (flow.dialogue) throw new IllegalArgumentException("角色對話不能承接");
-        if (!FlowLimits.exhausted(flow))
-            throw new IllegalArgumentException("這個任務還能繼續，不需要承接；請依停止訊息的選項操作");
+        // 以前只有用完自動處理次數才能承接。但舊任務永遠用建立時的配置快照，改進後的規則（例如審查收斂）
+        // 只能透過新任務套用；#1019 還能延長，卻只會在舊規則下繼續被退回。停下等人時由負責人決定即可。
+        boolean exhausted = FlowLimits.exhausted(flow);
         Snapshot next = catalog.snapshot();
         if (!next.repository().equals(flow.snapshot.repository()))
             throw new IllegalArgumentException("目前服務配置的專案 repository 與原任務不同，不能承接");
@@ -864,7 +863,8 @@ public class FlowEngine {
 
         String id = store.nextTaskId();
         String rootText = "*任務 #" + id + "｜承接任務 #" + task.id() + "*\n"
-                + "原任務已用完系統允許的自動處理次數，由 <@" + user + "> 決定承接。"
+                + (exhausted ? "原任務已用完系統允許的自動處理次數，由 <@" + user + "> 決定承接。"
+                             : "由 <@" + user + "> 決定改用新任務繼續，套用目前最新的團隊規則與配置。")
                 + (parentHead == null ? "" : "\n工作區從原任務的最新成果接著做（commit=" + parentHead + "）。")
                 + "\n原任務的交接紀錄與已做過的決定會帶進來；需求、測試計畫與 PR 仍會請你重新核准。"
                 + "\n之後請在這個討論串操作。";
@@ -876,7 +876,8 @@ public class FlowEngine {
         child.acceptanceOwner = flow.acceptanceOwner;
         child.continuationOf = task.id();
         child.context = FlowContext.append("", "【承接自任務 #" + task.id() + "】\n"
-                + "原任務因用完自動處理次數而停止，本任務從它的最新成果接著做"
+                + (exhausted ? "原任務因用完自動處理次數而停止" : "負責人決定以新任務、最新配置繼續原任務")
+                + "，本任務從它的最新成果接著做"
                 + (parentHead == null ? "。" : "（分支 " + parentBranch + " 的 commit " + parentHead + "，已在本工作區）。")
                 + "\n原任務的需求基準與核准不沿用，需求、測試計畫與 PR 都要在本任務重新確認；"
                 + "但下方交接紀錄中負責人已做出的決定（包含已核准的需求變更）必須納入本任務的需求，"
@@ -936,7 +937,7 @@ public class FlowEngine {
             try {
                 if (command.startsWith(HumanOptions.SUCCESSOR_SAVE_COMMAND + " "))
                     saveUncommitted(task, flow, user, command.substring(HumanOptions.SUCCESSOR_SAVE_COMMAND.length()).trim());
-                else if (FlowLimits.exhausted(flow) && flow.workspaceReady && workspaces.exists(task.id()) && !workspaces.clean(task.id())) {
+                else if (flow.workspaceReady && workspaces.exists(task.id()) && !workspaces.clean(task.id())) {
                     // 以前丟例外字串「原任務工作區有未提交的修改，請先處理再承接」，沒說是哪些檔案、也沒有可按的出路。
                     postHumanOptions(task, flow, "任務 #" + task.id() + " 還沒有承接：工作區有檔案改了但還沒 commit，"
                             + "承接只會帶走已 commit 的內容。下面列出是哪些檔案，以及怎麼一起保存後再承接。", false);
