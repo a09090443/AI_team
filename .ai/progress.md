@@ -2,6 +2,18 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-09-26 — Claude Code（PR 驗收紀錄改 Markdown 條列）
+
+- PR 內文原本直接貼 `flow.receipts`（Map<String,JsonNode>）與 Receipt record 的 toString，讀者看到整坨 JSON。
+  新增 `PrReport`：依流程節點順序，每節點一個 `<details>`（標題附判定；驗收／審查預設展開），
+  欄位轉中文標籤的巢狀條列、編號＋狀態當項目標題、多行文字接續縮排；獨立驗證列 commit、台北時間與各指令結果，
+  不再外露 VM 紀錄路徑。`FlowEngine.prBody` 以 `##` 分段，審查建議改 `-` 條列（Slack 仍用「・」）。
+- 長度：單節點 12,000 字、驗收紀錄總計 40,000 字，於行邊界截斷。#1019 真實資料未設上限時
+  渲染超過 GitHub 65,536 字元上限的風險存在；加上限後渲染為 37,186 字。
+- 隔離建置 `pr-markdown-build.haUShN`：check-source 通過、451 項 0 失敗、10 opt-in 略過；
+  JAR `340121cbaab206a9ccd417816e4b47567e066ce057d580682b6d4008b881e583`。使用者同意後 22:42 台北時間部署（PID 450271，備份 `orchestrator-backup.0MXfNx`），
+  0 ERROR、任務資料前後一致。實際 PR 呈現待下次發 PR 時確認。未 commit。
+
 ## 2026-09-26 — Claude Code（顯示時間改台北時間）
 
 - 新增 `TaipeiTime`（分／秒兩種格式），`QuotaMessage.taipei` 改委派；階段心跳由

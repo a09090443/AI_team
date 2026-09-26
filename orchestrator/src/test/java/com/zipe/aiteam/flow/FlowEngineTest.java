@@ -910,6 +910,45 @@ class FlowEngineTest {
                 .contains("・小建議：日誌措辭可更一致");
         assertThat(FlowEngine.reviewSuggestions(new FlowRun(flow.snapshot), 8)).isEmpty();
     }
+    @Test void prBodyListsReceiptsAsMarkdownBulletsInsteadOfRawJson() throws Exception {
+        var flow = store.flow(task.id()).orElseThrow();
+        flow.receipts.clear();
+        flow.receipts.put("verification", mapper.readTree("{\"verdict\":\"PASS\",\"summary\":\"全部通過\",\"verify_passed\":true,"
+                + "\"scenario_results\":[{\"scenario_id\":\"SC-01\",\"status\":\"PASS\",\"actual_result\":\"寄出成功\\n第二行\","
+                + "\"evidence\":\"MailTest\",\"command\":\"mvn -B test\"}],\"findings\":[]}"));
+        flow.receipts.put("review", mapper.readTree("{\"verdict\":\"COMMENT\",\"summary\":\"可發布\",\"blockers\":[],"
+                + "\"findings\":[{\"severity\":\"LOW\",\"detail\":\"措辭可更一致\"}]}"));
+        flow.independentEvidence = new IndependentVerifier.Receipt("abc123", "base1", "rev1",
+                "2026-09-26T06:00:00Z", "2026-09-26T06:01:30Z",
+                List.of(new IndependentVerifier.CommandResult(List.of("mvn", "-B", "verify"), 0, "/vm/log", "sha9")));
+
+        String body = FlowEngine.prBody(task, flow);
+
+        assertThat(body).doesNotContain("{\"").doesNotContain("Receipt[")
+                .contains("## 驗收紀錄").contains("## 系統獨立驗證").contains("## 審查建議")
+                .contains("- 小建議：措辭可更一致")
+                .contains("- **判定**：✅ `PASS`").contains("- **品質檢查通過**：✅ 是")
+                .contains("  - `SC-01` ✅ `PASS`").contains("    - **實際結果**：寄出成功\n      第二行")
+                .contains("- 開始：2026-09-26 14:00:00（台北時間）")
+                .contains("  - ✅ `mvn -B verify`（exit 0）");
+        // 驗收節點依流程順序排在審查之前；空陣列不輸出空標題。
+        assertThat(body.indexOf("（verification）")).isLessThan(body.indexOf("（review）"));
+        assertThat(body).doesNotContain("**阻礙**").doesNotContain("/vm/log")
+                .contains("<details open><summary><b>").contains(" — ✅ PASS</summary>");
+    }
+    @Test void prBodyStaysUnderGithubLimitWhenReportsAreHuge() throws Exception {
+        var flow = store.flow(task.id()).orElseThrow();
+        var items = mapper.createArrayNode();
+        for (int i = 0; i < 400; i++) items.addObject().put("id", "REQ-" + i).put("description", "很長的需求描述".repeat(40));
+        flow.receipts.clear();
+        flow.receipts.put("intake", mapper.createObjectNode().put("summary", "需求").set("requirements", items));
+        flow.receipts.put("verification", mapper.readTree("{\"verdict\":\"PASS\",\"summary\":\"全部通過\"}"));
+
+        String receipts = PrReport.receipts(flow);
+
+        assertThat(receipts.length()).isLessThan(PrReport.RECEIPTS_LIMIT + 1_000);
+        assertThat(receipts).contains("此節點內容較長").contains("全部通過");
+    }
     @Test void humanFeedbackResumesConfiguredRepairNotWholePipeline() {
         mode = "blocked"; engine.run(task); calls.clear(); mode = "repair";
         List<Runnable> jobs = new ArrayList<>(); engine.resume(task, "已提供 SMTP 環境", "u", jobs::add); jobs.get(0).run();

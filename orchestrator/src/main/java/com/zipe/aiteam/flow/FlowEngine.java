@@ -670,19 +670,36 @@ public class FlowEngine {
      * 審查規則把「測試驗得不夠細」這類改為建議而非必改，這裡是它們的去處，不會因此消失。
      */
     static String reviewSuggestions(FlowRun flow, int max) {
+        List<String> lines = reviewSuggestionItems(flow);
+        if (lines.isEmpty()) return "";
+        return "\n\n審查建議（未擋發布，可另開任務處理）：\n" + String.join("\n", lines.stream().limit(max).map(line -> "・" + line).toList())
+                + (lines.size() > max ? "\n・…另有 " + (lines.size() - max) + " 項，見完整審查報告" : "");
+    }
+    static List<String> reviewSuggestionItems(FlowRun flow) {
         List<String> lines = new ArrayList<>();
         flow.snapshot.definition().nodes().forEach((id, node) -> {
             if (node.gate() != Gate.REVIEW || flow.receipts.get(id) == null) return;
             for (JsonNode finding : flow.receipts.get(id).path("findings")) {
                 String severity = finding.path("severity").asText();
                 if (!Set.of("MEDIUM", "LOW").contains(severity)) continue;
-                lines.add("・" + ("MEDIUM".equals(severity) ? "建議" : "小建議") + "："
+                lines.add(("MEDIUM".equals(severity) ? "建議" : "小建議") + "："
                         + Diagnostics.clip(finding.path("detail").asText(), 300));
             }
         });
-        if (lines.isEmpty()) return "";
-        return "\n\n審查建議（未擋發布，可另開任務處理）：\n" + String.join("\n", lines.stream().limit(max).toList())
-                + (lines.size() > max ? "\n・…另有 " + (lines.size() - max) + " 項，見完整審查報告" : "");
+        return lines;
+    }
+    /** PR 說明用 GitHub Markdown：標題分段、條列呈現，原始 JSON 仍在任務紀錄。 */
+    static String prBody(Task task, FlowRun flow) {
+        List<String> suggestions = reviewSuggestionItems(flow);
+        int max = 50;
+        String review = suggestions.isEmpty() ? "" : "\n\n## 審查建議（未擋發布，可另開任務處理）\n\n"
+                + String.join("\n", suggestions.stream().limit(max).map(line -> "- " + line.replace("\n", " ")).toList())
+                + (suggestions.size() > max ? "\n- …另有 " + (suggestions.size() - max) + " 項，見完整審查報告" : "");
+        return "- 配置版本：`" + flow.snapshot.revision() + "`\n- 需求基準：`" + flow.baselineRevision
+                + "`\n- 驗收負責人：" + flow.acceptanceOwner
+                + "\n\n## 需求\n\n" + task.requestText() + review
+                + "\n\n## 驗收紀錄\n\n" + PrReport.receipts(flow)
+                + "\n## 系統獨立驗證\n\n" + PrReport.independent(flow.independentEvidence);
     }
     /** 系統代為提交驗收補的測試；成功時已把流程指回驗收節點。 */
     private boolean commitVerificationChanges(Task task, FlowRun flow) throws Exception {
@@ -1253,9 +1270,7 @@ public class FlowEngine {
                 if (!Objects.equals(flow.origin, workspaces.origin(task.id())) || !Objects.equals(flow.branch, workspaces.currentBranch(task.id()))
                         || !flow.snapshot.definition().project().baseBranch().equals(workspaces.baseBranch(task.id()))) throw new SecurityException("Git 發布目標與配置快照不一致");
                 var result = publisher.publish(task.id(), "任務 #" + task.id() + " " + Diagnostics.clip(task.requestText().replace('\n', ' '), 90),
-                        "配置版本：" + flow.snapshot.revision() + "\n需求基準：" + flow.baselineRevision + "\n驗收負責人：" + flow.acceptanceOwner
-                                + "\n\n" + task.requestText() + reviewSuggestions(flow, 50)
-                                + "\n\n驗收紀錄：\n" + flow.receipts + "\n\n系統獨立驗證：\n" + flow.independentEvidence, flow.branch);
+                        prBody(task, flow), flow.branch);
                 flow.prUrl = result.prUrl(); flow.publishedHead = head; store.saveFlow(task.id(), flow);
                 state(task, Task.State.PR_CREATED, "PR 已建立，尚未確認合併／發布／產品驗收：" + result.prUrl());
                 slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), result.prUrl());
