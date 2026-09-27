@@ -26,8 +26,8 @@ Orchestrator 不重寫 agent 框架，只做 CLI 不管的事：任務狀態機�
    是四件不同的事。文件寫哪一級就只能主張哪一級。目前**尚未通過乾淨 VM 重建驗收**。
 2. **看文件狀態**。每份文件在[文件目錄](/catalog)標有狀態：
    `現行` 可據以行動；`紀錄` 是有日期的證據；`決策` 是 ADR；`歷史` 已被取代，**不可照做**。
-3. **同一文件內以最新日期段落為準**。許多文件採「追加更新、保留歷史」，
-   開頭或段落標題的日期（例如「2026-09-16」）比文件其他段落新時，以新段落為準。
+3. **現行文件只寫現況**；被取代的內容直接改寫，不留新舊並存。`紀錄`／`決策` 文件以追加帶日期段落保存歷史，
+   同一文件內以日期最新的段落為準。已移除的舊報告與一次性腳本需要時查 git 歷史。
 4. **程式與 schema 是最終依據**。文件與程式不一致時，以 `orchestrator/src/`、
    `orchestrator/src/main/resources/schema.sql`、`orchestrator/teams/` 為準，並回報文件需要修正。
 
@@ -61,7 +61,7 @@ Orchestrator 不重寫 agent 框架，只做 CLI 不管的事：任務狀態機�
 | 查資料庫、改 schema 或快照型別 | [data-model](/docs/data-model) | `store/TaskStore.java`、`schema.sql` |
 | Codex 參數、雙層沙箱、本機測試網路 | [codex-cli-argument-contract](/docs/codex-cli-argument-contract)、[codex-nested-sandbox](/docs/codex-nested-sandbox)、[local-test-capabilities](/docs/local-test-capabilities) | `runtime/CodexRuntime.java` |
 | 新增 runtime adapter | [multi-runtime](/docs/multi-runtime)、[opencode-runtime-report](/docs/opencode-runtime-report) | `runtime/AgentRuntime.java` |
-| 為什麼流程這樣設計 | [ADR 類文件](/catalog#decisions)、[corrected-architecture](/docs/corrected-architecture) | — |
+| 為什麼流程這樣設計 | [ADR 類文件](/catalog#decisions)、[multi-runtime](/docs/multi-runtime) | — |
 
 表中程式路徑省略了前綴 `orchestrator/src/main/java/com/zipe/aiteam/`。
 

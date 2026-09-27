@@ -13,8 +13,8 @@ QA 規劃在 Backend 與工作區建立之前，以需求和既有契約設計�
 缺少必要需求決策時向 PM／提出者回報並停止。READY 只代表計畫就緒，不代表環境已驗證。
 
 `qa_plan` 與 `qa` 各自持久化 stage_result、session、診斷 log 與費用。
-兩階段共用 QA Slack 帳號與 `AI_TEAM_MODEL_QA`／`AI_TEAM_RUNTIME_QA`，不需新 token。
-新增一次 QA 呼叫，耗時與費用須以實際任務量測。
+兩階段共用 QA Slack 帳號，不需新 token；runtime 與模型在配置式模式由團隊 JSON 的測試角色決定，
+legacy 模式用 `AI_TEAM_MODEL_QA`／`AI_TEAM_RUNTIME_QA`。
 
 Backend 取得計畫，交付實作、單元測試、啟動方式、環境與限制。
 QA 依原計畫逐情境執行，回報實際結果、操作及證據。讀碼僅供定位，不能取代行為驗證。
@@ -32,18 +32,5 @@ Code Reviewer 負責程式審查，並取得原測試計畫以查核驗收證據
 Backend 或 QA 續跑沿用原計畫，QA 保留最初的 commit 稽核基準。
 舊任務若沒有 qa_plan，不能事後補寫計畫冒充事前規劃或直接發布，須重新開始完整流程。
 既有 v2 任務保留建立時的 schema 與 prompt，可沿用舊欄位續跑；新規則不會竄改歷史計畫。
-已中止的 #1010 不自動重啟。本次也未修復該任務的 Codex bwrap/.agents 問題。
 
-## 驗證與部署（2026-09-05）
-
-隔離建置 68 項測試通過，含規劃順序、阻擋、漏測、QA 規劃暫停續跑與既有 QA 稽核基準續跑。
-（此為 2026-09-05 當時的數字。2026-09-10 全套為 237 項；2026-09-13
-新增 resume 與簡要回覆回歸後為 263 項，其中 10 項為 opt-in 實機測試、預設略過。
-每次驗收請以當次建置 log 為準，不要沿用本行數字。）
-已部署，啟動自檢通過，實際 QA 規劃設定為 sonnet／claude-code；JVM 有已建立的 443 連線。
-備份：`/home/vboxuser/ai-team/qa-plan-backup.CN4WOx`（含原 jar、提示詞與 SQLite）。
-尚未透過新的真實 Slack 任務驗證 agent 的情境計畫品質；自動化測試使用模擬 runtime，未消耗模型額度。
-
-2026-09-15 自動交接舊計數正規化與人工有界延長完成後，既有 VM 隔離完整 package 為
-289 項、0 失敗、10 項 opt-in 略過；其中 AutomaticHandoff／FlowEngine 針對測試 37 項通過。
-這只驗證流程機制，不代表 #1014 的產品缺陷或真實 Slack 續跑已完成。
+自動化測試使用模擬 runtime，不代表 agent 在真實任務中產出的情境計畫品質已被驗證。

@@ -8,10 +8,7 @@
 不是一鍵安裝：安裝媒體、官方工具鏈 checksum、系統套件與本人登入仍需先備妥。
 不得把舊 VM clone、暖快取建置或 mock 測試冒充從零驗證。
 
-2026-09-07 之後併入本文的變更：額度自動續跑、Slack 階段進度回報、真人測試計畫核准閘門、
-能力配置遷移與一次性受控恢復、Codex 雙層沙箱掛載點準備、本機測試網路能力、
-Codex CLI 參數契約修正。這些會直接改變新機驗收會遇到的畫面與指令，
-特別是 [§6.1 真人核准閘門](#61-真人核准閘門必讀否則全管線驗收會停住)。
+新機驗收最容易卡住的是 [§6.1 真人核准閘門](#61-真人核准閘門必讀否則全管線驗收會停住)，開始前先讀。
 
 ## 1. 獨立 VM 與系統前置條件
 
@@ -113,7 +110,7 @@ Codex 有四個實測過的前置條件會讓 QA 整段跑不起來，換 CLI �
 - **`codex exec resume` 選項位置**：permission profile、sandbox、schema、model 與
   reasoning 必須位於 `resume` 之後、session id 之前。舊寫法雖能啟動，卻會靜默退回
   `:read-only`，使 Maven 無法寫入 `/tmp` 與 `target`。fresh／resume 都必須跑契約測試；
-  詳見 [Codex CLI 參數契約](codex-cli-argument-contract.md#2026-09-13resume-選項必須放在子指令)。
+  詳見 [Codex CLI 參數契約](codex-cli-argument-contract.md#2-codex-exec-resume-的選項必須放在子指令)。
 - **本機測試網路只支援 Codex**：`localTestNetwork` 節點必須是 codex runtime、
   LIMITED 範圍、VERIFICATION 閘門且宣告 node 工具，否則配置載入就會被拒絕。
   把 QA 角色改成 claude-code 或 opencode 時必須一併關閉此能力，代價是需要本機 socket 的
@@ -157,7 +154,9 @@ unshare -Ur true
 ```
 
 各發行版的核心、安全政策或登入設定都可能限制必要能力；由管理員依實際錯誤查核，**不自動放寬整台 VM 的安全政策**。
-舊 VM 曾以 sysctl 放寬，原因與風險見 [sandbox-report.md](sandbox-report.md)。
+Ubuntu 24.04 起 AppArmor 預設 `kernel.apparmor_restrict_unprivileged_userns=1`，`unshare -Ur` 會以
+`write failed /proc/self/uid_map: Operation not permitted` 失敗；此時 systemd 會**靜默略過**檔案系統隔離。
+舊 VM 曾以 `/etc/sysctl.d/` 設為 0 放寬，這會放寬整台機器的 userns 限制，須由管理員評估後自行決定。
 指令成功仍不能證明隔離有效：必須通過 orchestrator 的實際越界寫入自檢與工具鏈自檢。
 本工具尚未設定開機自動啟動；登出／重開機後要再次驗證 user manager 與服務狀態。
 
@@ -216,8 +215,8 @@ repo 不可 shallow；基準分支在 env.sh 指定 develop。演練記錄基準
 | App-Level Token | `xapp-` | `SLACK_APP_TOKEN_<角色>` | 直接 @ 該角色不會有反應（其餘功能不受影響） |
 
 App-Level Token 的 scope 必須是 `connections:write`，且該 App 要開啟 Socket Mode、
-訂閱 `app_mention`、具備 `app_mentions:read`。設定步驟見
-[直接對角色提出請求](direct-agent-requests.md)。
+訂閱 `app_mention`、具備 `app_mentions:read`。設定步驟與疑難排解見
+[建立 Slack App](slack-agent-apps.md)。
 
 `CODEX_BIN` 指向 codex 執行檔；只有在有角色的 runtime 設為 codex 時才會被要求
 （Reviewer 預設就是），設定值打錯會在啟動時直接失敗，不會安靜退回 claude-code。
@@ -275,7 +274,8 @@ HEAD 的授權碼。原驗收負責人確認仍是既定範圍內可修復問題
 三件事先講清楚，免得驗收時誤判成故障：
 
 - 遷移**只接受執行能力設定**（`requiredTools`／`cachePaths`／建置與測試說明／`operations`／
-  各角色 `tools`／節點 `writablePaths`、`localTestNetwork`）。改 runtime、模型、路由、角色、
+  各角色 `tools`／節點 `writablePaths`、`localTestNetwork`）與**同一 runtime 內的角色模型**。
+  換模型後下一步一律開新對話，不以新模型接續舊 session。改 runtime、路由、角色、
   基準分支或核准政策一律拒絕，訊息是「請另建任務」——這是設計，不是 bug。
 - 套用遷移會清掉舊的計畫核准與一次性恢復授權，所以第 4 步不能省。
 - 「核准恢復驗收」對**同一個配置版本只能用一次**，而且不重設歷史次數。
@@ -346,8 +346,22 @@ preflight 本機通過不代表登入或 Slack 成功。核對本次啟動 log�
 env.sh、CLI 憑證／sessions、基準 repo、工具鏈不包含於此備份；完整災難復原須另外加密保管與驗證。
 沒有 CLI session 不能保證原對話續跑；不可把「應用備份」寫成完整 VM 還原保證。
 
+## 10. 疑難排解（舊 VM 實際踩過的坑）
+
+Slack 相關問題見 [建立 Slack App](slack-agent-apps.md#疑難排解)。
+
+| 症狀 | 原因與處理 |
+|---|---|
+| SSH 公鑰被拒（`Permission denied (publickey,…)`），客戶端確實有送出金鑰 | 從 Windows PowerShell 管線寫入 `authorized_keys` 時多了 CRLF。`cat -A ~/.ssh/authorized_keys` 結尾是 `^M$` 就是中了，以 `sed -i 's/\r$//'` 清掉；另確認 `chmod 755 ~ && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys` |
+| VM 從網路上消失，但 VirtualBox 顯示 running | 多半是編譯開滿核心導致 soft lockup。用 `VBoxManage controlvm "<VM>" screenshotpng vm.png` 截主控台畫面確認。預防：§3 的 `MAKEFLAGS=-j1 JOBS=1`，必要時加 `nice -n 19` |
+| `Native package "@anthropic-ai/claude-code-linux-x64" not found` | 真正的執行檔是 optional dependency，npm 先前失敗就會漏裝。修好 npm（例如 `unset npm_config_jobs`）後重裝即可；安裝中看到其他平台的空目錄是正常的 |
+| `ssh host 'claude --version'` 找不到指令 | Ubuntu 的 `~/.bashrc` 開頭對非互動式 shell 會直接 return。自動化一律自行 `export PATH` 或用絕對路徑；bootstrap 的啟動腳本已自行設定 PATH |
+| 下載極慢、IP 每次重開機都變 | VirtualBox 橋接到 Wi-Fi 網卡。改用 NAT + 埠轉發（§1 的 `127.0.0.1:2223`）；VM 執行中新增轉發用 `controlvm … natpf1`，`modifyvm` 需要獨占鎖，常出現 `already locked for a session` |
+| `Cannot access central in offline mode` | `mvn dependency:go-offline` 只是盡力預熱，不保證抓齊傳遞相依；實際建置不要加 `-o` |
+| 遠端重啟後服務不見了 | 在單一 SSH 指令裡「停舊的再起新的」，中途斷線就只剩停止。分兩步各自確認，或用 `service.sh` 並在啟動後檢查 `status` |
+
 ## 文件優先序
 
 本入口與 rebuild-verification 為現況；功能契約見 QA／quota／failure／review 專章。
 跨發行版能力與支援狀態以 linux-support 為準，ARM64 與非 systemd 配置目前不放行。
-vm-setup-manual、build-and-run 與 INSTALL-20260904-history 是歷史背景，不能混搭舊指令。
+舊版安裝手冊已移除（需要時查 git 歷史），不要混搭舊指令。

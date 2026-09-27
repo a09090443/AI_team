@@ -17,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * CodexRuntime 的解析與降級行為。
  *
- * 事件流的樣本取自 VM 上的實機輸出（見 docs-site/docs/codex-runtime-report.md），
+ * 事件流的樣本取自 VM 上的實機輸出，
  * 不是憑 API 文件想像出來的 —— 這個類別的價值全在於它能不能吃下 codex 真正吐出的東西。
  */
 class CodexRuntimeTest {

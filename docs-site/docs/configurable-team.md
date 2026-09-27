@@ -1,25 +1,12 @@
 # 配置式專案、角色與工作流程
 
-跨專案操作契約、每階段沙箱預檢、真人計畫核准及受控配置遷移，
-見 [跨專案執行契約](cross-project-execution.md)。此版尚未部署，勿與下方歷史部署混淆。
+跨專案操作契約、每階段沙箱預檢、真人計畫核准及受控配置遷移，見 [跨專案執行契約](cross-project-execution.md)；
+需求基準、前置契約與失效傳遞、系統獨立驗證及 PR_CREATED 見 [工程流程與驗證邊界](engineering-workflow.md)。
 
 ## 狀態與範圍
 
-**正式部署更新：**2026-09-06 18:08 已啟用 v2，詳見 [部署與重測準備](deploy-2026-09-06-v2.md)。
-本台 VM 以非機密 `team.env` 設定 AI_TEAM_DEFINITION（由 start/preflight 在 env.sh 之後讀取）；其他憑證仍在原 env.sh。
-
-後續更新：兩份範例已升為 **version 2**，加入需求基準、前置契約與失效傳遞、系統獨立驗證及 PR_CREATED。
-詳見 [工程流程與驗證邊界](engineering-workflow.md)。下列 12:10／123 項是 v1 歷史證據，不代表 v2 已部署。
-
-2026-09-06 本機實作，尚未部署到 VM，尚未以真實 Slack／CLI 跑完本版端對端流程。
-原正式服務與 #1011 不受本輪修改影響。範例配置的實際產品建置仍需在目標 Linux 環境驗證。
-
-本機驗證（2026-09-06 12:10，台北時間）：所選 17 個測試類別共 **123 項通過**，
-包含 13 項真實暫存 Git repo 測試；`mvn package` 成功。
-兩份範例皆已用打包 jar 的 `--validate-team` 通過靜態檢查，未啟動 Slack／Spring 服務或呼叫模型。
-另有來源檢查及 16 項 Linux 平台 fixture 斷言通過；不等於 Linux 實機驗收。
-未在本次 Windows 執行依賴 `/bin/sh` 的 RuntimeDiagnosticsTest 與 QuotaExceededTest 完整類別。
-測試輸出位於 `orchestrator/target/surefire-reports/`，不得把這些本機結果冒充正式部署成功。
+既有 VM 自 2026-09-06 起以非機密 `team.env` 設定 `AI_TEAM_DEFINITION` 啟用配置式模式（version 2），
+部署紀錄見 [2026-09-06 v2 部署](deploy-2026-09-06-v2.md)；憑證仍在 env.sh。
 
 新模式將角色名稱、模型、runtime、Slack token 引用、工具清單與流程節點放入 JSON。
 JSON 為可直接解析的配置格式，不代表未來綁定某個 CLI；runtime 仍由既有 adapter registry 決定。
@@ -36,7 +23,7 @@ export AI_TEAM_DEFINITION="$AI_TEAM_HOME/teams/spring-starters.json"
 
 新安裝會複製 `orchestrator/teams/`；既有服務升級須一併部署此資料夾與新版 jar，
 先備份資料庫及舊版檔案，再確認無執行中／排隊任務後重啟。不可在執行中的 target/ 建置。
-服務启动時完整讀取配置與資產；修改配置後須重啟，新任務才採用新版本。
+服務啟動時完整讀取配置與資產；修改配置後須重啟，新任務才採用新版本。
 
 可在啟動前只做靜態驗證，不連 Slack、不呼叫模型：
 
@@ -153,13 +140,13 @@ LIMITED 驗收節點若只在其核准的測試路徑留下未提交變更，系
 CLI session 仍存在原 runtime 狀態目錄，checkpoint 保存其 ID；環境變數所指的實際憑證仍由維運管理。
 
 修改／移除目前配置的角色不影響舊任務快照；舊快照需要的 runtime、工具、token 引用與工作區仍須保留。
-如果它们被移除，任務會明確受阻，不會自動換引擎、使用新 repo 或重建現場。
+如果它們被移除，任務會明確受阻，不會自動換引擎、使用新 repo 或重建現場。
 重啟時執行中、排隊或發布中的新模式任務都停下並要求人工確認，不自動重播可能已完成的外部動作。
 
 沒有 `flow_run` 的歷史任務沒有足夠資料可自動建立可信快照。新模式會拒絕續跑／發布這些任務，**不猜測遷移**。
 要處理它們，須以原專案環境停用 `AI_TEAM_DEFINITION`，走原 TaskOrchestrator 的 legacy 相容路徑，或另行做明確遷移。
 因此原始 StageSpec 常數與部分 role switch 暫時仍在，但不是新模式增刪角色的入口。
-待歷史未完成任務結束並驗收後，才能另做 legacy 清除；本轮没有删除任何舊工作或紀錄。
+待歷史未完成任務結束並驗收後，才能另做 legacy 清除。
 
 ## 尚待實機驗證
 
@@ -168,9 +155,9 @@ CLI session 仍存在原 runtime 狀態目錄，checkpoint 保存其 ID；環境
 - 任務在真實額度中斷與重啟後的續跑。
 - 以新模式走到 PR 人工閘門，再由使用者另行核准發布。
 - Node 範例是配置與流程測試範例，不代表已在任意 Node repo 完成產品驗收。
-# QA 明確模型設定（2026-09-08）
+## 角色的 reasoningEffort
 
-`spring-starters` 的 tester 現在使用 `runtime: "codex"`、
+`spring-starters` 的 tester 使用 `runtime: "codex"`、
 `model: "gpt-5.6-sol"`、`reasoningEffort: "medium"`，涵蓋 plan、verification 與 QA 唯讀對話。
 `reasoningEffort` 是角色選填欄位，目前僅 Codex 支援 low/medium/high/xhigh；
 新執行與 resume 都會傳入 `-c model_reasoning_effort="medium"`。
@@ -178,7 +165,7 @@ CLI session 仍存在原 runtime 狀態目錄，checkpoint 保存其 ID；環境
 這不是自動提升推理強度功能；需要 high 時由管理者修改配置，對新任務生效。
 設定依 OpenAI Docs 的 [Codex 配置參考](https://learn.chatgpt.com/docs/config-file/config-reference) 核對。
 
-## 新專案與所有任務共用的行為（2026-09-16）
+## 新專案與所有任務共用的行為
 
 下列行為都由程式依配置的節點類型、`scope`、`blocked`／`routes` 推導，**不依節點或角色名稱**，
 新增專案不需改程式。
@@ -193,7 +180,7 @@ CLI session 仍存在原 runtime 狀態目錄，checkpoint 保存其 ID；環境
 - **能不能繼續**：引擎擋人與停止訊息提供按鈕，都使用同一個判斷（`FlowLimits`），不會出現
   按了卻走不下去的按鈕。
 - **承接成新任務**：流程總次數用盡、且目前停住的節點沒有任何延長或恢復授權能通過時，停止訊息
-  只提供「承接成新任務」。新任務：開在頻道的新討論串；工作區從原任務分支的最新 commit 接著做
+  提供「承接成新任務」（任務停下等人時也可隨時「改用新任務繼續」，見 [pm-triage](pm-triage.md#隨時可改用新任務繼續)）。新任務：開在頻道的新討論串；工作區從原任務分支的最新 commit 接著做
   （原任務工作區必須乾淨，HEAD 變動則拒絕）；基準 commit 設為分岔點，PR 會包含原任務成果；
   帶入原任務交接紀錄與未解除的受阻發現；次數重新計算；**不沿用任何核准**，需求、測試計畫與 PR
   皆需重新核准。只有驗收負責人可以承接，原任務之後不再接受操作，現場與歷史保留。
@@ -202,8 +189,8 @@ CLI session 仍存在原 runtime 狀態目錄，checkpoint 保存其 ID；環境
   或排隊、沒有 agent 程序、所有團隊配置通過驗證，並比對所有任務資料與所有任務工作區在部署前後一致。
 - **卡在重試上限時**：目前這一步無法再啟動、延長也幫不上忙時，停止訊息不再提供選擇題、補充或「繼續」
   （按了都不會重新執行），而是說明原因。管理者部署修正後的配置，送「補充 #編號 狀態」會出現
-  「檢視配置更新」→「核准配置更新」→「重新執行這一步」三顆依序出現的按鈕。受控恢復授權原本只限驗收節點，
-  現在適用任何卡在重試上限的 agent 節點（仍需配置有能力變更、負責人核准、流程總次數未用盡、前置契約有效）。
+  「檢視配置更新」→「核准配置更新」→「重新執行這一步」三顆依序出現的按鈕。受控恢復授權
+  適用任何卡在重試上限的 agent 節點（仍需配置有能力變更、負責人核准、流程總次數未用盡、前置契約有效）。
 - **選擇題的邊界**：`human_decision.options` 只能放「負責人選了、流程就能照做」的事；需要有人改配置、補環境、
   給權限的，寫進 `also_needed`。同一個問題已回答過卻又被問時，不再提供按鈕並說明原因。
 - **計畫階段與 plan_revision**：`plan_revision` 由系統在計畫完成後計算；系統會明確告知計畫節點不得因缺少它而受阻

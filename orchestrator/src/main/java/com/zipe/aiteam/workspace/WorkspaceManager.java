@@ -21,7 +21,7 @@ import java.util.stream.Stream;
  *
  * <h2>為什麼是獨立 clone 而不是 git worktree</h2>
  *
- * 原設計寫的是 worktree，實測後改掉（見 docs-site/docs/workspace-report.md）。
+ * 原設計寫的是 worktree，實測後改掉。
  * worktree 的 .git 只是一個指向主 repo .git/worktrees 的指標檔，
  * index 與新物件都寫在主 repo 底下。沙箱只開放工作區可寫時，
  * git add 會直接失敗：index.lock: Read-only file system。

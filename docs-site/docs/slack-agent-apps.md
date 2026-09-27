@@ -1,103 +1,57 @@
-# 建立五個 Agent 的 Slack App
+# 建立 Slack App（主 App 與五個角色）
 
-讓 PM、Architecture、Backend、QA、Code Reviewer 成為 workspace 裡獨立的使用者，
-交接時才能真正 @ 到對方。
+系統需要一個主 App 與五個角色 App：
 
-不做也能運作 —— 角色會退回「一個 bot 換名字」的模式，
-差別是不會出現在成員清單、**交接訊息裡的 mention 會變成粗體文字而 tag 不到人**。
-
-這五個 App 除了發言，還要能接收 `app_mention` —— 使用者可以在 Slack 直接 @ 某個角色
-問問題（唯讀對話）。所以 manifest 含 `chat:write` 與 `app_mentions:read`、訂閱
-`app_mention`、開啟 Socket Mode，每個 App 另外需要一組 App-Level Token（`xapp-`）。
-設定步驟見 [直接對角色提出請求](direct-agent-requests.md)。
-
-它們仍然沒有互動元件，也沒有能力觸發或中止任務 —— 任務排程、審批按鈕與流程控制
-全部在主 App `zipe-ai-team`。
-
----
-
-## 你需要準備
-
-- 五份 manifest：`deploy/agent-manifests/` 底下的 `pm.yaml`、`architecture.yaml`、
-  `backend.yaml`、`qa.yaml`、`code-review.yaml`
-- 對該 workspace 安裝 App 的權限
-- 大約 12 分鐘（每個 App 步驟相同）
-
----
-
-## 步驟：以 PM Agent 為例
-
-其餘四個完全一樣，只是換一份 manifest。
-
-### 1. 建立 App
-
-1. 開 <https://api.slack.com/apps>
-2. 右上角 **Create New App**
-3. 選 **From a manifest**（不是 From scratch）
-4. 選擇你的 workspace（`AI-team`），**Next**
-5. 把 `deploy/agent-manifests/pm.yaml` 的**全部內容**貼進去
-
-   > 頁面預設可能是 JSON 分頁，記得切到 **YAML**。
-
-6. **Next** → 檢查摘要 → **Create**
-
-### 2. 安裝到 workspace
-
-1. 左側選 **OAuth & Permissions**
-2. 最上方 **Install to Workspace** → **Allow**
-
-### 3. 複製 Bot Token
-
-同一頁上方會出現 **Bot User OAuth Token**，格式是 `xoxb-...`。
-
-> ⚠️ **只要 `xoxb-` 開頭這一個。**
-> 另一種 `xapp-` 開頭的 App-Level Token 只有主 App `zipe-ai-team` 需要，
-> 這幾個角色 App 不需要，也不要填進去。
-
-### 4. （選用）換頭像
-
-**Basic Information** → 往下找 **Display Information** → **App icon**。
-
-emoji 在這裡沒用，要上傳圖片。不換也可以，Slack 會用預設圖示。
-
-### 5. 其餘四個重複一次
-
-| manifest | App 名稱 | 填進哪個環境變數 |
+| App | manifest | 用途 |
 |---|---|---|
-| `pm.yaml` | PM Agent | `SLACK_BOT_TOKEN_PM` |
-| `architecture.yaml` | Architecture Agent | `SLACK_BOT_TOKEN_ARCHITECTURE` |
-| `backend.yaml` | Backend Agent | `SLACK_BOT_TOKEN_BACKEND` |
-| `qa.yaml` | QA Agent | `SLACK_BOT_TOKEN_QA` |
-| `code-review.yaml` | Code Reviewer | `SLACK_BOT_TOKEN_CODE_REVIEW` |
+| 主 App `zipe-ai-team` | `deploy/slack-app-manifest.yaml` | 接收需求、排程、按鈕與流程控制、佇列狀態與錯誤訊息 |
+| PM／Architecture／Backend／QA／Code Reviewer | `deploy/agent-manifests/*.yaml` | 以角色身分發言、交接時真正 @ 到對方、接收對該角色的直接提問 |
+
+角色 App 不做也能運作——角色會退回「主 App 換名字」的模式，差別是不會出現在成員清單，
+**交接訊息裡的 mention 會變成粗體文字而 tag 不到人**，也不能直接 @ 角色提問。
 
 ---
 
-## 步驟：填進設定並邀請進頻道
+## 1. 以 manifest 建立 App（六個都一樣）
 
-### 6. 填 token
+1. 開 <https://api.slack.com/apps> → **Create New App** → **From a manifest**（不是 From scratch）
+2. 選擇 workspace，**Next**
+3. 把對應 manifest 的**全部內容**貼進去；頁面預設可能是 JSON 分頁，記得切到 **YAML**
+4. **Next** → 檢查摘要 → **Create**
+5. **OAuth & Permissions → Install to Workspace → Allow**，複製 **Bot User OAuth Token**（`xoxb-`）
+6. **Basic Information → App-Level Tokens → Generate Token and Scopes**：名稱隨意，
+   scope 選 **`connections:write`**，複製 `xapp-` token。scope 無法事後修改，選錯只能重新產生
+7. （選用）**Basic Information → Display Information → App icon** 換頭像；只能上傳圖片
 
-```bash
-ssh -t -p 2222 vboxuser@127.0.0.1 "nano ~/ai-team/env.sh"
+manifest 已包含：Socket Mode、訂閱 `app_mention`、`chat:write`、`app_mentions:read`；
+主 App 另有 `chat:write.customize`、`reactions:write` 與互動元件（按鈕）。
+刻意不給 `channels:history`：只處理被明確 @ 的訊息，不讀頻道歷史。
+
+## 2. 填進設定
+
+在 VM 用編輯器改 `~/ai-team/env.sh`（權限 600），**不要把 token 貼進聊天或 shell 指令歷史**：
+
+| App | Bot Token（`xoxb-`） | App-Level Token（`xapp-`） |
+|---|---|---|
+| 主 App | `SLACK_BOT_TOKEN` | `SLACK_APP_TOKEN` |
+| PM Agent | `SLACK_BOT_TOKEN_PM` | `SLACK_APP_TOKEN_PM` |
+| Architecture Agent | `SLACK_BOT_TOKEN_ARCHITECTURE` | `SLACK_APP_TOKEN_ARCHITECTURE` |
+| Backend Agent | `SLACK_BOT_TOKEN_BACKEND` | `SLACK_APP_TOKEN_BACKEND` |
+| QA Agent | `SLACK_BOT_TOKEN_QA` | `SLACK_APP_TOKEN_QA` |
+| Code Reviewer | `SLACK_BOT_TOKEN_CODE_REVIEW` | `SLACK_APP_TOKEN_CODE_REVIEW` |
+
+角色缺 Bot Token 時發言退回主 App 名稱覆寫；缺 App-Level Token 時直接 @ 該角色不會有反應，其餘功能不受影響。
+每個角色要用自己的 token，不可共用主 App 的。
+
+`AI_TEAM_ALLOWED_USERS` 填 Slack **member ID**（`U` 開頭），不是顯示名稱：
+點自己的頭像 → 檢視完整個人檔案 → 右側 `⋯` → 複製成員 ID。
+
+## 3. 六個都邀請進頻道
+
+**安裝到 workspace ≠ 加入頻道。** 沒邀請的話主 App 收不到 @，角色 App 發言會得到 `not_in_channel`：
+
 ```
-
-檔案最後面：
-
-```bash
-export SLACK_BOT_TOKEN_PM="xoxb-..."
-export SLACK_BOT_TOKEN_ARCHITECTURE="xoxb-..."
-export SLACK_BOT_TOKEN_BACKEND="xoxb-..."
-export SLACK_BOT_TOKEN_QA="xoxb-..."
-export SLACK_BOT_TOKEN_CODE_REVIEW="xoxb-..."
-```
-
-`Ctrl+O` 存檔、`Ctrl+X` 離開。
-
-### 7. 五個都邀請進頻道 ⚠️
-
-**安裝到 workspace ≠ 加入頻道。** 沒邀請的話 token 正確也貼不進去，
-會得到 `not_in_channel`。在 AI 團隊所在的頻道輸入：
-
-```
+/invite @zipe-ai-team
 /invite @PM Agent
 /invite @Architecture Agent
 /invite @Backend Agent
@@ -105,45 +59,30 @@ export SLACK_BOT_TOKEN_CODE_REVIEW="xoxb-..."
 /invite @Code Reviewer
 ```
 
-### 8. 重啟
+## 4. 重啟並驗證
+
+確認沒有執行中／排隊任務後重啟（stop 被拒絕時不要強制殺服務）：
 
 ```bash
-ssh -p 2222 vboxuser@127.0.0.1 'pkill -f "[a]i-team-orchestrator-0.1.0.jar"; sleep 2; (setsid nohup bash ~/ai-team/start.sh > ~/ai-team/orchestrator.log 2>&1 </dev/null &)'
+bash ~/ai-team/service.sh stop && bash ~/ai-team/service.sh start
+bash ~/ai-team/service.sh status
+grep -aE "Slack 身分|tag 不到" ~/ai-team/orchestrator.log | tail -2
 ```
 
----
+成功時是 `Slack 身分：獨立帳號 [PM ARCHITECTURE BACKEND QA CODE_REVIEW]　共用主 token [無]`。
 
-## 驗證
+逐個確認 token 對應到哪個 bot（不會印出 token 本身），五行應對應五個不同的 bot 名稱：
 
 ```bash
-ssh -p 2222 vboxuser@127.0.0.1 'grep -aE "Slack 身分|tag 不到" ~/ai-team/orchestrator.log | tail -2'
-```
-
-成功：
-
-```
-Slack 身分：獨立帳號 [PM ARCHITECTURE BACKEND QA CODE_REVIEW]　共用主 token [無]
-```
-
-還沒成功的話會是：
-
-```
-Slack 身分：獨立帳號 [無]　共用主 token [PM ARCHITECTURE BACKEND QA CODE_REVIEW]
-WARN 共用主 token 的角色 tag 不到 ——⋯
-```
-
-要逐個確認 token 對應到哪個 bot（不會印出 token 本身）：
-
-```bash
-ssh -p 2222 vboxuser@127.0.0.1 'source ~/ai-team/env.sh
+source ~/ai-team/env.sh
 for r in PM ARCHITECTURE BACKEND QA CODE_REVIEW; do
   v="SLACK_BOT_TOKEN_$r"; t="${!v}"
   [ -z "$t" ] && { echo "$r: 未設定"; continue; }
   echo "$r: $(curl -s -X POST https://slack.com/api/auth.test -H "Authorization: Bearer $t" | grep -oE "\"user\":\"[^\"]*\"|\"error\":\"[^\"]*\"")"
-done'
+done
 ```
 
-五行應該對應到五個不同的 bot 名稱。若出現重複，代表有 token 貼錯。
+直接 @ 角色的最終驗收見 [直接對角色提出請求](direct-agent-requests.md)。
 
 ---
 
@@ -151,28 +90,24 @@ done'
 
 | 症狀 | 原因與處理 |
 |---|---|
-| 建立 App 時 manifest 被拒絕 | `long_description` 必須超過 173 字元。五份 manifest 都已符合，若你自己改過內容要注意 |
-| `invalid_auth` | 多半是貼到 `xapp-` 開頭的 App-Level Token。要 `xoxb-` 開頭那個 |
-| 五個角色顯示同一個 bot 名稱 | 同一個 token 貼了多次。用上面的驗證指令逐個確認 |
-| 訊息貼不出來、log 出現 `not_in_channel` | 該 App 沒被 `/invite` 進頻道。安裝到 workspace 不等於加入頻道 |
-| 重啟後仍顯示「共用主 token」 | env.sh 沒存到，或改到了 `deploy/env.sh.template`（那是範本，不是服務讀的檔案）。服務讀的是 VM 上的 `~/ai-team/env.sh` |
-| 交接訊息裡是粗體名稱而不是藍色 mention | 該角色沒有獨立 token。mention 需要真正的 bot user ID，名稱覆寫出來的假身分沒有 |
+| manifest 被拒絕：`long_description` | 選填，但填了就必須 > 173 且 ≤ 4000 字元。現有 manifest 都已符合；自行修改時用 PowerShell `$t.Length` 算字數，不要用 Git Bash `wc -m`（非 UTF-8 locale 下會算成位元組） |
+| manifest 其他欄位 | `description` ≤ 140 字元；`display_information.name` ≤ 35；`bot_user.display_name` ≤ 80 且不可含空白或句點 |
+| 啟動時 `Failed to connect to the Socket Mode endpoint URL (error: missing_scope)` | App-Level Token 的 scope 不是 `connections:write`，要重新產生 |
+| `invalid_auth` | 多半是把 `xapp-` 貼到 Bot Token 欄位，或反過來 |
+| 五個角色顯示同一個 bot 名稱 | 同一個 token 貼了多次，用上面的驗證指令逐個確認 |
+| @主 App 後完全沒反應、log 也沒動靜 | 主 App 沒被 `/invite` 進頻道，Slackbot 會私下提示「他們不在此頻道中」 |
+| Bot 在頻道內、@ 後仍沒反應 | `AI_TEAM_CHANNEL_ID` 設錯，訊息被過濾。`grep -a "忽略非指定頻道" ~/ai-team/orchestrator.log` 會印出實際收到的頻道 ID |
+| 重啟後仍顯示「共用主 token」 | 改到的是 `deploy/env.sh.template`（範本），服務讀的是 VM 上的 `~/ai-team/env.sh`；或檔案沒存到 |
+| 新增 scope 後沒生效 | 需要 **Reinstall to Workspace**；若 Bot Token 因此更換，也要更新 env.sh |
 
 ---
 
-## 這五個 App 拿不到什麼權限
+## 角色 App 拿不到什麼權限
 
-值得知道邊界在哪：
+- **不能讀頻道內容**：沒有 `channels:history`，只收得到明確 @ 它的那則訊息
+- **被 @ 時只做唯讀對話**：不能因此改動任務或核准 PR；明確派工要用「執行」前綴，見 [直接對角色提出請求](direct-agent-requests.md)
+- **不能觸發或中止任務**：沒有互動元件，按鈕與流程控制全部在主 App
+- **只能發到被邀請進去的頻道**
 
-- **不能讀頻道內容** —— 沒有 `channels:history`，只收得到明確 @ 它的那則訊息
-- **只接收 `app_mention`** —— 被 @ 到會以唯讀對話回答，不能因此改動任務或核准 PR
-- **不能觸發或中止任務** —— 沒有互動元件，按鈕與流程控制全部在主 App
-- **發訊息只能發到被邀請進去的頻道**
-
-交接訊息中的 mention 是**通知**，不是**觸發**。實際的執行順序由 orchestrator 驅動，
-理由見 `interaction-model.md` 的「交接是看得見的」一節。
-# 2026-09-06 更新
-
-以下保留原唯寫 App 的建置紀錄。直接 @角色的新版設定請改看
-[直接對角色提出請求](direct-agent-requests.md)；目前 manifest 已包含接收事件所需的 scope 與 Socket Mode。
-只更新 manifest 不代表功能已啟用，仍需重新授權、各角色 App Token 與新版服務部署。
+交接訊息中的 mention 是**通知**，不是**觸發**；實際執行順序由 orchestrator 驅動，
+理由見 [互動模型](interaction-model.md)。

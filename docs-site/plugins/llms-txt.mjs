@@ -44,7 +44,7 @@ export default function llmsTxtPlugin(context, options) {
         `> ${options.summary}`,
         '',
         '文件狀態：' + Object.values(statuses).map((s) => `「${s.label}」${s.description}`).join('；') + '。',
-        '「歷史」文件已被取代，不可照做；同一文件內以日期最新的段落為準；文件與程式不一致時以程式為準。',
+        '「歷史」文件已被取代，不可照做；紀錄與決策文件內以日期最新的段落為準；文件與程式不一致時以程式為準。',
         '',
         '## AI Agent 入口',
         '',
@@ -54,8 +54,10 @@ export default function llmsTxtPlugin(context, options) {
       for (const category of categories) {
         const items = docs.filter((doc) => doc.category === category.id);
         if (items.length === 0) continue;
-        lines.push('', `## ${category.id === 'history' ? 'Optional' : category.label}`, '');
-        if (category.id === 'history') lines.push(`${category.label}：${category.description}`, '');
+        // 整個分類都是已被取代的歷史文件時，依 llms.txt 慣例放進 Optional 區段。
+        const optional = items.every((doc) => doc.status === 'historical');
+        lines.push('', `## ${optional ? 'Optional' : category.label}`, '');
+        if (optional) lines.push(`${category.label}：${category.description}`, '');
         for (const doc of items) {
           const when = doc.readWhen ? ` 何時讀：${doc.readWhen}` : '';
           lines.push(`- [${doc.title}](${base}docs/${doc.id}.md): 〔${statuses[doc.status].label}〕${doc.summary}${when}`);

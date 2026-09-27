@@ -349,7 +349,7 @@ public class AiTeamProperties {
                 .anyMatch(r -> runtimeId.equals(roleRuntime(r)));
     }
 
-    /** 觸發者白名單。見 architecture-review.md I5：只靠頻道權限不夠。 */
+    /** 觸發者白名單。只靠頻道權限不夠。 */
     public Set<String> allowedUsers() {
         if (allowedUsersRaw == null || allowedUsersRaw.isBlank()) return Set.of();
         return Arrays.stream(allowedUsersRaw.split(","))

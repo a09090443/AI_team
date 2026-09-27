@@ -114,12 +114,8 @@ Codex 沒有細粒度 CLI 工具白名單，不能把前置宣告當成命令限
 
 ## 驗證範圍
 
-涵蓋兩種技術棧的同一引擎、CLI 白名單、缺工具、快取缺失、越界／symlink、
+程式測試涵蓋兩種技術棧的同一引擎、CLI 白名單、缺工具、快取缺失、越界／symlink、
 唯讀拒絕、預檢失敗不呼叫模型、真人核准版本與不自動排隊、配置預覽及遷移歷史。
-VM opt-in `AI_TEAM_PREFLIGHT_SMOKE=true` 實測工具存在、缺工具及唯讀 pin 拒絕。
-測試目录位於隔離建置 target/preflight-smoke，避免 `/tmp` 被 PrivateTmp 隱藏。
-這不等於真實 Slack 多專案端到端驗收；本輪不部署、不改動線上 #1014。
-
-2026-09-09 最終隔離 Maven package：203 項中 200 通過、3 項既有 opt-in 略過。
-3 項預檢 VM smoke 已啟用並通過。check-source 與 16 fixture 通過。
-候選 jar 靜態驗證兩份配置通過（Node 驗證使用既有 repo 路徑，非真正 Node 專案建置）。
+VM 上以 opt-in `AI_TEAM_PREFLIGHT_SMOKE=true` 實測工具存在、缺工具及唯讀 pin 拒絕；
+測試目錄位於隔離建置的 `target/preflight-smoke`，避免 `/tmp` 被 PrivateTmp 隱藏。
+這不等於真實 Slack 多專案端到端驗收。

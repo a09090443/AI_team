@@ -104,7 +104,7 @@ agent 不能自行指定角色或跳到任意節點。
 | `orchestrator/prompts/`、`orchestrator/schemas/` | legacy 五角色的提示與 schema |
 | `orchestrator/src/main/resources/schema.sql` | SQLite DDL 唯一來源 |
 | `deploy/bootstrap/` | 從零建置工具（新機只用這裡） |
-| `deploy/deploy-*.sh` | 特定舊 VM 的歷史升級腳本，不用於新機 |
+| `deploy/deploy-orchestrator.sh`、`deploy-jar-safe.sh` | 既有 VM 的受控部署（新機不用） |
 | `deploy/agent-manifests/` | 角色 Slack App manifest |
 | `.ai/` | Codex 與 Claude Code 的跨工具交接紀錄（不是執行設定） |
 

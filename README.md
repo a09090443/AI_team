@@ -17,13 +17,13 @@ Orchestrator 不重寫 Agent 框架，只做 Agent CLI 不管的事：
 |---|---|---|
 | 人機介面 | Slack App | 事件接收、ack、去重、觸發者授權、thread 回覆 |
 | 任務治理 | **Java Orchestrator** | 任務狀態機、佇列與並行控制、人工審批閘門、稽核紀錄 |
-| 安全隔離 | **ExecutionSandbox** | 專用 user／容器、唯讀掛載、網路白名單、逾時強制 |
-| Agent 執行 | Runtime 原生能力 | 角色系統提示、工具權限、worktree 隔離、回合上限 |
-| 產物 | Git | 分支、commit、PR |
+| 安全隔離 | **ExecutionSandbox** | systemd user unit：唯讀檔案系統、限定可寫路徑、資源上限、逾時 |
+| Agent 執行 | Runtime 原生能力 | 角色系統提示、工具權限、回合上限、結構化輸出 |
+| 產物 | Git | 每任務獨立 clone、分支、commit、PR |
 
 安全隔離刻意獨立成一層包在 Runtime 外面 —— 若安全依賴各 runtime 自己的權限旗標，
 系統安全性等於所有 runtime 中最弱的那一個。詳見
-[docs-site/docs/corrected-architecture.md](docs-site/docs/corrected-architecture.md) 與
+[docs-site/agent/system-map.md](docs-site/agent/system-map.md) 與
 [docs-site/docs/multi-runtime.md](docs-site/docs/multi-runtime.md)。
 
 每個角色以自己的 Slack 身分發言，階段交接在同一討論串中公開可見；
@@ -38,7 +38,7 @@ orchestrator/
 ├── src/main/java/com/zipe/aiteam/
 │   ├── task/                   # 狀態機、佇列、審批閘門
 │   ├── flow/                   # 配置式流程引擎、需求追溯、獨立驗證
-│   ├── runtime/                # AgentRuntime 介面與 Claude Code／Codex adapter
+│   ├── runtime/                # AgentRuntime 介面與 Claude Code／Codex／opencode adapter
 │   ├── sandbox/                # 執行隔離
 │   ├── slack/                  # ack-first 進入點、角色身分發言
 │   └── store/                  # SQLite 任務儲存與稽核紀錄
@@ -48,7 +48,7 @@ orchestrator/
 deploy/
 ├── bootstrap/                  # 從零建置工具（新機用這裡）
 ├── agent-manifests/            # 各角色的 Slack App manifest
-└── deploy-*.sh                 # 特定舊 VM 的歷史升級腳本，不用於新機
+└── deploy-*.sh                 # 既有 VM 的受控部署（新機不用）
 docs-site/                      # 文件網站：docs/ 原始文件、agent/ 入口頁、catalog.mjs 目錄
 .ai/                            # Codex 與 Claude Code 的跨工具交接記錄
 ```
@@ -107,7 +107,7 @@ v2 流程加入需求基準與追溯、前置契約與失效傳遞、系統獨�
 | 從零建置 | [INSTALL.md](docs-site/docs/INSTALL.md) |
 | 建置演練證據與缺口 | [rebuild-verification.md](docs-site/docs/rebuild-verification.md) |
 | Linux 能力與驗證矩陣 | [linux-support.md](docs-site/docs/linux-support.md) |
-| 架構 | [corrected-architecture.md](docs-site/docs/corrected-architecture.md)、[architecture-review.md](docs-site/docs/architecture-review.md) |
+| 架構 | [system-map.md](docs-site/agent/system-map.md)、[multi-runtime.md](docs-site/docs/multi-runtime.md) |
 | 互動模型 | [interaction-model.md](docs-site/docs/interaction-model.md) |
 | 配置式團隊 | [configurable-team.md](docs-site/docs/configurable-team.md) |
 | v2 工程流程 | [engineering-workflow.md](docs-site/docs/engineering-workflow.md) |

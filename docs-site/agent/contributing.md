@@ -47,7 +47,7 @@ description: agent 在本 repo 修改程式、配置或文件時必須遵守的�
 ## 其他注意事項
 
 - **不要再擴充 legacy role switch**；新角色與流程一律走 `orchestrator/teams/`。
-- `deploy/deploy-*.sh` 是特定舊 VM 的歷史升級腳本，不要用於新機，也不要當範本擴充。
+- `deploy/deploy-orchestrator.sh`、`deploy/deploy-jar-safe.sh` 只用於升級既有 VM；新機一律走 `deploy/bootstrap/`。不要再新增一次性的 `deploy-<功能>-<日期>.sh`。
 
 ## 安全與證據
 

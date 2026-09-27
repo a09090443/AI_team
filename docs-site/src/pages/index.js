@@ -15,7 +15,7 @@ const sections = [
     number: '02',
     title: '系統架構',
     description: '協調器、Slack、執行隔離與 Agent Runtime 的責任邊界。',
-    to: '/docs/corrected-architecture',
+    to: '/agent/system-map',
     meta: 'SYSTEM DESIGN',
   },
   {

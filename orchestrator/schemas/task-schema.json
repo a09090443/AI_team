@@ -1,5 +1,5 @@
 {
-  "$comment": "PM Agent 的輸出 schema。透過 claude -p --json-schema \"$(cat task-schema.json)\" 傳入，結果會出現在回應的 structured_output 欄位。對應 architecture-review.md 的 I2。",
+  "$comment": "PM Agent 的輸出 schema。透過 claude -p --json-schema \"$(cat task-schema.json)\" 傳入，結果會出現在回應的 structured_output 欄位。",
   "type": "object",
   "additionalProperties": false,
   "required": [

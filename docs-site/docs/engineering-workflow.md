@@ -2,12 +2,8 @@
 
 ## 狀態
 
-**後續部署更新：**2026-09-06 18:08 已部署至既有 VM，Linux 沙箱／獨立基準建置與啟動檢查通過。
-版本雜湊、清理範圍、實測證據及尚待 email 端到端驗收見 [v2 部署紀錄](deploy-2026-09-06-v2.md)。下文保留本機階段的歷史紀錄。
-
-2026-09-06 本機新增，僅適用配置式 `version: 2` 流程。尚未部署，不能認為既有 Slack 任務已套用。
-兩份 teams 範例已改為 v2；既有 v1 快照及 legacy 任務不自動升級。
-本機測試證據在本文件末尾；systemd 真實執行、CLI／Slack、目標專案建置仍待 Linux 驗收。
+僅適用配置式 `version: 2` 流程，兩份 teams 範例皆為 v2；既有 v1 快照及 legacy 任務不自動升級。
+2026-09-06 起已部署於既有 VM，見 [v2 部署紀錄](deploy-2026-09-06-v2.md)。
 
 ## 需求基準與責任
 
@@ -47,7 +43,7 @@ QA 測試計畫必須引用 `baseline_revision`，每個情境的 `requirement_i
 | requirements | 提議變更需求，停止等待原需求負責人明確核准 |
 | human | 環境、權限、產品取捨或原因仍無法核實；明示目前沒有 agent 處理 |
 
-需求變更的 Slack 回覆範例（僅新版部署後生效）：
+需求變更的 Slack 回覆範例：
 
 ```text
 @zipe-ai-team 補充 #編號 核准需求變更 SMTP 逾時時禁止自動重送，改回報結果未知
@@ -106,26 +102,8 @@ Slack 明示「尚未確認合併／發布／產品驗收」。它是本段自�
 導入這些功能前需先定義目標 repo 的發布方法與真人責任，不自行新增自動合併或部署權限。
 舊版本 jar 不認得 PR_CREATED；產生新版任務後回退須用升級前備份，不讓舊 jar 直接讀新版資料。
 
-## 驗證紀錄
+## 尚待真實端對端驗收
 
-2026-09-06 17:48:50（台北時間）：19 個選定測試類別共 **150 項通過、0 失敗、0 錯誤**，`mvn package` 成功。
-包含 13 項真實暫存 Git repo 測試；IndependentVerifierTest 的 8 項測試模擬子行程，
-驗證配置指令、全新 clone 策略、釘選與 log 收據，**不代表 systemd／實際建置已通過**。
-另通過 `check-source.sh`（Bash 語法及 16 項平台 fixture）與打包 jar 的兩份 v2 `--validate-team`。
-
-測試類別：TraceabilityTest、IndependentVerifierTest、ConfiguredExecutorTest、TeamCatalogTest、FlowEngineTest、
-DirectStageTest、DirectRequestTest、RoleRoutingTest、TriageRoutingTest、RemediationTest、QaPipelineTest、
-QuotaContinuationTest、QaGateTest、ReviewGateTest、FailureReportTest、StageRunnerTest、DiagnosticsTest、
-CodexRuntimeTest、WorkspaceManagerTest。
-未在 Windows 執行依賴 `/bin/sh` 的 RuntimeDiagnosticsTest／QuotaExceededTest 完整類別。
-第一次在受限環境執行遇到 JUnit 暫存目錄 AccessDenied；取得測試目錄權限後重新執行。
-中途修正一個 Mockito 重設 stub 時觸發的測試 NullPointerException，最終上述 150 項全數重跑成功。
-
-產物：`orchestrator/target/ai-team-orchestrator-0.1.0.jar`
-
-```text
-SHA256 703D480A9B0CC2E623A5ED24FF186C6C982173B340BEA84B2C74F82387E01D20
-```
-
-升級前仍須驗收：Linux 的全新 clone／唯讀釘選／逾時與子行程終結、真實專案的固定驗證指令、
-Slack 的需求變更核准及 PM 返工、額度續跑，以及 PR 人工核准。這輪未部署、未推送、未建立 PR，舊任務未改動。
+程式測試以子行程模擬獨立驗證，不代表 systemd 與實際建置都已在各環境通過。
+2026-09-06 上線時列為待真實環境驗收的項目：Linux 的全新 clone／唯讀釘選／逾時與子行程終結、真實專案的固定驗證指令、
+Slack 的需求變更核准及 PM 返工、額度續跑，以及 PR 人工核准。之後的實測狀態以 [從零重建驗證紀錄](rebuild-verification.md) 為準，未列為通過者不可宣稱已驗收。

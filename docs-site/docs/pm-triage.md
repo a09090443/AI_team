@@ -1,39 +1,6 @@
 # QA 受阻後的 PM 處理
 
-## 2026-09-09 工作區查核修正
-
-配置式 READ_ONLY 節點在任務已有 workspacePath 時，使用該任務工作區，
-不因 workspace=false 而查核主 repository；workspace=false 仍表示不建立新工作區。
-已保存路徑遺失、不符或為 symlink 時停止，不退回其他副本。PM 仍維持唯讀。
-checkpoint 的原工作目錄與新目錄不一致時禁止 resume，以免延續錯誤脈絡。
-已結束階段（activeNode=null）按原流程以新 session 重跑，舊 checkpoint/log 保留證據。
-
-spring-starters builder 僅補 npm 版本、ci、install、run build 與 node 版本指令，
-沒有開放任意 npm/npx；增加 .npm 快取與 node/npm 啟動工具鏈檢查。
-在 doc-site 目錄使用 npm ci 後 npm run build；含依賴 lifecycle，仍受外層沙箱限制。
-
-07:42 台北時間已部署 PID 100553；182 項 Maven 測試中 179 通過、3 略過，
-16 平台 fixture 與沙箱／工具鏈／Slack 啟動檢查通過。尚未完成真實文件建置與 QA 驗收。
-#1014 以專用 repair-1014-doc-tools.jq 遷移最小工具／建置設定、追加更正，
-保留模型、需求、測試計畫、歷史報告、checkpoint、AWAIT_HUMAN 狀態與 commit 814c9b1。
-維修 revision 為排序 JSON（snapshot 去掉 revision，含行末換行）的 SHA256；
-不同於 TeamCatalog 一般配置序列化，但不冒用舊版本，來源與新版本記錄於 audit_log。
-備份 triage-fix-backup.gVpYRx 包含原資料庫與 before/after JSON、程式與配置。
-本次未代為核准測試計畫或 PR，也未自動續跑。
-
-已於 2026-09-06 11:07（台北時間）部署到既有 VM；尚未完成 Slack 問題分流端對端驗證。
-
-2026-09-06 本機驗證：所選 10 個測試類別共 63 項通過；來源檢查與 16 項平台 fixture 斷言通過。
-未在 Windows 執行依賴 `/bin/sh` 的 Linux runtime 測試，不代表完整 Linux 測試或實機驗收完成。
-
-其後於既有 VM 的隔離目錄完成 `mvn -B package`：79 項測試，0 失敗、0 錯誤、0 略過。
-新版 PID 33579，沙箱與 Maven 工具鏈自檢通過，該 JVM 有已建立的 443 連線。
-啟動恢復保留 #1011 `AWAIT_HUMAN`，未自動重跑、未提交 PR、未刪除工作區。
-
-- 建置證據：`/home/vboxuser/ai-team/pm-triage-build.SzUZFI/build.log`
-- 部署前備份：`/home/vboxuser/ai-team/pm-triage-backup.kS01pt`（舊 jar、來源、prompt、schema、log、SQLite）
-- 新 jar SHA-256：`898418599cfa5ebbfee5e57942c995f8a67f9bdd841cd4d5f7ac57899990623b`
-- 本次專用升級腳本：`deploy/deploy-pm-triage.sh`；不是新 VM 安裝入口。
+## 分流做什麼
 
 QA 受阻後會實際執行 `pm_triage`，沿用 PM 的 runtime、模型與 Slack 身分，
 讀取原始需求、架構、測試計畫、實作、QA 報告及阻礙證據；不只是 tag PM。
@@ -73,7 +40,7 @@ QA 的工作仍依原始情境測試計畫，不改成單純檢視程式。
 佇列採原子狀態轉換，重複請求不會重複派工。不新建任務或重建工作區。
 Slack 會區分「已排隊」、「PM 處理中」、「已派工」與「等待你回覆」。
 
-### 需求本身有問題（2026-09-25）
+### 需求本身有問題
 
 - 新任務：測試計畫受阻會先交給分流（`plan.blocked = "triage"`）。分流判定是需求問題時用 route=requirements，
   並附 `human_decision`，停止訊息出現「核准：…」按鈕，負責人按下即核准該變更。
@@ -85,7 +52,7 @@ Slack 會區分「已排隊」、「PM 處理中」、「已派工」與「等�
 - 「中斷這一輪」之後 runtime 交回的結果一律不採用（Codex 被停時可能以結束碼 0 交出半成品）；寫入範圍稽核照常執行，
   越界等安全例外不會被當成中斷而掩蓋。
 
-### 承接時有未提交的修改（2026-09-25）
+### 承接時有未提交的修改
 
 任務用完次數時，工作區可能留有「有寫檔權、沒有 commit 權」的角色（例如 LIMITED 驗收補的測試）的修改。
 承接只帶走已 commit 的內容，所以停止訊息會列出這些檔案，並提供「保存未提交的修改並承接」：
@@ -96,12 +63,12 @@ Slack 會區分「已排隊」、「PM 處理中」、「已派工」與「等�
 
 使用者操作被拒時，Slack 只顯示白話原因（`Diagnostics.forUser`）；例外類別與呼叫脈絡寫在 audit。
 
-### 中斷這一輪 vs 中止任務（2026-09-25）
+### 中斷這一輪 vs 中止任務
 
 | | 中斷這一輪 | 中止任務 |
 |---|---|---|
 | 入口 | 執行中狀態訊息的按鈕，或 `中斷 #id` | 停止訊息／核准卡上的紅色按鈕 |
-| 停掉的程序 | 該任務的 agent（`ai-team-<id>-*`）與系統驗證（`ai-team-check-<id>-*`） | 同左（先前版本只改狀態，程序會繼續跑） |
+| 停掉的程序 | 該任務的 agent（`ai-team-<id>-*`）與系統驗證（`ai-team-check-<id>-*`） | 同左 |
 | 任務狀態 | `AWAIT_HUMAN`，可續跑 | `ABORTED`，終止；重啟時刪除工作區 |
 | 次數與 session | 本輪已計次不重扣；「繼續執行」沿用原 session | 不適用 |
 
@@ -117,9 +84,12 @@ Slack 會區分「已排隊」、「PM 處理中」、「已派工」與「等�
 服務重啟時，執行中或排隊中的問題處理會停止並明示等待人工，不默默重跑。
 若原工作區或 QA 稽核基準缺失，停止而不重建取代現場。
 
-### 隨時可改用新任務繼續（2026-09-26）
+配置式 READ_ONLY 節點（例如分流）在任務已有 workspacePath 時查核該任務工作區，不改看主 repository；
+workspace=false 只表示不建立新工作區。已保存路徑遺失、不符或為 symlink 時停止，不退回其他副本。
+checkpoint 的原工作目錄與新目錄不一致時禁止 resume；已結束階段（activeNode=null）以新 session 重跑，舊 checkpoint／log 保留為證據。
 
-以前只有用完自動處理次數才能「承接成新任務」。但既有任務永遠使用建立時的配置快照，改進後的團隊規則
-（例如審查收斂）只能透過新任務套用；#1019 還能延長，卻只會在舊規則下繼續被退回。
-現在任務停下等人時，停止訊息一律提供「改用新任務繼續」（工作區有未提交修改時為「保存修改並改用新任務繼續」），
+### 隨時可改用新任務繼續
+
+既有任務永遠使用建立時的配置快照，改進後的團隊規則只能透過新任務套用。
+任務停下等人時，停止訊息一律提供「改用新任務繼續」（工作區有未提交修改時為「保存修改並改用新任務繼續」），
 只有需求負責人能操作。新任務從最新 commit 接著做、改用目前配置，次數重新計算，需求、測試計畫與 PR 仍需核准。

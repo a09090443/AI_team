@@ -1,198 +1,70 @@
 # 多 Runtime 設計
 
-前提變更：Slack 裡可能同時存在多種 CLI Agent（Claude Code、Codex、Gemini CLI、Aider 等），架構不得依賴任何單一廠商的專屬機制。
-
-本文修正 `architecture-review.md` 中在「只有 Claude Code」前提下寫出的幾項建議。
-
----
-
-## 這個約束推翻了什麼
-
-### 1. I4 的建議要調整
-
-原評估說：「別自訂 `.ai-team/agents/*.md`，改用 Claude Code 原生的 `.claude/agents/` 格式。」
-
-**在單一 runtime 前提下這是對的，在多 runtime 前提下是錯的。** `.claude/agents/` 是 Claude 專屬格式，Codex 與其他 CLI 讀不懂。
-
-原文的自訂格式方向反而是對的，我否定得太快。
-
-**修正做法：中立來源 + 建置時產生原生格式。**
-
-```
-roles/                          ← 唯一的事實來源（中立、廠商無關）
-├── pm.yaml
-├── architecture.yaml
-├── backend.yaml
-└── qa.yaml
-        │
-        │  build 時由各 runtime 的 adapter 轉譯
-        ▼
-├── .claude/agents/*.md         ← Claude Code 原生（含 isolation: worktree 等專屬能力）
-├── .codex/...                  ← Codex 對應格式
-└── prompts/*.md                ← 純文字 fallback（給沒有角色機制的 CLI）
-```
-
-這樣兩邊都拿到：**可攜性**來自中立來源，**各家的專屬強項**來自產生出來的原生格式。不需要為了可攜而放棄 `isolation: worktree`。
-
-### 2. Phase -1 降級為參考點
-
-官方 Claude in Slack 是 Claude 專屬、GitHub 專屬、雲端專屬。在多 runtime 前提下它不可能是最終產品。
-
-仍然值得花 30 分鐘裝來用，但目的改變了：**當作品質與速度的基準線**，而不是「可能取代整個專案」。如果你自建的多 runtime 版本比它慢又比它笨，那是個訊號。
-
-### 3. 安全邊界必須移出 runtime
-
-這是最重要的一項。
-
-原評估的權限模型建立在 `--permission-mode dontAsk` 與 `--allowedTools` 上 —— **那是 Claude Code 的旗標**。其他 CLI 的權限模型完全不同，有些甚至沒有細粒度權限控制。
-
-如果安全依賴 runtime，那你的系統安全性等於**所有 runtime 中最弱的那一個**。
-
-**修正：把隔離放在 runtime 之外。**
-
-```
-┌──────────────────────────────────────────┐
-│ Orchestrator                              │
-│                                           │
-│  每個 task 啟動一個隔離執行環境：           │
-│    ・專用 unix user 或容器                 │
-│    ・唯讀掛載：專案唯讀副本                 │
-│    ・可寫掛載：僅該 task 的 worktree        │
-│    ・網路：預設拒絕，白名單放行             │
-│    ・無 sudo、無 docker socket、無 SSH 金鑰 │
-│                                           │
-│    ┌────────────────────────────────┐    │
-│    │  任意 CLI Runtime               │    │
-│    │  （即使它完全沒有權限機制，       │    │
-│    │    也只能在這個沙箱內造成傷害）    │    │
-│    └────────────────────────────────┘    │
-└──────────────────────────────────────────┘
-```
-
-各 runtime 自己的權限旗標（如 Claude Code 的 `dontAsk`）保留，但降級為**縱深防禦的第二層**，不是主要控制。
-
-這個改動讓系統更穩健：新增一個你不熟悉的 CLI 時，不需要先搞懂它的權限模型才敢用。
-
-#### 實作結果與上圖的落差
-
-`ExecutionSandbox` 已完成並通過實測（`sandbox-report.md`，22 PASS）。
-實際做出來的東西與上圖有三處落差，都是環境條件逼出來的：
-
-| 上圖 | 實際 | 原因 |
-|---|---|---|
-| 專用 unix user 或容器 | systemd user unit（`ProtectSystem=strict` + `ReadWritePaths` 白名單） | 無免密碼 sudo，不能建使用者、不能裝 podman/docker/bwrap |
-| 網路預設拒絕、白名單放行 | **未實作，網路完全開放** | 訂閱帳號認證需要連 Anthropic API；`NetworkNamespacePath` 之類的隔離會一併切斷認證。這是目前最大的殘留風險 |
-| 唯讀掛載專案副本 | 唯讀角色直接以 repo 為 cwd（整個檔案系統唯讀）；可寫角色用**每任務獨立 clone** | worktree 的 index 寫在主 repo 底下，與沙箱的寫入邊界衝突，見 `workspace-report.md` |
-
-另外多了一項上圖沒有的防護：cgroup 資源上限（`MemoryMax` / `CPUQuota` / `TasksMax`）。
-這對應的是實際踩過的坑 —— 編譯開滿八核把 VM 壓到 soft lockup。
-
-**前提條件**：檔案系統隔離需要 `kernel.apparmor_restrict_unprivileged_userns=0`。
-不滿足時 systemd 會**靜默略過**所有檔案系統防護，所以 `selfTest()` 是這項設計決策的
-執行條件，不是可有可無的健全性檢查。
+系統同時支援多種 CLI Agent（Claude Code、Codex、opencode），架構不依賴任何單一廠商的專屬機制。
+分層全貌見 [系統全貌](/agent/system-map)；本文只講 runtime 抽象與它外層的安全邊界。
 
 ---
 
-## Runtime 抽象該畫在哪一層
+## 安全邊界在 runtime 之外
 
-原文提的 `AgentRuntime` 介面方向正確，但 `execute(task)` 這個簽章太粗 —— 它假設所有 runtime 能力相同，實際上差異很大。
+若安全依賴各 CLI 自己的權限旗標，系統安全性就等於**所有 runtime 中最弱的那一個**。
+因此每次 agent 執行都必須經過 `ExecutionSandbox` 包裝（`RuntimeRequest.sandboxPolicy` 不可為 null），
+各 runtime 的權限旗標（如 Claude Code 的 `--permission-mode dontAsk` + `--allowedTools`）只是縱深防禦的第二層。
+新增一個不熟悉的 CLI 時，不需要先搞懂它的權限模型才敢用。
 
-**抽象要畫在語意層，不是旗標層。**
+### 沙箱實際做了什麼
 
-| 語意能力 | Claude Code | 其他 CLI 的可能狀況 |
-|---|---|---|
-| 附加角色系統提示 | `--append-system-prompt-file` | 有的只能取代、有的只能塞進 prompt |
-| 工具/權限限制 | `--permission-mode` + `--allowedTools` | 可能只有粗粒度開關，或完全沒有 |
-| 結構化輸出 | `--json-schema`（driver 層驗證） | 可能只有自由文字 |
-| Session 續接 | `--resume <id>` | 可能沒有，或語意不同 |
-| 回合上限 | `--max-turns` | 可能沒有 |
-| 成本回報 | `total_cost_usd` | 可能沒有 |
-| 工作目錄隔離 | `isolation: worktree` | 多半沒有 |
+`ExecutionSandbox` 把指令包成受限的 systemd user unit（`systemd-run --user`）：
 
-因此 runtime 抽象需要兩部分：**能力宣告**與**降級策略**。
-
-### 能力宣告
-
-每個 runtime adapter 宣告自己支援什麼。Orchestrator 據此決定怎麼呼叫，以及缺什麼要自己補。
-
-### 降級策略
-
-缺少能力時，由 Orchestrator 補上等效行為：
-
-| 缺少 | 降級做法 |
+| 機制 | 作用 |
 |---|---|
-| 結構化輸出 | 在 prompt 尾端要求輸出 fenced JSON，收到後**自行用 schema 驗證**；驗證失敗則重試一次，再失敗判為錯誤 |
-| Session 續接 | Orchestrator 保存對話摘要，下次呼叫時把摘要重新放進 prompt |
-| 回合上限 | 靠 wall-clock 逾時 + `destroyForcibly()` |
-| 工具權限 | 完全交給外層沙箱（見上節） |
-| 工作目錄隔離 | Orchestrator 自己開 worktree 並指定 cwd |
+| `ProtectSystem=strict` + `ReadWritePaths` | 檔案系統唯讀，只有白名單路徑可寫 |
+| `ProtectHome=read-only` | 家目錄可讀不可寫 |
+| `PrivateTmp=yes` | 獨立 `/tmp` |
+| `MemoryMax`／`CPUQuota`／`TasksMax` | cgroup v2 資源上限（曾因編譯開滿八核把 VM 壓到 soft lockup） |
+| 環境變數白名單 | 只帶入 `PATH`、`JAVA_HOME`、`MAVEN_OPTS`，Slack token 不會進沙箱 |
+| runtime 狀態目錄 | 由各 runtime 以 `statePaths()` 宣告可寫，`escalationPins()` 把其中的設定檔／外掛目錄釘回唯讀，避免 agent 改寫自己下一次的執行條件 |
 
-關鍵原則：**降級後的語意要一致**，呼叫端不需要知道底下是哪個 runtime。差別只在可靠度與成本，不在行為。
+可寫角色使用**每任務獨立 clone**，不用 git worktree：worktree 的 index 與物件寫在主 repo 底下，
+與沙箱只開放工作區可寫的邊界衝突（`git add` 會以 `index.lock: Read-only file system` 失敗）。
 
----
+**已知限制**：
 
-## 選擇 Runtime 的責任歸屬
-
-原文提過「讓 Agent 自己選 Runtime」。在多 runtime 前提下這需要更明確：
-
-**Runtime 選擇是 Orchestrator 的設定，不是 Agent 的執行期決定。**
-
-理由：
-
-- Agent 的角色定義應該與 runtime 無關，否則可攜性又沒了
-- 執行期切換 runtime 會讓成本、額度、稽核都變得難以追蹤
-- 除錯時你會需要「同一個任務用不同 runtime 重跑」的能力，這要求選擇權在外層
-
-實作上是一張設定表：
-
-```yaml
-# runtime-binding.yaml
-roles:
-  pm:            { runtime: claude-code, model: opus }
-  architecture:  { runtime: claude-code, model: opus }
-  backend:       { runtime: codex }
-  qa:            { runtime: claude-code, model: opus }
-
-fallback:
-  # 主 runtime 不可用時的替代（額度用盡、服務中斷）
-  claude-code:   codex
-```
-
-改綁定不需要動任何 Agent 定義或 Slack 程式碼。這正是原文「Agent 是角色、Runtime 是引擎」要達到的效果。
+- **網路沒有隔離**。訂閱帳號認證需要連供應商 API，網路命名空間隔離會一併切斷認證。這是目前最大的殘留風險。
+  例外是 Codex 節點的 `localTestNetwork`，見 [本機測試能力](local-test-capabilities.md)。
+- **檔案系統隔離需要 unprivileged user namespace**。核心以 AppArmor 擋掉時
+  （Ubuntu 24.04 起預設 `kernel.apparmor_restrict_unprivileged_userns=1`），systemd **不會報錯，只會靜默略過**
+  上述檔案系統防護。啟動時的 `selfTest()` 會實際嘗試越界寫入，把靜默失敗變成啟動失敗；它不是可有可無的健全性檢查。
 
 ---
 
-## 不受影響的部分
+## Runtime 抽象畫在語意層
 
-值得明確指出：**Slack 那一層完全不變。**
+`AgentRuntime` 不抽象 CLI 旗標，而是抽象語意能力。每個 adapter 以 `capabilities()` 宣告自己支援什麼，
+缺少的由 adapter 或呼叫端降級補足。宣告成有而實際沒有，會讓呼叫端跳過降級，失敗樣態是「安靜地少做事」。
 
-- ack-first + `event_id` 去重（B1）
-- 觸發者白名單（I5）
-- `app_mention` + Socket Mode
-- `chat.postMessage` / `chat.update` 進度回報
-- 任務狀態機與人工審批閘門
+| 能力 | Claude Code | Codex | opencode | 缺少時的降級 |
+|---|---|---|---|---|
+| `APPEND_SYSTEM_PROMPT` | ✔ | — | — | 角色提示前置進 prompt 本文 |
+| `STRUCTURED_OUTPUT` | ✔（`--json-schema`） | ✔（`--output-schema` 吃檔案） | — | schema 寫進 prompt，回來自行 parse 與驗證 |
+| `SESSION_RESUME` | ✔ | ✔ | ✔ | — |
+| `MAX_TURNS` | ✔ | — | — | 只靠 wall-clock 逾時控成本 |
+| `TOOL_PERMISSIONS` | ✔ | — | — | 完全交給外層沙箱 |
+| `COST_REPORTING` | ✔ | — | ✔（實際金額） | 成本欄位為 null，呼叫端必須容忍 |
+| `MODEL_SELECTION` | ✔ | ✔ | ✔ | — |
+| `NATIVE_AGENTS_MAP` | — | ✔ | ✔ | legacy 模式由呼叫端把 `AGENTS.md` 附進 prompt；配置式模式不論能力一律附上（截斷至 16000 字） |
 
-這些與 runtime 無關。原文「Slack 不需要知道底下是 Codex、Claude Code 還是 OpenRouter」的判斷在這裡得到驗證 —— 這是整篇文章最站得住腳的一句話。
-
----
-
-## 對 Phase 順序的影響
-
-| Phase | 原本 | 修正後 |
-|---|---|---|
-| **-1** | 裝官方 Claude in Slack，評估能否取代自建 | 裝官方版**當基準線**（降級，不再是取捨點） |
-| **0** | 驗證 Claude Code CLI 契約 | **驗證每個候選 CLI 的能力矩陣** |
-
-Phase 0 的產出從「一份 Claude Code 的實測結果」變成**一張能力表**：每個候選 CLI 支援哪些語意能力、缺哪些、降級策略是否可行。
-
-這張表直接決定 `AgentRuntime` 介面長什麼樣。**先量再設計**，不要先設計介面再去適配。
-
-建議 Phase 0 至少涵蓋兩個 runtime（Claude Code 加上一個你真的打算用的），因為單一 runtime 量不出抽象邊界該畫在哪。
+原則：**降級後的語意要一致**，呼叫端不需要知道底下是哪個 runtime；差別只在可靠度與成本。
+各 CLI 的實際參數與陷阱見 [Codex CLI 參數契約](codex-cli-argument-contract.md)、
+[opencode 實測報告](opencode-runtime-report.md)。模型名三家互不通用，換 runtime 時要一併換模型。
 
 ---
 
-## 一個誠實的限制
+## Runtime 選擇是設定，不是 agent 的執行期決定
 
-本文關於 Claude Code 的能力全部來自官方文件核實。**其他 CLI 的能力我沒有驗證過**，上表的「其他 CLI 的可能狀況」是設計時該預留的彈性，不是對任何特定產品的斷言。
+- 配置式模式：團隊 JSON 的 `roles[].runtime`／`model`（見 [配置式團隊](configurable-team.md)）。
+- legacy 模式：`AI_TEAM_RUNTIME_<角色>`、`AI_TEAM_MODEL_<角色>`（見 [每個 Agent 指定模型](per-agent-model.md)）。
 
-Phase 0 就是為了把這些猜測換成實測。
+理由：角色定義要與 runtime 無關；執行期切換會讓成本、額度、稽核難以追蹤；
+除錯需要「同一任務換 runtime 重跑」的能力，選擇權必須在外層。
+目前**沒有**額度用盡時自動改用另一個 runtime 的 fallback；額度用盡走 [額度暫停與自動續跑](quota-continuation.md)。

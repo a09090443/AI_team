@@ -1,56 +1,14 @@
 # 白名單使用者直接對角色提出請求
 
-## 狀態
+## 啟用條件
 
-**現況更新：**2026-09-06 v2 已部署，角色對話程式已在 VM，但五個角色 App-Level Token 尚未設定，
-因此直接 @角色仍未啟用。這與「角色可以用 Bot Token 發言」是兩件不同的事。下文的未部署與 83 項是歷史紀錄。
+每個角色 App 要有自己的 App-Level Token（`SLACK_APP_TOKEN_<角色>`，scope `connections:write`）、
+開啟 Socket Mode 並訂閱 `app_mention`；建立與填寫步驟見 [建立 Slack App](slack-agent-apps.md)。
+空白代表該角色只能發言、不能被直接 @。這與「角色可以用 Bot Token 發言」是兩件不同的事。
+2026-09-06 v2 部署時五個 App-Level Token 尚未設定；目前是否啟用以啟動 log 與下方真實驗收為準。
 
-## 現在如何設定（建議先以 QA 驗證）
-
-1. 進入 [Slack Apps 管理頁](https://api.slack.com/apps)，選現有 **QA Agent**，不必另建 App。
-2. **OAuth & Permissions → Bot Token Scopes**：保留 `chat:write`，加入 `app_mentions:read`。
-3. **Socket Mode**：開啟 Enable Socket Mode。
-4. **Event Subscriptions → Enable Events → Subscribe to bot events**：加入 `app_mention` 並儲存。
-   Socket Mode 不需要填公開的 Request URL。
-5. **Basic Information → App-Level Tokens → Generate Token and Scopes**：名稱可填 `ai-team-socket`，
-   scope 選 `connections:write`，取得該 App 自己的 `xapp-` token。
-6. **OAuth & Permissions → Reinstall to Workspace**：授權新增 scope；若 `xoxb-` Bot Token 有變更，也更新 VM 對應設定。
-7. 確認角色已加入 AI 團隊的允許頻道。沒有加入就先 `/invite`，不是只在 workspace 安裝。
-
-在 VM 使用編輯器更新 `~/ai-team/env.sh`，**不要把真實 token 貼進聊天或 shell 指令歷史**：
-
-```bash
-ssh -p 2222 vboxuser@127.0.0.1
-vi ~/ai-team/env.sh
-```
-
-例如在編輯器內填入 `export SLACK_APP_TOKEN_QA='該 QA App 的 xapp-token'`。
-其他四個角色使用下方對照表中的變數，各自建立自己的 token，不能重用主 App 的 token。
-`SLACK_APP_TOKEN`（主 App）與既有 `SLACK_BOT_TOKEN_*` 不要覆蓋成 xapp token；Bot Token 是 xoxb，App Token 才是 xapp。
-
-確認沒有執行中／排隊任務後，在 VM 重啟；不要在 stop 被拒絕後強制殺服務：
-
-```bash
-chmod 600 ~/ai-team/env.sh
-bash ~/ai-team/service.sh stop && bash ~/ai-team/service.sh start
-bash ~/ai-team/service.sh status
-```
-
-也可以填好後告知助理，由助理安全重啟及核對，不需提供 token 值。
 驗收必須在允許頻道實際 `@QA Agent 請說明你的測試職責`，看到 QA 回覆才算接通；只看到 auth.test 成功不算。
 目前不支援 DM。bot 互相 tag 僅是可見交接，仍會被事件入口排除，不會自行重複派工。
-
-依據：[Slack Socket Mode 設定](https://docs.slack.dev/apis/events-api/using-socket-mode/)、
-[app_mention 與 DM 的差異](https://docs.slack.dev/reference/events/app_mention/)。
-
-## 初版本機驗證紀錄
-
-2026-09-06：本機實作，尚未部署本功能，尚未完成 Slack App 設定與真實事件驗證。
-前一輪已部署的 PM triage 與本功能是不同版本，不能把前一輪服務健康當成本功能成功。
-
-本機所選 13 個測試類別共 83 項通過，含新增角色路由、授權、唯讀對話、同串脈絡、
-對話用量續跑與 PR／重做拒絕測試；另有 16 項平台 fixture 與來源檢查通過。
-尚未針對此版本執行完整 Linux 測試。VM 唯讀檢查：五個 `SLACK_APP_TOKEN_<角色>` 均未設定。
 
 ## 使用方式
 
@@ -89,33 +47,8 @@ bash ~/ai-team/service.sh status
 Socket handler 僅放入 ingress 佇列並 ack，模型與 Slack 回覆不在 handler 中等待。
 目前 ingress 仍是記憶體佇列：若 ack 後、持久化前服務崩潰，訊息可能遺失，需人工重送。
 
-## 每個 Slack App 的設定（五個都要做）
-
-在 Slack App 管理頁選擇對應的既有 App，不需新建另一組角色：
-
-1. 套用 `deploy/agent-manifests/` 對應 YAML，或手動加入 Bot scope `app_mentions:read`，保留 `chat:write`。
-2. Event Subscriptions 啟用，Subscribe to bot events 加入 `app_mention`。
-3. 啟用 Socket Mode。
-4. Basic Information → App-Level Tokens 產生本 App 的 token，scope 為 `connections:write`。
-5. OAuth & Permissions 重新安裝／授權到 workspace，使新增 scope 生效。
-6. 確認角色已加入允許頻道。若重新安裝導致 Bot Token 更換，也更新該角色 `SLACK_BOT_TOKEN_*`。
-7. 在 VM 的 `~/ai-team/env.sh` 填入下列對應變數，保留檔案權限 600，不貼到聊天、不存入原始碼：
-
-| App | App-Level Token 環境變數 |
-|---|---|
-| PM Agent | `SLACK_APP_TOKEN_PM` |
-| Architecture Agent | `SLACK_APP_TOKEN_ARCHITECTURE` |
-| Backend Agent | `SLACK_APP_TOKEN_BACKEND` |
-| QA Agent | `SLACK_APP_TOKEN_QA` |
-| Code Reviewer | `SLACK_APP_TOKEN_CODE_REVIEW` |
-
-每個角色要用自己的 `xapp-` Token，不可共用主 App 的 Token。空白代表保留舊版唯寫模式。
-部署新版 jar、`direct.md` 與 `direct-schema.json` 後，備份且確認無執行中／排隊任務，再重啟。
-不需要頻道歷史權限或 DM 權限，也不需要為角色開啟互動按鈕。
-
 依據：[Slack app_mention](https://docs.slack.dev/reference/events/app_mention/)、
-[Socket Mode](https://docs.slack.dev/apis/events-api/using-socket-mode/)、
-[新增 scope 後重新安裝](https://docs.slack.dev/tools/node-slack-sdk/tutorials/local-development/)。
+[Socket Mode](https://docs.slack.dev/apis/events-api/using-socket-mode/)。
 
 ## 真實驗收清單（尚未執行）
 
@@ -124,4 +57,4 @@ Socket handler 僅放入 ingress 佇列並 ack，模型與 Slack 回覆不在 ha
 - 同串詢問可引用原工作，原任務驗收與狀態不被聊天改寫。
 - 「執行」走中央管線；重送與多角色 mention 不重複實作。
 - 用量中斷可恢復對話，且沒有進入 Backend 或 PR 發布。
-- 觀察每個角色 Socket Mode 的實際事件到達，不能只依 443 連線數宣称成功。
+- 觀察每個角色 Socket Mode 的實際事件到達，不能只依 443 連線數宣稱成功。

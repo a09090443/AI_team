@@ -140,7 +140,7 @@ QA 執行前後各記一次 HEAD，`TaskOrchestrator.enforceQaWriteScope` 核對
 ## 前置作業已完成
 
 工作區的設計問題（從哪個 branch 開、跑完怎麼收、失敗怎麼清、重做要不要沿用）
-已經在 `WorkspaceManager` 解決，見 `workspace-report.md` 第 3 節。
+已經在 `WorkspaceManager` 解決（每任務獨立 clone，理由見 [多 Runtime 設計](multi-runtime.md#沙箱實際做了什麼)）。
 
 對這份清單有影響的兩點：
 

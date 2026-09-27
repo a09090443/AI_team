@@ -1,6 +1,9 @@
-# 每個 Agent 指定模型
+# 每個 Agent 指定模型（legacy）
 
-四個角色可以各自使用不同的模型。留空表示交給 `claude` CLI 決定（目前是 Sonnet）。
+本文只適用 `AI_TEAM_DEFINITION` 留空的 legacy 五角色模式。配置式模式改在團隊 JSON 的
+`roles[].model`／`runtime`／`reasoningEffort` 設定（見 [配置式團隊](configurable-team.md)），下列環境變數不生效。
+
+legacy 五個角色可以各自使用不同的模型。留空表示交給該角色 runtime 的 CLI 決定。
 
 ---
 
@@ -13,6 +16,7 @@ export AI_TEAM_MODEL_PM=""
 export AI_TEAM_MODEL_ARCHITECTURE=""
 export AI_TEAM_MODEL_BACKEND=""
 export AI_TEAM_MODEL_QA=""
+export AI_TEAM_MODEL_CODE_REVIEW=""   # 預設 runtime 是 codex，要填 codex 認得的模型名
 ```
 
 改完重啟。啟動 log 會回報實際生效的值：
@@ -33,7 +37,7 @@ export AI_TEAM_MODEL_QA=""
 
 ---
 
-## 可用的值（本機實測）
+## 可用的值（claude-code runtime，本機實測）
 
 | 填入 | 實際模型 |
 |---|---|
@@ -43,8 +47,10 @@ export AI_TEAM_MODEL_QA=""
 | （留空） | `claude-sonnet-5`（CLI 預設） |
 
 完整模型 ID 也可以填。訂閱帳號下三個層級都可用。
+換成 codex 或 opencode runtime 時模型名互不通用：codex 收到不認識的名稱**不會拒絕**而是退回 fallback，
+opencode 格式是 `provider/model`（見 [多 Runtime 設計](multi-runtime.md)）。
 
-**打錯名稱不會安靜退回預設** —— `claude` 會以結束碼 1 失敗，該階段直接中止。
+**打錯名稱不會安靜退回預設**（claude-code）—— `claude` 會以結束碼 1 失敗，該階段直接中止。
 這是刻意保留的行為：這個專案已經被靜默失敗坑過好幾次，寧可大聲壞掉。
 
 ---

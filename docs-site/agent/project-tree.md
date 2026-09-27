@@ -196,7 +196,7 @@ agent_team/
 │       ├── triage-schema.json
 │       └── direct-schema.json
 ├── deploy/                           # 部署相關
-│   ├── README.md                     # 早期 Slack App 設定紀錄
+│   ├── README.md                     # deploy/ 目錄說明與 Slack 主 App 設定
 │   ├── env.sh.template               # 環境變數範本（複製為 ~/ai-team/env.sh，權限 600）
 │   ├── slack-app-manifest.yaml       # 主 App manifest
 │   ├── agent-manifests/              # 五個角色 App 的 manifest
@@ -222,17 +222,8 @@ agent_team/
 │   │   └── test-linux-platform.sh    # 平台辨識 fixture 測試
 │   ├── deploy-orchestrator.sh        # 通用受控部署（隔離目錄建好的 JAR、src/main、teams）
 │   ├── deploy-jar-safe.sh            # 只換 JAR 的受控部署，失敗自動回復
-│   ├── deploy-*.sh                   # 其餘為特定舊 VM 的歷史升級腳本，不用於新機
 │   ├── engineering-v2-team.env       # 既有 VM 的 team.env（指定 AI_TEAM_DEFINITION）
-│   ├── test-maven-settings.xml       # 測試用空白 Maven settings
-│   ├── phase0-verify.sh              # Phase 0 Claude Code CLI 契約驗證（歷史）
-│   ├── LocalTestSmoke.java           # 隔離 clone 的無模型實測（#1014 歷史）
-│   ├── CodexSandboxRecovery.java     # #1014 一次性恢復檢查（歷史）
-│   ├── RecoveryCheck.java            # 受控恢復快照離線檢查（歷史）
-│   ├── PlanButtonPayload.java        # 補發既有任務的計畫核准卡（歷史）
-│   ├── repair-1014-*.jq              # #1014 專用資料修復（歷史）
-│   ├── send-*-20260909.sh            # #1014 補發 Slack 訊息（歷史）
-│   └── archive-mail-1010.sh          # #1010 封存（歷史）
+│   └── test-maven-settings.xml       # 測試用空白 Maven settings
 └── docs-site/                        # 文件網站（Docusaurus），主要讀者為 AI agent
     ├── README.md                     # 網站結構與維護方式
     ├── .gitignore

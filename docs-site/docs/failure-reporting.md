@@ -1,6 +1,6 @@
 # 全角色具體失敗回報契約
 
-2026-09-05：適用 PM、Architecture、Backend、QA、Code Reviewer。
+適用所有角色（legacy 五角色與配置式流程的每個節點）。
 StageRunner 在送出前統一擴充各角色 schema 並附加共用指示，包含 resume。
 磁碟中的角色 schema 保持各角色職責；實際傳給 runtime 的 schema 另外包含：
 
@@ -28,12 +28,12 @@ Claude 工具拒絕與 Codex command_execution 失敗附操作、呼叫 ID、
 
 對外診斷遮蔽已知環境憑證與常見 token／密碼格式；原始事件與報告留在
 VM 供授權查核。格式檢查保證欄位存在，不保證 agent 自陳內容正確，
-也不取代人工或獨立重現根因。未在本次修正中放寬沙箱權限。
+也不取代人工或獨立重現根因。
 
-## 系統例外的白話說明（2026-09-25）
+## 系統例外的白話說明
 
 配置流程中任何例外停給人時（agent 執行失敗、CLI 用法錯誤、系統層重試用完、發布失敗、角色對話失敗、
-使用者操作時的系統錯誤），停止訊息不再貼 `Diagnostics.describe` 的技術內容，而是：
+使用者操作時的系統錯誤），停止訊息不貼 `Diagnostics.describe` 的技術內容，而是：
 
 1. 系統確定的事實在前（例如「次數已還原」「不需重新核准」）；
 2. `ErrorExplainer` 請 agent（claude-code、預設 haiku、無任何工具）依錯誤紀錄寫「發生了什麼／為什麼／影響／你可以怎麼做」。

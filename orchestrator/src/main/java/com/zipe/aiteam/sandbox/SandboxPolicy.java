@@ -61,7 +61,7 @@ public record SandboxPolicy(
      * 會改程式碼的角色（Backend／QA）。
      *
      * 資源上限是實測後訂的：VM 共 8 GB／8 vCPU，曾因 npm 原生模組開滿核心編譯
-     * 導致 soft lockup 需硬重置（見 vm-setup-manual.md）。留一半給系統與 orchestrator。
+     * 導致 soft lockup 需硬重置。留一半給系統與 orchestrator。
      *
      * @param workspace 該任務的隔離工作區（git worktree）
      * @param cacheDirs 建置快取，例如 ~/.m2。不給寫的話 Maven 每次都要重抓依賴。

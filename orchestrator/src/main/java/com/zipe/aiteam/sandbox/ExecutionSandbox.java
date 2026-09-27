@@ -21,7 +21,7 @@ import java.util.concurrent.TimeUnit;
  * 系統安全性等於所有 runtime 中最弱的那一個（見 docs-site/docs/multi-runtime.md）。
  * ClaudeCodeRuntime 的 --allowedTools 仍然保留，但那是縱深防禦的第二層。
  *
- * 實作機制（皆於本機 VM 實測，見 docs-site/docs/sandbox-report.md）：
+ * 實作機制（皆於本機 VM 實測）：
  *   ProtectSystem=strict + ReadWritePaths  檔案系統唯讀，白名單才可寫
  *   ProtectHome=read-only                  家目錄可讀不可寫
  *   PrivateTmp=yes                         獨立 /tmp

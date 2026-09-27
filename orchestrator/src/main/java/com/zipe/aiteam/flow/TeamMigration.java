@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.*;
 
-/** 僅遷移執行能力設定；模型、路由、角色、資產與需求政策變更須另建任務。 */
+/** 僅遷移執行能力設定與同一 runtime 內的角色模型；runtime、路由、角色、資產與需求政策變更須另建任務。 */
 public final class TeamMigration {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     public record Preview(String token, String from, String to, List<String> changes) {}

@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * OpenAI Codex CLI 的 AgentRuntime 實作。
  *
- * 所有用法皆已於 VM 上實機驗證（見 docs-site/docs/codex-runtime-report.md，7 項通過）：
+ * 所有用法皆已於 VM 上實機驗證（7 項通過；現行參數見 docs-site/docs/codex-cli-argument-contract.md）：
  *   codex exec               非互動入口，ChatGPT 訂閱帳號下可用
  *   --json                   JSONL 事件流，thread.started 帶 thread_id
  *   --output-schema FILE     結構化輸出（吃檔案，不吃字串）
