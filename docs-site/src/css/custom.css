@@ -1,0 +1,44 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+TC:wght@400;500;600;700&display=swap');
+
+:root {
+  --ifm-color-primary: #176b4b;
+  --ifm-color-primary-dark: #155f43;
+  --ifm-color-primary-darker: #145a3f;
+  --ifm-color-primary-darkest: #104a34;
+  --ifm-color-primary-light: #1a7753;
+  --ifm-color-primary-lighter: #1b7c57;
+  --ifm-color-primary-lightest: #208d63;
+  --ifm-font-family-base: 'IBM Plex Sans TC', 'Noto Sans TC', sans-serif;
+  --ifm-font-family-monospace: 'IBM Plex Mono', Consolas, monospace;
+  --ifm-background-color: #f4f7f3;
+  --ifm-navbar-background-color: #f4f7f3;
+  --ifm-footer-background-color: #202821;
+  --ifm-heading-font-weight: 650;
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #a6d9b7;
+  --ifm-color-primary-dark: #8dcca2;
+  --ifm-color-primary-darker: #82c799;
+  --ifm-color-primary-darkest: #5db77b;
+  --ifm-color-primary-light: #bfe6cc;
+  --ifm-color-primary-lighter: #caead4;
+  --ifm-color-primary-lightest: #edf8f0;
+  --ifm-background-color: #1d2821;
+  --ifm-navbar-background-color: #1d2821;
+}
+
+.navbar {
+  border-bottom: 1px solid #d8dfd8;
+  box-shadow: none;
+}
+
+.navbar__title {
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.footer {
+  border-top: 1px solid rgba(255, 255, 255, .12);
+}

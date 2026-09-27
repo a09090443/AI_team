@@ -911,7 +911,7 @@ public class TaskOrchestrator {
      *
      * 三種都停：明確失敗、只做了一半、以及踩到實作邊界。
      * 最後一種是刻意設計的 —— Backend 的提示詞要求它遇到邊界外的需求時停下來回報，
-     * 而不是自行擴大範圍（見 docs/backend-qa-decisions.md 決策 1）。
+     * 而不是自行擴大範圍（見 docs-site/docs/backend-qa-decisions.md 決策 1）。
      * 如果這裡不真的停，那條規則就只是一句空話。
      */
     private boolean stopAfterBackend(Task task, StageOutcome be) {
@@ -1061,7 +1061,7 @@ public class TaskOrchestrator {
      * 全自動管線唯一保留的人工閘門。
      *
      * 到這裡為止的每一步都沒有問過人；推分支與開 PR 會把結果送出去，
-     * 那一步必須有人按下去（見 docs/interaction-model.md）。
+     * 那一步必須有人按下去（見 docs-site/docs/interaction-model.md）。
      */
     /**
      * Code Review 階段。QA 之後、PR 閘門之前，審的是即將開 PR 的最終狀態。

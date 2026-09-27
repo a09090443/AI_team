@@ -1,7 +1,7 @@
 # 資料模型
 
 Orchestrator 的持久化結構。DDL 唯一來源是
-[`orchestrator/src/main/resources/schema.sql`](../orchestrator/src/main/resources/schema.sql)，
+[`orchestrator/src/main/resources/schema.sql`](../../orchestrator/src/main/resources/schema.sql)，
 本文說明每張表的用途、每個欄位的意義與允許值，以及四個 JSON 欄位對應的 Java 型別。
 
 - **資料庫**：SQLite，正式機路徑 `~/ai-team/ai-team.db`。

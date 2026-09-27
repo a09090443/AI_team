@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS task (
     slack_thread_ts   TEXT    NOT NULL,  -- 討論串根訊息 ts；所有回報都貼回這裡
     requester_user_id TEXT    NOT NULL,  -- 提出者；也是唯一能核准的人
     request_text      TEXT    NOT NULL,  -- 原始需求文字，不做正規化
-    state             TEXT    NOT NULL,  -- Task.State 列舉名稱，見 docs/data-model.md
+    state             TEXT    NOT NULL,  -- Task.State 列舉名稱，見 docs-site/docs/data-model.md
     status_message_ts TEXT,              -- 狀態訊息 ts，供原地編輯進度
     pm_session_id     TEXT,              -- 遺留欄位，v2 後已無程式碼讀寫
     pm_result         TEXT,              -- 遺留欄位，產出改存 stage_result
@@ -54,7 +54,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_task ON audit_log(task_id, id);
 -- ------------------------------------------------------------------ 執行現場
 -- 以下四張表都是「一個任務一列」的 JSON 快照（task_id + data）。
 -- 之所以整份序列化而不展開成欄位：這些結構會隨角色與流程配置演進，
--- 展開後每加一個欄位就要動 schema 與遷移。欄位語意見 docs/data-model.md。
+-- 展開後每加一個欄位就要動 schema 與遷移。欄位語意見 docs-site/docs/data-model.md。
 
 -- 中斷階段的最小可恢復現場（Checkpoint）。額度用盡或執行中斷後，
 -- 靠它把同一個 session 接回來；工作樹與未提交檔案另存在工作區。

@@ -11,3 +11,6 @@ orchestrator/target/
 .build-m2/
 *.tgz
 .codex/
+
+# Claude Code 個人設定（不共用）
+.claude/settings.local.json

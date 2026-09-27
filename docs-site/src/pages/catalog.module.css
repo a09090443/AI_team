@@ -1,0 +1,112 @@
+.catalog {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 56px 24px 64px;
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  color: var(--ifm-color-primary);
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.intro {
+  max-width: 680px;
+  color: var(--ifm-color-emphasis-700);
+  line-height: 1.8;
+}
+
+.legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px 24px;
+  margin: 28px 0 8px;
+  padding: 16px 18px;
+  border: 1px solid var(--ifm-color-emphasis-300);
+}
+
+.legend div {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.legend dt,
+.legend dd {
+  margin: 0;
+  font-size: 13px;
+}
+
+.category {
+  margin-top: 44px;
+  scroll-margin-top: 80px;
+}
+
+.categoryDescription {
+  margin-bottom: 12px;
+  color: var(--ifm-color-emphasis-700);
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--ifm-color-emphasis-300);
+}
+
+.item {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--ifm-color-emphasis-300);
+}
+
+.item p {
+  margin: 6px 0 0;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.itemHead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  font-weight: 600;
+}
+
+.path {
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.when {
+  color: var(--ifm-color-emphasis-800);
+}
+
+.code code {
+  margin-right: 6px;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px solid currentColor;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.current { color: #176b4b; }
+.record { color: #3d6a99; }
+.decision { color: #8a5a00; }
+.historical { color: #8a8f8b; }
+
+[data-theme='dark'] .current { color: #a6d9b7; }
+[data-theme='dark'] .record { color: #9cc3eb; }
+[data-theme='dark'] .decision { color: #e8c170; }
+[data-theme='dark'] .historical { color: #a3aaa5; }

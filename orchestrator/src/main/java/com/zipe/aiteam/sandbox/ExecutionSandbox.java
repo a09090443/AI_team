@@ -18,10 +18,10 @@ import java.util.concurrent.TimeUnit;
  * 執行沙箱：把一條指令包成受限的 systemd user unit。
  *
  * 為什麼邊界在這裡而不在 runtime：若安全依賴各 CLI 的權限旗標，
- * 系統安全性等於所有 runtime 中最弱的那一個（見 docs/multi-runtime.md）。
+ * 系統安全性等於所有 runtime 中最弱的那一個（見 docs-site/docs/multi-runtime.md）。
  * ClaudeCodeRuntime 的 --allowedTools 仍然保留，但那是縱深防禦的第二層。
  *
- * 實作機制（皆於本機 VM 實測，見 docs/sandbox-report.md）：
+ * 實作機制（皆於本機 VM 實測，見 docs-site/docs/sandbox-report.md）：
  *   ProtectSystem=strict + ReadWritePaths  檔案系統唯讀，白名單才可寫
  *   ProtectHome=read-only                  家目錄可讀不可寫
  *   PrivateTmp=yes                         獨立 /tmp

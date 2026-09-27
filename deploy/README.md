@@ -1,6 +1,6 @@
 # 部署前置：你要做的三件事
 
-> 本文是早期 Slack 設定紀錄。新機唯一入口為 [INSTALL.md](../docs/INSTALL.md)，五角色 App 見 [slack-agent-apps.md](../docs/slack-agent-apps.md)。`deploy-*.sh` 是歷史單機升級，不能當通用安裝腳本。
+> 本文是早期 Slack 設定紀錄。新機唯一入口為 [INSTALL.md](../docs-site/docs/INSTALL.md)，五角色 App 見 [slack-agent-apps.md](../docs-site/docs/slack-agent-apps.md)。`deploy-*.sh` 是歷史單機升級，不能當通用安裝腳本。
 
 這三件事都需要你的身分登入，我做不到。做完之後其餘的我可以接手。
 
@@ -33,7 +33,7 @@ scopes 給 `app_mentions:read`、`chat:write`、`chat:write.customize`、`reacti
 
 > `chat:write.customize` 是讓四個 Agent 各自以自己的名稱與圖示發言用的。
 > 若你已經用**沒有這個 scope 的舊版 manifest** 建好 App，到 OAuth & Permissions
-> 補上後需要重新安裝到 workspace。詳見 `docs/interaction-model.md`。
+> 補上後需要重新安裝到 workspace。詳見 `docs-site/docs/interaction-model.md`。
 
 > 刻意不給 `channels:history`。v0 只處理被明確 @ 提及的訊息，
 > 不讀取整個頻道歷史。之後若需要 thread context 再加。

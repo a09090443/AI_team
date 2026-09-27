@@ -1,0 +1,29 @@
+{
+  "name": "ai-team-docs",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "docusaurus": "docusaurus",
+    "start": "docusaurus start",
+    "prebuild": "node scripts/check-catalog.mjs && node ../.agents/sync-agent-config.mjs --check",
+    "build": "docusaurus build",
+    "serve": "docusaurus serve",
+    "clear": "docusaurus clear",
+    "check:catalog": "node scripts/check-catalog.mjs",
+    "check:agent-config": "node ../.agents/sync-agent-config.mjs --check"
+  },
+  "dependencies": {
+    "@docusaurus/core": "^3.9.2",
+    "@docusaurus/preset-classic": "^3.9.2",
+    "@mdx-js/react": "^3.0.0",
+    "clsx": "^2.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@docusaurus/module-type-aliases": "^3.9.2"
+  },
+  "engines": {
+    "node": ">=20.0"
+  }
+}

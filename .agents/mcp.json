@@ -1,0 +1,4 @@
+{
+  "$comment": "各 AI 工具共用的 MCP server 單一來源。修改後執行 node .agents/sync-agent-config.mjs 產生各工具設定。stdio 用 command/args/env；http 用 url/headers。不要寫入憑證值，改用環境變數由工具本身讀取。",
+  "mcpServers": {}
+}

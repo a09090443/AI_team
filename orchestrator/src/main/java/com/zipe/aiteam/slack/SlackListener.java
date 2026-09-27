@@ -21,7 +21,7 @@ import java.util.regex.Pattern;
  *
  * 最重要的規則：handler 內只做去重、授權、入佇列，然後立刻 ack。
  * Slack 要求 3 秒內回應，逾時會重送 3 次 —— 若在 handler 裡跑 Claude Code，
- * 同一個需求會被執行四次。見 docs/architecture-review.md B1。
+ * 同一個需求會被執行四次。見 docs-site/docs/architecture-review.md B1。
  */
 @Component
 public class SlackListener {

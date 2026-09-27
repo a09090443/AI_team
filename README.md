@@ -6,7 +6,7 @@ Orchestrator 驅動多個 AI Agent（Claude Code／Codex CLI）分階段完成�
 
 > **專案狀態：開發中，尚未通過乾淨 VM 重建驗收。**
 > 程式測試在本機通過，不等於真實端對端流程已驗收。缺口逐項列在
-> [docs/rebuild-verification.md](docs/rebuild-verification.md) 的「尚待完成的驗收」。
+> [docs-site/docs/rebuild-verification.md](docs-site/docs/rebuild-verification.md) 的「尚待完成的驗收」。
 > 閱讀本專案文件時請注意這個區分：「Maven 測試通過」與「真實 Slack／CLI 跑完」是兩件事。
 
 ## 核心設計
@@ -23,12 +23,12 @@ Orchestrator 不重寫 Agent 框架，只做 Agent CLI 不管的事：
 
 安全隔離刻意獨立成一層包在 Runtime 外面 —— 若安全依賴各 runtime 自己的權限旗標，
 系統安全性等於所有 runtime 中最弱的那一個。詳見
-[docs/corrected-architecture.md](docs/corrected-architecture.md) 與
-[docs/multi-runtime.md](docs/multi-runtime.md)。
+[docs-site/docs/corrected-architecture.md](docs-site/docs/corrected-architecture.md) 與
+[docs-site/docs/multi-runtime.md](docs-site/docs/multi-runtime.md)。
 
 每個角色以自己的 Slack 身分發言，階段交接在同一討論串中公開可見；
 佇列狀態與錯誤由主 App 發出，刻意不假裝是某個角色說的。
-見 [docs/interaction-model.md](docs/interaction-model.md)。
+見 [docs-site/docs/interaction-model.md](docs-site/docs/interaction-model.md)。
 
 ## 目錄結構
 
@@ -49,7 +49,7 @@ deploy/
 ├── bootstrap/                  # 從零建置工具（新機用這裡）
 ├── agent-manifests/            # 各角色的 Slack App manifest
 └── deploy-*.sh                 # 特定舊 VM 的歷史升級腳本，不用於新機
-docs/                           # 設計、部署、驗收與流程文件
+docs-site/                      # 文件網站：docs/ 原始文件、agent/ 入口頁、catalog.mjs 目錄
 .ai/                            # Codex 與 Claude Code 的跨工具交接記錄
 ```
 
@@ -57,11 +57,11 @@ docs/                           # 設計、部署、驗收與流程文件
 
 ## 建置與執行
 
-從零建置的唯一入口是 [docs/INSTALL.md](docs/INSTALL.md)。**不是一鍵安裝**：
+從零建置的唯一入口是 [docs-site/docs/INSTALL.md](docs-site/docs/INSTALL.md)。**不是一鍵安裝**：
 安裝媒體、官方工具鏈 checksum、系統套件與本人 CLI 登入都需先備妥。
 
 執行環境為 Linux x86_64／glibc／systemd，各發行版實測狀態見
-[docs/linux-support.md](docs/linux-support.md)；未實測的不標成已支援。
+[docs-site/docs/linux-support.md](docs-site/docs/linux-support.md)；未實測的不標成已支援。
 
 本機測試：
 
@@ -75,37 +75,54 @@ cd orchestrator && mvn test
 bash deploy/bootstrap/check-source.sh
 ```
 
+## 文件網站
+
+Docusaurus 文件網站位於 [docs-site](docs-site/README.md)，所有文件都在 `docs-site/docs/`（repo 根目錄已無 `docs/`）。
+主要讀者是 AI agent：[AI Agent 入口](docs-site/agent/index.md) 提供專案全貌、操作指令與依任務找文件，
+[文件目錄](docs-site/catalog.mjs) 標記每份文件是現行、紀錄、決策或歷史；build 時另產生 `llms.txt`。
+新增或刪除 `docs-site/docs/` 文件時要同步更新 `docs-site/catalog.mjs`，否則網站 build 失敗。
+
+```bash
+cd docs-site
+npm ci
+npm run start
+```
+
+本機網址為 <http://localhost:3000>；production build 使用 `npm run build`。
+
 ## 配置式團隊
 
 新角色與流程改 `orchestrator/teams/` 的 JSON，不再擴充 legacy role switch。
 以 `AI_TEAM_DEFINITION` 指向團隊定義檔啟用；留空則維持 legacy 五角色行為。
 啟動前可用打包 jar 的 `--validate-team` 做靜態檢查。
-見 [docs/configurable-team.md](docs/configurable-team.md)。
+見 [docs-site/docs/configurable-team.md](docs-site/docs/configurable-team.md)。
 
 v2 流程加入需求基準與追溯、前置契約與失效傳遞、系統獨立驗證與 PR_CREATED，
-見 [docs/engineering-workflow.md](docs/engineering-workflow.md)。
+見 [docs-site/docs/engineering-workflow.md](docs-site/docs/engineering-workflow.md)。
 
 ## 文件索引
 
 | 主題 | 文件 |
 |---|---|
-| 從零建置 | [INSTALL.md](docs/INSTALL.md) |
-| 建置演練證據與缺口 | [rebuild-verification.md](docs/rebuild-verification.md) |
-| Linux 能力與驗證矩陣 | [linux-support.md](docs/linux-support.md) |
-| 架構 | [corrected-architecture.md](docs/corrected-architecture.md)、[architecture-review.md](docs/architecture-review.md) |
-| 互動模型 | [interaction-model.md](docs/interaction-model.md) |
-| 配置式團隊 | [configurable-team.md](docs/configurable-team.md) |
-| v2 工程流程 | [engineering-workflow.md](docs/engineering-workflow.md) |
-| QA 流程 | [qa-scenario-workflow.md](docs/qa-scenario-workflow.md) |
-| QA 受阻與 PM 派工 | [pm-triage.md](docs/pm-triage.md) |
-| 直接對角色提問 | [direct-agent-requests.md](docs/direct-agent-requests.md) |
-| 失敗與發布閘門 | [failure-reporting.md](docs/failure-reporting.md)、[review-gate.md](docs/review-gate.md) |
-| Session 與用量 | [quota-continuation.md](docs/quota-continuation.md) |
-| 現行 VM 部署實測 | [deploy-2026-09-06-v2.md](docs/deploy-2026-09-06-v2.md) |
+| 從零建置 | [INSTALL.md](docs-site/docs/INSTALL.md) |
+| 建置演練證據與缺口 | [rebuild-verification.md](docs-site/docs/rebuild-verification.md) |
+| Linux 能力與驗證矩陣 | [linux-support.md](docs-site/docs/linux-support.md) |
+| 架構 | [corrected-architecture.md](docs-site/docs/corrected-architecture.md)、[architecture-review.md](docs-site/docs/architecture-review.md) |
+| 互動模型 | [interaction-model.md](docs-site/docs/interaction-model.md) |
+| 配置式團隊 | [configurable-team.md](docs-site/docs/configurable-team.md) |
+| v2 工程流程 | [engineering-workflow.md](docs-site/docs/engineering-workflow.md) |
+| QA 流程 | [qa-scenario-workflow.md](docs-site/docs/qa-scenario-workflow.md) |
+| QA 受阻與 PM 派工 | [pm-triage.md](docs-site/docs/pm-triage.md) |
+| 直接對角色提問 | [direct-agent-requests.md](docs-site/docs/direct-agent-requests.md) |
+| 失敗與發布閘門 | [failure-reporting.md](docs-site/docs/failure-reporting.md)、[review-gate.md](docs-site/docs/review-gate.md) |
+| Session 與用量 | [quota-continuation.md](docs-site/docs/quota-continuation.md) |
+| 現行 VM 部署實測 | [deploy-2026-09-06-v2.md](docs-site/docs/deploy-2026-09-06-v2.md) |
 
 ## 開發規範
 
-專案規範的單一事實來源是 [AGENTS.md](AGENTS.md)（`CLAUDE.md` 以 `@AGENTS.md` import）。
+專案規範的單一事實來源是 [AGENTS.md](AGENTS.md)，所有 AI 工具（Codex、Claude Code、Cursor、opencode、
+Copilot、Gemini CLI）都讀它；`CLAUDE.md` 只有 `@AGENTS.md` 一行。共用 skills 與 MCP 的單一來源在 `.agents/`，
+以 `node .agents/sync-agent-config.mjs` 產生各工具設定，見 [AI 工具設定](docs-site/agent/ai-tools.md)。
 Codex 與 Claude Code 的對話 session 不互通，`.ai/context.md`、`.ai/progress.md`、
 `.ai/decisions.md` 是唯一的交接面：開場先讀，完成工作單位後寫回。
 

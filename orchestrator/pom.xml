@@ -27,7 +27,7 @@
 
     <dependencies>
         <!-- 刻意不用 spring-boot-starter-web：Socket Mode 走 WebSocket 對外連線，
-             不需要對外開 HTTP port（見 docs/slack-options.md 的 C 節）。 -->
+             不需要對外開 HTTP port（見 docs-site/docs/slack-options.md 的 C 節）。 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter</artifactId>

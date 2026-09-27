@@ -36,7 +36,7 @@ ssh -o BatchMode=yes -p 2223 vboxuser@127.0.0.1 'id; uname -m'
 原始碼從本機打包（不帶 env.sh、DB、target 或 CLI 登入資料）：
 
 ```powershell
-tar -cf ai-team-source.tar AGENTS.md CLAUDE.md README.md .ai deploy docs orchestrator/pom.xml orchestrator/src orchestrator/prompts orchestrator/schemas orchestrator/teams
+tar -cf ai-team-source.tar AGENTS.md CLAUDE.md README.md .ai deploy docs-site/docs docs-site/agent orchestrator/pom.xml orchestrator/src orchestrator/prompts orchestrator/schemas orchestrator/teams
 $sourceSha = (Get-FileHash .\ai-team-source.tar -Algorithm SHA256).Hash.ToLower()
 $sourceSha
 scp -P 2223 ai-team-source.tar vboxuser@127.0.0.1:/home/vboxuser/

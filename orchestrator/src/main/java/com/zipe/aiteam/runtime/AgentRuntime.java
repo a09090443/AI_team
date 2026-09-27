@@ -12,7 +12,7 @@ import java.util.Set;
  * 廠商無關的 Agent 執行介面。
  *
  * 抽象刻意畫在「語意能力」層而非 CLI 旗標層 —— 不同 CLI 的旗標與輸出格式差異很大，
- * 但語意需求是一致的。詳見 docs/multi-runtime.md。
+ * 但語意需求是一致的。詳見 docs-site/docs/multi-runtime.md。
  *
  * 安全隔離不屬於這一層。若安全依賴各 runtime 的權限旗標，
  * 系統安全性等於所有 runtime 中最弱的那一個。實作者必須把最終的子行程指令

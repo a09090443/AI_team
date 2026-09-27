@@ -93,7 +93,7 @@ public record StageSpec(
             "backend", "Backend Agent", Identity.BACKEND,
             Task.State.IMPL_RUNNING,
             // 唯讀的 shell 工具要給足。實測 #1003 因為 ls 不在清單裡被擋，
-            // 回合被浪費在被拒絕的呼叫上，最後用盡上限而中止（見 docs/backend-report.md）。
+            // 回合被浪費在被拒絕的呼叫上，最後用盡上限而中止（見 docs-site/docs/backend-report.md）。
             // 收緊 runtime 權限不會增加安全性 —— 沙箱才是真正的邊界。
             List.of("Read", "Write", "Edit", "Grep", "Glob",
                     "Bash(ls *)", "Bash(cat *)", "Bash(find *)", "Bash(head *)",
@@ -102,7 +102,7 @@ public record StageSpec(
             80,
             "backend.md", "impl-schema.json",
             // 暖快取下全 reactor 的 mvn verify 要 118 秒，Backend 一輪可能跑 2-3 次；
-            // 900 秒會在還沒寫完程式前就逾時（實測見 docs/backend-report.md）。
+            // 900 秒會在還沒寫完程式前就逾時（實測見 docs-site/docs/backend-report.md）。
             WriteScope.FULL, 1800, "");
 
     /**

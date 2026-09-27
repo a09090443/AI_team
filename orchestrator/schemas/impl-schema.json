@@ -1,5 +1,5 @@
 {
-  "$comment": "Backend Agent 的輸出 schema。四項決策的落點：status/blockers 對應「誠實回報失敗」，boundary_conflict 對應「越界要停下來回報」，quality_gate 對應「Backend 自己要讓 mvn verify 過」。見 docs/backend-qa-decisions.md。 刻意不使用 additionalProperties:false，且 required 只留真正會被程式讀取的欄位。實測 #1004：Backend 已完成實作並 commit，卻因為最終結構化輸出連續五次未通過驗證而整輪被標成 FAILED（error_max_structured_output_retries）。多餘欄位無害，驗證失敗卻會讓一整輪工作報廢。",
+  "$comment": "Backend Agent 的輸出 schema。四項決策的落點：status/blockers 對應「誠實回報失敗」，boundary_conflict 對應「越界要停下來回報」，quality_gate 對應「Backend 自己要讓 mvn verify 過」。見 docs-site/docs/backend-qa-decisions.md。 刻意不使用 additionalProperties:false，且 required 只留真正會被程式讀取的欄位。實測 #1004：Backend 已完成實作並 commit，卻因為最終結構化輸出連續五次未通過驗證而整輪被標成 FAILED（error_max_structured_output_retries）。多餘欄位無害，驗證失敗卻會讓一整輪工作報廢。",
   "type": "object",
   "required": [
     "status",

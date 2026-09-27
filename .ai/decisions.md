@@ -2,6 +2,48 @@
 
 > 只追加，不覆蓋。每則寫「決策／理由／影響」，並註明日期與提出者。
 
+## 2026-09-27：AI 工具設定單一來源（Claude Code，使用者要求）
+
+決策：規則只寫 `AGENTS.md`（CLAUDE.md 僅 `@AGENTS.md`）；skills 單一來源 `.agents/skills/`；MCP 單一來源 `.agents/mcp.json`；
+各工具專屬檔由 `.agents/sync-agent-config.mjs` 產生並提交，docs-site prebuild 以 `--check` 防止手改漂移。
+理由：`AGENTS.md` 與 `.agents/skills` 是最多工具原生支援的位置；Claude Code 只讀 `.claude/skills`、各工具 MCP 格式不同，
+以產生檔補齊差異。未用 symlink：Windows 需要特殊權限（本機 Maven 測試已因 symlink 權限失敗過）。
+影響：Cursor、opencode 會同時讀到 `.agents/skills` 與 `.claude/skills` 的同名 skill，內容由腳本保證一致。
+`.codex/` 不進版控，其他開發者需各自執行同步。本機 `dbx` MCP 是否屬於專案共用尚未確認，未納入共用來源。
+
+## 2026-09-27：文件優先規則與機械驗證的專案目錄樹（Claude Code，使用者要求）
+
+決策：所有 agent 工作一律先讀文件；文件缺漏或與程式不符時必須在同次工作中修正文件。
+專案目錄樹 `docs-site/agent/project-tree.md` 由 prebuild 檢查與實際檔案比對，主程式、團隊配置、prompts、schemas、
+deploy 與 docs-site 的每個檔案都必須列入。
+理由：讓 agent 以文件為基礎快速定位，並以機械檢查落實「程式存在但文件沒寫就要補」，避免目錄樹逐漸過時。
+影響：新增、搬移、刪除上述範圍的檔案時，必須同步更新目錄樹（含用途說明），否則 docs-site build 失敗。
+檢查只驗證檔案有列出與路徑存在，不驗證說明文字是否正確；內容正確性仍靠規則與人工核對。
+
+## 2026-09-27：文件移入 docs-site/docs/，根目錄不再有 docs/（Claude Code，使用者要求）
+
+決策：取代下方「docs/ 留在原位」的做法。所有文件移到 `docs-site/docs/`，根目錄 `docs/` 刪除；
+repo 內對 `docs/xxx.md` 的引用全部改為 `docs-site/docs/xxx.md`。
+理由：使用者要求文件統一整理在 docs-site，不保留兩個文件位置。
+影響：新文件一律放 `docs-site/docs/` 並登錄 `catalog.mjs`；文件中連到 repo 其他檔案的相對連結需 `../../`；
+新機來源打包需包含 `docs-site/docs` 與 `docs-site/agent`（不含 node_modules／build）。
+歷史紀錄（`.ai/`、HANDOFF 等）中的舊 `docs/` 路徑保留原樣，閱讀時自行對應到 `docs-site/docs/`。
+
+## 2026-09-27：文件網站以 AI agent 為主要讀者，文件狀態集中登錄（Claude Code）
+
+決策：`docs/` 留在原位不搬移；在 `docs-site/` 新增 agent 入口頁（`agent/`）與文件目錄資料 `catalog.mjs`，
+由 catalog 產生 sidebar、`/catalog` 頁與 `llms.txt`／`llms-full.txt`，並在 prebuild 機械檢查 catalog 與 docs/ 一致。
+理由：docs/ 被 AGENTS.md、Java 註解、prompts 與部署腳本以路徑引用，搬移會打斷約 30 處引用；
+agent 最需要的是「哪份文件現在有效」與「做某件事該讀哪份」，把狀態集中在一份資料比在 42 份文件各自加 front matter 更不易漂移。
+影響：新增或刪除 docs/ 文件必須同步更新 `docs-site/catalog.mjs`，否則 build 失敗；文件狀態改變（例如被取代）時也要改 catalog。
+`llms.txt` 連結使用 config 的 `url`，目前為 localhost，部署前需改。
+
+## 2026-09-27：Docusaurus 文件網站直接使用 repo 根目錄 docs
+
+決策：新增獨立 `docs-site/` Classic 網站，將 Docusaurus docs path 指向 `../docs`；以繁中首頁提供主要操作主題入口。
+理由：既有文件已是唯一內容來源，避免複製後形成兩份需要同步維護的文件。
+影響：文件以一般 Markdown 模式建置以相容既有 HTML 標記與範例；本機使用 `npm ci`／`npm run start`，部署目標尚未指定。
+
 ## 2026-09-10：opencode 作為第三個 runtime，能力宣告只寫實測過的
 
 決策：接上 opencode CLI（id=opencode），四項能力全部先實測再宣告，未測的一律不列。

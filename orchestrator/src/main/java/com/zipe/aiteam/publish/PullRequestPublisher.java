@@ -27,7 +27,7 @@ import java.util.regex.Pattern;
  * 推分支並開 PR —— 管線唯一需要人工核准才會發生的動作。
  *
  * 這一步把結果送到 repository 之外，是整條管線裡唯一不可逆、且對外可見的動作。
- * 因此它不在自動流程裡，只由 Slack 上的核准按鈕觸發（見 docs/interaction-model.md）。
+ * 因此它不在自動流程裡，只由 Slack 上的核准按鈕觸發（見 docs-site/docs/interaction-model.md）。
  *
  * 不在沙箱內執行：它需要 GitHub token，而 token 絕不能進到 agent 的執行環境。
  */

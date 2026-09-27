@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Claude Code 的 AgentRuntime 實作。
  *
- * 所有旗標用法皆已於 Phase 0 實機驗證（見 docs/phase0-report.md，13 項通過）：
+ * 所有旗標用法皆已於 Phase 0 實機驗證（見 docs-site/docs/phase0-report.md，13 項通過）：
  *   --append-system-prompt-file  附加而非取代系統提示
  *   --permission-mode dontAsk    headless 下不會卡在權限提示
  *   --json-schema                回傳已驗證的 structured_output

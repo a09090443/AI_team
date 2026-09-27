@@ -2,6 +2,66 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-09-27 — Claude Code（AI 工具設定單一來源：規則、skills、MCP）
+
+- `CLAUDE.md` 縮為只有 `@AGENTS.md`；原 Claude 專屬內容（開場讀 .ai 與文件、收尾、plan mode、`.ai/` 非執行設定、
+  下游 prompt 位置）改寫為通用規則併入 AGENTS.md。AGENTS.md 新增「AI 工具設定（單一來源）」。
+- 新增 `.agents/`：`mcp.json`（MCP 單一來源，目前無共用 server）、`skills/docs-sync/SKILL.md`（文件優先核對流程）、
+  `sync-agent-config.mjs`（產生 `.mcp.json`、`.cursor/mcp.json`、`.vscode/mcp.json`、`.gemini/settings.json`、`opencode.json`，
+  鏡像 skills 到 `.claude/skills/`，只替換本機 `.codex/config.toml` 的標記區塊；`--check` 檢查一致性、CLAUDE.md 只含匯入、
+  VS Code `chat.useAgentsMdFile`）。`.vscode/settings.json` 開啟 `chat.useAgentsMdFile`；`.gitignore` 加 `.claude/settings.local.json`。
+- 各工具讀取位置依官方文件查證（Codex skills `.agents/skills`、Codex 專案 MCP 僅受信任專案、Gemini `context.fileName`、
+  VS Code `chat.useAgentsMdFile`、Cursor／opencode 同時讀 `.agents/skills` 與 `.claude/skills`、Claude Code 只讀 `.claude/skills`）。
+  僅「Claude Code 與 Codex 讀規則」為本專案實際使用，其餘在 `ai-tools.md` 標為「文件記載」。
+- 暫存目錄測試：stdio／http 範例轉換五種格式正確、Codex 區塊保留既有 `dbx` 且重跑冪等、同名衝突拒寫；
+  負面測試（手加 `.claude/skills`、CLAUDE.md 多內容）皆使 `--check` 失敗。本機 `.codex/config.toml` 未被修改。
+- 文件：新增 `docs-site/agent/ai-tools.md`；更新 project-tree（新增頂層項目，檢查範圍加入 `.agents/`、`.claude/`）、
+  contributing、index、docs-site README、根 README。docs-site prebuild 加入 `--check`。
+- 驗證：`npm run build` 通過（45 份文件、目錄樹 224 項、AI 工具設定一致）；check-source 通過。未 commit。
+
+## 2026-09-27 — Claude Code（專案目錄樹與「文件優先」規則）
+
+- 新增 `docs-site/agent/project-tree.md`：repo 全目錄樹（每個主程式類別、teams／prompts／schemas、deploy、docs-site 檔案
+  附一句用途，類別說明取自各類別 Javadoc）、「我要找……」對照表、不在版控的本機產物。
+- `docs-site/scripts/check-catalog.mjs` 擴充目錄樹檢查（prebuild 執行）：樹中路徑必須存在（支援 `*`），
+  `orchestrator/src/main/`、`teams/`、`prompts/`、`schemas/`、`deploy/`、`docs-site/`（docs/ 除外）每個受版控或新增未忽略檔案
+  必須列在樹中，頂層項目也須列出。反向測試：新增未列檔案、樹中寫不存在路徑，兩者皆使檢查失敗，已還原。
+- AGENTS.md 將「功能修改必須同步文件」擴充為「文件優先（強制）」：所有工作先讀文件再讀程式；文件查不到但程式存在要補寫；
+  功能與文件有落差以程式實際行為修正文件，若判斷是程式錯誤則先回報使用者、文件標明已知問題；任何功能異動都要核對文件。
+  同步更新 CLAUDE.md 開場與收尾、`docs-site/agent/contributing.md`、`index.md` 路由表、docs-site README；
+  AGENTS.md／README 連結文字 `docs/…` 改為 `docs-site/docs/…`。
+- 驗證：`npm run build` 通過（45 份文件、目錄樹 206 項一致）。未改程式行為，未跑 Maven。未 commit。
+
+## 2026-09-27 — Claude Code（docs/ 移入 docs-site/docs/，刪除根目錄 docs/）
+
+- 使用者要求整理完即刪除根目錄 `docs/`。原本 docs-site 只是掛載 `../docs`，內容並未在 docs-site 內，
+  因此改以逐檔 `git mv` 將 49 個檔案移到 `docs-site/docs/`（保留歷史；整個目錄 mv 被 Windows 鎖住），根目錄 `docs/` 已不存在。
+- 已修正的文件與引用：AGENTS.md、根 README（連結、目錄樹）、CLAUDE.md 未涉及路徑；docs-site 的 config（`path: 'docs'`）、
+  catalog 檢查、llms 外掛、`/catalog` 頁、README、agent 入口頁；`docs-site/docs/data-model.md` 對 schema.sql 的相對連結；
+  `docs-site/docs/INSTALL.md` 來源打包指令由 `docs` 改為 `docs-site/docs docs-site/agent`（否則 tar 會失敗）；
+  deploy/README.md、env.sh.template、pom.xml、prompts/architecture.md、impl-schema.json、schema.sql、
+  12 個 Java 主程式／測試的註解路徑。目標專案的 `doc-site`、`qa-docs`、`docs/build/**` 等路徑未動。
+  `.ai/` 與歷史文件（HANDOFF 等）中的舊路徑屬歷史紀錄，未改寫。
+- 驗證：docs-site `npm run build` 通過（45 份登錄、無斷鏈）；check-source 通過；本機 Maven（D:\tools\apache-maven-3.9.5、
+  `-o -Dmaven.repo.local=.build-m2`）451 項中 4 項失敗、11 略過，失敗皆為 Windows 環境（/bin/sh 不存在 2、symlink 權限 1、
+  git CRLF 警告混入輸出 1），與本次僅改註解無關；Linux 上未重跑。未 commit。
+
+## 2026-09-27 — Claude Code（文件網站改為以 AI agent 為主要讀者）
+
+- 新增 `docs-site/agent/`（第二個 docs 實例，路由 `/agent/`）：快速入口與依任務找文件、系統全貌（分層、流程節點、
+  任務狀態、程式碼地圖）、操作與指令（Slack 指令與按鈕、維運／開發指令）、設定參考（env 與團隊 JSON）、修改規則。
+  指令字串、按鈕文字與 JSON 欄位對照 `SlackListener`、`SlackBlocks`、`FlowEngine`、`spring-starters.json` 與 env 範本核對。
+- 新增 `docs-site/catalog.mjs` 登錄 docs/ 全部 45 份文件的分類、狀態（現行／紀錄／決策／歷史）、用途、何時讀與相關程式；
+  sidebar、`/catalog` 頁面與 `llms.txt` 都由它產生。`scripts/check-catalog.mjs` 於 prebuild 檢查登錄與 docs/ 一致、
+  相關程式路徑存在。`plugins/llms-txt.mjs` 在 build 產生 `llms.txt`、`llms-full.txt` 與每份文件的 `.md` 原文。
+- `docs/` 未搬移、未修改（被 AGENTS.md、Java 註解、prompts、部署腳本以路徑引用）。首頁入口改指向 AI Agent 入口與文件目錄；
+  AGENTS.md、根 README 加上指引。`npm run build` 通過，無斷鏈或斷錨點。未 commit。
+
+## 2026-09-27 — Codex（建立 Docusaurus 文件網站）
+
+- 新增 `docs-site/` Docusaurus Classic 網站，首頁提供建置、架構、工程流程、QA、團隊配置與驗證入口；直接掛載根目錄 `docs/`，未複製或修改原文件。
+- 根 README 增加網站啟動方式；`npm run build` 通過。npm install 回報 21 筆弱點（20 moderate、1 high），未執行自動升級。未設定部署目標。
+
 ## 2026-09-26 — Claude Code（PR 驗收紀錄改 Markdown 條列）
 
 - PR 內文原本直接貼 `flow.receipts`（Map<String,JsonNode>）與 Receipt record 的 toString，讀者看到整坨 JSON。
