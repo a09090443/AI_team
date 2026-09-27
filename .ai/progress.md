@@ -22,7 +22,7 @@
 - sidebars.js、llms-txt.mjs 改依文件 status 判斷歷史分類；agent/index.md 閱讀規則改為「現行文件只寫現況」。
 - .ai/context.md 改寫為只含當前狀態；本檔 09-25 以前的條目壓縮為摘要。decisions.md 未動。
 - 驗證：docs-site npm run build 通過（27 份文件、目錄樹 215 項一致）；check-source 通過；本機 Maven 451 項中 4 項失敗、11 略過，
-  失敗皆為 Windows 環境（/bin/sh 不存在 2、symlink 權限 1、git CRLF 警告混入輸出 1），與本次無關。未 commit。
+  失敗皆為 Windows 環境（/bin/sh 不存在 2、symlink 權限 1、git CRLF 警告混入輸出 1），與本次無關。已 commit（d6ac1e4）並 push 至 origin/main。
 
 ## 2026-09-27 — Claude Code（AI 工具設定單一來源：規則、skills、MCP）
 

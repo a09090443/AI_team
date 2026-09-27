@@ -7,9 +7,9 @@
 
 ## 正在進行
 
-- **文件清理（未 commit）**：依使用者要求移除沒有用的文件內容——刪除歷史文件與一次性部署腳本、
+- **文件清理（已 push，commit d6ac1e4）**：依使用者要求移除沒有用的文件內容——刪除歷史文件與一次性部署腳本、
   精簡現行文件、壓縮 `.ai/progress.md`。細節見 progress.md 2026-09-27 第一則。
-  docs-site build 與 check-source 已通過，待使用者確認後 commit。
+  docs-site build 與 check-source 已通過。
 
 ## 線上服務（既有 VM，`ssh -p 2222 vboxuser@127.0.0.1`）
 
