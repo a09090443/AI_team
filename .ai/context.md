@@ -8,8 +8,8 @@
 ## 正在進行
 
 - **受保護路徑事先告知（commit 0ac9f20，已部署，未 push）**：細節見 progress.md 2026-09-30。真實端對端未實測。
-- **VM 上 Claude Code OAuth 已過期**（2026-09-30 13:06 UTC 起 `Failed to authenticate: OAuth session expired`）：
-  所有 Claude Code 角色都無法執行，需使用者本人在 VM 重新登入，agent 不代操作。
+- VM 上 Claude Code OAuth 曾於 2026-09-30 13:06 UTC 過期（換新失敗，expiresAt 被清為 0）；
+  使用者本人 13:14 UTC 重新登入，`claude auth status` loggedIn=true、實際 `claude -p` 呼叫成功。
 
 ## 線上服務（既有 VM，`ssh -p 2222 vboxuser@127.0.0.1`）
 
@@ -32,7 +32,9 @@
   09-30 13:06 UTC 負責人按了「已開放權限，重派修改」，但分流因 OAuth 過期直接失敗、回到 AWAIT_HUMAN（audit 1007–1011），
   實作沒有被重派。
   09-30 依使用者要求由 Claude Code 在任務工作區手動修改第 28 行為 4.0.8（註明以根 pom 為準）並提交 fe1795b
-  （作者 Gary；AC-DOC-05-2 要求寫出確切 4.0.N，所以保留版號）。下一步：使用者重新登入 OAuth 後按「已手動改好，開始驗收」。
+  （作者 Gary；AC-DOC-05-2 要求寫出確切 4.0.N，所以保留版號）。已在 fe1795b 的獨立 clone 照驗收操作離線預演：`mvn -B -o verify` BUILD SUCCESS（~/.m2 已有 4.0.8），
+  文件 `npm ci --offline`、build、llms 兩份比對結束碼皆 0；暫存目錄已刪。這是預演，不是正式驗收。
+  下一步：使用者在 Slack 按「已手動改好，開始驗收」。
   另待確認驗收端離線 Maven 快取是否有 4.0.8。
 
 ## 尚未實測的功能（Slack 真實操作）
