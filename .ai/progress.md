@@ -2,6 +2,23 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-09-30 — Claude Code（Claude Code 受保護路徑：查因與事先告知）
+
+- 查 #1021：implementation 改 `.claude/rules/project-overview.md` 被拒（audit 1000），同批其他 Edit 成功。
+  根因是 `ClaudeCodeRuntime` 固定 `--permission-mode dontAsk`，Claude Code 對受保護路徑（`.claude`、`.git`、`.mvn` 等）
+  在 dontAsk 下一律拒絕，allow 規則開放不了（官方 permission-modes 文件）；不是沙箱或檔案權限。
+  triage 提出的「開放 `.claude/rules/**` 權限後重派」依官方文件無效。
+- 使用者核准計畫後實作（未部署）：`AgentRuntime.protectedWritePaths()`／`isProtectedWrite()`，
+  `ClaudeCodeRuntime.PROTECTED_WRITE_PATHS` 與 `annotateDenials()`（被拒時補上真正原因），
+  `ConfiguredExecutor.protectedPathNotice()`（寫檔節點：不要嘗試、不是 boundary_conflict；唯讀節點：不列為驗收、不提議開放權限）。
+  另把 boundary_conflict 說明的「保護路徑」改為「沙箱／配置保護路徑」。計畫原本要改 `Diagnostics.toolFailures` 簽章，
+  改為在 runtime 補 `reason`，所有讀者自動生效。`NodeInput` 指紋不含 context，不影響防循環計數。
+- 驗證：Windows 本機 Maven 458 項，只有已知的 4 項 Windows 專屬失敗；新增 `ClaudeCodeProtectedPathTest` 與
+  `ConfiguredExecutorTest` 3 項都通過。check-source、docs-site build 通過。**程式測試通過，真實端對端未實測。**
+- 發現的缺漏：文件未記載此限制。已修正的文件：`docs-site/docs/multi-runtime.md`（新增受保護路徑段落與系統處理方式）、
+  `docs-site/catalog.mjs`（multi-runtime 的 code 加入 ClaudeCodeRuntime）。
+  已核對、無需修改：`configurable-team.md`、`agent/system-map.md`、`agent/project-tree.md`（新測試檔在既有 runtime/ 目錄下）。
+
 ## 2026-09-27 — Claude Code（移除沒有用的文件內容）
 
 - 使用者要求移除沒有用的文件內容，確認範圍為：刪除歷史文件、精簡 .ai 交接檔、清現行文件的過時段落、刪除舊部署紀錄。

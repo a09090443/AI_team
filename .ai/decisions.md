@@ -382,3 +382,14 @@ runtime 邊界，業務語意則由本系統自己的可測閘門維持。
 
 理由：VM 系統時區為 UTC，階段心跳顯示「狀態更新時間（UTC）」與 log 都比使用者慢 8 小時。
 改存台北時間會讓舊資料解析、額度排程比較出錯（無遷移機制），只換呈現層風險最低。
+
+## 2026-09-30 — runtime 受保護路徑由 runtime 宣告並注入 context，不改權限模式
+
+決策：Claude Code 在 dontAsk 下一律拒寫的受保護路徑，由 `AgentRuntime.protectedWritePaths()` 宣告，
+`ConfiguredExecutor` 派工時告知寫檔節點（不要嘗試）與唯讀節點（不列為驗收、分流不提議開放權限），
+被拒時由 `ClaudeCodeRuntime` 補上真正原因。需要改這些檔案時交真人處理。
+
+理由：#1021 把改 `.claude/rules/` 寫進驗收，實作做完才被拒，分流又提出無效的開放權限選項。
+改用 `bypassPermissions` 雖能寫入，但會讓 `--allowedTools` 失效、拿掉縱深防禦的第二層；allow 規則則依官方文件無效。
+限制屬於 runtime 而非團隊配置，所以不寫進 teams 提示（也因為 teams 提示被快照固定，既有任務看不到）。
+目標專案應把易變資訊放在建置檔與一般文件，受保護路徑只放穩定規則。

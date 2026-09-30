@@ -247,6 +247,38 @@ class ConfiguredExecutorTest {
         assertThat(text).contains("分成多次工具呼叫").doesNotContain("Read").doesNotContain("Grep").doesNotContain("Glob");
     }
 
+    /** spring-starters：builder 是 Claude Code，tester（計畫、驗收）是 Codex。 */
+    private static AgentRuntime runtimeOf(String id) {
+        return id.equals("claude-code") ? new ClaudeCodeRuntime(null, null) : new CodexRuntime(null, null);
+    }
+
+    @Test void claudeImplementationIsToldUpFrontWhichPathsItCanNeverWrite() throws Exception {
+        String text = ConfiguredExecutor.protectedPathNotice(springDefinition(), "implementation", ConfiguredExecutorTest::runtimeOf);
+
+        // #1021：試過才被拒，還填了 boundary_conflict，讓整份實作有被否決的風險。
+        assertThat(text).contains(".claude/").contains(".mvn/").contains("maven-wrapper.properties")
+                .contains("不要嘗試").contains("human_decision").contains("這不是 boundary_conflict");
+    }
+
+    @Test void requirementPlanningAndTriageNodesLearnTheImplementersLimits() throws Exception {
+        var definition = springDefinition();
+        for (String node : List.of("intake", "design", "plan", "triage", "review")) {
+            String text = ConfiguredExecutor.protectedPathNotice(definition, node, ConfiguredExecutorTest::runtimeOf);
+            // #1021：驗收條件點名 .claude/rules，分流又提議開放權限後重派。
+            assertThat(text).as(node).contains(".claude/").contains("不要把修改這些檔案列為實作的驗收")
+                    .contains("不得提出「開放權限後重派」");
+        }
+    }
+
+    @Test void codexWritersGetNoProtectedPathNotice() throws Exception {
+        var definition = springDefinition();
+        // 驗收節點會寫測試檔，但 runtime 是 Codex，沒有這類限制。
+        assertThat(ConfiguredExecutor.protectedPathNotice(definition, "verification", ConfiguredExecutorTest::runtimeOf)).isEmpty();
+        // 整個團隊都不用 Claude Code 時，唯讀節點也不該看到。
+        assertThat(ConfiguredExecutor.protectedPathNotice(definition, "intake", id -> new CodexRuntime(null, null))).isEmpty();
+        assertThat(ConfiguredExecutor.protectedPathNotice(definition, "approval", ConfiguredExecutorTest::runtimeOf)).isEmpty();
+    }
+
     @Test void codexRolesDoNotGetPatternAdvice() throws Exception {
         var definition = springDefinition();
         AgentRuntime codex = mock(AgentRuntime.class);

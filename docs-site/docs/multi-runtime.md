@@ -36,6 +36,38 @@
   （Ubuntu 24.04 起預設 `kernel.apparmor_restrict_unprivileged_userns=1`），systemd **不會報錯，只會靜默略過**
   上述檔案系統防護。啟動時的 `selfTest()` 會實際嘗試越界寫入，把靜默失敗變成啟動失敗；它不是可有可無的健全性檢查。
 
+### Claude Code 角色寫不了受保護路徑（已知限制）
+
+`ClaudeCodeRuntime` 固定以 `--permission-mode dontAsk` 執行。Claude Code 對一組**受保護路徑**的寫入
+永遠不自動核准，在 `dontAsk` 模式下的結果是**直接拒絕**，錯誤訊息為
+`Permission to use Edit has been denied because Claude Code is running in don't ask mode.`，
+沙箱與檔案權限都沒有問題（2026-09-29 #1021 實作節點改 `.claude/rules/project-overview.md` 即為此例，
+同批其他檔案的 Edit 都成功）。
+
+- 受保護目錄（依 Claude Code 官方 permission-modes 文件，VM 上為 2.1.282）：`.git`、`.config/git`、`.vscode`、`.idea`、
+  `.husky`、`.cargo`、`.devcontainer`、`.yarn`、`.mvn`、`.claude`（`.claude/worktrees` 除外）；
+  另有 `.mcp.json`、`.claude.json`、`.npmrc`、`maven-wrapper.properties`、`gradle-wrapper.properties`、
+  shell rc 檔、git hook 設定檔等受保護檔案。完整清單以官方文件為準。
+- **把 `Edit(.claude/**)` 之類的規則加進角色 `tools`（`--allowedTools`）沒有用**：官方文件寫明安全檢查在
+  allow 規則之前執行，allow 規則不會預先核准受保護路徑。只有 `bypassPermissions` 允許這類寫入，
+  但該模式同時讓 `--allowedTools` 不再限制工具，會拿掉縱深防禦的第二層，目前沒有採用。
+- Bash 的輸出重導與 `tee` 目標也會套用同一檢查，改用 shell 指令寫入同樣會被拒。
+- 需求或驗收項目若要求改這些路徑，只能由真人在任務分支手動修改並提交，或把該檔移出需求範圍。
+  目標專案的慣例：會隨版本或功能變動的資訊（版本號、模組清單）不要寫在 `.claude/rules/` 等受保護路徑，
+  改寫在建置檔、`AGENTS.md` 或一般文件，受保護路徑只放穩定的規則並指向那些檔案。
+
+系統的處理方式（2026-09-30 起）：
+
+| 位置 | 行為 |
+|---|---|
+| `AgentRuntime.protectedWritePaths()`／`isProtectedWrite()` | runtime 宣告自身一律拒寫的路徑；預設空清單。只有 `ClaudeCodeRuntime` 宣告（`PROTECTED_WRITE_PATHS`，依 2.1.282 官方清單，換 CLI 版本要重新核對）。 |
+| `ConfiguredExecutor.protectedPathNotice()` | 派工時注入 context。寫檔節點（`workspace=true` 且 scope 不是 READ_ONLY）只看自己 runtime 的清單：不要嘗試、把需真人修改的檔案寫進 `human_decision`／`also_needed`、不是 `boundary_conflict`。唯讀節點（intake、design、plan、triage、review）看本流程所有寫檔節點的清單聯集：不要把改這些檔案列為實作的驗收、分流不得提出「開放權限後重派」。清單全空時不輸出。 |
+| `ClaudeCodeRuntime.annotateDenials()` | 解析輸出時，Edit／Write／MultiEdit／NotebookEdit 的 `file_path` 命中清單就補上 `reason`，`TOOL_DENIED` 稽核、`ToolTrust` 與失敗描述因此寫出真正原因，而不是「未提供具體拒絕理由」。Bash 被拒仍維持原文字。 |
+
+注入文字是由程式產生的，不在 teams 提示裡，所以既有任務快照下一次執行也會看到；它只是說明，不改變任何權限。
+`NodeInput` 指紋不含 context 文字，所以不會影響「相同輸入連續重跑」的計數。
+狀態：程式測試通過；真實任務端對端尚未實測。
+
 ---
 
 ## Runtime 抽象畫在語意層

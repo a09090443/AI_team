@@ -72,6 +72,46 @@ public class ClaudeCodeRuntime implements AgentRuntime {
                 home.resolve(".claude/plugins"));
     }
 
+    /**
+     * 官方 permission-modes 文件「Protected paths」（依 2.1.282 核對，換版要重新核對）：
+     * dontAsk 下寫入這些路徑一律拒絕，allow 規則在安全檢查之後才評估，所以 --allowedTools 開放不了。
+     * 只有 bypassPermissions 放行，但那會讓 --allowedTools 失效，不採用。
+     */
+    static final List<String> PROTECTED_WRITE_PATHS = List.of(
+            ".git/", ".config/git/", ".vscode/", ".idea/", ".husky/", ".cargo/", ".devcontainer/", ".yarn/", ".mvn/",
+            ".claude/",
+            ".gitconfig", ".gitmodules",
+            ".bashrc", ".bash_profile", ".bash_login", ".bash_aliases", ".bash_logout",
+            ".zshrc", ".zprofile", ".zshenv", ".zlogin", ".zlogout", ".profile", ".envrc",
+            ".npmrc", ".yarnrc", ".yarnrc.yml", ".pnp.cjs", ".pnp.loader.mjs", ".pnpmfile.cjs", "bunfig.toml", ".bunfig.toml",
+            ".bazelrc", ".bazelversion", ".bazeliskrc",
+            ".pre-commit-config.yaml", "lefthook.yml", "lefthook.yaml", ".lefthook.yml", ".lefthook.yaml",
+            "gradle-wrapper.properties", "maven-wrapper.properties",
+            ".devcontainer.json", ".ripgreprc", "pyrightconfig.json", ".mcp.json", ".claude.json");
+
+    @Override
+    public List<String> protectedWritePaths() {
+        return PROTECTED_WRITE_PATHS;
+    }
+
+    /**
+     * Claude Code 的 permission_denials 不帶拒絕理由，稽核只能寫「不可據此判定是哪層權限」，
+     * 分流因此提議開放權限（#1021）。能確定是受保護路徑時補上 reason，
+     * Diagnostics.toolFailures 與 ToolTrust 等所有讀者就會看到真正原因。
+     */
+    JsonNode annotateDenials(JsonNode denials) {
+        if (denials == null || !denials.isArray()) return denials;
+        for (JsonNode denial : denials) {
+            if (!(denial instanceof com.fasterxml.jackson.databind.node.ObjectNode obj) || denial.hasNonNull("reason")) continue;
+            String tool = denial.path("tool_name").asText("");
+            String path = denial.path("tool_input").path("file_path").asText("");
+            if (!Set.of("Edit", "Write", "MultiEdit", "NotebookEdit").contains(tool) || !isProtectedWrite(path)) continue;
+            obj.put("reason", "寫入 Claude Code 受保護路徑（" + path + "）：自動模式（dontAsk）下一律拒絕，"
+                    + "在角色工具清單加 allow 規則也開放不了；需真人在任務分支修改並提交，或把該檔移出需求");
+        }
+        return denials;
+    }
+
     @Override
     public Set<Capability> capabilities() {
         return EnumSet.of(
@@ -264,7 +304,7 @@ public class ClaudeCodeRuntime implements AgentRuntime {
             turns = root.path("num_turns").asInt(-1);
             observed = "供應商結果：" + Diagnostics.clip(root.path("result").asText(), 1200)
                     + "\n" + Diagnostics.clip(root.path("errors").toString(), 700)
-                    + Diagnostics.toolFailures(root.get("permission_denials"));
+                    + Diagnostics.toolFailures(annotateDenials(root.get("permission_denials")));
         } catch (Exception ignored) {
             // 連 JSON 都解不出來，退回原始輸出
         }
@@ -297,7 +337,7 @@ public class ClaudeCodeRuntime implements AgentRuntime {
                     root.path("is_error").asBoolean(false),
                     stderrLog,
                     modelsOf(root),
-                    root.get("permission_denials"));
+                    annotateDenials(root.get("permission_denials")));
         } catch (Exception e) {
             throw new RuntimeExecutionException(
                     "無法解析 Claude Code 的 JSON 輸出：" + truncate(stdout, 1500), e);

@@ -64,7 +64,7 @@ export const docs = [
     status: 'current',
     summary: '安全邊界在 runtime 外層（ExecutionSandbox 的實際機制與網路未隔離等限制）、AgentRuntime 能力宣告與降級對照表。',
     readWhen: '要新增 runtime adapter、理解 runtime 能力差異，或判斷沙箱擋得住什麼。',
-    code: ['orchestrator/src/main/java/com/zipe/aiteam/runtime/AgentRuntime.java', 'orchestrator/src/main/java/com/zipe/aiteam/runtime/RuntimeRegistry.java', 'orchestrator/src/main/java/com/zipe/aiteam/sandbox/'],
+    code: ['orchestrator/src/main/java/com/zipe/aiteam/runtime/AgentRuntime.java', 'orchestrator/src/main/java/com/zipe/aiteam/runtime/RuntimeRegistry.java', 'orchestrator/src/main/java/com/zipe/aiteam/runtime/ClaudeCodeRuntime.java', 'orchestrator/src/main/java/com/zipe/aiteam/sandbox/'],
   },
   {
     id: 'interaction-model',

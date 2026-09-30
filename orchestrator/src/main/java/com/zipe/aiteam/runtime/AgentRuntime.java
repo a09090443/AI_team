@@ -53,6 +53,37 @@ public interface AgentRuntime {
      */
     List<java.nio.file.Path> escalationPins(java.nio.file.Path home);
 
+    /**
+     * runtime 自身在自動模式下一律拒絕寫入的專案內路徑，任何權限設定都開放不了。
+     *
+     * 目錄以結尾 "/" 表示（比對任一層目錄名），其餘為檔名；空清單代表沒有這類限制。
+     * 這不是安全邊界（那是沙箱），而是要讓規劃與實作節點事先知道：
+     * #1021 把改 `.claude/rules/` 寫進驗收，實作做完才被拒，分流又提議「開放權限後重派」，按了也只會再被拒。
+     */
+    default List<String> protectedWritePaths() { return List.of(); }
+
+    /** 以本 runtime 的 {@link #protectedWritePaths()} 判斷一個寫入目標（相對或絕對路徑）是否必定被拒。 */
+    default boolean isProtectedWrite(String path) {
+        if (path == null || path.isBlank()) return false;
+        String[] parts = path.replace('\\', '/').split("/");
+        for (int i = 0; i < parts.length; i++) {
+            for (String rule : protectedWritePaths()) {
+                if (rule.endsWith("/")) {
+                    String[] dir = rule.substring(0, rule.length() - 1).split("/");
+                    if (i + dir.length >= parts.length) continue; // 目錄本身之下要還有東西
+                    boolean match = true;
+                    for (int j = 0; j < dir.length && match; j++) match = parts[i + j].equals(dir[j]);
+                    // Claude Code 自己的 git worktree 放在這裡，官方明列為例外。
+                    if (match && rule.equals(".claude/") && parts[i + 1].equals("worktrees")) match = false;
+                    if (match) return true;
+                } else if (i == parts.length - 1 && parts[i].equals(rule)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     enum Capability {
         /** 能在不覆蓋自身預設系統提示的前提下附加角色提示 */
         APPEND_SYSTEM_PROMPT,

@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import java.nio.file.*;
 import java.time.Duration;
 import java.util.*;
+import java.util.function.Function;
 import static com.zipe.aiteam.flow.TeamDefinition.*;
 
 @Component
@@ -73,12 +74,13 @@ public class ConfiguredExecutor {
         if (flow.dialogue) context.append(parentWorkspaceState(flow));
         if (!flow.dialogue) context.append("\n本階段可使用／規畫的操作契約：").append(availableOperations(flow, node));
         if (!flow.dialogue) context.append(commandPatterns(role, runtime, OperationContract.forNode(flow.snapshot.definition(), flow.node)));
+        if (!flow.dialogue) context.append(protectedPathNotice(flow.snapshot.definition(), flow.node, runtimes::require));
         // 同一角色常同時負責訂計畫與驗收，角色提示會提到驗收要引用 plan_revision；
         // 但 plan_revision 是系統在計畫完成後依計畫內容計算的，訂計畫時本來就不存在。
         // boundary_conflict 會讓整份實作不被採用。#1016／#1017 的實作都成功了，卻把
         // 「文件隔離驗收操作沒授予給我」寫進這欄 —— 那是驗收節點的工作，結果實作被否決、驗收無從開始。
         if (!flow.dialogue && node.gate() == Gate.IMPLEMENTATION)
-            context.append("\nboundary_conflict 只在「完成需求就必須越界」時填寫：要改動邊界外或保護路徑的檔案、")
+            context.append("\nboundary_conflict 只在「完成需求就必須越界」時填寫：要改動邊界外或沙箱／配置保護路徑的檔案、")
                     .append("改公開 API、增改相依、或需要你沒有的權限才能完成你自己的工作。填了就代表實作不被採用。")
                     .append("其他節點負責的驗收或操作（例如驗收節點的固定操作）你執行不了，不是邊界衝突，")
                     .append("也不需要由你代做；寫在 summary 說明即可，boundary_conflict 填 null。");
@@ -159,6 +161,47 @@ public class ConfiguredExecutor {
                 .append("不要加 `-C <路徑>`、管線、`&&`、`for` 迴圈、`timeout`／`echo` 串接或重新導向，那些都會被拒絕而白跑一輪。")
                 .append("被拒時不要宣稱執行過該指令，改用允許的方式或如實回報。");
         return text.append(allowedAlternatives(role)).toString();
+    }
+
+    /**
+     * runtime 自身一律拒寫的路徑（AgentRuntime.protectedWritePaths），要在派工時就講清楚。
+     * #1021：intake 把改 `.claude/rules/` 寫進驗收，實作做完才被拒並填了 boundary_conflict，
+     * 分流又提議「開放權限後重派」—— 那條路按了只會再被拒一次並用掉交接額度。
+     * 會寫檔的節點只看自己的限制；唯讀節點（需求、設計、計畫、分流、審查）看本流程所有寫檔節點的限制，
+     * 因為驗收條件與分流選項是它們定的。沒有任何限制時不輸出，不影響不用這類 runtime 的團隊。
+     */
+    static String protectedPathNotice(TeamDefinition definition, String nodeId, Function<String, AgentRuntime> runtimeOf) {
+        Node node = definition.nodes().get(nodeId);
+        if (node == null || node.kind() != Kind.AGENT) return "";
+        if (writes(node)) {
+            List<String> paths = runtimeOf.apply(definition.roles().get(node.role()).runtime()).protectedWritePaths();
+            if (paths.isEmpty()) return "";
+            return "\n下列路徑你這個角色的 runtime 一律拒絕寫入，任何權限設定都開放不了（目錄以 / 結尾，表示其下任何檔案）："
+                    + paths + "。需求要求修改這些檔案時不要嘗試（Edit、Write、Bash 重導都會被拒，白用回合），"
+                    + "其餘工作照常完成並提交；把需要真人修改的檔案與逐字內容寫進 human_decision 與 also_needed。"
+                    + "這不是 boundary_conflict，那一欄填 null。";
+        }
+        Map<String, List<String>> byRuntime = new LinkedHashMap<>();
+        definition.nodes().values().stream().filter(ConfiguredExecutor::writes).forEach(writer -> {
+            String id = definition.roles().get(writer.role()).runtime();
+            // 這只是說明文字：別的節點的 runtime 目前不可用時略過，不能讓本節點因此無法派工。
+            byRuntime.computeIfAbsent(id, key -> {
+                try { return runtimeOf.apply(key).protectedWritePaths(); }
+                catch (IllegalStateException unavailable) { return List.of(); }
+            });
+        });
+        Set<String> paths = new LinkedHashSet<>();
+        byRuntime.values().forEach(paths::addAll);
+        if (paths.isEmpty()) return "";
+        return "\n本流程的實作角色無法寫入下列路徑，任何權限設定都開放不了（目錄以 / 結尾）：" + paths
+                + "。訂需求、設計與測試計畫時，不要把修改這些檔案列為實作的驗收；版本號、模組清單等會隨變更而動的資訊，"
+                + "以建置檔與一般文件為驗收對象。需求確實必須改這些檔案（例如升級 Maven Wrapper）時，列入 out_of_scope 並註明需真人處理；"
+                + "若那是需求的核心，交真人決定。分流或審查遇到寫入這些路徑被拒時，不得提出「開放權限後重派」之類的選項，"
+                + "只能請真人在任務分支修改並提交後繼續，或提出需求變更排除該檔；也不得因該檔未修改而判定實作失職。";
+    }
+
+    private static boolean writes(Node node) {
+        return node.kind() == Kind.AGENT && node.workspace() && node.scope() != Scope.READ_ONLY;
     }
 
     /**
