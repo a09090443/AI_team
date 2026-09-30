@@ -7,14 +7,15 @@
 
 ## 正在進行
 
-- **受保護路徑事先告知（程式已改、未 commit、未部署）**：細節見 progress.md 2026-09-30。
-  下一步：使用者同意後 commit；部署要另外取得同意，用 `deploy/deploy-jar-safe.sh`。
+- **受保護路徑事先告知（commit 0ac9f20，已部署，未 push）**：細節見 progress.md 2026-09-30。真實端對端未實測。
+- **VM 上 Claude Code OAuth 已過期**（2026-09-30 13:06 UTC 起 `Failed to authenticate: OAuth session expired`）：
+  所有 Claude Code 角色都無法執行，需使用者本人在 VM 重新登入，agent 不代操作。
 
 ## 線上服務（既有 VM，`ssh -p 2222 vboxuser@127.0.0.1`）
 
-- 最後一次部署：2026-09-26 22:42 台北時間（PR 驗收紀錄改 Markdown 條列），PID 450271，
-  JAR SHA256 `340121cbaab206a9ccd417816e4b47567e066ce057d580682b6d4008b881e583`，備份 `orchestrator-backup.0MXfNx`。
-  之後 repo 只有文件與 AI 工具設定的變更，沒有需要部署的程式行為變更。
+- 最後一次部署：2026-09-30 21:09 台北時間（受保護路徑事先告知，commit 0ac9f20），PID 467207，
+  JAR SHA256 `604fc19fac7373088754c923cd494fc6c03dec115d1094c7d35dc5f05c7fe90b`，備份 `orchestrator-backup.Xqkhwu`
+  （前一版 `340121cb…`）。隔離建置 `protected-path-build.AwyMOC`。
 - 配置式模式（`team.env` → `teams/spring-starters.json`），builder=opus、tester=codex gpt-5.6-sol medium。
 - CLI：Claude Code 2.1.282、Codex 0.156.1。部署用 `deploy/deploy-jar-safe.sh`（只換 JAR）或 `deploy/deploy-orchestrator.sh`；
   兩者都要求沒有執行中／排隊的任務。
@@ -28,6 +29,8 @@
 - #1021（升級 Spring Boot）：2026-09-29 23:35 起 AWAIT_HUMAN。實作 3 個 commit 在 `feature/ai-team-task-1021`，
   只剩目標專案 `.claude/rules/project-overview.md` 第 28 行（3.5.x→4.0.8）是受保護路徑、Agent 改不了。
   triage 的「已開放權限，重派修改」選項無效；需真人手動改並提交後按「已手動改好，開始驗收」，或改需求排除。
+  09-30 13:06 UTC 負責人按了「已開放權限，重派修改」，但分流因 OAuth 過期直接失敗、回到 AWAIT_HUMAN（audit 1007–1011），
+  實作沒有被重派。
   另待確認驗收端離線 Maven 快取是否有 4.0.8。
 
 ## 尚未實測的功能（Slack 真實操作）

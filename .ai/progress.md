@@ -18,6 +18,10 @@
 - 發現的缺漏：文件未記載此限制。已修正的文件：`docs-site/docs/multi-runtime.md`（新增受保護路徑段落與系統處理方式）、
   `docs-site/catalog.mjs`（multi-runtime 的 code 加入 ClaudeCodeRuntime）。
   已核對、無需修改：`configurable-team.md`、`agent/system-map.md`、`agent/project-tree.md`（新測試檔在既有 runtime/ 目錄下）。
+- commit 0ac9f20 後依使用者要求部署：VM 隔離目錄 `protected-path-build.AwyMOC` 以 `git archive` 來源執行 `mvn -B package`，
+  458 項 0 失敗、10 項 opt-in 略過；`deploy-jar-safe.sh` 部署成功，PID 467207，JAR `604fc19f…`，備份 `orchestrator-backup.Xqkhwu`，
+  ERROR 0 行、沙箱自檢通過、任務資料前後一致。
+- 部署時發現 VM 的 Claude Code OAuth 已過期（#1021 audit 1009），需使用者本人重新登入。
 
 ## 2026-09-27 — Claude Code（移除沒有用的文件內容）
 
