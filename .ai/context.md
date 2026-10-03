@@ -17,8 +17,9 @@
   主 App `bp-ai-team`（A0C6END9UHG）；2026-10-03 升級 Slack Pro 後改用自己的 5 個 BP 角色 App（Bot＋App-Level Token），
   直接 @BP 角色已實測可用。starters 角色 App 已移出 #bestpartner。
   token 由使用者本人以 `~/import-slack-tokens.sh`、`~/set-slack-tokens.sh` 填入。
-  2026-10-03 兩個實例都已部署 0767b88（JAR `7aef28d3…`）：bestpartner PID 52025、starters PID 55172。
-  下一步：Slack 實測同串訊息新說明；「中斷這一輪」真實操作；兩個實例的完整管線驗收。
+  2026-10-03 兩個實例都已部署 350b02e（JAR `ba3d6dcd…`，含「開成新需求」按鈕）：bestpartner PID 60161、starters PID 63293。
+  回滾注意：有任務寫入 `spinoffs`／`spinoffOf` 後，舊 JAR 讀不了這些任務（見 data-model）。
+  下一步：Slack 實測「開成新需求」按鈕與同串訊息新說明；「中斷這一輪」真實操作；兩個實例的完整管線驗收。
 
 - **受保護路徑事先告知（commit 0ac9f20，已部署，未 push）**：細節見 progress.md 2026-09-30。真實端對端未實測。
 - VM 上 Claude Code OAuth 曾於 2026-09-30 13:06 UTC 過期（換新失敗，expiresAt 被清為 0）；

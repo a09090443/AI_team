@@ -12,6 +12,9 @@
 - 已核對：operations、configurable-team、data-model、plan-approval-buttons、system-map、agent/index、project-tree。
   已修正：operations（純詢問「已結束」的意義與按鈕）、configurable-team、data-model（新欄位與**回滾風險**：舊 JAR 讀不了新欄位）、
   plan-approval-buttons、system-map、project-tree。docs build 通過。
+- 驗證：本機 475 項（僅既有 4 項 Windows 專屬失敗）；commit 350b02e；VM 隔離目錄 `~/ai-team-source-350b02e` Linux 475 項 0 失敗，
+  JAR `ba3d6dcd…`。`deploy-jar-safe.sh` 部署 bestpartner（PID 60161，備份 `orchestrator-backup.3Ut3aA`）、
+  starters（PID 63293，備份 `orchestrator-backup.oSxqbe`）：皆 0 ERROR、自檢通過、任務資料前後一致。**Slack 按鈕尚未實測**。
 
 ## 2026-10-03 — Claude Code（bestpartner 改用自己的角色 App；同串訊息依狀態說明）
 
