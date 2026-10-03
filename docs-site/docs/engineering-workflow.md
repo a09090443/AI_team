@@ -72,6 +72,9 @@ Node 範例依序 `npm ci`、`npm test`、`npm run build`；需依實際 repo �
 
 - 必須通過既有沙箱自檢；使用受限 systemd user unit，2 核 CPU 配額、4 GB 記憶體與整輪最多 1800 秒。
 - 只開放獨立驗證目錄，釘住新 clone 的所有版控檔與 `.git`；不開放原任務工作區寫入。repo 含 symlink 暫時拒絕，需管理者評估。
+  檔名含空白時，交給 systemd 的路徑整段加雙引號（`ExecutionSandbox.pathProperty`；VM 實測確實唯讀，`\x20` 跳脫實測仍可寫，不採用）；
+  含雙引號、反斜線或控制字元的路徑直接拒絕。2026-10-03 前未加引號，bestpartner 的「General rule.pdf」讓獨立驗證以
+  `Invalid ReadOnlyPaths` 在啟動前失敗（#1012）。
 - 指令使用空白環境加少量明確變數、獨立 HOME，不把 Slack/GitHub token 或 CLI session 透過環境傳入。
 - 不沿用共享依賴快取與個人 Maven/npm 設定；第一次建置可能很慢。私有依賴可能受阻，不可用複製整包憑證來解決。
 - 記錄系統觀察的結束碼、argv、起訖時間、commit、配置與需求版本；log 存在可寫目錄外，單指令輸出超過 8 MB 即停止。

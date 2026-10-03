@@ -105,11 +105,11 @@ public class ExecutionSandbox {
             if (!Files.exists(p)) {
                 log.warn("可寫路徑不存在，沙箱內將無法寫入：{}", p);
             }
-            cmd.add("-p"); cmd.add("ReadWritePaths=-" + p.toAbsolutePath());
+            cmd.add("-p"); cmd.add("ReadWritePaths=" + pathProperty(p.toAbsolutePath().toString()));
         }
         // 釘回唯讀的例外必須在可寫路徑之後宣告；systemd 會依路徑深度套用，深者勝出。
         for (Path p : policy.readOnlyPins()) {
-            cmd.add("-p"); cmd.add("ReadOnlyPaths=-" + p.toAbsolutePath());
+            cmd.add("-p"); cmd.add("ReadOnlyPaths=" + pathProperty(p.toAbsolutePath().toString()));
         }
 
         // ---- 資源 ----
@@ -122,6 +122,19 @@ public class ExecutionSandbox {
         cmd.add("--");
         cmd.addAll(command);
         return cmd;
+    }
+
+    /**
+     * systemd 的路徑清單以空白分隔：未加引號的「General rule.pdf」會被拆成兩段，整個 unit 以
+     * 「Invalid ReadOnlyPaths」起不來（bestpartner #1012 的獨立驗證就是這樣失敗）。含空白時整段加雙引號（VM 實測確實唯讀）；
+     * `\x20` 這類跳脫雖然不報錯，實測檔案**仍可寫入**，等於保護靜默失效，所以不用。
+     * 雙引號、反斜線與控制字元無法安全表達，直接拒絕，不讓保護靜默失效。
+     */
+    static String pathProperty(String absolutePath) {
+        String value = "-" + absolutePath;
+        if (value.chars().anyMatch(c -> c == '"' || c == '\\' || Character.isISOControl(c)))
+            throw new IllegalStateException("沙箱路徑含無法安全交給 systemd 的字元（雙引號、反斜線或控制字元），拒絕執行：" + absolutePath);
+        return value.chars().anyMatch(Character::isWhitespace) ? "\"" + value + "\"" : value;
     }
 
     /**

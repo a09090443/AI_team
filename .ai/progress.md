@@ -2,6 +2,15 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-03 — Claude Code（沙箱路徑含空白：獨立驗證 Invalid ReadOnlyPaths）
+
+- #1012 測試計畫以 inspect-content 通過並自動核准、實作完成，但獨立驗證 check-0.log 只有
+  `Failed to start transient service unit: Invalid ReadOnlyPaths`：bestpartner 有 `docs/rag/doc/tcb/General rule.pdf`、
+  `transaction limit.pdf`，systemd 路徑清單以空白分隔。VM 暫存目錄實測：整段加雙引號確實唯讀；`\x20` 不報錯但仍可寫（不採用）。
+- 修正 `ExecutionSandbox.pathProperty`：含空白加雙引號，雙引號／反斜線／控制字元直接拒絕；`SandboxPathPropertyTest` 3 項。
+  本機 496 項（僅既有 4 項 Windows 失敗）。已修正文件：engineering-workflow（獨立驗證唯讀釘選）。
+- 先前 commit 68548aa（按鈕＋輸入視窗）已部署：bestpartner PID 36758、starters PID 39867（JAR `c3df0389…`）。
+
 ## 2026-10-03 — Claude Code（「補充 #N …」打字操作改按鈕＋輸入視窗）
 
 - 使用者要求三類都改：①有按鈕的不再教打字（`HumanOptions.render(..., typed)`，按鈕版 typed=false，純文字後備才附指令；
