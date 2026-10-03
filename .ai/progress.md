@@ -11,6 +11,9 @@
 - 測試：OperationContractTest 2、TraceabilityTest 1、ConfiguredExecutorTest 2、FlowEngineTest 1（純文件任務走到 PR 核准）；
   本機 485 項（僅既有 4 項 Windows 失敗）；check-source PASS；docs build 通過。
 - 已修正文件：qa-scenario-workflow、cross-project-execution、configurable-team（漂移掃描不得列為驗收項目）、operations；decisions 追加。
+- 部署（commit 5ff0155，JAR `8fc79c73…`，VM Linux 485 項 0 失敗）：三份提示詞先備份為 `*.bak-before-5ff0155` 後更新，再以 deploy-jar-safe 換 JAR：
+  bestpartner PID 26858（配置 045533c0…，備份 `orchestrator-backup.2BvRVL`）、starters PID 30031（配置 7ed70287…，備份 `orchestrator-backup.LtyLjQ`），
+  皆 0 ERROR、任務資料前後一致。待使用者在 #1011 送需求變更後實測完整流程。
 
 ## 2026-10-03 — Claude Code（Claude 額度解禁時間改顯示台北時間）
 
