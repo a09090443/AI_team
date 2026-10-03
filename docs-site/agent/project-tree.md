@@ -19,7 +19,7 @@ description: repo 每個目錄與檔案的用途，以及「我要找某樣東�
 | 共用 skills、MCP 設定 | `.agents/`（說明見 [AI 工具設定](ai-tools.md)） |
 | 目前進行中的工作、進度、決策 | `.ai/context.md`、`.ai/progress.md`、`.ai/decisions.md` |
 | Slack 指令怎麼被解析 | `orchestrator/src/main/java/com/zipe/aiteam/slack/SlackListener.java` |
-| 按鈕版面與 action_id | `slack/SlackBlocks.java`、`slack/HumanGate.java`、`slack/PlanReview.java`、`slack/SpinoffButtons.java` |
+| 按鈕版面與 action_id | `slack/SlackBlocks.java`、`slack/HumanGate.java`、`slack/HumanInput.java`、`slack/PlanReview.java`、`slack/SpinoffButtons.java` |
 | 配置式流程怎麼走、停止與承接 | `flow/FlowEngine.java`、`flow/FlowLimits.java` |
 | 團隊 JSON 的欄位定義與驗證 | `flow/TeamDefinition.java`、`flow/TeamCatalog.java` |
 | 各節點如何組 prompt 並呼叫 runtime | `flow/ConfiguredExecutor.java` |
@@ -124,6 +124,7 @@ agent_team/
 │   │   │   ├── SlackBlocks.java      # 訊息版面與按鈕 action_id
 │   │   │   ├── SlackReport.java      # 階段報告的 Slack 呈現
 │   │   │   ├── HumanGate.java        # 停下等人時的白話說明與選項按鈕
+│   │   │   ├── HumanInput.java       # 要填內容的選項：按鈕打開 Slack 輸入視窗
 │   │   │   ├── PlanReview.java       # 測試計畫逐情境呈現與核准按鈕
 │   │   │   ├── SpinoffButtons.java   # 純詢問發現的「開成新需求」按鈕
 │   │   │   └── StageProgress.java    # 執行中階段的定期狀態卡

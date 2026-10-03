@@ -31,6 +31,13 @@ public final class PlanReview {
     }
     private PlanReview() {}
     public static List<String> pages(String taskId, String planId, JsonNode plan) {
+        return pages(taskId, planId, plan, true);
+    }
+    /**
+     * @param pending false 表示計畫已核准（自動或真人），只是叫出來看：最後一頁不放核准說明，也不附按鈕。
+     *                最後一頁的文字在附按鈕時只是通知用的後備文字，Slack 顯示的是按鈕版面。
+     */
+    public static List<String> pages(String taskId, String planId, JsonNode plan, boolean pending) {
         if (plan == null || !plan.isObject() || !plan.path("scenarios").isArray()
                 || plan.path("scenarios").isEmpty()) throw new IllegalArgumentException("尚無完整情境測試計畫，不能核准");
         List<String> bodies = new ArrayList<>();
@@ -41,9 +48,12 @@ public final class PlanReview {
             throw new IllegalArgumentException("計畫過長，無法完整呈現，請拆分情境後重新審閱；未提供核准指令");
         List<String> pages = new ArrayList<>();
         for (int i = 0; i < bodies.size(); i++) pages.add("任務 #" + taskId + " 測試計畫（" + (i + 1) + "/" + bodies.size() + "）\n" + bodies.get(i));
-        pages.add("任務 #" + taskId + " 測試計畫已完整列出，共 " + plan.path("scenarios").size() + " 條情境。\n"
-                + "請先審閱；若同意，在原討論串 @PM Agent 後輸入：\n補充 #" + taskId + " 核准測試計畫 " + planId + " " + Traceability.digest(plan)
-                + "\n核准成功後自動排入 QA，無需另送續跑；這不代表核准 PR。若不同意，請按要求修改並提出具體意見。");
+        String head = "任務 #" + taskId + " 測試計畫已完整列出，共 " + plan.path("scenarios").size() + " 條情境。\n";
+        pages.add(pending
+                ? head + "請先審閱；同意就按「核准測試計畫」，要改就按「要求修改」並寫下具體意見。"
+                  + "核准成功後自動排入 QA，無需另送續跑；這不代表核准 PR。"
+                  + "\n（按鈕無法顯示時可輸入：補充 #" + taskId + " 核准測試計畫 " + planId + " " + Traceability.digest(plan) + "）"
+                : head + "這份計畫已核准，以上僅供檢視；PR 仍需要你核准。");
         return List.copyOf(pages);
     }
 }

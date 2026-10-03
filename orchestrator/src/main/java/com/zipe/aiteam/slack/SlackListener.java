@@ -100,6 +100,7 @@ public class SlackListener {
 
         registerPlanActions(app);
         registerHumanGateActions(app);
+        registerHumanInputActions(app);
         registerSpinoffActions(app);
         socketApp = new SocketModeApp(props.slackAppToken(), app);
         log.info("Socket Mode 連線中…（白名單 {} 人，並行上限 {}）",
@@ -260,6 +261,72 @@ public class SlackListener {
             if (!task.slackChannel().equals(channel) || !task.slackThreadTs().equals(thread)) return;
             audit.record(task.id(), user, AuditLog.ACTION_BUTTON, "以停止選項按鈕送出：" + command.command());
             orchestrator.requestTriage(task, command.command(), user);
+        });
+    }
+    /**
+     * 要填內容的選項：按鈕打開輸入視窗，送出後組成與打字相同的「補充」指令。
+     * views.open 的 trigger_id 只有 3 秒效期，所以開窗在 handler 內同步做；送出後的處理才交給 ingress。
+     */
+    private void registerHumanInputActions(App app) {
+        app.blockAction(HumanInput.ACTION_PATTERN, (req, ctx) -> {
+            try {
+                var p = req.getPayload();
+                String channel = p.getChannel() == null ? null : p.getChannel().getId();
+                String thread = p.getMessage() == null ? null : p.getMessage().getThreadTs();
+                var view = inputView(p.getUser().getId(), p.getActions().getFirst().getValue(), channel, thread);
+                if (view != null) {
+                    var opened = ctx.client().viewsOpen(r -> r.triggerId(p.getTriggerId()).view(view));
+                    if (!opened.isOk()) log.warn("打開輸入視窗失敗：{}", opened.getError());
+                }
+            } catch (Exception e) { log.error("處理輸入按鈕失敗：{}", com.zipe.aiteam.runtime.Diagnostics.describe(e)); }
+            return ctx.ack();
+        });
+        app.viewSubmission(HumanInput.CALLBACK, (req, ctx) -> {
+            var p = req.getPayload();
+            String user = p.getUser().getId(), metadata = p.getView().getPrivateMetadata();
+            String text = null;
+            var values = p.getView().getState() == null ? null : p.getView().getState().getValues();
+            if (values != null && values.get(HumanInput.BLOCK) != null && values.get(HumanInput.BLOCK).get(HumanInput.FIELD) != null)
+                text = values.get(HumanInput.BLOCK).get(HumanInput.FIELD).getValue();
+            try {
+                var submission = HumanInput.Submission.parse(metadata);
+                if (HumanInput.command(submission, text) == null)
+                    return ctx.ack(r -> r.responseAction("errors").errors(java.util.Map.of(HumanInput.BLOCK, "請填寫內容")));
+            } catch (Exception e) { return ctx.ack(); }
+            String submitted = text;
+            ingress.execute(() -> {
+                try { handleHumanInputSubmit(user, metadata, submitted); }
+                catch (Exception e) { log.error("處理輸入視窗送出失敗：{}", com.zipe.aiteam.runtime.Diagnostics.describe(e)); }
+            });
+            return ctx.ack();
+        });
+    }
+    /** 開窗前的檢查：白名單、任務存在、按鈕來自原討論串。重驗由系統帶入當下的節點與 HEAD。 */
+    com.slack.api.model.view.View inputView(String user, String value, String channel, String thread) {
+        if (!props.allowedUsers().contains(user)) return null;
+        var choice = HumanInput.Choice.parse(value);
+        Task task = orchestrator.lookup(choice.task()).orElse(null);
+        if (task == null || !task.slackChannel().equals(channel) || !task.slackThreadTs().equals(thread)) return null;
+        String extra = "";
+        if (com.zipe.aiteam.flow.HumanOptions.REMEDIATE.equals(choice.kind())) {
+            extra = orchestrator.remediationTarget(task).orElse(null);
+            if (extra == null) {
+                notifier.post(SlackNotifier.Identity.SYSTEM, channel, thread,
+                        "任務 #" + task.id() + " 目前沒有可以重驗的驗收步驟，或工作區查不到最新 commit；未授權重驗。");
+                return null;
+            }
+        }
+        return HumanInput.modal(new HumanInput.Submission(task.id(), choice.kind(), channel, thread, extra));
+    }
+    void handleHumanInputSubmit(String user, String metadata, String text) {
+        if (!props.allowedUsers().contains(user)) return;
+        var submission = HumanInput.Submission.parse(metadata);
+        String command = HumanInput.command(submission, text);
+        if (command == null) return;
+        orchestrator.lookup(submission.task()).ifPresent(task -> {
+            if (!task.slackChannel().equals(submission.channel()) || !task.slackThreadTs().equals(submission.thread())) return;
+            audit.record(task.id(), user, AuditLog.ACTION_BUTTON, "以輸入視窗送出：" + command);
+            orchestrator.requestTriage(task, command, user);
         });
     }
     private void registerSpinoffActions(App app) {

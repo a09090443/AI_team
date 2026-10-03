@@ -17,9 +17,11 @@ class ThreadTakenMessageTest {
                 .doesNotContain("補充");
     }
 
-    @Test void 等待人工時給出實際編號的補充指令() {
+    @Test void 等待人工時引導按查看選項按鈕而不是打字() {
         String msg = TaskOrchestrator.threadTakenMessage(task(Task.State.AWAIT_HUMAN));
-        assertThat(msg).contains("補充 #1005 答案").contains("補充 #1005 狀態").doesNotContain("#編號");
+        assertThat(msg).contains("查看目前可用選項").doesNotContain("補充 #").doesNotContain("#編號");
+        assertThat(TaskOrchestrator.waitingForHuman(task(Task.State.WAITING_QUOTA))).isTrue();
+        assertThat(TaskOrchestrator.waitingForHuman(task(Task.State.COMPLETED))).isFalse();
     }
 
     @Test void 執行中不建議補充() {

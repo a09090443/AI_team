@@ -28,10 +28,15 @@ class HumanGateTest {
                 new HumanOptions.Option(HumanOptions.EXTEND, "再給系統兩次機會", "說明", "核准延長自動交接 abc"),
                 new HumanOptions.Option(HumanOptions.SUPPLEMENT, "告訴它還缺什麼", "說明", null)));
 
-        assertThat(rendered).hasSize(2);
-        assertThat(rendered.getFirst().getActionId()).matches(HumanGate.ACTION_PATTERN);
-        assertThat(rendered.getFirst().getStyle()).isEqualTo("primary");
-        assertThat(rendered.getFirst().getValue()).isEqualTo("1014|核准延長自動交接 abc");
+        // 要填內容的「告訴它還缺什麼」改成打開輸入視窗的按鈕（另一排），不直接送指令。
+        assertThat(rendered).hasSize(3);
+        assertThat(rendered).filteredOn(b -> b.getActionId().matches(HumanGate.ACTION_PATTERN.pattern())).singleElement()
+                .satisfies(b -> {
+                    assertThat(b.getStyle()).isEqualTo("primary");
+                    assertThat(b.getValue()).isEqualTo("1014|核准延長自動交接 abc");
+                });
+        assertThat(rendered).filteredOn(b -> HumanInput.ACTION_PATTERN.matcher(b.getActionId()).matches()).singleElement()
+                .satisfies(b -> assertThat(b.getValue()).isEqualTo("1014|SUPPLEMENT"));
         assertThat(rendered.getLast().getActionId()).isEqualTo(SlackBlocks.ACTION_ABORT);
     }
 
@@ -100,11 +105,12 @@ class HumanGateTest {
                 .hasMessageContaining("過長");
     }
 
-    @Test void atMostFourCommandButtonsPlusAbort() {
+    @Test void atMostEightCommandButtonsPlusAbort() {
+        // 按鈕版面的文字不再附打字指令，按鈕被截掉就等於選項消失，所以上限從 4 放寬到 8（Slack 單排上限 25）。
         var many = new java.util.ArrayList<HumanOptions.Option>();
-        for (int i = 0; i < 6; i++)
+        for (int i = 0; i < 10; i++)
             many.add(new HumanOptions.Option(HumanOptions.REPORT, "選項" + i, "說明", "檢視完整報告 n" + i));
 
-        assertThat(buttons(many)).hasSize(5);
+        assertThat(buttons(many)).hasSize(9);
     }
 }

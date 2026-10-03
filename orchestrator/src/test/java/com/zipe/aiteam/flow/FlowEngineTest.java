@@ -742,6 +742,19 @@ class FlowEngineTest {
         assertThat(jobs).hasSize(1);
     }
 
+    @Test void approvedPlanCanBeViewedWhileTheTaskIsRunningWithoutApprovalButtons() {
+        // 自動核准後的訊息叫人「檢視測試計畫」，但當時任務在執行，以前一律被「目前為 STAGE_RUNNING」擋掉。
+        engine.run(task);
+        task.state(Task.State.STAGE_RUNNING); store.save(task);
+        when(slack.post(any(), any(), any(), anyString())).thenReturn("sent");
+        List<Runnable> jobs = new ArrayList<>();
+        engine.resume(task, "檢視測試計畫", "u", jobs::add);
+        assertThat(jobs).isEmpty();
+        verify(slack).post(any(), any(), any(), contains("這份計畫已核准"));
+        verify(slack, never()).post(any(), any(), any(), contains("測試計畫已完整列出"), anyList());
+        verify(slack, never()).post(any(), any(), any(), contains("不能新增續跑"));
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.STAGE_RUNNING);
+    }
     @Test void planApprovalQueuesExactlyOnceButDoesNotPublish() throws Exception {
         var flow = store.flow(task.id()).orElseThrow();
         ObjectNode definition = mapper.valueToTree(flow.snapshot.definition());

@@ -282,8 +282,14 @@ public class TaskOrchestrator {
             Optional<Task> existing = store.inThread(channel, threadTs).stream()
                     .filter(t -> store.direct(t.id()).isEmpty() && store.flow(t.id()).map(f -> !f.dialogue).orElse(true)).findFirst();
             if (existing.isPresent()) {
-                slack.post(Identity.SYSTEM, channel, threadTs, threadTakenMessage(existing.get()));
-                return existing.get();
+                Task taken = existing.get();
+                String notice = threadTakenMessage(taken);
+                // 原任務停著等你時附按鈕，按下去重新列出可用選項（與打「補充 #N 狀態」相同）。
+                if (!waitingForHuman(taken) || slack.post(Identity.SYSTEM, channel, threadTs, notice,
+                        com.zipe.aiteam.slack.HumanGate.single(taken.id(), notice, "查看目前可用選項",
+                                com.zipe.aiteam.flow.HumanOptions.STATUS_COMMAND)) == null)
+                    slack.post(Identity.SYSTEM, channel, threadTs, notice);
+                return taken;
             }
         }
         Task task = new Task(store.nextTaskId(), channel, threadTs, userId, text);
@@ -299,15 +305,18 @@ public class TaskOrchestrator {
      * 同串再 @主機器人時的說明。「補充」只在 AWAIT_HUMAN／WAITING_QUOTA 有效（FlowEngine.resume），
      * 其他狀態不能叫使用者用它續跑，否則照做只會再收到一次拒絕。
      */
+    static boolean waitingForHuman(Task task) {
+        return task.state() == Task.State.AWAIT_HUMAN || task.state() == Task.State.WAITING_QUOTA;
+    }
     static String threadTakenMessage(Task task) {
         String id = task.id();
         Task.State state = task.state();
         if (state.isTerminal())
             return "此討論串的任務 #" + id + " 已結束（" + state + "），未建立新任務。"
                     + "追問請直接 @角色；新需求請在頻道開新討論串。";
-        if (state == Task.State.AWAIT_HUMAN || state == Task.State.WAITING_QUOTA)
+        if (waitingForHuman(task))
             return "此討論串已關聯任務 #" + id + "（" + state + "），未建立平行任務。"
-                    + "要回答或續跑請用「補充 #" + id + " 答案」，查可用選項用「補充 #" + id + " 狀態」；"
+                    + "要回答、續跑或查看可用選項，請按「查看目前可用選項」；"
                     + "追問請直接 @角色；新需求請在頻道開新討論串。";
         return "此討論串已關聯任務 #" + id + "（目前 " + state + "），未建立平行任務。"
                 + "追問請直接 @角色；新需求請在頻道開新討論串。";
@@ -1115,6 +1124,10 @@ public class TaskOrchestrator {
     public void planDecision(Task task, String user, com.zipe.aiteam.slack.PlanReview.Decision decision,
                              boolean approve, String channel, String thread) {
         if (flowEngine != null && flowEngine.owns(task.id())) flowEngine.planDecision(task, user, decision, approve, channel, thread, job -> work.offer(job));
+    }
+    /** 「修好了，請它重驗」視窗要帶入的「驗收節點 commit」；不適用時為 empty。 */
+    public Optional<String> remediationTarget(Task task) {
+        return flowEngine != null && flowEngine.owns(task.id()) ? flowEngine.remediationTarget(task) : Optional.empty();
     }
     /** 純詢問結束後的「開成新需求」按鈕；新任務走同一個中央佇列。 */
     public void spinoff(Task task, int index, String user) {

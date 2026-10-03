@@ -27,6 +27,19 @@ class HumanOptionsTest {
         assertThat(text()).contains("需求清單本身有問題").contains("補充 #1014 核准需求變更 <要怎麼改與原因");
     }
 
+    @Test void buttonVersionNeverTeachesTypingButTheTextFallbackStillDoes() {
+        // 使用者要求：有按鈕就不要再教人打「補充 #N …」；要填內容的選項改按鈕開視窗。按鈕送不出去時才用打字版。
+        flow.node = "plan"; flow.baselineRevision = "baseline-1";
+        String withButtons = HumanOptions.render(task, flow, true, true, null, HumanOptions.Workspace.NONE, false, false);
+        assertThat(withButtons).doesNotContain("補充 #").contains("按下方「需求要改」，在跳出的視窗填寫")
+                .contains("按下方「告訴它還缺什麼」，在跳出的視窗填寫").contains("停止不等於完成");
+        assertThat(HumanOptions.render(task, flow, true, true, null, HumanOptions.Workspace.NONE, false, true))
+                .contains("補充 #1014 核准需求變更");
+        assertThat(HumanOptions.options(task, flow, true, true, null))
+                .filteredOn(HumanOptions.Option::input).extracting(HumanOptions.Option::kind)
+                .contains(HumanOptions.REQUIREMENT, HumanOptions.SUPPLEMENT);
+    }
+
     @Test void aStoppedTaskCanAlwaysMoveToANewTaskWithTheLatestRules() {
         assertThat(HumanOptions.options(task, flow, true, true, null))
                 .anyMatch(o -> o.kind().equals(HumanOptions.SUCCESSOR) && o.label().equals("改用新任務繼續")

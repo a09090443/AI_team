@@ -2,6 +2,18 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-03 — Claude Code（「補充 #N …」打字操作改按鈕＋輸入視窗）
+
+- 使用者要求三類都改：①有按鈕的不再教打字（`HumanOptions.render(..., typed)`，按鈕版 typed=false，純文字後備才附指令；
+  承接說明、計畫卡、配置更新同步）；②需求要改／告訴它還缺什麼／修好了請重驗改按鈕開 Slack modal（新 `HumanInput`，
+  送出組成同一指令走 `requestTriage`；重驗開窗當下由系統帶入節點與 HEAD）；③同串再 @、計畫自動核准、操作被拒、
+  卡在上限時附「查看目前可用選項／檢視測試計畫／重新整理選項」按鈕（`HumanGate.single`、新選項 `STATUS`）。
+- 順手修正既有 bug：計畫自動核准後叫人「檢視測試計畫」，但任務執行中一律被狀態檢查擋掉；唯讀查看改為任何狀態可用，
+  已核准計畫只顯示不附核准按鈕。指令按鈕上限 4→8。
+- 測試：HumanInputTest 6、HumanOptionsTest 1、FlowEngineTest 1、HumanGateTest／ThreadTakenMessageTest 調整；本機 493 項（僅既有 4 項 Windows 失敗）。
+- 已修正文件：plan-approval-buttons（按鈕表、視窗、其他按鈕）、operations、interaction-model、project-tree、system-map。
+  **Socket Mode 下 modal 尚未真實 Slack 實測。**
+
 ## 2026-10-03 — Claude Code（內建 inspect-content：文件修改在任何專案都能驗收）
 
 - 起因：bestpartner #1010／#1011（改一行 SKILL.md）在測試計畫反覆受阻：operations 寫不出讀檔指令，PM 又把 shell 腳本寫成驗收項目。

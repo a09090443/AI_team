@@ -14,15 +14,18 @@ import static com.zipe.aiteam.flow.TeamDefinition.*;
  *
  * 能用一個按鈕表達的選項會帶 command：按鈕按下去就送出同一串文字，
  * 走的是和手動輸入完全相同的驗證路徑，不另開權限。
- * 需要自由填寫內容的（補充說明、需求變更）沒有 command，只能用打字的。
+ * 需要自由填寫內容的（補充說明、需求變更、人工修復重驗）沒有 command，改用按鈕打開 Slack 輸入視窗（HumanInput）；
+ * 打字指令仍然有效，只在按鈕版面送不出去時才列在文字裡。
  */
 public final class HumanOptions {
     private HumanOptions() {}
 
-    /** button 為 true 表示這個選項可以用一顆按鈕完成。 */
+    /** button 為 true 表示這個選項可以用一顆按鈕完成；input 為 true 表示按鈕會打開輸入視窗讓你填內容。 */
     public record Option(String kind, String label, String hint, String command) {
         public boolean button() { return command != null; }
+        public boolean input() { return command == null && INPUT_KINDS.contains(kind); }
     }
+    public static final java.util.Set<String> INPUT_KINDS = java.util.Set.of("REQUIREMENT", "SUPPLEMENT", "REMEDIATE");
 
     /** 工作區現況；head 為 null 表示沒有工作區或取不到。 */
     /**
@@ -61,6 +64,8 @@ public final class HumanOptions {
     public static final String RECOVER = "RECOVER";
     public static final String CONFIG_UPDATE = "CONFIG_UPDATE";
     public static final String CONFIG_APPROVE = "CONFIG_APPROVE";
+    public static final String STATUS = "STATUS";
+    public static final String STATUS_COMMAND = "狀態";
 
     public static List<Option> options(Task task, FlowRun flow, boolean canSupplement,
                                        boolean briefReports, String extensionToken, Workspace workspace) {
@@ -119,6 +124,11 @@ public final class HumanOptions {
         if (configUpdate)
             options.add(new Option(CONFIG_UPDATE, "檢視配置更新",
                     "管理者已經部署新的配置。按下去會列出差異，確認後才會套用。", "檢視配置更新"));
+        // 卡在上限又沒有恢復方式：唯一的出路是管理者部署新配置，部署後要有地方重新檢查。
+        if (stuck && recoverable == null && !configUpdate)
+            options.add(new Option(STATUS, "重新整理選項",
+                    "管理者部署新配置後按這個，系統會重新檢查並列出可用的選項（例如「檢視配置更新」）；不會啟動 agent。",
+                    STATUS_COMMAND));
 
         // agent 提出的選擇題放最前面：這是對方停下來最主要要回答的事。卡在上限時選了也不會重新執行。
         if (!stuck) options.addAll(decisionOptions(flow));
@@ -263,12 +273,22 @@ public final class HumanOptions {
         return render(task, flow, canSupplement, briefReports, extensionToken, workspace, false);
     }
 
+    /** 預設是純文字版本（附打字指令），給按鈕版面送不出去時使用。 */
     public static String render(Task task, FlowRun flow, boolean canSupplement, boolean briefReports,
                                 String extensionToken, Workspace workspace, boolean configUpdate) {
+        return render(task, flow, canSupplement, briefReports, extensionToken, workspace, configUpdate, true);
+    }
+
+    /**
+     * @param typed false 時是按鈕版面的文字：每個選項都有按鈕，不再教人打「補充 #N …」；
+     *              true 時附上打字指令，給按鈕版面被 Slack 拒收時的純文字後備。
+     */
+    public static String render(Task task, FlowRun flow, boolean canSupplement, boolean briefReports,
+                                String extensionToken, Workspace workspace, boolean configUpdate, boolean typed) {
         if (flow.successor != null)
             return "\n\n這個任務已由 *任務 #" + flow.successor + "* 承接，之後請到頻道裡「任務 #" + flow.successor
                     + "」的討論串操作；這裡不會再有任何動作。";
-        if (exhausted(flow)) return exhaustedNotice(task, flow, workspace, briefReports);
+        if (exhausted(flow)) return exhaustedNotice(task, flow, workspace, briefReports, typed);
         List<Option> options = options(task, flow, canSupplement, briefReports, extensionToken, workspace, configUpdate);
         StringBuilder out = new StringBuilder();
         if (stuckAtLimit(flow)) {
@@ -282,7 +302,7 @@ public final class HumanOptions {
                 out.append("\n管理者已經部署新的配置，請先按「檢視配置更新」確認差異並核准，之後就能重新執行這一步。");
             else
                 out.append("\n目前沒有可用的恢復方式。若 agent 回報需要調整配置、環境或權限，要由管理者修正並部署新配置；")
-                   .append("部署後在這裡送「補充 #").append(task.id()).append(" 狀態」，就會出現「檢視配置更新」。");
+                   .append("部署後按「重新整理選項」，就會出現「檢視配置更新」。");
         } else if (repeatedDecision(flow)) {
             out.append("\n\n*這個問題你已經回答過了*\nagent 收到你的選擇後仍停在同一個地方，代表光靠選擇解決不了。")
                .append("請看 agent 說明裡「另外也需要處理」的項目，那通常需要管理者或維運去做。");
@@ -290,17 +310,24 @@ public final class HumanOptions {
         if (options.isEmpty()) return out.toString();
         out.append("\n\n你現在可以做的事：");
         List<String> decisions = options.stream().filter(o -> DECISION.equals(o.kind())).map(Option::label).toList();
+        String explain = options.stream().filter(Option::input).filter(o -> SUPPLEMENT.equals(o.kind()) || REQUIREMENT.equals(o.kind()))
+                .map(Option::label).findFirst().orElse(null);
         if (!decisions.isEmpty())
             out.append("\n・直接選一個：").append(String.join("／", decisions))
                .append(flow.changeTarget != null
-                       ? "（按下去就是核准需求變更，會回到需求階段重做，之後的測試計畫仍要你再核准；都不合適就打字說明）"
-                       : "（按下方按鈕；都不合適就用下面的方式打字說明）");
+                       ? "（按下去就是核准需求變更，會回到需求階段重做，之後的測試計畫仍要你再核准；"
+                       : "（按下方按鈕；")
+               .append(typed ? "都不合適就用下面的方式打字說明）"
+                       : explain == null ? "都不合適就等管理者處理）" : "都不合適就按「" + explain + "」寫下你的說明）");
         for (Option option : options) {
             if (DECISION.equals(option.kind())) continue;
             out.append("\n・").append(option.label()).append("：").append(option.hint());
-            if (option.button()) out.append("\n　按下方按鈕，或輸入：補充 #").append(task.id())
-                    .append(' ').append(option.command());
-            else out.append("\n　輸入：補充 #").append(task.id()).append(' ').append(commandHint(option.kind()));
+            if (typed) {
+                if (option.button()) out.append("\n　按下方按鈕，或輸入：補充 #").append(task.id())
+                        .append(' ').append(option.command());
+                else out.append("\n　輸入：補充 #").append(task.id()).append(' ').append(commandHint(option.kind()));
+            } else if (option.input()) out.append("\n　按下方「").append(option.label()).append("」，在跳出的視窗填寫。");
+            else if (PLAN.equals(option.kind())) out.append("\n　請用測試計畫卡上的按鈕。");
         }
         out.append("\n停止不等於完成。只有走到發布核准並由你核准，任務才算結束；目前尚未到達。");
         return out.toString();
@@ -311,7 +338,7 @@ public final class HumanOptions {
         return render(task, flow, canSupplement, briefReports, extensionToken, Workspace.NONE);
     }
 
-    private static String exhaustedNotice(Task task, FlowRun flow, Workspace workspace, boolean briefReports) {
+    private static String exhaustedNotice(Task task, FlowRun flow, Workspace workspace, boolean briefReports, boolean typed) {
         Workspace ws = workspace == null ? Workspace.NONE : workspace;
         StringBuilder out = new StringBuilder("\n\n*這個任務已經無法再自動往下跑*\n")
                 .append("整個任務已經換手 ").append(flow.transitions)
@@ -331,13 +358,13 @@ public final class HumanOptions {
                .append("\n按「保存未提交的修改並承接」：系統先把上面這些檔案 commit 到這個任務，再開一個新任務從那裡接著做，")
                .append("並帶入這個任務的交接紀錄與你做過的決定。次數重新計算；新任務會重新驗收與審查這些修改，")
                .append("需求、測試計畫與 PR 仍會請你重新核准。新任務會在頻道開新的討論串。")
-               .append("\n或輸入：補充 #").append(task.id()).append(' ').append(SUCCESSOR_SAVE_COMMAND).append(' ').append(ws.fingerprint());
+               .append(typed ? "\n或輸入：補充 #" + task.id() + " " + SUCCESSOR_SAVE_COMMAND + " " + ws.fingerprint() : "");
         else out.append("\n\n*怎麼繼續*")
                 .append("\n按「承接成新任務」：開一個新任務，工作區從上面這個 commit 接著做，")
                 .append("並帶入這個任務的交接紀錄與你做過的決定（包含已核准的需求變更）。次數重新計算；")
                 .append("需求、測試計畫與 PR 仍會請你重新核准。新任務會在頻道開新的討論串。")
-                .append("\n或輸入：補充 #").append(task.id()).append(' ').append(SUCCESSOR_COMMAND);
-        if (briefReports) out.append("\n想先看細節：補充 #").append(task.id()).append(" 檢視完整報告");
+                .append(typed ? "\n或輸入：補充 #" + task.id() + " " + SUCCESSOR_COMMAND : "");
+        if (briefReports) out.append(typed ? "\n想先看細節：補充 #" + task.id() + " 檢視完整報告" : "\n想先看細節：按「看完整報告」。");
         return out.toString();
     }
 
@@ -379,6 +406,20 @@ public final class HumanOptions {
         String evidence = AutomaticHandoff.pendingEvidence(flow);
         return evidence != null && flow.automaticHandoffKeys.contains("incident:" + evidence)
                 && flow.automaticHandoffHops < AutomaticHandoff.HOP_LIMIT;
+    }
+
+    /**
+     * 「你自己修好了，請它重驗」要授權的驗收節點：優先取已用完次數的驗收節點，否則取第一個驗收節點。
+     * 輸入視窗打開時由系統帶入，使用者不必自己抄節點與 commit。
+     */
+    public static String remediationNode(FlowRun flow) {
+        if (!verificationAwaitingRemediation(flow)) return null;
+        var nodes = flow.snapshot.definition().nodes().entrySet();
+        return nodes.stream().filter(e -> e.getValue().gate() == Gate.VERIFICATION
+                        && flow.repeats.getOrDefault(e.getKey(), 0) >= e.getValue().maxVisits())
+                .map(java.util.Map.Entry::getKey).findFirst()
+                .orElseGet(() -> nodes.stream().filter(e -> e.getValue().gate() == Gate.VERIFICATION)
+                        .map(java.util.Map.Entry::getKey).findFirst().orElse(null));
     }
 
     /** 驗收節點已用完重試次數、工作區又有可用 HEAD 時，人工修復重驗才是有意義的選項。 */

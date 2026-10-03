@@ -16,7 +16,9 @@
 
 五個角色（PM、Architecture、Backend、QA、Code Reviewer）各有自己的 Slack App
 （manifest 在 `deploy/agent-manifests/`），因此會出現在成員清單、有自己的頭像，也可以被個別 @。
-角色 App 只能發言與接收對自己的 @ 提問（唯讀對話，見 [直接對角色提出請求](direct-agent-requests.md)）；
+角色 App 只能發言與接收對自己的 @ 提問（唯讀對話，見 [直接對角色提出請求](direct-agent-requests.md)）。
+角色 App 的 manifest 沒有啟用 interactivity，所以**按鈕只能放在系統身分的訊息上**；角色本人貼的階段報告
+最後的「完整報告：補充 #N 檢視完整報告」仍是文字（停止訊息另有「看完整報告」按鈕）；
 任務排程、按鈕與流程控制全部由主 App（starters 實例為 `zipe-ai-team`、bestpartner 實例為 `bp-ai-team`）負責——
 每個實例入口只有一個，角色 App 沒有能力觸發或中止任務。
 

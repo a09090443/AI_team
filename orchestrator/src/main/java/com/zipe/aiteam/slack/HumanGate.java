@@ -60,7 +60,8 @@ public final class HumanGate {
         List<BlockElement> buttons = new ArrayList<>();
         boolean primaryUsed = false;
         for (HumanOptions.Option option : options) {
-            if (!option.button() || HumanOptions.DECISION.equals(option.kind()) || buttons.size() >= 4) continue;
+            // 文字不再附打字指令，按鈕被截掉就等於選項消失；上限放寬到 8（Slack 單排上限 25）。
+            if (!option.button() || HumanOptions.DECISION.equals(option.kind()) || buttons.size() >= 8) continue;
             // 只標一顆主要按鈕：系統建議的那一步（恢復、繼續或延長，依序只會出現其中之一）。
             boolean primary = !primaryUsed && java.util.Set.of(HumanOptions.SUCCESSOR, HumanOptions.RECOVER,
                     HumanOptions.CONFIG_APPROVE, HumanOptions.CONFIG_UPDATE, HumanOptions.RESTORE,
@@ -71,10 +72,24 @@ public final class HumanGate {
         buttons.add(button(b -> b.actionId(SlackBlocks.ACTION_ABORT).value(taskId).style("danger")
                 .text(plainText("中止任務"))));
 
+        // 要填內容的選項另成一排：按下去打開輸入視窗，不是直接送出。
+        List<BlockElement> inputs = HumanInput.buttons(taskId, options, seq[0]);
+
         List<LayoutBlock> blocks = new ArrayList<>(asBlocks(section(s -> s.text(markdownText(clip(text))))));
         if (!decisions.isEmpty()) blocks.add(actions(a -> a.elements(decisions)));
+        if (!inputs.isEmpty()) blocks.add(actions(a -> a.elements(inputs)));
         blocks.add(actions(a -> a.elements(buttons)));
         return blocks;
+    }
+
+    /**
+     * 停止訊息以外、只需要一個動作的系統訊息（例如「查看目前可用選項」「檢視測試計畫」）：
+     * 一段文字加一顆指令按鈕，走同一個 handler，不必再教使用者打「補充 #N …」。
+     */
+    public static List<LayoutBlock> single(String taskId, String text, String label, String command) {
+        String value = new Command(taskId, command).value();
+        return new ArrayList<>(asBlocks(section(s -> s.text(markdownText(clip(text)))),
+                actions(a -> a.elements(List.of(button(b -> b.actionId(ACTION_COMMAND + "_0").value(value).text(plainText(label))))))));
     }
 
     /** Slack 按鈕文字上限 75 字元。 */

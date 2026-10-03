@@ -85,7 +85,12 @@ public class FlowEngine {
     private void tellUser(Task task, String lead, Exception e) {
         if (e instanceof IllegalArgumentException) {
             audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_REJECTED, lead + Diagnostics.describe(e));
-            slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), lead + Diagnostics.forUser(e));
+            String text = lead + Diagnostics.forUser(e);
+            // 操作被擋下時，任務仍停著等你：附「重新整理選項」，不必自己打「補充 #N 狀態」。
+            boolean waiting = task.state() == Task.State.AWAIT_HUMAN || task.state() == Task.State.WAITING_QUOTA;
+            if (!waiting || slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), text,
+                    HumanGate.single(task.id(), text, "重新整理選項", HumanOptions.STATUS_COMMAND)) == null)
+                slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), text);
             return;
         }
         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
@@ -148,12 +153,15 @@ public class FlowEngine {
         HumanOptions.Workspace workspace = workspaceState(task, flow);
         boolean configUpdate = configUpdateAvailable(flow);
         String text = lead
-                + HumanOptions.render(task, flow, canSupplement, props.briefReports(), token, workspace, configUpdate);
+                + HumanOptions.render(task, flow, canSupplement, props.briefReports(), token, workspace, configUpdate, true);
         var options = HumanOptions.options(task, flow, canSupplement, props.briefReports(), token, workspace, configUpdate);
         String sent = null;
-        if (options.stream().anyMatch(HumanOptions.Option::button)) {
-            sent = slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), text,
-                    HumanGate.blocks(task.id(), text, options));
+        if (options.stream().anyMatch(o -> o.button() || o.input())) {
+            // 按鈕版面的文字不教人打字；送不出去時才改送附打字指令的純文字版。
+            String withButtons = lead
+                    + HumanOptions.render(task, flow, canSupplement, props.briefReports(), token, workspace, configUpdate, false);
+            sent = slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), withButtons,
+                    HumanGate.blocks(task.id(), withButtons, options));
             // 版面被 Slack 拒收時，至少要讓人收到文字版（裡面有同樣的指令）；
             // 停止訊息是使用者唯一知道要做什麼的地方，不能因為按鈕格式問題整則消失。
             if (sent == null) audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE,
@@ -218,16 +226,23 @@ public class FlowEngine {
         audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE,
                 "測試計畫通過系統機械檢查，依配置自動核准：" + plan + "／" + digest
                         + "；未降低驗收標準，PR 仍需真人核准");
-        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
-                "測試計畫已通過系統檢查（涵蓋全部驗收項目、每條情境都有反例、操作可執行），依設定自動核准並接著執行驗收。"
-                        + "\n要看內容：補充 #" + task.id() + " 檢視測試計畫。發布仍然需要你核准。");
+        String text = "測試計畫已通過系統檢查（涵蓋全部驗收項目、每條情境都有反例、操作可執行），依設定自動核准並接著執行驗收。"
+                + "\n要看內容請按「檢視測試計畫」。發布仍然需要你核准。";
+        if (slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), text,
+                HumanGate.single(task.id(), text, "檢視測試計畫", "檢視測試計畫")) == null)
+            slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                    text + "\n（按鈕送不出去時可輸入：補充 #" + task.id() + " 檢視測試計畫）");
     }
 
     private void presentPlan(Task task, FlowRun flow, String plan) {
+        presentPlan(task, flow, plan, true);
+    }
+    /** pending=false：計畫已核准，只是叫出來看，不附核准按鈕。 */
+    private void presentPlan(Task task, FlowRun flow, String plan, boolean pending) {
         try {
-            var pages = PlanReview.pages(task.id(), plan, flow.receipts.get(plan));
+            var pages = PlanReview.pages(task.id(), plan, flow.receipts.get(plan), pending);
             for (String page : pages) {
-                String sent = page.equals(pages.getLast())
+                String sent = pending && page.equals(pages.getLast())
                         ? slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), page,
                             PlanReview.buttons(new PlanReview.Decision(task.id(), plan, Traceability.digest(flow.receipts.get(plan)), flow.snapshot.revision(), flow.baselineRevision)))
                         : slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), page);
@@ -848,7 +863,7 @@ public class FlowEngine {
         if (paths.isEmpty()) throw new IllegalArgumentException("工作區已經沒有未提交的修改了，直接按「承接成新任務」即可。");
         if (!workspaces.uncommittedFingerprint(task.id()).equals(fingerprint))
             throw new IllegalArgumentException("未提交的修改在訊息貼出後又變動了，為了只保存你看過的內容，這次沒有保存。"
-                    + "請送「補充 #" + task.id() + " 狀態」看最新的檔案清單再按一次。");
+                    + "請按下方「重新整理選項」看最新的檔案清單再按一次。");
         List<String> blocked = paths.stream().filter(path -> path.equals(".git") || path.startsWith(".git/")
                 || PathRules.allows(flow.snapshot.definition().project().protectedPaths(), path)).toList();
         if (!blocked.isEmpty())
@@ -1013,6 +1028,56 @@ public class FlowEngine {
         enqueue.accept(() -> run(store.find(id).orElseThrow()));
     }
 
+    /**
+     * 「修好了，請它重驗」輸入視窗打開當下要顯示與送出的「驗收節點 commit」。
+     * 開窗時才查 HEAD：使用者是在看到停止訊息之後才自己修好並 commit 的。
+     */
+    public Optional<String> remediationTarget(Task task) {
+        if (task.state() != Task.State.AWAIT_HUMAN) return Optional.empty();
+        FlowRun flow = store.flow(task.id()).orElse(null);
+        if (flow == null || !workspaces.exists(task.id())) return Optional.empty();
+        String node = HumanOptions.remediationNode(flow);
+        if (node == null) return Optional.empty();
+        try { return Optional.of(node + " " + workspaces.headSha(task.id())); }
+        catch (Exception e) { return Optional.empty(); }
+    }
+
+    /** 只讀既有結果，不呼叫模型、不改狀態、不推進流程；任何任務狀態都可以用。 */
+    private void readOnlyView(Task task, FlowRun flow, String feedback) {
+        if (feedback.startsWith("檢視完整報告")) {
+            String wanted = feedback.substring("檢視完整報告".length()).trim();
+            var stages = task.stages();
+            if (wanted.isEmpty()) {
+                // 沒指定就用目前節點；它還沒有結果時退回最後一個有結果的節點。
+                wanted = stages.containsKey(flow.node) ? flow.node
+                        : stages.keySet().stream().reduce((a, b) -> b).orElse("");
+            }
+            var outcome = wanted.isEmpty() ? null : stages.get(wanted);
+            if (outcome == null || outcome.result() == null) {
+                slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                        "找不到節點「" + Diagnostics.safe(wanted) + "」的報告。"
+                      + (stages.isEmpty() ? "這個任務還沒有任何階段結果。"
+                                          : "可查詢的節點：" + String.join("、", stages.keySet())));
+            } else {
+                slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                        "任務 #" + task.id() + "／節點 " + Diagnostics.safe(wanted) + " 的完整報告：\n"
+                      + com.zipe.aiteam.slack.SlackReport.render(outcome.result()));
+            }
+            return;
+        }
+        var current = flow.snapshot.definition().nodes().get(flow.node);
+        String plan = current == null ? null : current.plan();
+        if (plan == null) {
+            var plans = flow.snapshot.definition().nodes().entrySet().stream()
+                    .filter(e -> e.getValue().gate() == Gate.TEST_PLAN && flow.receipts.containsKey(e.getKey()))
+                    .map(Map.Entry::getKey).toList();
+            if (plans.size() == 1) plan = plans.getFirst();
+        }
+        if (plan == null) slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "無法唯一識別待審計畫，請管理者確認節點；未續跑。");
+        // 已核准的計畫只是叫出來看：不附核准按鈕，避免看起來像還在等你核准。
+        else presentPlan(task, flow, plan, task.state() == Task.State.AWAIT_HUMAN && PlanApproval.blockingReason(flow, plan) != null);
+    }
+
     private void requireWorkspace(Task task, FlowRun flow) {
         if (!workspaces.exists(task.id()) || flow.workspacePath == null
                 || !flow.workspacePath.equals(workspaces.pathFor(task.id()).toAbsolutePath().normalize().toString()))
@@ -1020,6 +1085,12 @@ public class FlowEngine {
     }
     public void resume(Task task, String feedback, String user, Consumer<Runnable> enqueue) {
         if (!props.allowedUsers().contains(user)) return;
+        // 唯讀查看在任何狀態都可以：計畫自動核准後任務已在執行，「檢視測試計畫」以前一律被下一行的狀態檢查擋掉。
+        String requested = feedback == null ? "" : feedback.trim();
+        if (requested.startsWith("檢視完整報告") || requested.equals("檢視測試計畫")) {
+            FlowRun current = store.flow(task.id()).orElse(null);
+            if (current != null) { readOnlyView(task, current, requested); return; }
+        }
         Task.State from = task.state();
         if (from != Task.State.AWAIT_HUMAN && from != Task.State.WAITING_QUOTA) {
             slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id() + " 目前為 " + from + "，不能新增續跑或平行實作。"); return;
@@ -1151,41 +1222,6 @@ public class FlowEngine {
             } catch(IllegalArgumentException e) { slack.post(Identity.SYSTEM,task.slackChannel(),task.slackThreadTs(),e.getMessage()); }
             return;
         }
-        if (feedback != null && feedback.startsWith("檢視完整報告")) {
-            // 只讀既有的 stage_result，不呼叫模型、不改狀態、不推進流程。
-            String wanted = feedback.substring("檢視完整報告".length()).trim();
-            var stages = task.stages();
-            if (wanted.isEmpty()) {
-                // 沒指定就用目前節點；它還沒有結果時退回最後一個有結果的節點。
-                wanted = stages.containsKey(flow.node) ? flow.node
-                        : stages.keySet().stream().reduce((a, b) -> b).orElse("");
-            }
-            var outcome = wanted.isEmpty() ? null : stages.get(wanted);
-            if (outcome == null || outcome.result() == null) {
-                slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
-                        "找不到節點「" + Diagnostics.safe(wanted) + "」的報告。"
-                      + (stages.isEmpty() ? "這個任務還沒有任何階段結果。"
-                                          : "可查詢的節點：" + String.join("、", stages.keySet())));
-            } else {
-                slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
-                        "任務 #" + task.id() + "／節點 " + Diagnostics.safe(wanted) + " 的完整報告：\n"
-                      + com.zipe.aiteam.slack.SlackReport.render(outcome.result()));
-            }
-            return;
-        }
-        if ("檢視測試計畫".equals(feedback)) {
-            var current = flow.snapshot.definition().nodes().get(flow.node);
-            String plan = current == null ? null : current.plan();
-            if (plan == null) {
-                var plans = flow.snapshot.definition().nodes().entrySet().stream()
-                        .filter(e -> e.getValue().gate() == Gate.TEST_PLAN && flow.receipts.containsKey(e.getKey()))
-                        .map(Map.Entry::getKey).toList();
-                if (plans.size() == 1) plan = plans.getFirst();
-            }
-            if (plan == null) slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "無法唯一識別待審計畫，請管理者確認節點；未續跑。");
-            else presentPlan(task, flow, plan);
-            return;
-        }
         if (feedback != null && feedback.startsWith("核准測試計畫")) {
             if (from != Task.State.AWAIT_HUMAN) {
                 slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "請在任務停止等待人工時核准計畫；未改動額度排程或任務狀態。"); return;
@@ -1219,12 +1255,13 @@ public class FlowEngine {
                     if (detail.length() > 5000) { slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "配置差異超過 Slack 可安全完整呈現的長度，請管理者縮小變更；未產生核准指令。"); return; }
                     String text = "*配置有更新（尚未套用）*\n" + detail
                             + "\n\n套用後保留歷史與工作區，舊的驗收與核准證據會失效，不會自動續跑。"
-                            + "\n確認沒問題就按「核准配置更新」，或輸入：補充 #" + task.id() + " 核准配置更新 " + preview.token();
+                            + "\n確認沒問題就按「核准配置更新」。";
                     var approve = new HumanOptions.Option(HumanOptions.CONFIG_APPROVE, "核准配置更新",
                             "套用新配置", "核准配置更新 " + preview.token());
                     if (slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), text,
                             HumanGate.blocks(task.id(), text, java.util.List.of(approve))) == null)
-                        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), text);
+                        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                                text + "\n（按鈕無法顯示時可輸入：補充 #" + task.id() + " 核准配置更新 " + preview.token() + "）");
                     return;
                 }
                 if (!feedback.equals("核准配置更新 " + preview.token())) throw new IllegalArgumentException("核准指令或版本不符，請重新檢視配置更新");
@@ -1337,7 +1374,10 @@ public class FlowEngine {
             store.saveFlow(task.id(), flow);
             audit.record(task.id(), user, AuditLog.ACTION_BUTTON, "要求修改測試計畫 " + d.value());
             if (store.claimState(task.id(), Task.State.RESUME_QUEUED, Task.State.AWAIT_HUMAN)) task.state(Task.State.AWAIT_HUMAN);
-            slack.post(Identity.SYSTEM, channel, thread, "已記錄要求修改，計畫尚未核准，QA 不會執行。請在原討論串 @PM Agent，輸入「補充 #" + task.id() + " …」說明要修改的情境與預期結果。");
+            String text = "已記錄要求修改，計畫尚未核准，QA 不會執行。請按「說明要怎麼改」，寫下要修改的情境與預期結果。";
+            var explain = new HumanOptions.Option(HumanOptions.SUPPLEMENT, "說明要怎麼改", "", null);
+            if (slack.post(Identity.SYSTEM, channel, thread, text, HumanGate.blocks(task.id(), text, List.of(explain))) == null)
+                slack.post(Identity.SYSTEM, channel, thread, text + "\n（按鈕無法顯示時可輸入：補充 #" + task.id() + " <要怎麼改>）");
         }
     }
     public void approve(Task task, String user, Consumer<Runnable> enqueue) {
