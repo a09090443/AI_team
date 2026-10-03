@@ -26,7 +26,9 @@
   之後部署 784ba9b（系統身分不覆寫名稱，JAR `7c0db7d4…`）：starters PID 10315、bestpartner PID 13678。
   再部署 1f5803e（Claude 解禁時間顯示台北時間，JAR `87c31cfd…`）：bestpartner PID 18693、starters PID 21854。
   再部署 5ff0155（內建 inspect-content＋三份提示詞）：bestpartner PID 26858（配置 045533c0…）、starters PID 30031（配置 7ed70287…）。
-  下一步：使用者在 #1011 送「補充 #1011 核准需求變更 刪除 REQ-2，規範掃描改由審查檢查」，實測純文件任務走完到 PR 核准。
+  再部署 68548aa（按鈕＋輸入視窗）與 a0d84ef（沙箱路徑含空白加引號）：目前 bestpartner PID 44998、starters PID 48127（JAR `c77ec4f7…`）。
+  下一步：#1012（承接 #1011，計畫已以 inspect-content 通過、實作完成）在獨立驗證停下，使用者按「繼續執行」重跑；
+  Slack 輸入視窗（modal）尚未真實實測。
   回滾注意：有任務寫入 `spinoffs`／`spinoffOf` 後，舊 JAR 讀不了這些任務（見 data-model）。
   下一步：Slack 實測「開成新需求」按鈕與同串訊息新說明；「中斷這一輪」真實操作；兩個實例的完整管線驗收。
 

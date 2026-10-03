@@ -10,6 +10,8 @@
 - 修正 `ExecutionSandbox.pathProperty`：含空白加雙引號，雙引號／反斜線／控制字元直接拒絕；`SandboxPathPropertyTest` 3 項。
   本機 496 項（僅既有 4 項 Windows 失敗）。已修正文件：engineering-workflow（獨立驗證唯讀釘選）。
 - 先前 commit 68548aa（按鈕＋輸入視窗）已部署：bestpartner PID 36758、starters PID 39867（JAR `c3df0389…`）。
+- 部署 a0d84ef（JAR `c77ec4f7…`，VM Linux 496 項 0 失敗）：bestpartner PID 44998、starters PID 48127，皆 0 ERROR、任務資料前後一致。
+  待使用者在 #1012 按「繼續執行」實測獨立驗證，以及實測輸入視窗。
 
 ## 2026-10-03 — Claude Code（「補充 #N …」打字操作改按鈕＋輸入視窗）
 
