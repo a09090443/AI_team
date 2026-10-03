@@ -47,9 +47,14 @@ public class ExecutionSandbox {
      * systemd user unit 不繼承呼叫端的環境，只有 HOME 與 LANG 由 user manager 提供；
      * 少了 PATH 與 JAVA_HOME，沙箱裡就找不到 mvn 與 java，而失敗會表現成
      * 「環境有問題」而不是「沙箱沒帶環境變數」。
+     *
+     * GRADLE_USER_HOME：Gradle 啟動時要寫整個 user home（native、daemon 登錄），只開放
+     * ~/.gradle/caches 會以「Could not initialize native services」失敗；改指向已核准的
+     * 快取路徑（例如 ~/.cache/gradle）並在團隊配置 cachePaths 宣告。系統獨立驗證另以 env -i
+     * 與私有 HOME 執行，不受這個變數影響。
      */
     private static final List<String> ENV_PASSTHROUGH =
-            List.of("PATH", "JAVA_HOME", "MAVEN_OPTS");
+            List.of("PATH", "JAVA_HOME", "MAVEN_OPTS", "GRADLE_USER_HOME");
 
     /** 資源上限一律生效（不需 userns）；檔案系統隔離要等自檢通過才敢宣稱有效。 */
     private volatile boolean fsConfinementVerified = false;

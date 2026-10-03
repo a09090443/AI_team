@@ -204,6 +204,22 @@ git clone --no-single-branch <新專案 repo> ~/ai-team-web/<repo 目錄>
 - 另建一組 Slack App 與一個頻道；**不可與其他實例共用 App token**。
 - 啟停與查詢都用該目錄下的腳本（`bash ~/ai-team-web/service.sh status`）。
 
+### 5.2 Gradle 專案的額外前置
+
+團隊配置以 `gradle` 為工具（例如 [bestpartner 配置](configurable-team.md#bestpartner-配置)）時，另外安裝與 repo
+gradlew 同版的官方 Gradle，並以官方 SHA256 核對（2026-10-03 新 VM 實測 8.14.5）：
+
+```bash
+curl -fsSLO https://services.gradle.org/distributions/gradle-8.14.5-bin.zip
+curl -fsSL https://services.gradle.org/distributions/gradle-8.14.5-bin.zip.sha256 | sed 's/$/  gradle-8.14.5-bin.zip/' | sha256sum -c -
+mkdir g && (cd g && jar xf ../gradle-8.14.5-bin.zip) && mv g/gradle-8.14.5 ~/.local/gradle && chmod +x ~/.local/gradle/bin/gradle
+ln -s ~/.local/gradle/bin/gradle ~/.local/bin/gradle
+```
+
+Ubuntu 預設沒有 `unzip`，所以用 JDK 的 `jar xf` 解壓。該實例的 env.sh 設
+`GRADLE_USER_HOME=$HOME/.cache/gradle`，並在沙箱外先以可連網方式預熱一次（編譯與配置列出的測試），
+之後驗收的 `--offline` 才找得到相依。換 Gradle 版本時，要跟著 repo 的 `gradle-wrapper.properties` 一起更新並重新核對 checksum。
+
 ## 6. Slack／設定
 
 主 App 使用 `deploy/slack-app-manifest.yaml`，五角色使用 `deploy/agent-manifests/`；

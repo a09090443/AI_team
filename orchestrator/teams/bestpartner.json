@@ -1,0 +1,750 @@
+{
+  "version": 2,
+  "id": "bestpartner",
+  "project": {
+    "requirePlanApproval": true,
+    "autoApprovePlanWhenValid": true,
+    "operations": {
+      "backend-compile": {
+        "nodes": [
+          "implementation"
+        ],
+        "directory": ".",
+        "argv": [
+          "gradle",
+          "-p",
+          "bestpartner-service",
+          "--no-daemon",
+          "compileKotlin",
+          "compileTestKotlin"
+        ],
+        "writes": [
+          "bestpartner-service/build",
+          "bestpartner-service/.gradle",
+          "bestpartner-service/.kotlin"
+        ]
+      },
+      "backend-test-a": {
+        "nodes": [
+          "implementation"
+        ],
+        "directory": ".",
+        "argv": [
+          "gradle",
+          "-p",
+          "bestpartner-service",
+          "--no-daemon",
+          "test",
+          "--tests",
+          "tw.zipe.bastpartner.architecture.ArchitectureTest",
+          "--tests",
+          "tw.zipe.bastpartner.util.ConfigSecretUtilTest",
+          "--tests",
+          "tw.zipe.bastpartner.util.ConfigSecretExpressionTest",
+          "--tests",
+          "tw.zipe.bastpartner.util.CryptoUtilsTest",
+          "--tests",
+          "tw.zipe.bastpartner.util.ToolSchemaGeneratorSensitiveTest",
+          "--tests",
+          "tw.zipe.bastpartner.util.ToolSchemaGeneratorTest",
+          "--tests",
+          "tw.zipe.bastpartner.converter.PasswordEncryptConverterTest",
+          "--tests",
+          "tw.zipe.bastpartner.converter.SensitiveValueCodecTest",
+          "--tests",
+          "tw.zipe.bastpartner.converter.WorkflowSecretConverterTest",
+          "--tests",
+          "tw.zipe.bastpartner.dto.OutputNodeConfigTest",
+          "--tests",
+          "tw.zipe.bastpartner.dto.workflow.config.NodeConfigTest",
+          "--tests",
+          "tw.zipe.bastpartner.provider.CompositeToolProviderTest",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.BasicExecutorTest"
+        ],
+        "writes": [
+          "bestpartner-service/build",
+          "bestpartner-service/.gradle",
+          "bestpartner-service/.kotlin"
+        ]
+      },
+      "backend-test-b": {
+        "nodes": [
+          "implementation"
+        ],
+        "directory": ".",
+        "argv": [
+          "gradle",
+          "-p",
+          "bestpartner-service",
+          "--no-daemon",
+          "test",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.ConditionExecutorTest",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.DataTransformExecutorTest",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.ExecutionContextTest",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.HttpRequestExecutorTest",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.KnowledgeRagExecutorTest",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.LlmAssistantPromptSourceTest",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.PromptExecutorTest",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.ToolNodeExecutorTest",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.WorkflowEngineTest"
+        ],
+        "writes": [
+          "bestpartner-service/build",
+          "bestpartner-service/.gradle",
+          "bestpartner-service/.kotlin"
+        ]
+      },
+      "backend-test-code-executor": {
+        "nodes": [
+          "implementation"
+        ],
+        "directory": ".",
+        "argv": [
+          "gradle",
+          "-p",
+          "bestpartner-service",
+          "--no-daemon",
+          "test",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.CodeExecutorTest"
+        ],
+        "writes": [
+          "bestpartner-service/build",
+          "bestpartner-service/.gradle",
+          "bestpartner-service/.kotlin"
+        ]
+      },
+      "ui-install": {
+        "nodes": [
+          "implementation"
+        ],
+        "directory": ".",
+        "argv": [
+          "npm",
+          "--prefix",
+          "bestpartner-ui",
+          "ci"
+        ],
+        "writes": [
+          "bestpartner-ui/node_modules",
+          "bestpartner-ui/dist"
+        ]
+      },
+      "ui-build": {
+        "nodes": [
+          "implementation"
+        ],
+        "directory": ".",
+        "argv": [
+          "npm",
+          "--prefix",
+          "bestpartner-ui",
+          "run",
+          "build"
+        ],
+        "writes": [
+          "bestpartner-ui/node_modules",
+          "bestpartner-ui/dist"
+        ]
+      },
+      "ui-test": {
+        "nodes": [
+          "implementation"
+        ],
+        "directory": ".",
+        "argv": [
+          "npm",
+          "--prefix",
+          "bestpartner-ui",
+          "run",
+          "test"
+        ],
+        "writes": [
+          "bestpartner-ui/node_modules",
+          "bestpartner-ui/dist"
+        ]
+      },
+      "docs-install": {
+        "nodes": [
+          "implementation"
+        ],
+        "directory": ".",
+        "argv": [
+          "npm",
+          "--prefix",
+          "docs-site",
+          "ci"
+        ],
+        "writes": [
+          "docs-site/node_modules"
+        ]
+      },
+      "docs-build": {
+        "nodes": [
+          "implementation"
+        ],
+        "directory": ".",
+        "argv": [
+          "npm",
+          "--prefix",
+          "docs-site",
+          "run",
+          "build"
+        ],
+        "writes": [
+          "docs-site/build",
+          "docs-site/.docusaurus",
+          "docs-site/node_modules"
+        ]
+      },
+      "qa-backend-test-a": {
+        "nodes": [
+          "verification"
+        ],
+        "directory": ".",
+        "argv": [
+          "gradle",
+          "-p",
+          "bestpartner-service",
+          "--offline",
+          "--no-daemon",
+          "test",
+          "--tests",
+          "tw.zipe.bastpartner.architecture.ArchitectureTest",
+          "--tests",
+          "tw.zipe.bastpartner.util.ConfigSecretUtilTest",
+          "--tests",
+          "tw.zipe.bastpartner.util.ConfigSecretExpressionTest",
+          "--tests",
+          "tw.zipe.bastpartner.util.CryptoUtilsTest",
+          "--tests",
+          "tw.zipe.bastpartner.util.ToolSchemaGeneratorSensitiveTest",
+          "--tests",
+          "tw.zipe.bastpartner.util.ToolSchemaGeneratorTest",
+          "--tests",
+          "tw.zipe.bastpartner.converter.PasswordEncryptConverterTest",
+          "--tests",
+          "tw.zipe.bastpartner.converter.SensitiveValueCodecTest",
+          "--tests",
+          "tw.zipe.bastpartner.converter.WorkflowSecretConverterTest",
+          "--tests",
+          "tw.zipe.bastpartner.dto.OutputNodeConfigTest",
+          "--tests",
+          "tw.zipe.bastpartner.dto.workflow.config.NodeConfigTest",
+          "--tests",
+          "tw.zipe.bastpartner.provider.CompositeToolProviderTest",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.BasicExecutorTest"
+        ],
+        "writes": [
+          "bestpartner-service/build",
+          "bestpartner-service/.gradle",
+          "bestpartner-service/.kotlin"
+        ]
+      },
+      "qa-backend-test-b": {
+        "nodes": [
+          "verification"
+        ],
+        "directory": ".",
+        "argv": [
+          "gradle",
+          "-p",
+          "bestpartner-service",
+          "--offline",
+          "--no-daemon",
+          "test",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.ConditionExecutorTest",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.DataTransformExecutorTest",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.ExecutionContextTest",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.HttpRequestExecutorTest",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.KnowledgeRagExecutorTest",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.LlmAssistantPromptSourceTest",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.PromptExecutorTest",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.ToolNodeExecutorTest",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.WorkflowEngineTest"
+        ],
+        "writes": [
+          "bestpartner-service/build",
+          "bestpartner-service/.gradle",
+          "bestpartner-service/.kotlin"
+        ]
+      },
+      "qa-backend-test-code-executor": {
+        "nodes": [
+          "verification"
+        ],
+        "directory": ".",
+        "argv": [
+          "gradle",
+          "-p",
+          "bestpartner-service",
+          "--offline",
+          "--no-daemon",
+          "test",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.CodeExecutorTest"
+        ],
+        "writes": [
+          "bestpartner-service/build",
+          "bestpartner-service/.gradle",
+          "bestpartner-service/.kotlin"
+        ]
+      },
+      "qa-ui-install": {
+        "nodes": [
+          "verification"
+        ],
+        "directory": ".",
+        "argv": [
+          "npm",
+          "--prefix",
+          "bestpartner-ui",
+          "ci",
+          "--offline",
+          "--no-audit",
+          "--no-fund"
+        ],
+        "writes": [
+          "bestpartner-ui/node_modules",
+          "bestpartner-ui/dist"
+        ]
+      },
+      "qa-ui-build": {
+        "nodes": [
+          "verification"
+        ],
+        "directory": ".",
+        "argv": [
+          "npm",
+          "--prefix",
+          "bestpartner-ui",
+          "run",
+          "build"
+        ],
+        "writes": [
+          "bestpartner-ui/node_modules",
+          "bestpartner-ui/dist"
+        ]
+      },
+      "qa-ui-test": {
+        "nodes": [
+          "verification"
+        ],
+        "directory": ".",
+        "argv": [
+          "npm",
+          "--prefix",
+          "bestpartner-ui",
+          "run",
+          "test"
+        ],
+        "writes": [
+          "bestpartner-ui/node_modules",
+          "bestpartner-ui/dist"
+        ]
+      }
+    },
+    "requiredTools": [
+      "java",
+      "gradle",
+      "node",
+      "npm",
+      "git",
+      "tar",
+      "mkdir"
+    ],
+    "name": "bestpartner",
+    "repositoryEnv": "AI_TEAM_REPO",
+    "baseBranch": "master",
+    "buildInstructions": "依 repo 的 AGENTS.md 與 .claude/rules/（單一事實來源）；套件名是 tw.zipe.bastpartner。後端用 PATH 上的 gradle（與 gradlew 同為 8.14.5），一律 -p bestpartner-service --no-daemon，使用已宣告的 backend-* 操作；前端以 npm --prefix bestpartner-ui ci／run build／run test；文件以 npm --prefix docs-site ci／run build。改動 Kotlin、命名、i18n 或版本設定後，以 bash scripts/harness-drift-scan.sh 確認「新漂移 0 項」。不使用 pwsh、npx 或絕對路徑替代。VM 沒有 PostgreSQL 與 Docker：@QuarkusTest 類測試在此環境一定連不上資料庫，不得以修改設定或關閉測試來讓它通過。",
+    "testInstructions": "先制定情境測試計畫，再驗收；不得只看單元測試數量。後端只執行 qa-backend-test-a、qa-backend-test-b 與 qa-backend-test-code-executor（共 23 個不需資料庫的測試類別，含 ArchitectureTest；CodeExecutorTest 的無窮迴圈逾時測試在負載下不穩定，所以單獨執行，單獨仍逾時才算失敗）；需要 PostgreSQL、外部 API 金鑰或 Google 憑證的情境一律標為「無法核實」並說明原因，不得宣稱通過，也不得改寫成 mock 後宣稱等同。前端依序 qa-ui-install、qa-ui-build（vue-tsc 型別檢查＋建置）、qa-ui-test（vitest）。另以 bash scripts/harness-drift-scan.sh 確認「新漂移 0 項」（只讀）。Gradle 一律 --offline、npm ci 一律 --offline；快取不足須回報，不得下載或繞過沙箱。",
+    "protectedPaths": [
+      "bestpartner-service/src/main/**",
+      "**/build.gradle.kts",
+      "**/settings.gradle.kts",
+      "**/gradle.properties",
+      "**/package.json",
+      "**/package-lock.json"
+    ],
+    "cachePaths": [
+      ".cache/gradle",
+      ".npm"
+    ],
+    "verification": {
+      "commands": [
+        [
+          "gradle",
+          "-p",
+          "bestpartner-service",
+          "--no-daemon",
+          "test",
+          "--tests",
+          "tw.zipe.bastpartner.architecture.ArchitectureTest",
+          "--tests",
+          "tw.zipe.bastpartner.util.ConfigSecretUtilTest",
+          "--tests",
+          "tw.zipe.bastpartner.util.ConfigSecretExpressionTest",
+          "--tests",
+          "tw.zipe.bastpartner.util.CryptoUtilsTest",
+          "--tests",
+          "tw.zipe.bastpartner.util.ToolSchemaGeneratorSensitiveTest",
+          "--tests",
+          "tw.zipe.bastpartner.util.ToolSchemaGeneratorTest",
+          "--tests",
+          "tw.zipe.bastpartner.converter.PasswordEncryptConverterTest",
+          "--tests",
+          "tw.zipe.bastpartner.converter.SensitiveValueCodecTest",
+          "--tests",
+          "tw.zipe.bastpartner.converter.WorkflowSecretConverterTest",
+          "--tests",
+          "tw.zipe.bastpartner.dto.OutputNodeConfigTest",
+          "--tests",
+          "tw.zipe.bastpartner.dto.workflow.config.NodeConfigTest",
+          "--tests",
+          "tw.zipe.bastpartner.provider.CompositeToolProviderTest",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.BasicExecutorTest"
+        ],
+        [
+          "gradle",
+          "-p",
+          "bestpartner-service",
+          "--no-daemon",
+          "test",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.ConditionExecutorTest",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.DataTransformExecutorTest",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.ExecutionContextTest",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.HttpRequestExecutorTest",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.KnowledgeRagExecutorTest",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.LlmAssistantPromptSourceTest",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.PromptExecutorTest",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.ToolNodeExecutorTest",
+          "--tests",
+          "tw.zipe.bastpartner.service.workflow.WorkflowEngineTest"
+        ],
+        [
+          "npm",
+          "--prefix",
+          "bestpartner-ui",
+          "ci",
+          "--no-audit",
+          "--no-fund"
+        ],
+        [
+          "npm",
+          "--prefix",
+          "bestpartner-ui",
+          "run",
+          "build"
+        ],
+        [
+          "npm",
+          "--prefix",
+          "bestpartner-ui",
+          "run",
+          "test"
+        ]
+      ],
+      "timeoutSeconds": 1800
+    }
+  },
+  "roles": {
+    "coordinator": {
+      "name": "PM Agent",
+      "runtime": "claude-code",
+      "model": "opus",
+      "prompt": "prompts/intake.md",
+      "botTokenEnv": "SLACK_BOT_TOKEN_PM",
+      "appTokenEnv": "SLACK_APP_TOKEN_PM",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash(git status *)",
+        "Bash(git log *)",
+        "Bash(git show *)",
+        "Bash(git diff *)",
+        "Bash(git rev-parse *)",
+        "Bash(git -C * status *)",
+        "Bash(git -C * log *)",
+        "Bash(git -C * show *)",
+        "Bash(git -C * diff *)",
+        "Bash(git -C * rev-parse *)"
+      ]
+    },
+    "architect": {
+      "name": "Architecture Agent",
+      "runtime": "claude-code",
+      "model": "opus",
+      "prompt": "prompts/design.md",
+      "botTokenEnv": "SLACK_BOT_TOKEN_ARCHITECTURE",
+      "appTokenEnv": "SLACK_APP_TOKEN_ARCHITECTURE",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob"
+      ]
+    },
+    "builder": {
+      "name": "Backend Agent",
+      "runtime": "claude-code",
+      "model": "opus",
+      "prompt": "prompts/implement.md",
+      "botTokenEnv": "SLACK_BOT_TOKEN_BACKEND",
+      "appTokenEnv": "SLACK_APP_TOKEN_BACKEND",
+      "tools": [
+        "Read",
+        "Write",
+        "Edit",
+        "Grep",
+        "Glob",
+        "Bash(gradle *)",
+        "Bash(npm --version)",
+        "Bash(node --version)",
+        "Bash(npm --prefix bestpartner-ui *)",
+        "Bash(npm --prefix docs-site *)",
+        "Bash(bash scripts/harness-drift-scan.sh)",
+        "Bash(git *)",
+        "Bash(ls *)"
+      ]
+    },
+    "tester": {
+      "name": "QA Agent",
+      "runtime": "codex",
+      "model": "gpt-5.6-sol",
+      "reasoningEffort": "medium",
+      "prompt": "prompts/verify.md",
+      "botTokenEnv": "SLACK_BOT_TOKEN_QA",
+      "appTokenEnv": "SLACK_APP_TOKEN_QA",
+      "tools": [
+        "Read",
+        "Write",
+        "Edit",
+        "Grep",
+        "Glob",
+        "Bash(gradle *)",
+        "Bash(npm --prefix bestpartner-ui *)",
+        "Bash(bash scripts/harness-drift-scan.sh)",
+        "Bash(git *)",
+        "Bash(ls *)"
+      ]
+    },
+    "inspector": {
+      "name": "Code Reviewer",
+      "runtime": "codex",
+      "model": "",
+      "prompt": "prompts/review.md",
+      "botTokenEnv": "SLACK_BOT_TOKEN_CODE_REVIEW",
+      "appTokenEnv": "SLACK_APP_TOKEN_CODE_REVIEW",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash(git diff *)",
+        "Bash(git log *)",
+        "Bash(git show *)",
+        "Bash(git -C * diff *)",
+        "Bash(git -C * log *)",
+        "Bash(git -C * show *)"
+      ]
+    }
+  },
+  "entry": "intake",
+  "maxTransitions": 24,
+  "nodes": {
+    "intake": {
+      "kind": "AGENT",
+      "role": "coordinator",
+      "schema": "schemas/requirements.json",
+      "scope": "READ_ONLY",
+      "gate": "REQUIREMENTS",
+      "workspace": false,
+      "writablePaths": [],
+      "plan": null,
+      "next": "design",
+      "blocked": "human",
+      "routes": {
+        "question": "end",
+        "implementation": "design",
+        "human": "human"
+      },
+      "requires": [],
+      "maxVisits": 3,
+      "timeoutSeconds": 900,
+      "maxTurns": 40
+    },
+    "design": {
+      "kind": "AGENT",
+      "role": "architect",
+      "schema": "schemas/analysis.json",
+      "scope": "READ_ONLY",
+      "gate": "REPORT",
+      "workspace": false,
+      "writablePaths": [],
+      "plan": null,
+      "next": "plan",
+      "blocked": "human",
+      "routes": {
+        "ready": "plan",
+        "human": "human"
+      },
+      "requires": [
+        "intake"
+      ],
+      "maxVisits": 3,
+      "timeoutSeconds": 900,
+      "maxTurns": 40
+    },
+    "plan": {
+      "instructions": "prompts/plan.md",
+      "kind": "AGENT",
+      "role": "tester",
+      "schema": "schemas/plan.json",
+      "scope": "READ_ONLY",
+      "gate": "TEST_PLAN",
+      "workspace": false,
+      "writablePaths": [],
+      "plan": null,
+      "next": "implementation",
+      "blocked": "triage",
+      "routes": {},
+      "requires": [
+        "design"
+      ],
+      "maxVisits": 3,
+      "timeoutSeconds": 900,
+      "maxTurns": 40
+    },
+    "implementation": {
+      "kind": "AGENT",
+      "role": "builder",
+      "schema": "schemas/implementation.json",
+      "scope": "WORKSPACE",
+      "gate": "IMPLEMENTATION",
+      "workspace": true,
+      "writablePaths": [],
+      "plan": null,
+      "next": "verification",
+      "blocked": "triage",
+      "routes": {},
+      "requires": [
+        "plan"
+      ],
+      "maxVisits": 3,
+      "timeoutSeconds": 1800,
+      "maxTurns": 80
+    },
+    "verification": {
+      "kind": "AGENT",
+      "role": "tester",
+      "schema": "schemas/verification.json",
+      "scope": "LIMITED",
+      "gate": "VERIFICATION",
+      "workspace": true,
+      "writablePaths": [
+        "**/src/test/**",
+        "bestpartner-ui/src/**/__tests__/**",
+        "bestpartner-service/build/**",
+        "bestpartner-service/.gradle/**",
+        "bestpartner-service/.kotlin/**",
+        "bestpartner-ui/node_modules/**",
+        "bestpartner-ui/dist/**"
+      ],
+      "localTestNetwork": false,
+      "plan": "plan",
+      "next": "review",
+      "blocked": "triage",
+      "routes": {},
+      "requires": [
+        "plan",
+        "implementation"
+      ],
+      "maxVisits": 3,
+      "timeoutSeconds": 1800,
+      "maxTurns": 60
+    },
+    "review": {
+      "kind": "AGENT",
+      "role": "inspector",
+      "schema": "schemas/review.json",
+      "scope": "READ_ONLY",
+      "gate": "REVIEW",
+      "workspace": true,
+      "writablePaths": [],
+      "plan": null,
+      "next": "approval",
+      "blocked": "triage",
+      "routes": {},
+      "requires": [
+        "verification"
+      ],
+      "maxVisits": 3,
+      "timeoutSeconds": 900,
+      "maxTurns": 40
+    },
+    "triage": {
+      "instructions": "prompts/triage.md",
+      "kind": "AGENT",
+      "role": "coordinator",
+      "schema": "schemas/analysis.json",
+      "scope": "READ_ONLY",
+      "gate": "REPORT",
+      "workspace": false,
+      "writablePaths": [],
+      "plan": null,
+      "next": "human",
+      "blocked": "human",
+      "routes": {
+        "implementation": "implementation",
+        "verification": "verification",
+        "human": "human",
+        "requirements": "intake",
+        "plan": "plan",
+        "design": "design"
+      },
+      "requires": [],
+      "maxVisits": 3,
+      "timeoutSeconds": 900,
+      "maxTurns": 40
+    },
+    "approval": {
+      "kind": "APPROVAL",
+      "requires": [
+        "intake",
+        "implementation",
+        "plan",
+        "verification",
+        "review",
+        "design"
+      ]
+    }
+  }
+}

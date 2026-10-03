@@ -29,7 +29,7 @@ description: repo 每個目錄與檔案的用途，以及「我要找某樣東�
 | 沙箱怎麼包 systemd unit | `sandbox/ExecutionSandbox.java`、`sandbox/SandboxPolicy.java` |
 | 資料表 DDL | `orchestrator/src/main/resources/schema.sql` |
 | 環境變數如何讀取與驗證 | `config/AiTeamProperties.java`；範本 `deploy/env.sh.template` |
-| 目前使用的團隊配置與角色 prompt | `orchestrator/teams/spring-starters.json`、`orchestrator/teams/prompts/` |
+| 目前使用的團隊配置與角色 prompt | `orchestrator/teams/spring-starters.json`（starters 實例）、`orchestrator/teams/bestpartner.json`（bestpartner 實例）、`orchestrator/teams/prompts/` |
 | 新機安裝與維運腳本 | `deploy/bootstrap/` |
 | 文件原文 | `docs-site/docs/`（索引見[文件目錄](/catalog)） |
 
@@ -161,6 +161,7 @@ agent_team/
 │   │   └── workspace/
 │   ├── teams/                        # 配置式團隊定義（現行模式），修改後重啟、只影響新任務
 │   │   ├── spring-starters.json      # 現行正式配置：zipe-spring-boot-starters
+│   │   ├── bestpartner.json          # bestpartner 實例（Kotlin/Quarkus＋Gradle、Vue）；不跑需資料庫的測試
 │   │   ├── node-web.json             # Node 專案範例配置
 │   │   ├── prompts/                  # 節點提示
 │   │   │   ├── intake.md             # 需求整理（PM）

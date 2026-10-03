@@ -404,3 +404,15 @@ runtime 邊界，業務語意則由本系統自己的可測閘門維持。
 「中斷這一輪」以 `ai-team-<任務>-*` glob 停 unit，兩個實例同編號任務會互相誤停。
 不用配置 `id` 當字首，因為同一份配置（如 `node-web.json`）可給多個 repo 共用。
 不做單一服務多專案路由：要改的是 Slack 入口、佇列與配置快照，範圍遠大於只隔離 unit 名稱。
+
+## 2026-10-03 — bestpartner 不在自動驗收跑資料庫測試；Gradle 以 GRADLE_USER_HOME 指向核准快取
+
+決策：bestpartner 實例的 QA 與系統獨立驗證只跑 23 個不需 PostgreSQL 的後端測試類別、前端 vue-tsc／vitest
+與漂移掃描（agent 執行）；需要資料庫或外部憑證的情境由 QA 標「無法核實」。使用者選擇此方案（A），
+而非在 VM 安裝 PostgreSQL。沙箱環境變數白名單新增 `GRADLE_USER_HOME`，Gradle user home 改放 `~/.cache/gradle`
+（符合既有 `.cache/<名稱>` 快取規則）。
+
+理由：VM 沒有 PostgreSQL／Docker，CI 也只跑 ArchUnit、漂移掃描與前端檢查。Gradle 啟動時要寫整個 user home，
+只開放 `~/.gradle/caches` 會失敗；擴充快取允許清單到整個 `~/.gradle` 會連 wrapper 發行版一起開放寫入，
+所以改由環境變數把 user home 移到已核准位置。系統獨立驗證以 `env -i` 與私有 HOME 執行，不受影響。
+`CodeExecutorTest` 的逾時測試在負載下不穩定，單獨成操作且不放進系統驗證（指令上限 5 條）。

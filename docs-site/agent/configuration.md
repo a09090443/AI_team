@@ -23,6 +23,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 | `AI_TEAM_ALLOWED_USERS` | 允許觸發的 Slack user ID，逗號分隔（不是顯示名稱） |
 | `AI_TEAM_CHANNEL_ID` | 運作頻道 ID；preflight 視為必填 |
 | `AI_TEAM_DEFINITION` | 團隊配置 JSON 的絕對路徑；**留空＝legacy 五角色模式**。修改後重啟，只影響新任務 |
+| `GRADLE_USER_HOME` | 只有 Gradle 專案需要（如 bestpartner）：指向 `$HOME/.cache/gradle`，配置 `cachePaths` 宣告 `.cache/gradle`；沙箱白名單會帶入，系統獨立驗證不受影響 |
 | `AI_TEAM_INSTANCE` | 服務實例名稱（建議放 `team.env`）。單一服務留空；同一台 VM 多個專案服務時**必填且不可重複**，systemd unit 改名為 `ai-team-<實例>-…`。格式見 [多個服務實例](/docs/configurable-team#同一台-vm-多個服務實例) |
 | `AI_TEAM_HOME`、`AI_TEAM_REPO`、`AI_TEAM_WORKSPACES`、`AI_TEAM_LOGS` | 服務根目錄、目標 repo 鏡像、任務工作區、階段 log |
 | `CLAUDE_BIN`、`CODEX_BIN`、`OPENCODE_BIN` | 各 CLI 絕對路徑；只有用到該 runtime 才需要 |

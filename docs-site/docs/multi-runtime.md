@@ -22,7 +22,7 @@
 | `ProtectHome=read-only` | 家目錄可讀不可寫 |
 | `PrivateTmp=yes` | 獨立 `/tmp` |
 | `MemoryMax`／`CPUQuota`／`TasksMax` | cgroup v2 資源上限（曾因編譯開滿八核把 VM 壓到 soft lockup） |
-| 環境變數白名單 | 只帶入 `PATH`、`JAVA_HOME`、`MAVEN_OPTS`，Slack token 不會進沙箱 |
+| 環境變數白名單 | 只帶入 `PATH`、`JAVA_HOME`、`MAVEN_OPTS`、`GRADLE_USER_HOME`，Slack token 不會進沙箱（`GRADLE_USER_HOME` 讓 Gradle 專案指向已核准的快取，見 [bestpartner 配置](configurable-team.md#bestpartner-配置)） |
 | runtime 狀態目錄 | 由各 runtime 以 `statePaths()` 宣告可寫，`escalationPins()` 把其中的設定檔／外掛目錄釘回唯讀，避免 agent 改寫自己下一次的執行條件 |
 
 可寫角色使用**每任務獨立 clone**，不用 git worktree：worktree 的 index 與物件寫在主 repo 底下，
