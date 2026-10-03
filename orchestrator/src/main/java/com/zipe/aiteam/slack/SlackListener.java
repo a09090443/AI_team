@@ -100,6 +100,7 @@ public class SlackListener {
 
         registerPlanActions(app);
         registerHumanGateActions(app);
+        registerSpinoffActions(app);
         socketApp = new SocketModeApp(props.slackAppToken(), app);
         log.info("Socket Mode 連線中…（白名單 {} 人，並行上限 {}）",
                 props.allowedUsers().size(), props.maxConcurrency());
@@ -259,6 +260,28 @@ public class SlackListener {
             if (!task.slackChannel().equals(channel) || !task.slackThreadTs().equals(thread)) return;
             audit.record(task.id(), user, AuditLog.ACTION_BUTTON, "以停止選項按鈕送出：" + command.command());
             orchestrator.requestTriage(task, command.command(), user);
+        });
+    }
+    private void registerSpinoffActions(App app) {
+        app.blockAction(SpinoffButtons.ACTION_PATTERN, (req, ctx) -> {
+            var p = req.getPayload();
+            String user = p.getUser().getId(), value = p.getActions().getFirst().getValue();
+            String channel = p.getChannel() == null ? null : p.getChannel().getId();
+            String thread = p.getMessage() == null ? null : p.getMessage().getThreadTs();
+            ingress.execute(() -> {
+                try { handleSpinoffButton(user, value, channel, thread); }
+                catch (Exception e) { log.error("處理開成新需求按鈕失敗：{}", com.zipe.aiteam.runtime.Diagnostics.describe(e)); }
+            });
+            return ctx.ack();
+        });
+    }
+    void handleSpinoffButton(String user, String value, String channel, String thread) {
+        if (!props.allowedUsers().contains(user)) return;
+        var choice = SpinoffButtons.Choice.parse(value);
+        orchestrator.lookup(choice.task()).ifPresent(task -> {
+            // 按鈕可能被轉貼；只認任務原本的討論串。
+            if (task.slackChannel().equals(channel) && task.slackThreadTs().equals(thread))
+                orchestrator.spinoff(task, choice.index(), user);
         });
     }
     void handlePlanButton(String user, String value, String action, String channel, String thread) {

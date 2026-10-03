@@ -25,8 +25,10 @@ class FlowEngineTest {
         ObjectNode json=mapper.valueToTree(new FlowRun(catalog.snapshot()));
         json.remove(List.of("remediationRecoveryGrants","remediationRecoveryKeys","attemptHeads",
                 "automaticHandoff","automaticHandoffs","automaticHandoffExtraBudget","automaticHandoffHops",
-                "automaticHandoffKeys","automaticHandoffExtensionKeys","blockedFindings"));
+                "automaticHandoffKeys","automaticHandoffExtensionKeys","blockedFindings","spinoffs","spinoffOf"));
         FlowRun restored=mapper.treeToValue(json,FlowRun.class);
+        assertThat(restored.spinoffs).isEmpty();
+        assertThat(restored.spinoffOf).isNull();
         assertThat(restored.blockedFindings).isEmpty();
         assertThat(restored.remediationRecoveryGrants).isEmpty();
         assertThat(restored.remediationRecoveryKeys).isEmpty();
@@ -145,6 +147,80 @@ class FlowEngineTest {
         verify(slack).post(any(), any(), any(), argThat((String t) ->
                 t.contains("需要你決定") && t.contains("請看上方") && t.contains("直接選一個：另開任務處理／這次一起支援")
                 && !t.contains("A．另開任務處理")), any());
+    }
+
+    // ---- 純詢問的發現開成新需求 ----
+
+    @Test void questionWithFindingsOffersSpinoffButtonsAfterCompleting() {
+        // #1006：PM 回答時發現文件計數錯誤，只能寫進 out_of_scope；使用者要能一鍵開成新需求。
+        mode = "question";
+        engine.run(task);
+
+        assertThat(task.state()).isEqualTo(Task.State.COMPLETED);
+        assertThat(calls).containsExactly("intake:coordinator");
+        verify(slack).post(any(), eq("c"), eq("t"), argThat((String t) -> t.contains("回答時另外發現")
+                && t.contains("1. 修正文件計數：68 改為 69") && t.contains("2. 補上 API 範例")),
+                argThat(blocks -> blocks != null && blocks.size() == 2));
+    }
+
+    @Test void noSpinoffButtonsWithoutFindingsOrForImplementationTasks() {
+        mode = "questionEmpty";
+        engine.run(task);
+        assertThat(task.state()).isEqualTo(Task.State.COMPLETED);
+        verify(slack, never()).post(any(), any(), any(), argThat((String t) -> t.contains("回答時另外發現")), any());
+        // 實作類任務的 out_of_scope 是刻意排除的範圍，不是待處理的發現。
+        assertThat(FlowEngine.spinoffItems(store.flow(task.id()).orElseThrow())).isEmpty();
+        var implementation = store.flow(task.id()).orElseThrow();
+        implementation.receipts.put("intake", mapper.createObjectNode().put("route", "implementation")
+                .set("out_of_scope", mapper.createArrayNode().add("不做 smtps")));
+        assertThat(FlowEngine.spinoffItems(implementation)).isEmpty();
+    }
+
+    @Test void spinoffOpensANewTaskInANewThreadOnlyOncePerFinding() {
+        mode = "question";
+        engine.run(task);
+        when(slack.post(any(), eq("c"), isNull(), anyString())).thenReturn("new-thread");
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.spinoff(task, 1, "u", jobs::add);
+
+        var parent = store.flow(task.id()).orElseThrow();
+        String childId = parent.spinoffs.get(1);
+        assertThat(childId).isNotNull().isNotEqualTo(task.id());
+        var childTask = store.find(childId).orElseThrow();
+        var child = store.flow(childId).orElseThrow();
+        assertThat(childTask.slackThreadTs()).isEqualTo("new-thread");
+        assertThat(childTask.requestText()).isEqualTo("修正文件計數：68 改為 69");
+        assertThat(childTask.requesterUserId()).isEqualTo("u");
+        assertThat(child.acceptanceOwner).isEqualTo("u");
+        assertThat(child.spinoffOf).isEqualTo(task.id());
+        assertThat(child.node).isEqualTo(child.snapshot.definition().entry());
+        assertThat(child.planApprovals).isEmpty();
+        assertThat(child.context).contains("由任務 #42 的發現開立").contains("API 共 69 個，文件寫 68 個");
+        assertThat(jobs).hasSize(1);
+        verify(slack).post(any(), eq("c"), eq("t"), argThat((String t) -> t.contains("任務 #" + childId) && t.contains("新討論串")));
+
+        // 重複按同一項：不建立第二個任務。
+        jobs.clear();
+        engine.spinoff(task, 1, "u", jobs::add);
+        assertThat(jobs).isEmpty();
+        assertThat(store.flow(task.id()).orElseThrow().spinoffs).containsOnlyKeys(1).containsEntry(1, childId);
+        verify(slack).post(any(), eq("c"), eq("t"), argThat((String t) -> t.contains("已經開成任務 #" + childId)));
+    }
+
+    @Test void spinoffRefusesOutsidersMissingItemsAndUnfinishedTasks() {
+        mode = "question";
+        engine.run(task);
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.spinoff(task, 1, "intruder", jobs::add);
+        engine.spinoff(task, 3, "u", jobs::add);
+        task.state(Task.State.AWAIT_HUMAN); store.save(task);
+        engine.spinoff(task, 1, "u", jobs::add);
+
+        assertThat(jobs).isEmpty();
+        assertThat(store.flow(task.id()).orElseThrow().spinoffs).isEmpty();
+        verify(slack, never()).post(any(), eq("c"), isNull(), anyString());
     }
 
     // ---- 從配置推導白話、承接成新任務 ----
@@ -824,6 +900,12 @@ class FlowEngineTest {
             if (node.gate() == TeamDefinition.Gate.VERIFICATION)
                 ((ObjectNode) report).put("plan_revision", Traceability.digest(flow.receipts.get(node.plan())));
             if (flow.node.equals("design")) ((ObjectNode)report).put("route", "ready");
+            if (mode.startsWith("question") && flow.node.equals("intake")) {
+                ((ObjectNode)report).put("route", "question").put("summary", "API 共 69 個，文件寫 68 個");
+                ((ObjectNode)report).putArray("requirements");
+                var outOfScope = ((ObjectNode)report).putArray("out_of_scope");
+                if (mode.equals("question")) outOfScope.add("修正文件計數：68 改為 69").add("補上 API 範例");
+            }
             if (flow.node.equals("triage")) ((ObjectNode)report).put("route", mode.equals("repair") ? "verification"
                     : mode.equals("dirtyVerification") ? "verification"
                     : mode.equals("automaticRepair") ? "implementation" : mode.equals("change") ? "requirements"

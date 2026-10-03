@@ -42,6 +42,8 @@
 - 按鈕只在「至少有一個可一鍵完成的選項」時才出現，避免每次停止都掛一排按鈕。
 - 一則訊息最多 4 顆指令按鈕加中止；`HumanGate.Command` 的 value 超過 1900 字元會直接拒絕，不靜默截斷。
 - 只認任務原本的討論串；轉貼到別處的按鈕不會生效。
+- 另一種按鈕不在停止訊息上：純詢問結束時的「開成新需求 N」（`SpinoffButtons`，action_id `ai_team_spinoff_N`，
+  value 只放 `任務編號|序號`，原文由系統從任務紀錄讀回）。行為見 `docs-site/agent/operations.md` 的「建立任務」。
 - 角色報告的顯示也同步白話化：`route` 翻成「交回工程實作修正（implementation）」這種形式，
   保留原鍵以便對照配置；`execution_status` 與 `verdict` 一併改為口語說法。
 

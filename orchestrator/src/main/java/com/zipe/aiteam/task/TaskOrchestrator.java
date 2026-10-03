@@ -1116,6 +1116,10 @@ public class TaskOrchestrator {
                              boolean approve, String channel, String thread) {
         if (flowEngine != null && flowEngine.owns(task.id())) flowEngine.planDecision(task, user, decision, approve, channel, thread, job -> work.offer(job));
     }
+    /** 純詢問結束後的「開成新需求」按鈕；新任務走同一個中央佇列。 */
+    public void spinoff(Task task, int index, String user) {
+        if (flowEngine != null && flowEngine.owns(task.id())) flowEngine.spinoff(task, index, user, job -> work.offer(job));
+    }
     public void resumeApprovedPlanTask(String id) {
         Task task = store.find(id).orElseThrow(() -> new IllegalArgumentException("指定任務不存在"));
         if (flowEngine == null || !flowEngine.owns(id)) throw new IllegalArgumentException("指定任務不是配置流程");

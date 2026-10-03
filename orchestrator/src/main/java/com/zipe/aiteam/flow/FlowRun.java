@@ -40,6 +40,10 @@ public class FlowRun {
     public String successor;
     /** 本任務承接自哪個任務；工作區從該任務的分支 HEAD 開始。 */
     public String continuationOf;
+    /** 純詢問結束後，以「開成新需求」按鈕從 out_of_scope 開立的任務：項目序號（從 1 起）→ 新任務編號。防止重複開立。 */
+    public Map<Integer,String> spinoffs = new LinkedHashMap<>();
+    /** 本任務由哪個任務的純詢問發現開立；不沿用該任務的任何核准或工作區。 */
+    public String spinoffOf;
     public String acceptanceOwner;
     public String baselineRevision;
     public String changeTarget;

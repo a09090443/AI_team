@@ -249,7 +249,14 @@ v2 配置式流程的整份執行快照，對應 `com.zipe.aiteam.flow.FlowRun`�
 | `attemptHeads` | Map&lt;節點,commit&gt; | 各 workspace 節點最近一次真正開始執行時的 HEAD；人工修復重驗必須使用不同的新 commit |
 | `migrationHistory` | List&lt;Snapshot&gt; | 歷次配置遷移前的完整舊快照 |
 | `dialogue` / `dialogueRole` / `parentId` | boolean / String / String | 對話模式旗標與目標角色、母任務 |
+| `successor` / `continuationOf` | String / String | 承接成的新任務／本任務承接自哪個任務 |
+| `spinoffs` | Map&lt;項目序號,任務編號&gt; | 純詢問結束後以「開成新需求」按鈕從最後報告的 `out_of_scope` 開立的任務（序號從 1 起，最多 5）。用來防止同一項重複開立（2026-10-03 新增） |
+| `spinoffOf` | String | 本任務由哪個任務的純詢問發現開立；不沿用該任務的核准、工作區或結論（2026-10-03 新增） |
 | `prUrl` / `publishedHead` | String | 發布結果 |
+
+**回滾風險**：`TaskStore` 以預設 ObjectMapper 讀 `flow_run.data`，未知欄位會拋錯。新版寫入的欄位
+（例如 `spinoffs`、`spinoffOf`）對舊資料相容（缺欄位取預設值），但**回滾到不認得這些欄位的舊 JAR 後，
+讀這些任務會解析失敗**。回滾前先確認沒有任務寫入新欄位，或一併處理資料。
 
 相關文件：[configurable-team.md](configurable-team.md)、[engineering-workflow.md](engineering-workflow.md)、
 [plan-approval-buttons.md](plan-approval-buttons.md)、[cross-project-execution.md](cross-project-execution.md)。

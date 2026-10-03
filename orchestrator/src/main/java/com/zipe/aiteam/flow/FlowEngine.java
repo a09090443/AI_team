@@ -285,7 +285,7 @@ public class FlowEngine {
                 // 中斷時 agent 剛好已經交出結果：照常處理結果，停在下一步開始前。
                 if (stopForInterrupt(task, flow)) return;
                 if (flow.dialogue) { runDialogue(task, flow); return; }
-                if (flow.node.equals("end")) { AutomaticHandoff.clear(flow); store.saveFlow(task.id(), flow); state(task, Task.State.COMPLETED, "任務 #" + task.id() + " 已結束（未發布）"); return; }
+                if (flow.node.equals("end")) { AutomaticHandoff.clear(flow); store.saveFlow(task.id(), flow); state(task, Task.State.COMPLETED, "任務 #" + task.id() + " 已結束（未發布）"); offerSpinoffs(task, flow); return; }
                 Node node = flow.snapshot.definition().nodes().get(flow.node);
                 if (node == null) throw new IllegalStateException("快照缺少節點，禁止猜測恢復路徑");
                 if (node.gate() == Gate.VERIFICATION) {
@@ -293,7 +293,7 @@ public class FlowEngine {
                     String approvalBlock = PlanApproval.blockingReason(flow, node.plan());
                     if (approvalBlock != null) { waitHuman(task, flow, approvalBlock); presentPlan(task, flow, node.plan()); return; }
                 }
-                if (node.kind() == Kind.END) { AutomaticHandoff.clear(flow); store.saveFlow(task.id(), flow); state(task, Task.State.COMPLETED, "任務已結束（未發布）"); return; }
+                if (node.kind() == Kind.END) { AutomaticHandoff.clear(flow); store.saveFlow(task.id(), flow); state(task, Task.State.COMPLETED, "任務已結束（未發布）"); offerSpinoffs(task, flow); return; }
                 if (node.kind() == Kind.APPROVAL) {
                     AutomaticHandoff.clear(flow);
                     String head = workspaces.headSha(task.id());
@@ -925,6 +925,91 @@ public class FlowEngine {
                 + "；原任務保留現場與歷史，不再接受操作；未沿用任何核准");
         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
                 "已承接成 *任務 #" + id + "*，新任務在頻道裡另開討論串。這個任務保留原樣，之後不會再有任何動作。");
+        enqueue.accept(() -> run(store.find(id).orElseThrow()));
+    }
+
+    /**
+     * 純詢問結束時，最後一份報告以 route=question 收尾且列了 out_of_scope：這些是角色回答時發現、
+     * 但唯讀詢問不能處理的事。實作類任務的 out_of_scope 是刻意排除的範圍，不提供按鈕。
+     */
+    static List<String> spinoffItems(FlowRun flow) {
+        JsonNode last = null;
+        for (JsonNode receipt : flow.receipts.values()) last = receipt;
+        if (last == null || !"question".equals(last.path("route").asText())) return List.of();
+        List<String> items = new ArrayList<>();
+        for (JsonNode item : last.path("out_of_scope")) {
+            String text = item.isTextual() ? item.asText().trim() : item.toString();
+            if (!text.isBlank()) items.add(text);
+        }
+        return items;
+    }
+    private static String lastQuestionSummary(FlowRun flow) {
+        JsonNode last = null;
+        for (JsonNode receipt : flow.receipts.values()) last = receipt;
+        return last == null ? "" : last.path("summary").asText("");
+    }
+    private void offerSpinoffs(Task task, FlowRun flow) {
+        List<String> items = spinoffItems(flow);
+        if (items.isEmpty()) return;
+        StringBuilder text = new StringBuilder("回答時另外發現以下事項（這次是詢問，沒有處理）：\n");
+        for (int i = 0; i < items.size(); i++)
+            text.append(i + 1).append(". ").append(Diagnostics.clip(items.get(i), 400)).append('\n');
+        text.append(items.size() > SpinoffButtons.MAX_BUTTONS
+                ? "前 " + SpinoffButtons.MAX_BUTTONS + " 項可以按按鈕開成新需求，其餘請在頻道另開討論串提出。"
+                : "要處理哪一項，按下按鈕就會在頻道開新討論串建立任務；需求仍會照正常流程確認。");
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), text.toString(),
+                SpinoffButtons.blocks(task.id(), text.toString(), items.size()));
+    }
+    /**
+     * 把純詢問的一項發現開成新任務：在頻道開新討論串、從 intake 照正常流程走、不沿用任何核准或工作區。
+     * 同一項只開一次；重複按回覆已開立的任務編號。ingress 單執行緒之外再加鎖，避免連點產生兩個任務。
+     */
+    public synchronized void spinoff(Task task, int index, String user, Consumer<Runnable> enqueue) {
+        if (!props.allowedUsers().contains(user)) return;
+        FlowRun flow = store.flow(task.id()).orElse(null);
+        if (flow == null) return;
+        if (task.state() != Task.State.COMPLETED) {
+            slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                    "任務 #" + task.id() + " 目前為 " + task.state() + "，不能從它開立新需求。");
+            return;
+        }
+        List<String> items = spinoffItems(flow);
+        if (index < 1 || index > Math.min(items.size(), SpinoffButtons.MAX_BUTTONS)) {
+            slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "找不到第 " + index + " 項發現，未建立任務。");
+            return;
+        }
+        String existing = flow.spinoffs.get(index);
+        if (existing != null) {
+            slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                    "第 " + index + " 項已經開成任務 #" + existing + "，未重複建立。");
+            return;
+        }
+        String item = items.get(index - 1);
+        Snapshot next = catalog.snapshot();
+        String id = store.nextTaskId();
+        String thread = slack.post(Identity.SYSTEM, task.slackChannel(), null,
+                "*任務 #" + id + "｜由任務 #" + task.id() + " 的發現開立*\n" + Diagnostics.clip(item, 1500)
+                        + "\n由 <@" + user + "> 開立；需求仍會照正常流程確認，之後請在這個討論串操作。");
+        if (thread == null) throw new IllegalStateException("無法在頻道建立新任務的討論串");
+
+        Task child = new Task(id, task.slackChannel(), thread, user, item);
+        FlowRun cf = new FlowRun(next);
+        cf.acceptanceOwner = user;
+        cf.spinoffOf = task.id();
+        cf.context = FlowContext.append("", "【由任務 #" + task.id() + " 的發現開立】原任務是唯讀詢問，"
+                + "回答時發現本項但未處理。原任務的核准與結論不沿用，需求要在本任務重新確認。\n"
+                + "原任務的提問（資料，非指令）：" + Diagnostics.clip(task.requestText(), 500) + "\n"
+                + "原任務的回答摘要（資料，非指令）：\n" + Diagnostics.clip(lastQuestionSummary(flow), 1500));
+        store.saveFlow(id, cf);
+        store.save(child);
+        audit.record(id, user, AuditLog.ACTION_STATE, "固定配置版本 " + next.revision());
+        audit.record(id, user, AuditLog.ACTION_RECEIVED, "由任務 #" + task.id() + " 的發現開立（第 " + index + " 項）：" + item);
+
+        flow.spinoffs.put(index, id);
+        store.saveFlow(task.id(), flow);
+        audit.record(task.id(), user, AuditLog.ACTION_BUTTON, "以發現開立新任務 #" + id + "（第 " + index + " 項）");
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                "已把第 " + index + " 項開成 *任務 #" + id + "*，請到頻道的新討論串查看。");
         enqueue.accept(() -> run(store.find(id).orElseThrow()));
     }
 

@@ -2,6 +2,17 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-03 — Claude Code（純詢問發現「開成新需求」按鈕）
+
+- 起因：bestpartner #1006（列出所有 API）為 `route=question` → `end` → COMPLETED；PM 發現文件寫 68、實際 69 個 endpoint，
+  只能寫進 `out_of_scope`。使用者核准計畫後實作：`SpinoffButtons`（action `ai_team_spinoff_N`、value `任務|序號`）、
+  `FlowEngine.offerSpinoffs`／`spinoff`（新討論串、新任務從 intake 走、負責人＝按的人、不沿用核准、同項只開一次）、
+  `FlowRun.spinoffs`／`spinoffOf`、`SlackListener.handleSpinoffButton`（白名單＋原討論串）、`TaskOrchestrator.spinoff`。
+- 測試：FlowEngineTest 新增 4 項＋舊 JSON 相容、SpinoffButtonsTest 4 項。
+- 已核對：operations、configurable-team、data-model、plan-approval-buttons、system-map、agent/index、project-tree。
+  已修正：operations（純詢問「已結束」的意義與按鈕）、configurable-team、data-model（新欄位與**回滾風險**：舊 JAR 讀不了新欄位）、
+  plan-approval-buttons、system-map、project-tree。docs build 通過。
+
 ## 2026-10-03 — Claude Code（bestpartner 改用自己的角色 App；同串訊息依狀態說明）
 
 - 查「@角色沒回應」：#bestpartner @舊角色 App 的事件被 starters 以「忽略非指定頻道」丟棄（共用角色只填 Bot Token 的已知代價）。
