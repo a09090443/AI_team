@@ -10,6 +10,9 @@
 - 測試：IndependentVerifierTest 4、TeamCatalogTest 1、ConfiguredExecutorTest 1、WorkspaceManagerTest 1（改名兩端與中文檔名）；
   本機 503 項（僅既有 4 項 Windows 失敗）；check-source PASS；docs build 通過。
 - 已修正文件：engineering-workflow、configurable-team、configuration、data-model（回滾風險）、project-tree；decisions 追加。
+- 部署（commit 27dd80d，JAR `5827e12e…`，VM Linux 503 項 0 失敗；bestpartner.json 以實例環境 `--validate-team` 通過）：
+  bestpartner.json 備份為 `bestpartner.json.bak-before-27dd80d` 後更新；bestpartner PID 53254（配置 dafe84b2…）、starters PID 56461（配置 72e4b58f…），
+  皆 0 ERROR、任務資料前後一致。#1010～#1012 為舊快照，不套用略過。待新純文件任務實測。
 
 ## 2026-10-03 — Claude Code（沙箱路徑含空白：獨立驗證 Invalid ReadOnlyPaths）
 

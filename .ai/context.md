@@ -26,7 +26,8 @@
   之後部署 784ba9b（系統身分不覆寫名稱，JAR `7c0db7d4…`）：starters PID 10315、bestpartner PID 13678。
   再部署 1f5803e（Claude 解禁時間顯示台北時間，JAR `87c31cfd…`）：bestpartner PID 18693、starters PID 21854。
   再部署 5ff0155（內建 inspect-content＋三份提示詞）：bestpartner PID 26858（配置 045533c0…）、starters PID 30031（配置 7ed70287…）。
-  再部署 68548aa（按鈕＋輸入視窗）與 a0d84ef（沙箱路徑含空白加引號）：目前 bestpartner PID 44998、starters PID 48127（JAR `c77ec4f7…`）。
+  再部署 68548aa（按鈕＋輸入視窗）、a0d84ef（沙箱路徑含空白加引號）、27dd80d（純文件略過建置測試，bestpartner 啟用）：
+  目前 bestpartner PID 53254（配置 dafe84b2…）、starters PID 56461（JAR `5827e12e…`）。
   下一步：#1012（承接 #1011，計畫已以 inspect-content 通過、實作完成）在獨立驗證停下，使用者按「繼續執行」重跑；
   Slack 輸入視窗（modal）尚未真實實測。
   回滾注意：有任務寫入 `spinoffs`／`spinoffOf` 後，舊 JAR 讀不了這些任務（見 data-model）。
