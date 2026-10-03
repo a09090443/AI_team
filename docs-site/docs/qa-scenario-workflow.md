@@ -10,6 +10,14 @@ QA 規劃在 Backend 與工作區建立之前，以需求和既有契約設計�
 `counterexample` 必須描述一個會通過弱測試但違反需求的實作，並說明本情境如何攔下它。
 每個 `operation_id` 必須是管理者配置給對應 verification 節點的契約；
 測試規畫不得只在文字中自行發明命令。契約不足時要明確受阻，不把權限缺口留到 QA 才發現。
+
+**系統內建的 `inspect-content`**（2026-10-03 起，所有 v2 配置自動可用，不需配置）：以 QA 自己的 Read／Grep
+讀工作區中**已提交**的檔案內容判定。它不是指令，不經派工前檢查、不寫檔。只適用於「從檔案內容就能判斷」的驗收項目
+（文件文字、設定值、檔案是否存在、表格結構）；程式行為仍須引用真正的操作，缺操作仍要受阻。驗收時 `command` 寫
+`inspect-content：<檔案>:<行或範圍>`、`evidence` 引用讀到的內容；系統同時在驗收上下文附上「本次已提交的變更檔案」
+（`WorkspaceManager.changedPathsSinceBase`，系統查得）。配置不能自行宣告同名操作（`OperationContract.INSPECT_CONTENT`）。
+起因：bestpartner #1010／#1011 只改一行文件，任何配置都寫不出「讀某檔某行」的固定指令，任務永遠卡在測試計畫。
+intake 也規定：未配置成操作的專案腳本（例如 `bash scripts/*.sh`）不得寫成驗收項目，因為系統不允許以 shell 執行。
 缺少必要需求決策時向 PM／提出者回報並停止。READY 只代表計畫就緒，不代表環境已驗證。
 
 `qa_plan` 與 `qa` 各自持久化 stage_result、session、診斷 log 與費用。

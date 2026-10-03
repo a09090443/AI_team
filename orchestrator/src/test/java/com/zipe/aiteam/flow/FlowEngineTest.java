@@ -874,7 +874,9 @@ class FlowEngineTest {
                 throw new QuotaExceeded("usage_limit_reached");
             }
             JsonNode report = report(node.gate());
-            if (node.gate() == TeamDefinition.Gate.TEST_PLAN
+            if (node.gate() == TeamDefinition.Gate.TEST_PLAN && mode.equals("inspect")) {
+                ((ObjectNode) report.path("scenarios").get(0)).putArray("operation_ids").add(OperationContract.INSPECT_CONTENT);
+            } else if (node.gate() == TeamDefinition.Gate.TEST_PLAN
                     && "spring-starters".equals(flow.snapshot.definition().id())) {
                 ((ObjectNode) report.path("scenarios").get(0)).putArray("operation_ids").add("qa-java");
             }
@@ -945,6 +947,15 @@ class FlowEngineTest {
         assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL); verifyNoInteractions(publisher);
         verify(verifier, times(1)).verify(any(), any());
         assertThat(store.flow(task.id()).orElseThrow().independentEvidence).isNotNull();
+    }
+    @Test void documentationOnlyTaskVerifiedByContentInspectionReachesPrApproval() {
+        // #1010／#1011：純文件修改沒有任何配置操作能驗，整個任務卡在測試計畫。內建內容檢視讓它照完整流程走完。
+        mode = "inspect";
+        engine.run(task);
+        assertThat(calls).containsExactly("intake:coordinator", "plan:tester", "implementation:builder", "frontend:frontend", "verification:tester", "review:security_auditor");
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        assertThat(store.flow(task.id()).orElseThrow().receipts.get("plan").path("scenarios").get(0).path("operation_ids").get(0).asText())
+                .isEqualTo(OperationContract.INSPECT_CONTENT);
     }
     @Test void springConfigurationUsesSameEngineWithDifferentRolesAndNodes() {
         engine.run(task);

@@ -73,8 +73,10 @@ public final class Traceability {
             if (node.gate() == Gate.TEST_PLAN && Objects.equals(flow.receipts.get(id), plan)) matchingPlans.add(id);
         });
         flow.snapshot.definition().nodes().forEach((id, node) -> {
-            if (node.gate() == Gate.VERIFICATION && matchingPlans.contains(node.plan()))
+            if (node.gate() == Gate.VERIFICATION && matchingPlans.contains(node.plan())) {
                 allowedOperations.addAll(OperationContract.forNode(flow.snapshot.definition(), id).keySet());
+                if (OperationContract.inspectAvailable(flow.snapshot.definition())) allowedOperations.add(OperationContract.INSPECT_CONTENT);
+            }
         });
         for (JsonNode scenario : plan.path("scenarios")) {
             JsonNode refs = scenario.path("requirement_ids");

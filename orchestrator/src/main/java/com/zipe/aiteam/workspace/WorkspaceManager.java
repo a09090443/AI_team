@@ -378,6 +378,14 @@ public class WorkspaceManager {
         return out.lines().filter(s -> !s.isBlank()).toList();
     }
 
+    /** 工作區相對建立時基準 commit 已提交的變更檔案；給驗收者對照「這次到底改了什麼」，由系統查得而非 agent 自陳。 */
+    public List<String> changedPathsSinceBase(String taskId) throws WorkspaceException {
+        Path ws = pathFor(taskId);
+        String baseSha = gitOutput(ws, "config", "--local", "--get", BASE_SHA_CONFIG_KEY);
+        if (baseSha.isBlank()) throw new WorkspaceException("工作區沒有記錄基準 commit，無法列出變更檔案");
+        return gitOutput(ws, "diff", "--name-only", baseSha + "..HEAD").lines().filter(s -> !s.isBlank()).toList();
+    }
+
     // ------------------------------------------------------------------ 未提交的修改
 
     /** 相對 HEAD 修改、刪除或新增（未追蹤、未忽略）的檔案，排序後回傳；乾淨時為空。 */

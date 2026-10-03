@@ -111,7 +111,7 @@ App-Level Token 留空**：發言與交接 tag 使用同一個角色身分，不
 | 資料庫測試 | **不在自動驗收範圍**（使用者決定 A）：VM 沒有 PostgreSQL／Docker，15 個 `@QuarkusTest` 與需要外部憑證的測試不跑；需要它們的情境由 QA 標「無法核實」 |
 | 後端測試 | 23 個不需資料庫的測試類別（含 `ArchitectureTest`）分成 `backend-test-a`、`backend-test-b`、`backend-test-code-executor` 三個操作（argv 上限 32）。清單由 VM 實跑判定，新增測試類別要手動加入 |
 | CodeExecutorTest | 「無窮迴圈於 timeoutMs 後強制中斷」在負載下會超過 30 秒，單獨執行則通過；所以單獨成一個操作，也**不在系統獨立驗證內**（上限 5 條指令） |
-| 漂移掃描 | `scripts/harness-drift-scan.sh` 是 bash 腳本，不能當 operation 或系統驗證指令；改寫在建置／驗收指示，由 agent 以 `bash scripts/harness-drift-scan.sh` 執行 |
+| 漂移掃描 | `scripts/harness-drift-scan.sh` 是 bash 腳本，不能當 operation 或系統驗證指令；寫在建置指示，由實作 agent 以 `bash scripts/harness-drift-scan.sh` 自行執行。**不能列為驗收項目**：測試計畫只能引用操作或內建 `inspect-content`，#1010／#1011 曾因 PM 把它寫成驗收項目而無法驗收；改由審查檢查 |
 | 前端 | `npm --prefix bestpartner-ui ci`／`run build`（vue-tsc）／`run test`（vitest）；驗收用 `--offline` |
 | 系統獨立驗證 | 後端 A、B 兩組＋前端 ci／build／test，共 5 條；在全新 clone 與私有 HOME 執行，會重新下載相依（第一次較慢） |
 | repo hooks | repo 的 `.claude/settings.json` 掛了 pwsh hooks；VM 沒有 pwsh，實測只產生非阻擋的錯誤訊息，工具呼叫照常完成 |

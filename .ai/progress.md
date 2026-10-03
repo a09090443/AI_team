@@ -2,6 +2,16 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-03 — Claude Code（內建 inspect-content：文件修改在任何專案都能驗收）
+
+- 起因：bestpartner #1010／#1011（改一行 SKILL.md）在測試計畫反覆受阻：operations 寫不出讀檔指令，PM 又把 shell 腳本寫成驗收項目。
+  三份配置都有此缺口。使用者核准計畫後實作：`OperationContract.INSPECT_CONTENT`（保留 ID、v2 才可用、配置不得宣告）、
+  `Traceability.planReason` 允許引用、`ConfiguredExecutor.inspectionNotice`（plan／verification 上下文說明）與
+  `changedFiles`（驗收附系統查得的變更檔案，`WorkspaceManager.changedPathsSinceBase`）；intake／plan／verify 提示詞同步。
+- 測試：OperationContractTest 2、TraceabilityTest 1、ConfiguredExecutorTest 2、FlowEngineTest 1（純文件任務走到 PR 核准）；
+  本機 485 項（僅既有 4 項 Windows 失敗）；check-source PASS；docs build 通過。
+- 已修正文件：qa-scenario-workflow、cross-project-execution、configurable-team（漂移掃描不得列為驗收項目）、operations；decisions 追加。
+
 ## 2026-10-03 — Claude Code（Claude 額度解禁時間改顯示台北時間）
 
 - 使用者回報任務訊息「供應商指定解禁：2:30pm (UTC)」應為台灣時間。新增 `QuotaRetryTime.utcReset`（排程與顯示共用），

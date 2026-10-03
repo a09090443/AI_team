@@ -69,6 +69,27 @@ class ConfiguredExecutorTest {
         assertThat(ConfiguredExecutor.receiptView(flow, triage)).doesNotContain("null");
     }
 
+    @Test void builtInInspectionIsExplainedOnlyToPlanAndVerification() {
+        var nodes = flow.snapshot.definition().nodes();
+        assertThat(ConfiguredExecutor.inspectionNotice(flow, nodes.get("plan")))
+                .contains(OperationContract.INSPECT_CONTENT, "不是指令", "operation_ids", "程式行為");
+        assertThat(ConfiguredExecutor.inspectionNotice(flow, nodes.get("verification")))
+                .contains(OperationContract.INSPECT_CONTENT, "已提交", "command");
+        assertThat(ConfiguredExecutor.inspectionNotice(flow, nodes.get("implementation"))).isEmpty();
+        assertThat(ConfiguredExecutor.inspectionNotice(flow, nodes.get("triage"))).isEmpty();
+    }
+
+    @Test void verificationSeesSystemComputedChangedFiles() throws Exception {
+        var task = new Task("42", "c", "t", "u", "改文件");
+        assertThat(executor.changedFiles(task, flow)).isEmpty();
+        flow.workspaceReady = true;
+        when(workspace.exists("42")).thenReturn(true);
+        when(workspace.changedPathsSinceBase("42")).thenReturn(List.of(".agents/skills/test-confirmation/SKILL.md"));
+        assertThat(executor.changedFiles(task, flow)).contains("系統查得", ".agents/skills/test-confirmation/SKILL.md");
+        when(workspace.changedPathsSinceBase("42")).thenThrow(new WorkspaceManager.WorkspaceException("no base"));
+        assertThat(executor.changedFiles(task, flow)).contains("查不到").doesNotContain("SKILL.md");
+    }
+
     @Test void verificationStageSaysReceiptIsStillPending() {
         var verification = flow.snapshot.definition().nodes().get("verification");
         assertThat(ConfiguredExecutor.receiptView(flow, verification)).contains("尚未產生");

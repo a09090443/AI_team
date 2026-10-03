@@ -85,6 +85,13 @@ class TraceabilityTest {
         assertThat(Traceability.planReason(plan, flow)).contains("未授權", "shell-anything");
     }
 
+    @Test void documentationOnlyScenarioCanUseBuiltInContentInspection() {
+        // #1010／#1011：改一行文件，任何配置都寫不出「讀某檔某行」的固定指令，測試計畫永遠受阻。
+        ((ObjectNode)plan.path("scenarios").get(0)).putArray("operation_ids").add(OperationContract.INSPECT_CONTENT);
+        assertThat(Traceability.planReason(plan, flow)).isNull();
+        ((ObjectNode)plan.path("scenarios").get(0)).putArray("operation_ids").add(OperationContract.INSPECT_CONTENT).add("test");
+        assertThat(Traceability.planReason(plan, flow)).isNull();
+    }
     @Test void everyNewScenarioMustReferenceAnOperationContract() {
         ((ObjectNode)plan.path("scenarios").get(0)).remove("operation_ids");
         assertThat(Traceability.planReason(plan, flow)).contains("S1", "operation_ids");

@@ -44,6 +44,9 @@ Java＋文件網站與 Node 範例均已加入契約。新專案仍需管理者�
 目前 argv 為簡單、無空白／shell 特殊字元的參數；複雜命令不自行降級成 shell。
 `writes` 是操作需求，不是新的權限來源，也不代表列出所有執行中副作用。
 
+操作 ID `inspect-content` 為系統保留：它是所有 v2 測試計畫／驗收可引用的內建「讀已提交檔案內容」驗收方式，
+不是指令、不進 `OperationPreflight`，配置宣告同名操作會被拒絕。語意與限制見 [qa-scenario-workflow](qa-scenario-workflow.md)。
+
 ## 各階段預檢與證據
 
 `OperationPreflight` 在呼叫模型前：

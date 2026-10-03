@@ -73,6 +73,8 @@ public class ConfiguredExecutor {
         if (evidence != null) context.append("\n系統派工前證據（不是建置成功或真人核准）：").append(evidence);
         if (flow.dialogue) context.append(parentWorkspaceState(flow));
         if (!flow.dialogue) context.append("\n本階段可使用／規畫的操作契約：").append(availableOperations(flow, node));
+        if (!flow.dialogue) context.append(inspectionNotice(flow, node));
+        if (!flow.dialogue && node.gate() == Gate.VERIFICATION) context.append(changedFiles(task, flow));
         if (!flow.dialogue) context.append(commandPatterns(role, runtime, OperationContract.forNode(flow.snapshot.definition(), flow.node)));
         if (!flow.dialogue) context.append(protectedPathNotice(flow.snapshot.definition(), flow.node, runtimes::require));
         // 同一角色常同時負責訂計畫與驗收，角色提示會提到驗收要引用 plan_revision；
@@ -250,6 +252,34 @@ public class ConfiguredExecutor {
             return "（尚未產生；系統會在本階段執行後補上）";
         return "（本節點階段不產生系統獨立驗證收據，這是流程設計，不是查無建置證據；"
                 + "不得據此推論建置未通過或無人核准）";
+    }
+
+    /**
+     * 內建內容檢視的說明放在程式產生的上下文，部署後進行中的舊任務也看得到；提示詞只是補強。
+     * 只在 v2 的測試計畫與驗收節點出現：其他節點用不到，寫進去只會讓人以為多了一個指令。
+     */
+    static String inspectionNotice(FlowRun flow, Node node) {
+        if (!OperationContract.inspectAvailable(flow.snapshot.definition())
+                || (node.gate() != Gate.TEST_PLAN && node.gate() != Gate.VERIFICATION)) return "";
+        String id = OperationContract.INSPECT_CONTENT;
+        return "\n系統內建驗收方式 " + id + "（不是指令，不需配置）：以你自己的唯讀工具（Read／Grep）讀取已提交的檔案內容判定。"
+                + "只適用於「從檔案內容就能判斷」的驗收項目，例如文件文字、設定值、檔案是否存在、表格結構；"
+                + "程式行為（執行結果、例外、效能、安全行為）不得只用 " + id + "，仍須引用上方真正的操作，缺操作就回報 BLOCKED。"
+                + (node.gate() == Gate.TEST_PLAN
+                    ? "測試計畫可在 operation_ids 引用 " + id + "，steps 寫明要讀的檔案、位置與判定方式。"
+                    : "驗收時 command 寫「" + id + "：<檔案>:<行或範圍>」，evidence 引用實際讀到的內容；"
+                      + "必須讀工作區中已提交的版本，不得依自己或其他角色的修改紀錄推論。");
+    }
+    /** 驗收對照用：系統查得的本次已提交變更，不是 agent 自陳。查不到時明說，不讓驗收者自行推斷。 */
+    String changedFiles(Task task, FlowRun flow) {
+        if (!flow.workspaceReady || !workspaces.exists(task.id())) return "";
+        try {
+            List<String> paths = workspaces.changedPathsSinceBase(task.id());
+            return "\n本次已提交的變更檔案（系統查得，非 agent 自陳）：" + (paths.isEmpty() ? "沒有任何已提交的變更。"
+                    : String.join("、", paths.stream().limit(50).toList()) + (paths.size() > 50 ? " 等共 " + paths.size() + " 個" : ""));
+        } catch (Exception e) {
+            return "\n本次已提交的變更檔案：系統這次查不到（" + e.getClass().getSimpleName() + "），請以實際讀到的檔案為準並在報告註明。";
+        }
     }
 
     /** 測試計畫只能引用其對應驗收節點的管理者操作契約。 */

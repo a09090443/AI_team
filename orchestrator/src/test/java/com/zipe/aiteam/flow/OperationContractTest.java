@@ -28,6 +28,22 @@ class OperationContractTest {
         var config = config("node-web"); ((ObjectNode)config.path("project")).putArray("requiredTools").add("git");
         assertThatThrownBy(() -> TeamCatalog.validate(mapper.treeToValue(config, TeamDefinition.class))).hasMessageContaining("操作執行檔未宣告");
     }
+    @Test void builtInInspectionOnlyForVersionTwoConfigurations() throws Exception {
+        var config = config("node-web");
+        assertThat(OperationContract.inspectAvailable(mapper.treeToValue(config, TeamDefinition.class))).isTrue();
+        config.put("version", 1);
+        assertThat(OperationContract.inspectAvailable(mapper.treeToValue(config, TeamDefinition.class))).isFalse();
+        // 內建檢視不是指令：不進派工前檢查與指令白名單會核對的操作清單。
+        assertThat(OperationContract.forNode(mapper.treeToValue(config("node-web"), TeamDefinition.class), "verification"))
+                .doesNotContainKey(OperationContract.INSPECT_CONTENT);
+    }
+    @Test void builtInInspectionCannotBeRedeclaredAsACommand() throws Exception {
+        var config = config("node-web");
+        var install = config.path("project").path("operations").path("install").deepCopy();
+        ((ObjectNode)config.path("project").path("operations")).set(OperationContract.INSPECT_CONTENT, install);
+        assertThatThrownBy(() -> TeamCatalog.validate(mapper.treeToValue(config, TeamDefinition.class)))
+                .hasMessageContaining("系統保留");
+    }
     @Test void readOnlyWriteAndShellExpressionsRejected() throws Exception {
         var config = config("node-web");
         var op = (ObjectNode)config.path("project").path("operations").path("install");
