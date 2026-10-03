@@ -282,8 +282,7 @@ public class TaskOrchestrator {
             Optional<Task> existing = store.inThread(channel, threadTs).stream()
                     .filter(t -> store.direct(t.id()).isEmpty() && store.flow(t.id()).map(f -> !f.dialogue).orElse(true)).findFirst();
             if (existing.isPresent()) {
-                slack.post(Identity.SYSTEM, channel, threadTs, "此討論串已关联任務 #" + existing.get().id()
-                        + "；未建立平行任務。請用「補充 #編號 答案」續跑，或直接 @角色提問；新需求請用新討論串。");
+                slack.post(Identity.SYSTEM, channel, threadTs, threadTakenMessage(existing.get()));
                 return existing.get();
             }
         }
@@ -294,6 +293,24 @@ public class TaskOrchestrator {
         log.info("{} 已排入佇列，來自 {}", task, userId);
         work.offer(() -> runPipeline(task));
         return task;
+    }
+
+    /**
+     * 同串再 @主機器人時的說明。「補充」只在 AWAIT_HUMAN／WAITING_QUOTA 有效（FlowEngine.resume），
+     * 其他狀態不能叫使用者用它續跑，否則照做只會再收到一次拒絕。
+     */
+    static String threadTakenMessage(Task task) {
+        String id = task.id();
+        Task.State state = task.state();
+        if (state.isTerminal())
+            return "此討論串的任務 #" + id + " 已結束（" + state + "），未建立新任務。"
+                    + "追問請直接 @角色；新需求請在頻道開新討論串。";
+        if (state == Task.State.AWAIT_HUMAN || state == Task.State.WAITING_QUOTA)
+            return "此討論串已關聯任務 #" + id + "（" + state + "），未建立平行任務。"
+                    + "要回答或續跑請用「補充 #" + id + " 答案」，查可用選項用「補充 #" + id + " 狀態」；"
+                    + "追問請直接 @角色；新需求請在頻道開新討論串。";
+        return "此討論串已關聯任務 #" + id + "（目前 " + state + "），未建立平行任務。"
+                + "追問請直接 @角色；新需求請在頻道開新討論串。";
     }
 
     public void abort(Task task, String byUser) {

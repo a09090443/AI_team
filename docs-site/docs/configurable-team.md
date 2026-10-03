@@ -82,8 +82,21 @@ checkpoint 保存的是節點 ID，不再靠 PM／QA 等角色名稱判斷續跑
 `service.sh status` 只列本實例 PID 的 443 連線；`deploy/deploy-jar-safe.sh` 的第三個參數是安裝目錄，
 「有 unit 在跑就拒絕部署」只看本實例的 unit。
 
+**現行做法（2026-10-03 起，workspace 已升級 Pro，App 數量不限）**：每個實例各自一組主 App＋角色 App，Bot Token 與
+App-Level Token 都填自己的。bestpartner 使用 bp-ai-team 與 5 個「BP」角色 App，`#bestpartner` 只留這 6 個 App
+（starters 的角色 App 已移出，避免 @ 到同名的別組角色而被 starters 以「忽略非指定頻道」丟棄）。
+2026-10-03 換成 BP 角色 token 並重啟後，5 個角色的直接對話 Socket Mode 皆啟動、0 ERROR，
+在 `#bestpartner` 直接 @BP 角色已實測由 bestpartner 收到並完成唯讀角色對話（bestpartner #1003、#1004，coordinator）。
+
+**已被取代：Slack 免費方案時期的共用角色身分（2026-10-03 實測，升級 Pro 前）**：免費 workspace 最多安裝 10 個 App，兩個實例各 6 個裝不下。
+做法是主 App 各自一個，角色沿用第一個實例的 App，但第二個實例**只填角色的 Bot Token（`SLACK_BOT_TOKEN_<角色>`）、
+App-Level Token 留空**：發言與交接 tag 使用同一個角色身分，不影響第一個實例；代價是第二個實例的頻道不能直接 @角色
+（事件會送到持有 App-Level Token 的第一個實例，它只記錄「忽略非指定頻道」後丟棄）。角色 App 要另外邀請進第二個頻道。
+**不可**在兩個實例填同一個 App-Level Token，否則 Slack 會把事件分給任一條連線。
+
 **驗證狀態**：unit 命名、glob 互不配對與 preflight 檢查有程式測試與 VM 實測紀錄（見 `.ai/progress.md` 2026-10-03）；
-**兩個實例同時連 Slack 的真實端對端尚未驗證**，待第二個專案上線後補。
+2026-10-03 已在同一台 VM 同時啟動 starters 與 bestpartner 兩個實例（各自 0 ERROR、自檢 unit 帶各自字首、443 連線分屬各自 PID）。
+**兩個實例的真實 Slack 端對端（提需求→PR）尚未驗證**。
 
 ## bestpartner 配置
 
@@ -185,7 +198,8 @@ LIMITED 驗收節點若只在其核准的測試路徑留下未提交變更，系
 明令不得宣稱執行過該工具。詳見 [adr-blocked-finding-continuity.md](adr-blocked-finding-continuity.md)。
 
 原討論串 `@主機器人／角色 補充 #編號 答案` 會續跑原快照節點。
-同一工作討論串不會因一般 @主機器人訊息再建第二個平行工作任務；新需求請開新討論串。
+同一工作討論串不會因一般 @主機器人訊息再建第二個平行工作任務（原任務已結束也一樣）；新需求請開新討論串。
+回覆內容依原任務狀態區分（`TaskOrchestrator.threadTakenMessage`），只有 `AWAIT_HUMAN`／`WAITING_QUOTA` 才建議「補充」，細節見 `docs-site/agent/operations.md` 的「建立任務」。
 用量暫停走既有繼續按鈕；新模式不使用舊版「重新開始」按鈕，以免誤封存工作區或套錯流程。
 配置角色的一般對話使用獨立子請求，不會覆蓋原驗收；新加入、但不在原快照裡的角色不能接手舊任務對話。
 

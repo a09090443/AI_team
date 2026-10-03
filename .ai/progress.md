@@ -2,6 +2,34 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-03 — Claude Code（bestpartner 改用自己的角色 App；同串訊息依狀態說明）
+
+- 查「@角色沒回應」：#bestpartner @舊角色 App 的事件被 starters 以「忽略非指定頻道」丟棄（共用角色只填 Bot Token 的已知代價）。
+- 使用者升級 Slack Pro（官方定價頁：Pro 起 App 不限）。Claude Code 經使用者 Chrome 安裝 5 個 BP 角色 App、
+  邀請進 #bestpartner，並把 starters 的 5 個角色 App 移出該頻道（未解除安裝；workspace 共 12 個 App、無重複）。
+  10 個 token 由使用者本人以 `set-slack-tokens.sh` 填入；重啟 bestpartner（PID 46725）：5 個角色直接對話 Socket Mode 啟動、0 ERROR；
+  使用者直接 @BP 角色 → bestpartner #1003、#1004 唯讀角色對話完成。starters（PID 24757）未受影響。
+- 落差修正：同串再 @主機器人的回覆一律叫人「補充 #編號 答案」，但補充只對 AWAIT_HUMAN／WAITING_QUOTA 有效，且有簡體「关联」。
+  新增 `TaskOrchestrator.threadTakenMessage` 依狀態給三種說明＋`ThreadTakenMessageTest`（4 項通過）。**尚未部署到 VM**。
+- 已核對：operations、configurable-team、direct-agent-requests。已修正：operations「建立任務」、configurable-team（現行做法改為各自角色 App，
+  免費方案共用做法標為已被取代；同串回覆說明）。docs build 通過。
+
+## 2026-10-03 — Claude Code（bestpartner 第二個實例）
+
+- 新增 `teams/bestpartner.json` 與沙箱 `GRADLE_USER_HOME` 白名單（commit 09b82bb）。VM 實測：全部後端測試 262 項中 55 項失敗
+  （15 個 `@QuarkusTest` 連不到 PostgreSQL、Google 憑證、CodeExecutorTest 負載逾時）；選定 23 個不需資料庫類別 205 項離線通過；
+  模擬沙箱證實只開放 `~/.gradle/caches` 會「Could not initialize native services」，改 `~/.cache/gradle` 後通過；
+  UI vitest 51 檔 479 項、vue-tsc 建置與漂移掃描（新漂移 0）通過；repo pwsh hooks 實測只產生非阻擋錯誤。
+- VM 安裝官方 Gradle 8.14.5（官方 SHA256 核對）至 `~/.local/gradle`；install-app 到 `~/ai-team-bestpartner`（463 項 0 失敗，
+  JAR `00c86a79…`）；`AI_TEAM_INSTANCE=bestpartner`、`GRADLE_USER_HOME=$HOME/.cache/gradle`、基準分支 master。
+- Slack：建立 bp-ai-team 等 6 個 App，因免費方案 10 個 App 上限 BP QA／Backend 裝不上；依使用者決定改為角色沿用 starters 的
+  5 個 App 且只填 Bot Token，新 BP 角色 App 解除安裝（未刪除）；建立 #bestpartner 並邀請 bp-ai-team 與 5 個舊角色。
+  token 由使用者本人透過 `~/import-slack-tokens.sh`（支援目標目錄）與 `~/set-slack-tokens.sh`（不回顯、顯示字元數）填入。
+- 啟動：PID 41835，0 ERROR，沙箱與工具鏈（含 gradle）自檢通過，自檢 unit `ai-team-bestpartner-selftest-…`；starters 不受影響。
+- 已修正的文件：configurable-team（bestpartner 配置一節、共用角色 Bot Token 與 10 個 App 上限）、INSTALL §5.2（Gradle 前置）、
+  multi-runtime（環境變數白名單）、configuration（GRADLE_USER_HOME）、project-tree、env 範本、decisions。
+- 尚未實測：#bestpartner 實際對話與完整管線（Gradle 驗收、系統獨立驗證冷下載耗時）。
+
 ## 2026-10-03 — Claude Code（多個服務實例：AI_TEAM_INSTANCE 區分 systemd unit）
 
 - 使用者決定每個專案各自一個服務。發現跨實例風險：「中斷這一輪」／「中止任務」以 `ai-team-<任務>-*` glob 停 unit，

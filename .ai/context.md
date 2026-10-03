@@ -12,8 +12,14 @@
   **舊 VM `AI` 服務已停並關機**（兩邊共用 Slack App，不可同時啟動）。舊 VM 上的任務（#1021、#1019 等 AWAIT_HUMAN，
   #1020、#1027 PR_CREATED）資料仍在舊 VM，新 VM DB 為空；要處理舊任務需停新服務、開舊 VM。
   Slack 事件已實測（#1001、#1002 完成）。2026-10-03 已部署多實例支援（`AI_TEAM_INSTANCE=starters`，PID 24757，未 commit）。
-  下一步：Slack「中斷這一輪」真實操作、完整管線驗收；使用者提供第二個專案 repo 後，以 INSTALL §5.1 安裝第二個實例
-  （需另一組 Slack App 與頻道）。
+- **第二個實例 bestpartner（2026-10-03 啟動）**：`~/ai-team-bestpartner`，`AI_TEAM_INSTANCE=bestpartner`，PID 41835，
+  配置 `teams/bestpartner.json`（commit 09b82bb），repo `bestpartner` master `ae4d98a`，頻道 `#bestpartner`（C0C6JKF1268），
+  主 App `bp-ai-team`（A0C6END9UHG）；2026-10-03 升級 Slack Pro 後改用自己的 5 個 BP 角色 App（Bot＋App-Level Token），
+  重啟後 PID 46725，直接 @BP 角色已實測可用。starters 角色 App 已移出 #bestpartner。
+  token 由使用者本人以 `~/import-slack-tokens.sh`、`~/set-slack-tokens.sh` 填入。
+  未部署：同串訊息依狀態說明（`threadTakenMessage`，本機測試通過、未 commit）。
+  下一步：部署上述修正到兩個實例；Slack「中斷這一輪」真實操作；兩個實例的完整管線驗收。
+  starters 實例（PID 24757）仍是 052ec85 的 JAR，尚未更新到含 `GRADLE_USER_HOME` 的 09b82bb（對 Maven 專案無影響）。
 
 - **受保護路徑事先告知（commit 0ac9f20，已部署，未 push）**：細節見 progress.md 2026-09-30。真實端對端未實測。
 - VM 上 Claude Code OAuth 曾於 2026-09-30 13:06 UTC 過期（換新失敗，expiresAt 被清為 0）；
