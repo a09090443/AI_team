@@ -2,6 +2,17 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-03 — Claude Code（系統訊息顯示成 zipe-ai-team）
+
+- 現象：#bestpartner 的系統訊息顯示為 zipe-ai-team。比對兩實例主 App token（只輸出相同／不同）皆不同；bp-ai-team 的 Bot Name 正確。
+  根因：`Identity.SYSTEM` 名稱寫死 `zipe-ai-team`，且系統身分無專屬 token 旗標，每次發言都被 chat:write.customize 覆寫。
+- 修正（commit 784ba9b）：`SlackNotifier.overridesName` 系統身分不覆寫；SYSTEM 後備名改 `AI Team`；空白提及範例改用實際 mention。
+  `SystemIdentityTest` 3 項；本機 478 項（僅既有 4 項 Windows 失敗）；VM Linux 478 項 0 失敗，JAR `7c0db7d4…`。
+- 部署：starters PID 10315（備份 `orchestrator-backup.W2jK02`）0 ERROR。**bestpartner 未部署**：#1011 正在執行（unit 在跑，腳本拒絕）。
+- 已修正文件：interaction-model（主 App 依實例、系統身分不覆寫名稱）。
+- 真實 Slack 端對端：#1009（新提示詞詢問）→ 按「開成新需求 1」→ #1010 建立（新討論串、稽核 BUTTON／RECEIVED 正確）→
+  使用者在 #1010 按「承接成新任務」→ #1011。開成新需求按鈕已實測可用。
+
 ## 2026-10-03 — Claude Code（intake 提示詞：同錯誤合併、需決定標示）
 
 - 實測 bestpartner #1008：同一計數錯誤因在兩個檔案被拆成 2 顆按鈕、權限不一致未標需決定、反引號巢狀致 Slack 顯示錯亂。
