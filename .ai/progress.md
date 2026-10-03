@@ -2,6 +2,14 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-03 — Claude Code（intake 提示詞：純詢問發現必須列入 out_of_scope）
+
+- 使用者選 A：只改 `teams/prompts/intake.md`（commit f251bf0），不改角色對話。check-source PASS、
+  TeamCatalogTest／FlowEngineTest／ConfiguredExecutorTest 116 項通過、docs build 通過；已修正 operations「建立任務」。
+- 部署（使用者授權）：新 intake.md（sha256 `5a49f582…`）複製到兩個安裝目錄 `teams/prompts/`，舊檔備份為
+  `intake.md.bak-before-f251bf0`，重啟：bestpartner PID 66614（配置版本 8890d3a7… → 5251bdbd…）、
+  starters PID 69293（3c6ca81b… → 238a05b5…），皆 0 ERROR、沙箱自檢與 5 個角色連線正常。新規則只套用重啟後建立的任務。
+
 ## 2026-10-03 — Claude Code（純詢問發現「開成新需求」按鈕）
 
 - 起因：bestpartner #1006（列出所有 API）為 `route=question` → `end` → COMPLETED；PM 發現文件寫 68、實際 69 個 endpoint，

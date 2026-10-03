@@ -18,6 +18,7 @@
   直接 @BP 角色已實測可用。starters 角色 App 已移出 #bestpartner。
   token 由使用者本人以 `~/import-slack-tokens.sh`、`~/set-slack-tokens.sh` 填入。
   2026-10-03 兩個實例都已部署 350b02e（JAR `ba3d6dcd…`，含「開成新需求」按鈕）：bestpartner PID 60161、starters PID 63293。
+  之後部署 intake 提示詞 f251bf0 並重啟：bestpartner PID 66614（配置 5251bdbd…）、starters PID 69293（配置 238a05b5…）。
   回滾注意：有任務寫入 `spinoffs`／`spinoffOf` 後，舊 JAR 讀不了這些任務（見 data-model）。
   下一步：Slack 實測「開成新需求」按鈕與同串訊息新說明；「中斷這一輪」真實操作；兩個實例的完整管線驗收。
 
