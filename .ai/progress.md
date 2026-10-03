@@ -2,6 +2,22 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-02 — Claude Code（新 VM「Agent」乾淨重建演練，進行中）
+
+- Ubuntu 26.04 LTS、使用者 `agent`、NAT SSH `127.0.0.1:2223`（主機指紋已與主控台核對）。使用者本人輸入 sudo 密碼：
+  apt 補 openssh-server／sqlite3 等；依使用者決定放寬 AppArmor userns（`/etc/sysctl.d/60-ai-team-userns.conf`）。
+- 以 `git -c core.autocrlf=false archive` 打包 f077fe3（SHA256 `62ae8c23…`），check-source、check-linux runtime、
+  provision（空快取）、CLI 2.1.282／0.156.1、install-app（458 項 0 失敗，JAR `ea74a4a3…`）、
+  目標 repo 冷快取 verify（303 項 0 失敗；第一次遇 Maven Central reset，`-U` 重跑通過）皆通過。
+- 已填 env.sh `AI_TEAM_BASE_BRANCH=develop`、建立 team.env（spring-starters.json）。
+- 發現的落差：INSTALL 打包指令在 Windows autocrlf 下產生 CRLF，且會帶入 gitignore 的 `deploy/*.tgz`。
+  已修正的文件：INSTALL.md §1、rebuild-verification.md（新增證據）、linux-support.md（新 VM 列）。docs-site build 通過。
+- 未完成：Claude／Codex 本人登入、獨立測試 Slack App／頻道與 env.sh token、preflight／啟動自檢、完整管線、備份還原。
+- 2026-10-03 續：bashrc 開頭加 PATH；沿用正式 6 個 Slack App、新建 `#ai-agents`（C0C6ECHH44S）並邀請；
+  token 由使用者本人經 `~/import-slack-tokens.sh` 從舊 VM 匯入；使用者完成 CLI 登入；preflight PASS。
+  停舊 VM 服務並關機後啟動新 VM：0 ERROR、沙箱與工具鏈自檢通過、五角色 Socket Mode 啟動。
+  已修正的文件：INSTALL.md §2（PATH 區塊）、rebuild-verification.md（Slack／啟動證據）。Slack 事件與完整管線尚未實測。
+
 ## 2026-09-30 — Claude Code（Claude Code 受保護路徑：查因與事先告知）
 
 - 查 #1021：implementation 改 `.claude/rules/project-overview.md` 被拒（audit 1000），同批其他 Edit 成功。

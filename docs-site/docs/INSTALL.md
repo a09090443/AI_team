@@ -30,10 +30,15 @@ GNU 基礎工具、程序／網路工具、flock／unshare、systemd 與可用�
 ssh -o BatchMode=yes -p 2223 vboxuser@127.0.0.1 'id; uname -m'
 ```
 
-原始碼從本機打包（不帶 env.sh、DB、target 或 CLI 登入資料）：
+原始碼從本機以 `git archive` 打包（只含已提交的版控內容，不帶 env.sh、DB、target 或 CLI 登入資料）。
+2026-10-02 新 VM 實測發現兩個坑，所以不要直接用 `tar` 打包工作區：
+
+- 在 `core.autocrlf=true` 的 Windows 上，工作區與預設的 `git archive` 都是 CRLF，
+  VM 上的腳本會以 `set: pipefail: invalid option name` 失敗，必須加 `-c core.autocrlf=false`。
+- 直接 `tar` 工作區的 `deploy/` 會把 gitignore 的本機舊快照（`deploy/*.tgz`）一起帶進去。
 
 ```powershell
-tar -cf ai-team-source.tar AGENTS.md CLAUDE.md README.md .ai deploy docs-site/docs docs-site/agent orchestrator/pom.xml orchestrator/src orchestrator/prompts orchestrator/schemas orchestrator/teams
+git -c core.autocrlf=false archive --format=tar -o ai-team-source.tar HEAD AGENTS.md CLAUDE.md README.md .ai deploy docs-site/docs docs-site/agent orchestrator/pom.xml orchestrator/src orchestrator/prompts orchestrator/schemas orchestrator/teams
 $sourceSha = (Get-FileHash .\ai-team-source.tar -Algorithm SHA256).Hash.ToLower()
 $sourceSha
 scp -P 2223 ai-team-source.tar vboxuser@127.0.0.1:/home/vboxuser/
@@ -77,6 +82,16 @@ export PATH="$HOME/.local/node/bin:$JAVA_HOME/bin:$HOME/.local/maven/bin:$HOME/.
 
 腳本校驗 checksum，對已有但非本工具管理的目錄拒絕覆蓋；失敗保留暫存。
 它不裝 OS 套件、不設定登入、不改 .bashrc、不啟動服務。啟動腳本會自行設定 PATH。
+
+為了讓人工登入與 `ssh host '指令'` 都能直接找到 CLI，建議在 `~/.bashrc` **最前面**
+（Ubuntu 的非互動式 return 之前）加入以下區塊；放在檔尾的話，非互動式 SSH 讀不到：
+
+```bash
+# >>> ai-team toolchain >>>
+export JAVA_HOME="$HOME/.local/java"
+case ":$PATH:" in *":$HOME/.local/node/bin:"*) ;; *) export PATH="$HOME/.local/node/bin:$JAVA_HOME/bin:$HOME/.local/maven/bin:$HOME/.local/bin:$PATH" ;; esac
+# <<< ai-team toolchain <<<
+```
 
 ## 3. CLI 與登入
 

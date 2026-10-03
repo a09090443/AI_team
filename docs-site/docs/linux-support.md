@@ -6,7 +6,7 @@
 | 環境 | 架構 | 狀態 |
 |---|---|---|
 | 既有 Ubuntu 26.04 VM | x86_64 | 舊環境服務運作、自檢與應用測試有紀錄；不等於新版 bootstrap 重建通過 |
-| Debian／Ubuntu 新 VM | x86_64 | 優先驗證對象，尚未指定版本與完成重建 |
+| Debian／Ubuntu 新 VM | x86_64 | 2026-10-02 起以全新 Ubuntu 26.04 LTS（VM「Agent」）演練：check-linux runtime（放寬 AppArmor userns 後）、provision、install-app 已通過；登入、服務自檢與完整管線尚未完成，見 [rebuild-verification](rebuild-verification.md) |
 | Rocky／AlmaLinux 新 VM | x86_64 | 優先驗證對象，尚未指定版本與完成重建 |
 | 其他 glibc Linux | x86_64 | 僅能力檢查；未驗證，不承諾可用 |
 | 任一 ARM64 Linux | aarch64 | 目前腳本拒絕；未備妥對應工具鏈與測試 |
