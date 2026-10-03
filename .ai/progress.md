@@ -10,7 +10,11 @@
   10 個 token 由使用者本人以 `set-slack-tokens.sh` 填入；重啟 bestpartner（PID 46725）：5 個角色直接對話 Socket Mode 啟動、0 ERROR；
   使用者直接 @BP 角色 → bestpartner #1003、#1004 唯讀角色對話完成。starters（PID 24757）未受影響。
 - 落差修正：同串再 @主機器人的回覆一律叫人「補充 #編號 答案」，但補充只對 AWAIT_HUMAN／WAITING_QUOTA 有效，且有簡體「关联」。
-  新增 `TaskOrchestrator.threadTakenMessage` 依狀態給三種說明＋`ThreadTakenMessageTest`（4 項通過）。**尚未部署到 VM**。
+  新增 `TaskOrchestrator.threadTakenMessage` 依狀態給三種說明＋`ThreadTakenMessageTest`（4 項通過）。commit 0767b88。
+  部署：VM 隔離目錄 `~/ai-team-source-0767b88` 建置，Linux 全部測試 467 項 0 失敗（略過 10）；JAR SHA256 `7aef28d3…`。
+  以 `deploy-jar-safe.sh` 依序部署 bestpartner（PID 52025，備份 `orchestrator-backup.DRDLJQ`）與 starters
+  （PID 55172，備份 `orchestrator-backup.sjKf0X`；同時更新到含 09b82bb 的版本）：皆 0 ERROR、沙箱自檢通過、
+  5 個角色直接對話啟動、任務資料前後一致。新訊息在 Slack 的實際呈現尚未實測。
 - 已核對：operations、configurable-team、direct-agent-requests。已修正：operations「建立任務」、configurable-team（現行做法改為各自角色 App，
   免費方案共用做法標為已被取代；同串回覆說明）。docs build 通過。
 
