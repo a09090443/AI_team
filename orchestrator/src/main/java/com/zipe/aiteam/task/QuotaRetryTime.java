@@ -75,18 +75,29 @@ public final class QuotaRetryTime {
         }
     }
 
+    /**
+     * Claude 的「resets 6:30pm (UTC)」只有時刻沒有日期：取觀察當下之後第一個符合的 UTC 時刻。
+     * 時區明確，所以可以換算；格式不合就回 empty，不猜。
+     */
+    public static Optional<Instant> utcReset(String reason, Instant observed) {
+        if (reason == null || observed == null) return Optional.empty();
+        var match = RESET.matcher(reason);
+        if (!match.find()) return Optional.empty();
+        int hour = Integer.parseInt(match.group(1));
+        int minute = match.group(2) == null ? 0 : Integer.parseInt(match.group(2));
+        if (hour < 1 || hour > 12 || minute > 59) return Optional.empty();
+        hour = hour % 12 + (match.group(3).equalsIgnoreCase("pm") ? 12 : 0);
+        Instant reset = observed.atZone(ZoneOffset.UTC).toLocalDate().atTime(hour, minute).toInstant(ZoneOffset.UTC);
+        return Optional.of(reset.isBefore(observed) ? reset.plusSeconds(86400) : reset);
+    }
+
     public static Instant next(String reason, Instant observed, int attempts) {
         long minutes = Math.min(360, 30L << Math.min(Math.max(attempts, 0), 4));
         Instant backoff = observed.plusSeconds(minutes * 60);
-        var match = RESET.matcher(reason);
-        if (match.find()) {
-            int hour = Integer.parseInt(match.group(1));
-            int minute = match.group(2) == null ? 0 : Integer.parseInt(match.group(2));
-            if (hour < 1 || hour > 12 || minute > 59) return backoff;
-            hour = hour % 12 + (match.group(3).equalsIgnoreCase("pm") ? 12 : 0);
-            Instant reset = observed.atZone(ZoneOffset.UTC).toLocalDate().atTime(hour, minute).toInstant(ZoneOffset.UTC);
-            if (reset.isBefore(observed)) reset = reset.plusSeconds(86400);
-            reset = reset.plusSeconds(120);
+        if (RESET.matcher(reason).find()) {
+            var parsed = utcReset(reason, observed);
+            if (parsed.isEmpty()) return backoff;
+            Instant reset = parsed.get().plusSeconds(120);
             // 首次尊重供應商時間；後續也須符合退避間隔。
             return attempts == 0 || reset.isAfter(backoff) ? reset : backoff;
         }

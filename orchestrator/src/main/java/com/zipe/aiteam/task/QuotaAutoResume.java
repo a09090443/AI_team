@@ -52,7 +52,7 @@ public class QuotaAutoResume {
                     task.id(), observed, next.toString(), attempts);
             slack.post(SlackNotifier.Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
                     "任務 #" + task.id() + " 等待額度。\n"
-                  + QuotaMessage.resetLine(checkpoint.reason())
+                  + QuotaMessage.resetLine(checkpoint.reason(), Instant.parse(observed))
                   + "下次自動嘗試：" + QuotaMessage.taipei(next) + "\n"
                   + (QuotaRetryTime.farBeyondBackoff(checkpoint.reason(), Instant.parse(observed))
                         ? "供應商指定的解禁時間還很遠，因此在那之前不再反覆重試；你也可以在解禁後自行送出續跑。\n"

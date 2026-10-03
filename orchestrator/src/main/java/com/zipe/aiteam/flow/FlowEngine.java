@@ -565,7 +565,7 @@ public class FlowEngine {
                 store.saveCheckpoint(store.checkpoint(task.id()).orElseThrow().withReason(quota.getMessage()));
                 state(task, Task.State.WAITING_QUOTA, "任務 #" + task.id() + " 等待額度，原節點與配置已保存");
                 String message = "任務 #" + task.id() + " 已因額度停止。\n"
-                        + com.zipe.aiteam.task.QuotaMessage.resetLine(quota.getMessage())
+                        + com.zipe.aiteam.task.QuotaMessage.resetLine(quota.getMessage(), java.time.Instant.now())
                         + "系統將安排自動續跑並另行回報嘗試時間，也可手動按繼續。沿用原角色、runtime 與配置。"
                         + "\n（技術細節已記錄在稽核紀錄。）";
                 // 額度用完時不呼叫說明 agent：同一個帳號的額度也用完了，只會白等逾時。
