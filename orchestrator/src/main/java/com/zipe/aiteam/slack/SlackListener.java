@@ -187,7 +187,7 @@ public class SlackListener {
         if (text.isEmpty()) {
             notifier.post(SlackNotifier.Identity.SYSTEM, e.getChannel(), threadTs,
                     "請在提及我的時候一併說明需求，例如：\n"
-                  + "`@zipe-ai-team 分析 db-spring-boot-starter`");
+                  + notifier.mention(SlackNotifier.Identity.SYSTEM) + " 列出所有 API");
             return;
         }
 

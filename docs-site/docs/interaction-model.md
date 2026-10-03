@@ -17,7 +17,8 @@
 五個角色（PM、Architecture、Backend、QA、Code Reviewer）各有自己的 Slack App
 （manifest 在 `deploy/agent-manifests/`），因此會出現在成員清單、有自己的頭像，也可以被個別 @。
 角色 App 只能發言與接收對自己的 @ 提問（唯讀對話，見 [直接對角色提出請求](direct-agent-requests.md)）；
-任務排程、按鈕與流程控制全部由主 App `zipe-ai-team` 負責——入口只有一個，角色 App 沒有能力觸發或中止任務。
+任務排程、按鈕與流程控制全部由主 App（starters 實例為 `zipe-ai-team`、bestpartner 實例為 `bp-ai-team`）負責——
+每個實例入口只有一個，角色 App 沒有能力觸發或中止任務。
 
 **佇列狀態、錯誤與閘門訊息一律由主 App 發出**，不假裝是某個角色說的；
 哪些訊息來自 agent、哪些來自基礎設施，要一眼分得出來。
@@ -37,6 +38,11 @@
 視覺上幾乎一樣，但這些訊息屬於同一個 bot，不在成員清單，也無法被個別 @。
 保留這條退路是為了讓角色 App 還沒建好的環境仍能完整運作。啟動 log 會列出哪些角色用獨立帳號、哪些共用主 token。
 有專屬 token 的角色**不會**再覆寫顯示名稱。
+
+**系統身分從不覆寫名稱**（`SlackNotifier.overridesName`）：系統訊息以該實例主 App 本身的名稱與頭像顯示。
+2026-10-03 前系統身分被寫死覆寫成 `zipe-ai-team`，同一台 VM 的 bestpartner 實例在 `#bestpartner` 的狀態卡、
+「開成新需求」等系統訊息因此顯示成 starters 的名字（實際仍是 bp-ai-team 的 token 發出）。已修正；
+`Identity.SYSTEM` 的名稱改為中性的 `AI Team`，只在取不到 user ID、mention 退成粗體文字時使用。
 
 > `chat.update` 只能由訊息的原作者執行。進度卡由系統身分發出，也由系統身分更新。
 

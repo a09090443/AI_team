@@ -35,7 +35,8 @@ public class SlackNotifier {
 
     /** 角色外觀。只有在該角色沒有專屬 token 時才會用到。 */
     public static final class Identity {
-        public static final Identity SYSTEM = new Identity("SYSTEM", "zipe-ai-team", ":robot_face:");
+        /** 系統訊息一律以主 App 本身的身分發出，不覆寫名稱；名稱只在 tag 不到時當後備文字。 */
+        public static final Identity SYSTEM = new Identity("SYSTEM", "AI Team", ":robot_face:");
         public static final Identity PM = new Identity("PM", "PM Agent", ":clipboard:");
         public static final Identity ARCHITECTURE = new Identity("ARCHITECTURE", "Architecture Agent", ":triangular_ruler:");
         public static final Identity BACKEND = new Identity("BACKEND", "Backend Agent", ":hammer_and_wrench:");
@@ -173,6 +174,14 @@ public class SlackNotifier {
         } catch (Exception e) { log.error("角色 {} 發言失敗：{}", role.name(), com.zipe.aiteam.runtime.Diagnostics.describe(e)); return null; }
     }
 
+    /**
+     * 只有「沒有專屬 token、借用主 App 發言的角色」才覆寫名稱與圖示。系統身分本來就是主 App，
+     * 覆寫會把每個實例的主 App 都改成同一個寫死的名字：bestpartner 的系統訊息曾因此顯示成 zipe-ai-team。
+     */
+    static boolean overridesName(Identity who, boolean hasOwn) {
+        return !hasOwn && !Identity.SYSTEM.equals(who);
+    }
+
     /** @return 發出訊息的 ts，供之後 chat.update 使用；失敗回 null。 */
     public String post(Identity who, String channel, String threadTs, String text) {
         return post(who, channel, threadTs, text, null);
@@ -186,7 +195,7 @@ public class SlackNotifier {
             var resp = clients.getOrDefault(who, clients.get(Identity.SYSTEM)).chatPostMessage(r -> {
                 r.channel(channel).threadTs(threadTs).text(safeText).blocks(blocks);
                 // 有自己的帳號就不要覆寫顯示名稱，否則真實身分反而被蓋掉
-                if (!hasOwn) r.username(who.username).iconEmoji(who.icon);
+                if (overridesName(who, hasOwn)) r.username(who.username).iconEmoji(who.icon);
                 return r;
             });
             if (!resp.isOk()) {
