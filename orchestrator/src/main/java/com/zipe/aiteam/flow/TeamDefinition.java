@@ -53,16 +53,33 @@ public record TeamDefinition(int version, String id, Project project, Map<String
     public enum Scope { READ_ONLY, WORKSPACE, LIMITED }
     public enum Gate { REPORT, REQUIREMENTS, IMPLEMENTATION, TEST_PLAN, VERIFICATION, REVIEW }
     public enum Kind { AGENT, APPROVAL, END }
+    /**
+     * 實作節點選填：需求要改「原角色 runtime 必定寫不了」的路徑（例如 Claude Code 的 `.claude/`）時，
+     * 若全部落在 paths 內，就改派給 role 實作；系統事後核對實際變更。見 {@link ProtectedPathFallback}。
+     */
+    public record Fallback(String role, List<String> paths) {}
     public record Node(Kind kind, String role, String schema, Scope scope, Gate gate,
                        boolean workspace, List<String> writablePaths, String plan,
                        String next, String blocked, Map<String, String> routes,
                        List<String> requires, int maxVisits, int timeoutSeconds, int maxTurns, String instructions,
-                       boolean localTestNetwork) {
+                       boolean localTestNetwork, Fallback protectedPathFallback) {
         public Node(Kind kind, String role, String schema, Scope scope, Gate gate, boolean workspace,
                     List<String> writablePaths, String plan, String next, String blocked, Map<String,String> routes,
                     List<String> requires, int maxVisits, int timeoutSeconds, int maxTurns, String instructions) {
             this(kind, role, schema, scope, gate, workspace, writablePaths, plan, next, blocked, routes,
-                    requires, maxVisits, timeoutSeconds, maxTurns, instructions, false);
+                    requires, maxVisits, timeoutSeconds, maxTurns, instructions, false, null);
+        }
+        public Node(Kind kind, String role, String schema, Scope scope, Gate gate, boolean workspace,
+                    List<String> writablePaths, String plan, String next, String blocked, Map<String,String> routes,
+                    List<String> requires, int maxVisits, int timeoutSeconds, int maxTurns, String instructions,
+                    boolean localTestNetwork) {
+            this(kind, role, schema, scope, gate, workspace, writablePaths, plan, next, blocked, routes,
+                    requires, maxVisits, timeoutSeconds, maxTurns, instructions, localTestNetwork, null);
+        }
+        /** 改派時用：同一個節點契約，換成另一個角色執行。 */
+        public Node withRole(String other) {
+            return new Node(kind, other, schema, scope, gate, workspace, writablePaths, plan, next, blocked, routes,
+                    requires, maxVisits, timeoutSeconds, maxTurns, instructions, localTestNetwork, protectedPathFallback);
         }
     }
     /** 此處只保存檔案內容與環境變數名稱，不保存 token 值。 */

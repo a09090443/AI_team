@@ -44,6 +44,8 @@ public class FlowRun {
     public Map<Integer,String> spinoffs = new LinkedHashMap<>();
     /** 本任務由哪個任務的純詢問發現開立；不沿用該任務的任何核准或工作區。 */
     public String spinoffOf;
+    /** 受保護路徑改派：節點 → 實際執行的角色。決定後同一任務重跑該節點沿用，不再重新判定。 */
+    public Map<String,String> roleOverrides = new LinkedHashMap<>();
     public String acceptanceOwner;
     public String baselineRevision;
     public String changeTarget;

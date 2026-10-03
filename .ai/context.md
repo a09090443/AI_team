@@ -80,3 +80,10 @@
 - Windows 本機沒有 PATH 上的 mvn；可用 `D:\tools\apache-maven-3.9.5\bin\mvn.cmd -B "-Dmaven.repo.local=D:\agent_team\.build-m2" test`。
   預期有 4 項 Windows 專屬失敗（`/bin/sh` 不存在 2、symlink 權限 1、git CRLF 警告混入輸出 1），Linux 上要另外驗證。
 - `deploy/*.tgz` 是本機舊來源快照（gitignore），未納入版控。
+
+## 2026-10-04 中斷點（Claude Code，用量上限）
+
+- 受保護路徑改派（計畫已核准）：程式、bestpartner.json（`builder_codex`＋實作節點 `protectedPathFallback`）、測試（本機 512 項，
+  僅既有 4 項 Windows 失敗）、VM 雙層沙箱實測（不呼叫模型）、multi-runtime／data-model／project-tree 文件已完成並 commit。
+- **未做**：configurable-team／configuration 文件補欄位說明、decisions 追加、VM 隔離建置與全部測試、`--validate-team`、
+  備份並更新 bestpartner.json、`deploy-jar-safe.sh` 部署兩個實例、#1014 按「改用新任務繼續」實測。

@@ -103,6 +103,7 @@ public class TeamCatalog {
         });
         d.nodes().forEach((id, n) -> {
             require(id.matches("[a-z][a-z0-9_]*") && !Set.of("human", "end").contains(id), "無效節點 ID：" + id);
+            if (n != null) ProtectedPathFallback.validate(d, id, n);
             require(n != null && n.kind() != null, "節點缺 kind：" + id);
             if (n.kind() == Kind.AGENT) {
                 require(d.roles().containsKey(n.role()), "節點引用不存在角色：" + id);

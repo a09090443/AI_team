@@ -44,6 +44,30 @@ class CodexSandboxVmTest {
         assertThat(tmp.resolve("target/probe")).exists();
         assertThat(tmp.resolve("src/test/probe")).exists();
     }
+    /**
+     * 受保護路徑改派（2026-10-03）：Claude Code 寫不了 `.claude/`，改派 Codex 實作前先確認在實作節點的外層政策
+     * （整個工作區可寫、釘住 .git/config 與 .git/hooks）下，Codex 內層沙箱可以寫 `.claude/rules/`，但 `.git` 仍不可寫
+     * （所以改派的實作由系統核對後代為提交）。
+     */
+    @Test void workspaceImplementerCanWriteClaudeRulesButNotGit() throws Exception {
+        Files.createDirectories(tmp.resolve(".git/hooks")); Files.writeString(tmp.resolve(".git/config"), "");
+        Files.createDirectories(tmp.resolve(".claude/rules"));
+        CodexSandboxPreparation.prepare(tmp);
+        var workspacePolicy = new SandboxPolicy(List.of(tmp), List.of(tmp.resolve(".git/config"), tmp.resolve(".git/hooks")), 512, 100, 128);
+        Path output = tmp.resolve("claude-probe.log");
+        Process p = new ProcessBuilder(sandbox.wrap("ai-team-claude-path-test-" + UUID.randomUUID(), workspacePolicy, tmp,
+                List.of(bin.toString(), "sandbox", "-P", ":workspace", "-C", tmp.toString(), "--", "/bin/sh", "-ec",
+                        "echo changed > .claude/rules/api.md; mkdir -p .claude/skills/x; echo s > .claude/skills/x/SKILL.md; "
+                        + "if touch .git/forbidden .git/hooks/forbidden 2>/dev/null; then exit 3; fi; "
+                        + "test ! -e .git/forbidden; test ! -e .git/hooks/forbidden; echo claude-rules-ok")))
+                .redirectErrorStream(true).redirectOutput(output.toFile()).start();
+        try { p.getOutputStream().close(); assertThat(p.waitFor(30, TimeUnit.SECONDS)).isTrue(); }
+        finally { if (p.isAlive()) p.destroyForcibly(); }
+        assertThat(Files.readString(output)).as(Files.readString(output)).contains("claude-rules-ok");
+        assertThat(p.exitValue()).isZero();
+        assertThat(tmp.resolve(".claude/rules/api.md")).hasContent("changed\n");
+        assertThat(tmp.resolve(".claude/skills/x/SKILL.md")).exists();
+    }
     @Test void runtimePreflightFailsBeforeModelAndPassesAfterPreparation() throws Exception {
         var props = mock(AiTeamProperties.class); when(props.codexBin()).thenReturn(bin); when(props.unitPrefix()).thenReturn("ai-team-");
         var runtime = new CodexRuntime(props, sandbox);

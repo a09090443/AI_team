@@ -581,6 +581,27 @@
         "Bash(git -C * log *)",
         "Bash(git -C * show *)"
       ]
+    },
+    "builder_codex": {
+      "name": "Backend Agent",
+      "runtime": "codex",
+      "model": "gpt-5.6-sol",
+      "reasoningEffort": "medium",
+      "prompt": "prompts/implement.md",
+      "botTokenEnv": "SLACK_BOT_TOKEN_BUILDER_CODEX",
+      "appTokenEnv": "SLACK_APP_TOKEN_BUILDER_CODEX",
+      "tools": [
+        "Read",
+        "Write",
+        "Edit",
+        "Grep",
+        "Glob",
+        "Bash(gradle *)",
+        "Bash(npm --prefix bestpartner-ui *)",
+        "Bash(git status *)",
+        "Bash(git diff *)",
+        "Bash(ls *)"
+      ]
     }
   },
   "entry": "intake",
@@ -666,7 +687,14 @@
       ],
       "maxVisits": 3,
       "timeoutSeconds": 1800,
-      "maxTurns": 80
+      "maxTurns": 80,
+      "protectedPathFallback": {
+        "role": "builder_codex",
+        "paths": [
+          ".claude/rules/**",
+          ".claude/skills/**"
+        ]
+      }
     },
     "verification": {
       "kind": "AGENT",

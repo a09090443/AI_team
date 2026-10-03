@@ -56,6 +56,14 @@
   目標專案的慣例：會隨版本或功能變動的資訊（版本號、模組清單）不要寫在 `.claude/rules/` 等受保護路徑，
   改寫在建置檔、`AGENTS.md` 或一般文件，受保護路徑只放穩定的規則並指向那些檔案。
 
+**受保護路徑改派（2026-10-04 起，程式完成、尚未部署與真實任務實測）**：實作節點可設 `protectedPathFallback`
+（`{"role": ..., "paths": [...]}`）。`ProtectedPathFallback` 從需求文字與已完成節點報告擷取路徑，原角色 runtime 寫不了、
+且全部落在 `paths` 內時，改由該角色（不同 runtime，例如 Codex）實作，決定記在 `FlowRun.roleOverrides`。
+`.claude/settings*`、`hooks`、`commands`、`agents`、`plugins`、`.git`、`.mcp.json`、`.vscode`、`.idea`、`.github` 等寫死禁止，配置無法覆蓋。
+改派的實作跑完後系統以 `auditPaths` 逐檔核對，越界即 `SecurityException`；通過後系統代為提交（Codex 沙箱不能寫 `.git`）。
+VM 實測（`CodexSandboxVmTest.workspaceImplementerCanWriteClaudeRulesButNotGit`，不呼叫模型）：實作節點外層政策下
+Codex 可寫 `.claude/rules/`、`.claude/skills/`，`.git` 與 `.git/hooks` 不可寫。bestpartner 設 `builder_codex`，paths 為 `.claude/rules/**`、`.claude/skills/**`。
+
 系統的處理方式（2026-09-30 起）：
 
 | 位置 | 行為 |

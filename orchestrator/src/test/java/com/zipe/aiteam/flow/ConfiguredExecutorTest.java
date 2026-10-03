@@ -90,6 +90,17 @@ class ConfiguredExecutorTest {
         assertThat(executor.changedFiles(task, flow)).contains("查不到").doesNotContain("SKILL.md");
     }
 
+    @Test void intakeIsToldThatAllowedProtectedPathsAreDelegatedNotStopped() throws Exception {
+        // #1014：需求整理一看到 .claude/ 就停下來問人；配置了改派時要說明那些路徑做得到。
+        var definition = TeamCatalog.load(Path.of("teams/bestpartner.json"), key -> repo.toString()).definition();
+        AgentRuntime claude = mock(AgentRuntime.class);
+        when(claude.protectedWritePaths()).thenReturn(List.of(".claude/", ".git/"));
+        AgentRuntime codex = mock(AgentRuntime.class);
+        when(codex.protectedWritePaths()).thenReturn(List.of());
+        String notice = ConfiguredExecutor.protectedPathNotice(definition, "intake", id -> id.equals("codex") ? codex : claude);
+        assertThat(notice).contains(".claude/").contains("例外", ".claude/rules/**", "Backend Agent（codex）", "不要因此停下來問人");
+    }
+
     @Test void docOnlyReceiptExplainsThatSkippingBuildIsByDesign() {
         flow.independentEvidence = new IndependentVerifier.Receipt("h", "b", "c", "s", "e", List.of(), List.of("README.md"));
         assertThat(ConfiguredExecutor.receiptView(flow, flow.snapshot.definition().nodes().get("verification")))

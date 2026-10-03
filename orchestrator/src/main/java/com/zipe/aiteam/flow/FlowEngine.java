@@ -482,11 +482,13 @@ public class FlowEngine {
                 }
                 AgentRuntime.RuntimeResult result;
                 long started = System.nanoTime();
+                Node runner = actingNode(task, flow, node);
                 try (var progress = new StageProgress(slack, store, task,
-                        flow.snapshot.definition().roles().get(node.role()).executionLabel() + "／" + flow.node, props.progressIntervalSeconds(), true)) {
-                    result = executor.execute(task, flow, node);
+                        flow.snapshot.definition().roles().get(runner.role()).executionLabel() + "／" + flow.node, props.progressIntervalSeconds(), true)) {
+                    result = executor.execute(task, flow, runner);
                 }
-                catch (Exception e) { auditScope(task, flow, node); throw e; }
+                catch (Exception e) { auditScope(task, flow, node); auditFallback(task, flow, node, runner); throw e; }
+                auditFallback(task, flow, node, runner);
                 if (aborted(task)) return;
                 // 被要求中斷時，runtime 可能以結束碼 0 交回半成品（#1019：Codex 被停下時交出開頭一句「我會先核對…」，
                 // 被當成正式測試計畫而顯示「沒有情境」）。無法分辨是剛好做完還是被截斷，一律不採用；
@@ -643,6 +645,49 @@ public class FlowEngine {
                         ? "系統連續 " + SystemFailure.RETRY_LIMIT + " 次都沒能把這一步跑起來，這是系統或環境問題，不是工作內容有問題。"
                         : "", e);
             }
+        }
+    }
+    /**
+     * 受保護路徑改派（{@link ProtectedPathFallback}）：需求要改原角色 runtime 必定寫不了、而且管理者允許改派的路徑時，
+     * 這個節點改由 fallback 角色執行。決定記在 flow.roleOverrides，同一任務重跑沿用。
+     */
+    private Node actingNode(Task task, FlowRun flow, Node node) {
+        var fb = node.protectedPathFallback();
+        if (fb == null || flow.dialogue) return node;
+        String chosen = flow.roleOverrides.get(flow.node);
+        if (chosen != null) return node.withRole(chosen);
+        AgentRuntime primary = executor.runtimeFor(flow.snapshot.definition().roles().get(node.role()).runtime());
+        var needed = ProtectedPathFallback.needed(flow, node, task.requestText(), primary);
+        if (needed.isEmpty()) return node;
+        flow.roleOverrides.put(flow.node, fb.role());
+        store.saveFlow(task.id(), flow);
+        Role alternate = flow.snapshot.definition().roles().get(fb.role());
+        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "受保護路徑改派：節點 " + flow.node + " 需修改 "
+                + needed.get() + "，原角色 " + node.role() + " 的 runtime 無法寫入，改由 " + fb.role() + " 實作；允許範圍 " + fb.paths());
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id() + " 要修改 "
+                + String.join("、", needed.get()) + "，原實作角色無法寫入這些檔案，依專案設定改由 " + alternate.name() + "（"
+                + alternate.runtime() + "）實作；完成後系統會逐檔核對允許範圍並代為提交。");
+        return node.withRole(fb.role());
+    }
+    /**
+     * 改派的實作跑完（或失敗）後由系統核對實際變更，不採信 agent：碰到禁止清單、或原 runtime 的受保護路徑卻不在允許範圍，
+     * 就停止並禁止下游與發布。通過後把未提交的修改由系統代為提交（Codex 沙箱不能寫 .git）。
+     */
+    private void auditFallback(Task task, FlowRun flow, Node node, Node acting) throws Exception {
+        if (acting == node || node.protectedPathFallback() == null) return;
+        if (flow.beforeHead == null) throw new SecurityException("缺少改派實作的起始 commit，不能核實寫入範圍");
+        AgentRuntime primary = executor.runtimeFor(flow.snapshot.definition().roles().get(node.role()).runtime());
+        List<String> changed = workspaces.auditPaths(task.id(), flow.beforeHead);
+        List<String> bad = ProtectedPathFallback.violations(changed, node.protectedPathFallback(), primary);
+        if (!bad.isEmpty()) {
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_DENIED, "改派實作越權：" + bad);
+            throw new SecurityException("改派的實作修改了不允許的路徑，禁止下游與發布：" + bad);
+        }
+        List<String> dirty = workspaces.uncommittedPaths(task.id());
+        if (!dirty.isEmpty()) {
+            String head = workspaces.commitPaths(task.id(), dirty, "任務 #" + task.id() + " 實作（改派 " + acting.role() + "，系統核對後代為提交）");
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "改派實作核對通過，系統代為提交 "
+                    + dirty.size() + " 個檔案：" + String.join(", ", dirty) + "；commit=" + head);
         }
     }
     private void auditScope(Task task, FlowRun flow, Node node) throws Exception {

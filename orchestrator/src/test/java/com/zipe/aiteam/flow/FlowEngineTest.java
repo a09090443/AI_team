@@ -742,6 +742,61 @@ class FlowEngineTest {
         assertThat(jobs).hasSize(1);
     }
 
+    // ---- 受保護路徑改派（#1014） ----
+
+    /** 在任務快照加入 Codex 實作角色與實作節點的改派設定；原角色 runtime 視 .claude/ 為受保護路徑。 */
+    void enableProtectedPathFallback() throws Exception {
+        var flow = store.flow(task.id()).orElseThrow();
+        ObjectNode json = mapper.valueToTree(flow.snapshot.definition());
+        ObjectNode role = ((ObjectNode) json.path("roles").path("builder")).deepCopy();
+        role.put("runtime", "codex").put("botTokenEnv", "SLACK_BOT_TOKEN_BUILDER_CODEX").put("appTokenEnv", "SLACK_APP_TOKEN_BUILDER_CODEX");
+        ((ObjectNode) json.path("roles")).set("builder_codex", role);
+        var fallback = ((ObjectNode) json.path("nodes").path("implementation")).putObject("protectedPathFallback");
+        fallback.put("role", "builder_codex"); fallback.putArray("paths").add(".claude/rules/**");
+        flow.snapshot = new TeamDefinition.Snapshot(flow.snapshot.revision(), mapper.treeToValue(json, TeamDefinition.class),
+                flow.snapshot.repository(), flow.snapshot.assets());
+        store.saveFlow(task.id(), flow);
+        AgentRuntime claude = mock(AgentRuntime.class);
+        when(claude.protectedWritePaths()).thenReturn(List.of(".claude/", ".git/"));
+        when(claude.isProtectedWrite(anyString())).thenCallRealMethod();
+        when(executor.runtimeFor("claude-code")).thenReturn(claude);
+    }
+
+    @Test void protectedRuleChangeIsImplementedByTheFallbackRoleAndCommittedBySystem() throws Exception {
+        mode = "protectedRule";
+        enableProtectedPathFallback();
+        when(workspace.uncommittedPaths("42")).thenReturn(List.of(".claude/rules/api-endpoints.md"), List.of());
+        // 只有改派實作那一輪看得到這個變更；系統代為提交後，下游節點的起始 commit 已包含它。
+        when(workspace.auditPaths(eq("42"), anyString())).thenReturn(List.of(".claude/rules/api-endpoints.md"), List.of());
+
+        engine.run(task);
+
+        assertThat(calls).contains("implementation:builder_codex").doesNotContain("implementation:builder");
+        assertThat(store.flow(task.id()).orElseThrow().roleOverrides).containsEntry("implementation", "builder_codex");
+        verify(workspace).commitPaths(eq("42"), eq(List.of(".claude/rules/api-endpoints.md")), contains("改派 builder_codex"));
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+    }
+
+    @Test void reassignedImplementerTouchingSettingsStopsBeforeAnyDownstreamStep() throws Exception {
+        mode = "protectedRule";
+        enableProtectedPathFallback();
+        when(workspace.auditPaths(eq("42"), anyString())).thenReturn(List.of(".claude/rules/api-endpoints.md", ".claude/settings.json"));
+
+        engine.run(task);
+
+        assertThat(calls).contains("implementation:builder_codex").noneMatch(c -> c.startsWith("verification:"));
+        assertThat(task.state()).isNotEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        verify(workspace, never()).commitPaths(eq("42"), anyList(), contains("改派"));
+        verify(audit).record(eq("42"), any(), eq(AuditLog.ACTION_DENIED), contains(".claude/settings.json"));
+    }
+
+    @Test void ordinaryChangesStayWithTheConfiguredImplementer() throws Exception {
+        enableProtectedPathFallback();
+        engine.run(task);
+        assertThat(calls).contains("implementation:builder").doesNotContain("implementation:builder_codex");
+        assertThat(store.flow(task.id()).orElseThrow().roleOverrides).isEmpty();
+    }
+
     @Test void approvedPlanCanBeViewedWhileTheTaskIsRunningWithoutApprovalButtons() {
         // 自動核准後的訊息叫人「檢視測試計畫」，但當時任務在執行，以前一律被「目前為 STAGE_RUNNING」擋掉。
         engine.run(task);
@@ -915,6 +970,8 @@ class FlowEngineTest {
             if (node.gate() == TeamDefinition.Gate.VERIFICATION)
                 ((ObjectNode) report).put("plan_revision", Traceability.digest(flow.receipts.get(node.plan())));
             if (flow.node.equals("design")) ((ObjectNode)report).put("route", "ready");
+            if (mode.equals("protectedRule") && flow.node.equals("intake"))
+                ((ObjectNode)report).put("summary", "把 `.claude/rules/api-endpoints.md` 第 49 行的 all 改成 admin");
             if (mode.startsWith("question") && flow.node.equals("intake")) {
                 ((ObjectNode)report).put("route", "question").put("summary", "API 共 69 個，文件寫 68 個");
                 ((ObjectNode)report).putArray("requirements");

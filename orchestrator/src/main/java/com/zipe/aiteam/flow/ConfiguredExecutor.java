@@ -74,6 +74,9 @@ public class ConfiguredExecutor {
         if (flow.dialogue) context.append(parentWorkspaceState(flow));
         if (!flow.dialogue) context.append("\n本階段可使用／規畫的操作契約：").append(availableOperations(flow, node));
         if (!flow.dialogue) context.append(inspectionNotice(flow, node));
+        Node defined = flow.snapshot.definition().nodes().get(flow.node);
+        if (!flow.dialogue && defined != null && defined.protectedPathFallback() != null && !defined.role().equals(node.role()))
+            context.append(ProtectedPathFallback.notice(defined.protectedPathFallback()));
         if (!flow.dialogue && node.gate() == Gate.VERIFICATION) context.append(changedFiles(task, flow));
         if (!flow.dialogue) context.append(commandPatterns(role, runtime, OperationContract.forNode(flow.snapshot.definition(), flow.node)));
         if (!flow.dialogue) context.append(protectedPathNotice(flow.snapshot.definition(), flow.node, runtimes::require));
@@ -195,11 +198,28 @@ public class ConfiguredExecutor {
         Set<String> paths = new LinkedHashSet<>();
         byRuntime.values().forEach(paths::addAll);
         if (paths.isEmpty()) return "";
+        // 配置了受保護路徑改派時，那些路徑其實做得到：明講，避免需求整理一看到 .claude/ 就停下來問人（#1014）。
+        Set<String> delegated = new LinkedHashSet<>(); Set<String> delegates = new LinkedHashSet<>();
+        definition.nodes().values().stream().filter(ConfiguredExecutor::writes).map(Node::protectedPathFallback)
+                .filter(Objects::nonNull).forEach(fb -> {
+                    delegated.addAll(fb.paths());
+                    Role role = definition.roles().get(fb.role());
+                    delegates.add(role == null ? fb.role() : role.name() + "（" + role.runtime() + "）");
+                });
+        String delegation = delegated.isEmpty() ? ""
+                : "\n例外：其中 " + delegated + " 之下的檔案，系統會改派給 " + delegates + " 實作並逐檔核對，"
+                  + "需求要改這些檔案時照常整理成需求與驗收（可用 inspect-content 讀檔驗收），不要因此停下來問人、也不要列為需真人處理。"
+                  + "例外不含 .claude/settings*、hooks、commands、agents 等行為設定，那些仍須真人處理。";
         return "\n本流程的實作角色無法寫入下列路徑，任何權限設定都開放不了（目錄以 / 結尾）：" + paths
                 + "。訂需求、設計與測試計畫時，不要把修改這些檔案列為實作的驗收；版本號、模組清單等會隨變更而動的資訊，"
                 + "以建置檔與一般文件為驗收對象。需求確實必須改這些檔案（例如升級 Maven Wrapper）時，列入 out_of_scope 並註明需真人處理；"
                 + "若那是需求的核心，交真人決定。分流或審查遇到寫入這些路徑被拒時，不得提出「開放權限後重派」之類的選項，"
-                + "只能請真人在任務分支修改並提交後繼續，或提出需求變更排除該檔；也不得因該檔未修改而判定實作失職。";
+                + "只能請真人在任務分支修改並提交後繼續，或提出需求變更排除該檔；也不得因該檔未修改而判定實作失職。" + delegation;
+    }
+
+    /** FlowEngine 判定受保護路徑改派與事後核對時需要原角色的 runtime；不可用時回 null（只做禁止清單核對、不改派）。 */
+    public AgentRuntime runtimeFor(String runtimeId) {
+        try { return runtimes.require(runtimeId); } catch (RuntimeException unavailable) { return null; }
     }
 
     private static boolean writes(Node node) {

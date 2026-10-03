@@ -88,6 +88,7 @@ agent_team/
 │   │   │   ├── AutomaticHandoff.java # 有證據的受阻事件自動交接與延長授權
 │   │   │   ├── ContractRecovery.java # 恢復被系統規則誤判的前置契約
 │   │   │   ├── DocOnlyChanges.java   # 純文件變更判定（略過建置測試）與強制全跑名單
+│   │   │   ├── ProtectedPathFallback.java # 受保護路徑改派實作者：判定、禁止清單與事後核對
 │   │   │   ├── VerificationRecovery.java # 配置核准後授予一次驗收重跑
 │   │   │   ├── Traceability.java     # 需求基準、原子驗收項目與覆蓋對照
 │   │   │   ├── IndependentVerifier.java # 系統獨立驗證：全新 clone 執行固定指令並產生收據
