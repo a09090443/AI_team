@@ -132,7 +132,7 @@ public class IndependentVerifier {
     void execute(String taskId, List<String> argv, Path cwd, Path home, SandboxPolicy policy, Path log, long deadline) throws Exception {
         long seconds = Math.max(1, TimeUnit.NANOSECONDS.toSeconds(deadline - System.nanoTime()));
         if (System.nanoTime() >= deadline) throw new IllegalStateException("獨立驗證超時；紀錄：" + log.getParent());
-        String unit = "ai-team-check-" + (taskId == null ? "" : taskId + "-") + UUID.randomUUID();
+        String unit = props.unitPrefix() + "check-" + (taskId == null ? "" : taskId + "-") + UUID.randomUUID();
         List<String> isolated = new ArrayList<>(List.of("env", "-i", "PATH=" + System.getenv("PATH"), "HOME=" + home,
                 "LANG=C.UTF-8", "CI=true", "MAKEFLAGS=-j1", "JOBS=1", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_TERMINAL_PROMPT=0"));
         // JVM 的 user.home 不會隨 HOME 改變；否則 Maven 仍讀寫真實帳號的 .m2。

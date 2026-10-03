@@ -134,7 +134,7 @@ public class ClaudeCodeRuntime implements AgentRuntime {
             throws RuntimeExecutionException {
         // 安全邊界在 runtime 之外：這裡交出指令，由 ExecutionSandbox 決定它能碰什麼。
         // 加上時間戳避免與殘留的同名 unit 相撞（重做時 task+role 會重複）。
-        String unit = "ai-team-" + req.taskId() + "-" + req.role()
+        String unit = props.unitPrefix() + req.taskId() + "-" + req.role()
                 + "-" + (System.currentTimeMillis() / 1000);
         List<String> cli = buildCommand(req);
         String session = req.resumeSessionId();

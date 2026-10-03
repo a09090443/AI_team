@@ -31,7 +31,8 @@ case ${1:-status} in
   current=$(pids)
   [[ -n $current ]] || { echo 'STOPPED'; exit 1; }
   echo "RUNNING PID=$current"
-  ss -tnp state established | grep -E '(:443|Peer)' || true
+  # 只列本實例的連線；同一台 VM 有其他實例時，不過濾會把別人的 443 也算進來。
+  ss -tnp state established | grep -E ':443' | grep -E "pid=($(echo $current | tr ' ' '|'))," || true
   echo '請確認 443 連線屬於上述 PID；啟動 log 必須有沙箱自檢通過。';;
  *) echo 'usage: service.sh start|stop|status'; exit 2;;
 esac

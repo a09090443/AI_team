@@ -45,7 +45,7 @@ class CodexSandboxVmTest {
         assertThat(tmp.resolve("src/test/probe")).exists();
     }
     @Test void runtimePreflightFailsBeforeModelAndPassesAfterPreparation() throws Exception {
-        var props = mock(AiTeamProperties.class); when(props.codexBin()).thenReturn(bin);
+        var props = mock(AiTeamProperties.class); when(props.codexBin()).thenReturn(bin); when(props.unitPrefix()).thenReturn("ai-team-");
         var runtime = new CodexRuntime(props, sandbox);
         var req = new AgentRuntime.RuntimeRequest("probe", "qa", tmp, tmp.resolve("role.md"), "unused", List.of(), null,
                 null, 1, Duration.ofSeconds(30), policy(), "gpt-5.6-sol");

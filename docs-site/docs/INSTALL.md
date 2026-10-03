@@ -189,6 +189,21 @@ git -C ~/ai-team/zipe-spring-boot-starters rev-parse origin/develop
 repo 不可 shallow；基準分支在 env.sh 指定 develop。演練記錄基準 SHA。
 新 VM 自行下載 Maven 相依並執行 repo verify，記錄冷快取耗時，不複製舊 ~/.m2。
 
+### 5.1 同一台 VM 再加一個專案（第二個服務實例）
+
+每個專案各跑一個服務（背景與限制見 [同一台 VM 多個服務實例](configurable-team.md#同一台-vm-多個服務實例)）。
+以新目錄重複 §5～§7，例如：
+
+```bash
+bash ~/ai-team-source/deploy/bootstrap/install-app.sh ~/ai-team-source ~/ai-team-web
+git clone --no-single-branch <新專案 repo> ~/ai-team-web/<repo 目錄>
+```
+
+- `~/ai-team-web/env.sh` 的 `AI_TEAM_HOME` 改指向新目錄（範本預設 `$HOME/ai-team`），`AI_TEAM_REPO` 指向新 clone。
+- `team.env` 設該專案的 `AI_TEAM_DEFINITION` 與 **`AI_TEAM_INSTANCE`**；原本的實例也要設（例如 `starters`），名稱不可重複。
+- 另建一組 Slack App 與一個頻道；**不可與其他實例共用 App token**。
+- 啟停與查詢都用該目錄下的腳本（`bash ~/ai-team-web/service.sh status`）。
+
 ## 6. Slack／設定
 
 主 App 使用 `deploy/slack-app-manifest.yaml`，五角色使用 `deploy/agent-manifests/`；

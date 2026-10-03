@@ -122,7 +122,7 @@ public class OpenCodeRuntime implements AgentRuntime {
             SessionCapture.preserve(stdoutLog);
             SessionCapture.preserve(stderrLog);
 
-            String unit = "ai-team-" + req.taskId() + "-" + req.role()
+            String unit = props.unitPrefix() + req.taskId() + "-" + req.role()
                     + "-opencode-" + (System.currentTimeMillis() / 1000);
             List<String> cmd = sandbox.wrap(unit, req.sandboxPolicy(),
                     req.workingDirectory(), buildCommand(req));

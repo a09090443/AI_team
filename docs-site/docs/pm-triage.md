@@ -68,7 +68,7 @@ Slack 會區分「已排隊」、「PM 處理中」、「已派工」與「等�
 | | 中斷這一輪 | 中止任務 |
 |---|---|---|
 | 入口 | 執行中狀態訊息的按鈕，或 `中斷 #id` | 停止訊息／核准卡上的紅色按鈕 |
-| 停掉的程序 | 該任務的 agent（`ai-team-<id>-*`）與系統驗證（`ai-team-check-<id>-*`） | 同左 |
+| 停掉的程序 | 本服務實例中該任務的 agent（`ai-team-<id>-*`）與系統驗證（`ai-team-check-<id>-*`）；設了 `AI_TEAM_INSTANCE` 時為 `ai-team-<實例>-<id>-*`、`ai-team-<實例>-check-<id>-*`，不影響同一台 VM 其他實例 | 同左 |
 | 任務狀態 | `AWAIT_HUMAN`，可續跑 | `ABORTED`，終止；重啟時刪除工作區 |
 | 次數與 session | 本輪已計次不重扣；「繼續執行」沿用原 session | 不適用 |
 

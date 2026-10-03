@@ -27,6 +27,7 @@ class LinuxVerificationSmokeTest {
         when(props.homePath()).thenReturn(root); when(props.logsPath()).thenReturn(root.resolve("logs"));
         when(props.requiredBuildTools()).thenReturn(List.of("git", "java", "mvn"));
         when(props.workspacesPath()).thenReturn(root.resolve("workspaces"));
+        when(props.unitPrefix()).thenReturn("ai-team-");
         sandbox = new ExecutionSandbox(props); sandbox.selfTest(); sandbox.requireReadyForCodeChanges();
         verifier = new IndependentVerifier(props, sandbox, new WorkspaceManager(props));
     }

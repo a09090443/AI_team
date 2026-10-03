@@ -24,6 +24,7 @@ class RuntimeDiagnosticsTest {
             when(props.logsPath()).thenReturn(tmp);
             when(props.codexBin()).thenReturn(Path.of("/bin/sh"));
             when(props.claudeBin()).thenReturn(Path.of("/bin/sh"));
+            when(props.unitPrefix()).thenReturn("ai-team-");
             ExecutionSandbox sandbox = mock(ExecutionSandbox.class);
             when(sandbox.wrap(anyString(), any(), any(), anyList())).thenReturn(
                     List.of("/bin/sh", "-c", "printf partial-evidence; exec sleep 5"));

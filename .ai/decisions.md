@@ -393,3 +393,14 @@ runtime 邊界，業務語意則由本系統自己的可測閘門維持。
 改用 `bypassPermissions` 雖能寫入，但會讓 `--allowedTools` 失效、拿掉縱深防禦的第二層；allow 規則則依官方文件無效。
 限制屬於 runtime 而非團隊配置，所以不寫進 teams 提示（也因為 teams 提示被快照固定，既有任務看不到）。
 目標專案應把易變資訊放在建置檔與一般文件，受保護路徑只放穩定規則。
+
+## 2026-10-03 — 每個專案一個服務實例；以 AI_TEAM_INSTANCE 區分 systemd unit
+
+決策：多個專案採「同一台 VM 多個服務實例」，每個實例有自己的安裝目錄、團隊配置、頻道與一組 Slack App。
+新增非機密設定 `AI_TEAM_INSTANCE`，所有 systemd unit 名稱加上 `ai-team-<實例>-` 字首；留空時名稱與舊版完全相同。
+實例名限小寫字母開頭的英數（最多 16 字），保留 `check`／`preflight`／`selftest`／`codex`。
+
+理由：服務本來就是一個實例一個專案，目錄、DB、`service.sh` 都已依目錄隔離；唯一跨實例共用的是 systemd user unit 命名空間，
+「中斷這一輪」以 `ai-team-<任務>-*` glob 停 unit，兩個實例同編號任務會互相誤停。
+不用配置 `id` 當字首，因為同一份配置（如 `node-web.json`）可給多個 repo 共用。
+不做單一服務多專案路由：要改的是 Slack 入口、佇列與配置快照，範圍遠大於只隔離 unit 名稱。

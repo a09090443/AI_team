@@ -2,6 +2,24 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-03 — Claude Code（多個服務實例：AI_TEAM_INSTANCE 區分 systemd unit）
+
+- 使用者決定每個專案各自一個服務。發現跨實例風險：「中斷這一輪」／「中止任務」以 `ai-team-<任務>-*` glob 停 unit，
+  兩個實例同編號任務會互相誤停；`deploy-jar-safe.sh` 看全部 `ai-team-*` 且 root 寫死 vboxuser；`service.sh status` 未依 PID 過濾。
+- 使用者核准計畫後實作：`AiTeamProperties.unitPrefix()`（`AI_TEAM_INSTANCE`，留空＝舊名稱）、`TaskUnits` 改收字首，
+  三個 runtime、驗證、預檢、自檢、中斷／中止全部改用字首；preflight 檢查格式並在偵測到其他實例而本項為空時失敗；
+  `service.sh status` 只列本 PID；`deploy-jar-safe.sh` 第三參數為安裝目錄、只看本實例 unit；env 範本加說明。
+- 測試：本機 463 項僅既有 4 項 Windows 失敗；VM 隔離建置 `instance-build.g2Na1o` 463 項 0 失敗（10 opt-in 略過）、
+  check-source 通過；opt-in `LinuxVerificationSmokeTest`（2 項）與 `CodexSandboxVmTest`（4 項）通過。
+- 部署新 VM（PID 24757，JAR `75ab2cf99349aae4582100bf636368cfd19a9d0307ff58bd5911a51e4e616cfc`，備份 `orchestrator-backup.W5p5hb`，
+  腳本備份 `scripts-backup.PVnwGa`），`team.env` 加 `AI_TEAM_INSTANCE=starters`：0 ERROR、自檢 unit 為 `ai-team-starters-selftest-…`。
+- VM 實測：模擬舊格式 `ai-team-1001-builder-sim`、`ai-team-check-1001-sim` 與 `ai-team-starters-1001-builder-sim`，
+  以新 glob 停止後只有 starters 的 unit 停下；暫時目錄留空實例名時 preflight 失敗、不合法名稱被拒；status 只列本 PID。
+- 尚未實測：Slack「中斷這一輪」真實操作；兩個實例同時連 Slack 的端對端（待第二個專案）。preflight 不檢查兩實例同名。
+- 已核對的文件：configurable-team、pm-triage、configuration、operations、INSTALL、system-map（無需改）、contributing（無需改）。
+  已修正的文件：configurable-team（新增多實例一節）、pm-triage（unit 名稱）、configuration（`AI_TEAM_INSTANCE`）、
+  operations（status 說明）、INSTALL §5.1、catalog（摘要與 TaskUnits 對應）、decisions（新決策）。
+
 ## 2026-10-02 — Claude Code（新 VM「Agent」乾淨重建演練，進行中）
 
 - Ubuntu 26.04 LTS、使用者 `agent`、NAT SSH `127.0.0.1:2223`（主機指紋已與主控台核對）。使用者本人輸入 sudo 密碼：

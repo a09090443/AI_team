@@ -48,7 +48,8 @@ public class FlowEngine {
      */
     private final Map<String, String> interruptRequests = new java.util.concurrent.ConcurrentHashMap<>();
     /** 測試替換用；正式環境停掉該任務的 systemd unit。 */
-    java.util.function.Predicate<String> unitStopper = com.zipe.aiteam.sandbox.TaskUnits::stop;
+    java.util.function.Predicate<String> unitStopper = this::stopUnits;
+    private boolean stopUnits(String taskId) { return com.zipe.aiteam.sandbox.TaskUnits.stop(props.unitPrefix(), taskId); }
 
     /** 只接受正在執行的一般流程任務；排隊、等人或角色對話都沒有「這一輪」可停。 */
     public void interrupt(Task task, String user) {

@@ -10,7 +10,8 @@
 
 新模式將角色名稱、模型、runtime、Slack token 引用、工具清單與流程節點放入 JSON。
 JSON 為可直接解析的配置格式，不代表未來綁定某個 CLI；runtime 仍由既有 adapter registry 決定。
-目前每個服務實例選擇一個專案配置，不是單一程序同時管理多個專案。
+目前每個服務實例選擇一個專案配置，不是單一程序同時管理多個專案；多個專案請見
+[同一台 VM 多個服務實例](#同一台-vm-多個服務實例)。
 
 ## 啟用與配置
 
@@ -46,6 +47,43 @@ java -jar "$AI_TEAM_HOME/orchestrator/target/ai-team-orchestrator-0.1.0.jar" \
 checkpoint 保存的是節點 ID，不再靠 PM／QA 等角色名稱判斷續跑位置。
 角色一般職責放 `role.prompt`；不同階段的任務放 `node.instructions`（選填），後者優先。
 所有 prompt/schema/instructions 必須在配置檔所在目錄內；向上跳脫或 symlink 指向外部會被拒絕。
+
+## 同一台 VM 多個服務實例
+
+每個專案各跑一個服務（2026-10-03 決策，見 `.ai/decisions.md`）。一個服務只載入一個專案配置，
+所以「多個專案」＝同一台 VM 上多個安裝目錄，每個實例各自擁有：
+
+| 各自一份 | 說明 |
+|---|---|
+| 安裝目錄 | `install-app.sh` 安裝到新目錄（例如 `~/ai-team-web`）；env.sh、team.env、DB、workspaces、logs 都在裡面，`service.sh` 依目錄管理自己的程序 |
+| 團隊配置與 repo | `team.env` 的 `AI_TEAM_DEFINITION`；`AI_TEAM_REPO` 指向該專案的完整 clone |
+| `AI_TEAM_INSTANCE` | **必填且各實例不可重複**，建議放 `team.env` |
+| 頻道 | `AI_TEAM_CHANNEL_ID`，每個服務只聽這一個頻道 |
+| **一組 Slack App** | 主 App 與要用的角色 App。兩個服務若用同一組 App 的 Socket Mode token，Slack 會把事件分給任一條連線，需求可能被另一個專案的服務接走 |
+
+可共用：工具鏈、Claude／Codex 登入（**額度也共用**，各實例的 `AI_TEAM_MAX_CONCURRENCY` 相加才是同時執行數）。
+服務不開網路埠（`web-application-type: none`），實例之間沒有埠衝突。
+
+**為什麼需要 `AI_TEAM_INSTANCE`**：每個 agent 與驗證都跑在 systemd user unit，各實例的任務編號都從 #1001 起。
+「中斷這一輪」與「中止任務」以 glob 停止 unit（`TaskUnits`），沒有實例字首時，A 專案中斷 #1001
+會一併停掉 B 專案 #1001 的 agent。設定後 unit 名稱改為：
+
+| 用途 | 留空（單一實例，舊名稱） | `AI_TEAM_INSTANCE=starters` |
+|---|---|---|
+| agent | `ai-team-<任務>-<角色>-…` | `ai-team-starters-<任務>-<角色>-…` |
+| 系統驗證 | `ai-team-check-<任務>-…` | `ai-team-starters-check-<任務>-…` |
+| 自檢／預檢 | `ai-team-selftest-…`、`ai-team-preflight-…`、`ai-team-codex-preflight-…` | 同左，前面加 `starters-` |
+
+格式：小寫英文字母開頭、只含小寫英數、最多 16 字；不可為 `check`、`preflight`、`selftest`、`codex`
+（舊名稱的固定字首）。不合法時服務啟動失敗。實例名以字母開頭、任務編號是純數字，所以新舊格式的 glob 互不配對。
+不用配置的 `id` 當實例名，是因為 `node-web.json` 這類配置可給多個 repo 共用，`id` 不保證唯一。
+
+相關檢查：`preflight.sh` 偵測到其他安裝目錄的服務在跑、而本實例 `AI_TEAM_INSTANCE` 留空時直接失敗（不檢查兩個實例是否同名，需管理者自行確保）；
+`service.sh status` 只列本實例 PID 的 443 連線；`deploy/deploy-jar-safe.sh` 的第三個參數是安裝目錄，
+「有 unit 在跑就拒絕部署」只看本實例的 unit。
+
+**驗證狀態**：unit 命名、glob 互不配對與 preflight 檢查有程式測試與 VM 實測紀錄（見 `.ai/progress.md` 2026-10-03）；
+**兩個實例同時連 Slack 的真實端對端尚未驗證**，待第二個專案上線後補。
 
 ## 不改 Java 的增刪例子
 

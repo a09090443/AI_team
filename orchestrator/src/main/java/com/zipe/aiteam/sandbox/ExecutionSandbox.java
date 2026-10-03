@@ -169,7 +169,7 @@ public class ExecutionSandbox {
             // 少了它，乾淨環境下（例如還沒有 ~/.claude/settings.json）unit 會直接起不來。
             SandboxPolicy policy = new SandboxPolicy(
                     List.of(rw), List.of(root.resolve("no-such-pin")), 256, 100, 32);
-            List<String> cmd = wrap("ai-team-selftest-" + System.currentTimeMillis(), policy, rw,
+            List<String> cmd = wrap(props.unitPrefix() + "selftest-" + System.currentTimeMillis(), policy, rw,
                     List.of("bash", "-c",
                             "echo tampered > '" + canary + "' 2>/dev/null;"
                           + "echo probed   > '" + probe  + "' 2>/dev/null;"

@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
 # 只替換 JAR 的受控部署：備份 → 替換 → 重啟 → 健康檢查；啟動失敗自動回復備份並重啟。
-# 用法（在本機）：ssh -p 2222 vboxuser@127.0.0.1 'bash -s <VM 上的候選 JAR> <預期 SHA256>' < deploy/deploy-jar-safe.sh
+# 用法（在本機）：ssh -p 2223 agent@127.0.0.1 'bash -s <VM 上的候選 JAR> <預期 SHA256> [安裝目錄，預設 ~/ai-team]' < deploy/deploy-jar-safe.sh
 # 候選 JAR 必須在隔離建置目錄產生，不在服務的 target/ 建置。只換 JAR；配置（teams/）變更要另外處理。
 set -uo pipefail
-root=/home/vboxuser/ai-team
 build=$1
 expected=$2
+root=${3:-$HOME/ai-team}
 jar=$root/orchestrator/target/ai-team-orchestrator-0.1.0.jar
 cd "$root" || exit 1
 [[ $(sha256sum "$build" | cut -d' ' -f1) == "$expected" ]] || { echo '候選 JAR 雜湊不符，停止'; exit 1; }
-if [[ -n $(systemctl --user list-units 'ai-team-*' --no-legend) ]]; then echo '仍有 ai-team unit 在跑，停止'; exit 1; fi
+# 只看本實例的 unit：同一台 VM 另一個實例有工作時，不該擋住這裡的部署。
+instance=$(set +u; { source ./env.sh; [[ ! -f team.env ]] || source ./team.env; } >/dev/null 2>&1; printf %s "${AI_TEAM_INSTANCE:-}")
+if [[ -n $instance ]]; then patterns=("ai-team-$instance-*")
+else patterns=('ai-team-[0-9]*' 'ai-team-check-*' 'ai-team-selftest-*' 'ai-team-preflight-*' 'ai-team-codex-preflight-*'); fi
+if [[ -n $(systemctl --user list-units "${patterns[@]}" --no-legend) ]]; then echo "仍有本實例的 unit 在跑（${patterns[*]}），停止"; exit 1; fi
 snapshot() { sqlite3 -readonly ai-team.db "select group_concat(id||':'||state||':'||updated_at, ' ') from task where state not in ('COMPLETED','PR_CREATED','ABORTED','FAILED');"; }
 before=$(snapshot); echo "before=$before"
 backup=$(mktemp -d "$root/orchestrator-backup.XXXXXX")

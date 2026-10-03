@@ -116,7 +116,7 @@ public class CodexRuntime implements AgentRuntime {
                 Files.writeString(schemaFile, compatibleSchema(req.jsonSchema()), StandardCharsets.UTF_8);
             }
 
-            String unit = "ai-team-" + req.taskId() + "-" + req.role()
+            String unit = props.unitPrefix() + req.taskId() + "-" + req.role()
                     + "-codex-" + (System.currentTimeMillis() / 1000);
             List<String> cmd = sandbox.wrap(unit, req.sandboxPolicy(),
                     req.workingDirectory(), buildCommand(req, schemaFile));
@@ -217,7 +217,7 @@ public class CodexRuntime implements AgentRuntime {
                     "local-test-preflight", CodexLocalTestPolicy.TCP_PROBE));
             CodexLocalTestPolicy.commandWrites(req, statePaths(props.userHome())).forEach(p -> probe.add(p.toString()));
         } else probe.addAll(List.of("-P", ":workspace", "-C", req.workingDirectory().toAbsolutePath().toString(), "--", "/bin/pwd"));
-        List<String> wrapped = new ArrayList<>(sandbox.wrap("ai-team-codex-preflight-"
+        List<String> wrapped = new ArrayList<>(sandbox.wrap(props.unitPrefix() + "codex-preflight-"
                 + java.util.UUID.randomUUID(), req.sandboxPolicy(), req.workingDirectory(), probe));
         // 同時限制 unit 存活時間，避免用戶端逾時後留下 probe 子行程。
         if (wrapped.contains("--")) wrapped.addAll(wrapped.indexOf("--"),List.of("-p","RuntimeMaxSec=25","-p","KillMode=control-group"));

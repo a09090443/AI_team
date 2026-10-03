@@ -65,7 +65,7 @@ public class OperationPreflight {
                 + "case $kind in tool) command -v -- \"$value\" >/dev/null || { printf 'missing tool: %s\\n' \"$value\"; exit 21; };; "
                 + "dir) test -d \"$value\" || exit 22;; write) test -w \"$value\" || { printf 'not writable: %s\\n' \"$value\"; exit 23; };; esac; done";
         List<String> command = new ArrayList<>(List.of("sh", "-c", script, "preflight")); command.addAll(args);
-        String unit = "ai-team-preflight-" + UUID.randomUUID();
+        String unit = props.unitPrefix() + "preflight-" + UUID.randomUUID();
         List<String> wrapped = new ArrayList<>(sandbox.wrap(unit, policy, cwd, command));
         wrapped.addAll(wrapped.indexOf("--"), List.of("-p", "RuntimeMaxSec=20", "-p", "KillMode=control-group"));
         Process process = new ProcessBuilder(wrapped).redirectErrorStream(true).redirectOutput(log.toFile()).start();

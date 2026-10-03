@@ -11,7 +11,9 @@
   **服務已在新 VM 運作**（2026-10-03，沿用正式 6 個 Slack App，頻道 `#ai-agents` C0C6ECHH44S），自檢全過；細節見 progress.md 2026-10-02。
   **舊 VM `AI` 服務已停並關機**（兩邊共用 Slack App，不可同時啟動）。舊 VM 上的任務（#1021、#1019 等 AWAIT_HUMAN，
   #1020、#1027 PR_CREATED）資料仍在舊 VM，新 VM DB 為空；要處理舊任務需停新服務、開舊 VM。
-  下一步：Slack 事件實測（在 #ai-agents @主 App 詢問任務），再做完整管線驗收。
+  Slack 事件已實測（#1001、#1002 完成）。2026-10-03 已部署多實例支援（`AI_TEAM_INSTANCE=starters`，PID 24757，未 commit）。
+  下一步：Slack「中斷這一輪」真實操作、完整管線驗收；使用者提供第二個專案 repo 後，以 INSTALL §5.1 安裝第二個實例
+  （需另一組 Slack App 與頻道）。
 
 - **受保護路徑事先告知（commit 0ac9f20，已部署，未 push）**：細節見 progress.md 2026-09-30。真實端對端未實測。
 - VM 上 Claude Code OAuth 曾於 2026-09-30 13:06 UTC 過期（換新失敗，expiresAt 被清為 0）；

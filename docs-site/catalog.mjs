@@ -91,9 +91,9 @@ export const docs = [
     title: '配置式專案、角色與工作流程',
     category: 'workflow',
     status: 'current',
-    summary: 'AI_TEAM_DEFINITION 團隊 JSON（project／roles／nodes）、scope 與 gate 政策、受阻路由、次數上限、快照相容與承接新任務。',
+    summary: 'AI_TEAM_DEFINITION 團隊 JSON（project／roles／nodes）、scope 與 gate 政策、受阻路由、次數上限、快照相容、承接新任務，以及同一台 VM 多個服務實例（AI_TEAM_INSTANCE）。',
     readWhen: '新增或修改角色、節點、流程，或解釋任務為何停住／能否繼續。',
-    code: ['orchestrator/teams/', 'orchestrator/src/main/java/com/zipe/aiteam/flow/'],
+    code: ['orchestrator/teams/', 'orchestrator/src/main/java/com/zipe/aiteam/flow/', 'orchestrator/src/main/java/com/zipe/aiteam/sandbox/TaskUnits.java'],
   },
   {
     id: 'engineering-workflow',

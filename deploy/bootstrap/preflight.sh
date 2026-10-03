@@ -12,6 +12,22 @@ source "$root/env.sh"
 [[ ! -f $root/team.env ]] || source "$root/team.env"
 set +a
 [[ $(realpath "$AI_TEAM_HOME") == "$root" ]] || { echo 'AI_TEAM_HOME 與安裝位置不一致'; exit 1; }
+# 同一台 VM 多個服務實例：unit 名稱靠 AI_TEAM_INSTANCE 區分（見 configurable-team.md）。
+instance=${AI_TEAM_INSTANCE:-}
+if [[ -n $instance ]]; then
+ [[ $instance =~ ^[a-z][a-z0-9]{0,15}$ && ! $instance =~ ^(check|preflight|selftest|codex)$ ]] || {
+  echo 'AI_TEAM_INSTANCE 無效：須為小寫英文字母開頭、只含小寫英數、最多 16 字，且不可為 check／preflight／selftest／codex'; exit 1; }
+fi
+own_jar="$root/orchestrator/target/ai-team-orchestrator-0.1.0.jar"
+others=0
+for p in /proc/[0-9]*/cmdline; do
+ [[ -r $p ]] || continue
+ jar=$(tr '\0' '\n' < "$p" 2>/dev/null | grep -E '/orchestrator/target/ai-team-orchestrator-0\.1\.0\.jar$' | head -1) || true
+ [[ -n $jar && $jar != "$own_jar" ]] && others=$((others + 1))
+done
+if (( others > 0 )) && [[ -z $instance ]]; then
+ echo "偵測到其他安裝目錄的服務正在執行（$others 個）；同一台 VM 多個實例時 AI_TEAM_INSTANCE 必填且各實例不可重複"; exit 1
+fi
 for name in SLACK_APP_TOKEN SLACK_BOT_TOKEN AI_TEAM_ALLOWED_USERS AI_TEAM_CHANNEL_ID CLAUDE_BIN CODEX_BIN; do
  [[ -n ${!name:-} ]] || { echo "缺少設定：$name"; exit 1; }
 done

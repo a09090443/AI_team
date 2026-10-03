@@ -207,6 +207,31 @@ public class AiTeamProperties {
     @Value("${AI_TEAM_GITHUB_TOKEN:}")
     private String githubToken;
 
+    @Value("${AI_TEAM_INSTANCE:}")
+    private String instance;
+
+    /** 舊格式 unit 名稱的固定字首；當作實例名會讓 glob 互相配到，所以保留。 */
+    private static final Set<String> RESERVED_INSTANCES = Set.of("check", "preflight", "selftest", "codex");
+
+    /**
+     * 本服務實例的 systemd unit 名稱字首：空 → {@code ai-team-}（單一實例，名稱與舊版完全相同），
+     * 有值 → {@code ai-team-<實例>-}。
+     *
+     * 同一台 VM 跑多個專案服務時，各實例的任務編號都從 #1001 起；沒有字首的話，
+     * 「中斷這一輪」以 glob 停 unit 會把另一個專案同編號任務的 agent 一起停掉。
+     * 實例名必須以字母開頭：任務編號是純數字，舊格式 glob（ai-team-1001-*）與新格式互不配對。
+     */
+    public String unitPrefix() { return unitPrefixFor(instance); }
+
+    static String unitPrefixFor(String instance) {
+        String value = instance == null ? "" : instance.trim();
+        if (value.isEmpty()) return "ai-team-";
+        if (!value.matches("[a-z][a-z0-9]{0,15}") || RESERVED_INSTANCES.contains(value))
+            throw new IllegalStateException("AI_TEAM_INSTANCE 無效：須為小寫英文字母開頭、"
+                    + "只含小寫英數、最多 16 字，且不可為 check／preflight／selftest／codex");
+        return "ai-team-" + value + "-";
+    }
+
     public String slackAppToken()  { return slackAppToken; }
     public String slackBotToken()  { return slackBotToken; }
 
@@ -360,6 +385,7 @@ public class AiTeamProperties {
 
     /** 啟動時就把設定問題爆出來，不要等到第一則訊息進來才發現。 */
     public void validate() {
+        unitPrefix();
         require(slackAppToken, "SLACK_APP_TOKEN");
         require(slackBotToken, "SLACK_BOT_TOKEN");
         validateRoleTokens();
