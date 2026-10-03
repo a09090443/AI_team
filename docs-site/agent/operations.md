@@ -92,6 +92,7 @@ bash ~/ai-team/preflight.sh
 
 # 服務啟停（有執行中或排隊任務時 stop 會拒絕；start 送出不代表健康檢查成功）
 # status 只列本實例 PID 的 443 連線。同一台 VM 有多個實例時，把 ~/ai-team 換成各自的安裝目錄
+# 服務不是 systemd 常駐服務：VM 重新開機後一律是 STOPPED，要逐一實例手動 start（2026-10-03 VM「Agent」重開機實測）
 bash ~/ai-team/service.sh status|start|stop
 
 # 唯讀稽核查詢

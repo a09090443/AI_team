@@ -2,6 +2,14 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-03 — Claude Code（intake 提示詞：同錯誤合併、需決定標示）
+
+- 實測 bestpartner #1008：同一計數錯誤因在兩個檔案被拆成 2 顆按鈕、權限不一致未標需決定、反引號巢狀致 Slack 顯示錯亂。
+  intake.md 補三條規則（commit 6d46677）；check-source PASS、相關測試 116 項通過、docs build 通過；operations 已同步。
+- 部署時 VM 失去回應（journal 停在 13:30:02 UTC、無 OOM），使用者重開 VM 後唯讀確認兩服務 STOPPED、無未結束任務、
+  提示詞仍為舊版，再逐一換檔啟動：bestpartner PID 3042（配置 ea77edd3…）、starters PID 4855（配置 cfe287b5…），0 ERROR。
+- 發現的缺漏：文件未寫明 VM 重開機後服務不會自動啟動 → 已補在 operations 的服務啟停說明。
+
 ## 2026-10-03 — Claude Code（intake 提示詞：純詢問發現必須列入 out_of_scope）
 
 - 使用者選 A：只改 `teams/prompts/intake.md`（commit f251bf0），不改角色對話。check-source PASS、
