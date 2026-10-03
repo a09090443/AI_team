@@ -2,6 +2,15 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-03 — Claude Code（Claude 額度解禁時間改顯示台北時間）
+
+- 使用者回報任務訊息「供應商指定解禁：2:30pm (UTC)」應為台灣時間。新增 `QuotaRetryTime.utcReset`（排程與顯示共用），
+  `QuotaMessage.resetLine(reason, observed)` 對標明 UTC 的時間換算台北時間並附原文；Codex 未標時區仍照登（commit 1f5803e）。
+- 測試：QuotaMessageTest 改寫（含跨日、格式不合不換算）；本機 479 項（僅既有 4 項 Windows 失敗）；VM Linux 479 項 0 失敗，JAR `87c31cfd…`。
+- 部署：bestpartner PID 18693（備份 `orchestrator-backup.hftLcQ`）、starters PID 21854（備份 `orchestrator-backup.qtIngn`），
+  皆 0 ERROR、任務資料前後一致（#1010、#1011 AWAIT_HUMAN）。已貼出的舊訊息不會改寫。
+- 已修正文件：quota-continuation（Slack 呈現）、INSTALL（額度段落）。
+
 ## 2026-10-03 — Claude Code（系統訊息顯示成 zipe-ai-team）
 
 - 現象：#bestpartner 的系統訊息顯示為 zipe-ai-team。比對兩實例主 App token（只輸出相同／不同）皆不同；bp-ai-team 的 Bot Name 正確。
