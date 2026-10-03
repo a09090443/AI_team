@@ -90,6 +90,12 @@ class ConfiguredExecutorTest {
         assertThat(executor.changedFiles(task, flow)).contains("查不到").doesNotContain("SKILL.md");
     }
 
+    @Test void docOnlyReceiptExplainsThatSkippingBuildIsByDesign() {
+        flow.independentEvidence = new IndependentVerifier.Receipt("h", "b", "c", "s", "e", List.of(), List.of("README.md"));
+        assertThat(ConfiguredExecutor.receiptView(flow, flow.snapshot.definition().nodes().get("verification")))
+                .contains("純文件變更", "README.md", "不是查無建置證據");
+    }
+
     @Test void verificationStageSaysReceiptIsStillPending() {
         var verification = flow.snapshot.definition().nodes().get("verification");
         assertThat(ConfiguredExecutor.receiptView(flow, verification)).contains("尚未產生");

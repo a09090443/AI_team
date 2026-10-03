@@ -113,7 +113,7 @@ App-Level Token 留空**：發言與交接 tag 使用同一個角色身分，不
 | CodeExecutorTest | 「無窮迴圈於 timeoutMs 後強制中斷」在負載下會超過 30 秒，單獨執行則通過；所以單獨成一個操作，也**不在系統獨立驗證內**（上限 5 條指令） |
 | 漂移掃描 | `scripts/harness-drift-scan.sh` 是 bash 腳本，不能當 operation 或系統驗證指令；寫在建置指示，由實作 agent 以 `bash scripts/harness-drift-scan.sh` 自行執行。**不能列為驗收項目**：測試計畫只能引用操作或內建 `inspect-content`，#1010／#1011 曾因 PM 把它寫成驗收項目而無法驗收；改由審查檢查 |
 | 前端 | `npm --prefix bestpartner-ui ci`／`run build`（vue-tsc）／`run test`（vitest）；驗收用 `--offline` |
-| 系統獨立驗證 | 後端 A、B 兩組＋前端 ci／build／test，共 5 條；在全新 clone 與私有 HOME 執行，會重新下載相依（第一次較慢） |
+| 系統獨立驗證 | 後端 A、B 兩組＋前端 ci／build／test，共 5 條；在全新 clone 與私有 HOME 執行，會重新下載相依（第一次較慢）。`docOnlyPaths`＝`*.md`、`docs/**`、`.claude/**`、`.agents/**`：變更全部在其中時略過（2026-10-03 起；已查證程式只在註解提到 `.claude/rules/`；`docs-site/` 會被建置所以不列入） |
 | repo hooks | repo 的 `.claude/settings.json` 掛了 pwsh hooks；VM 沒有 pwsh，實測只產生非阻擋的錯誤訊息，工具呼叫照常完成 |
 
 ## 不改 Java 的增刪例子

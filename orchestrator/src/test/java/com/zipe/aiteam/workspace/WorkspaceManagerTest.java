@@ -96,6 +96,24 @@ class WorkspaceManagerTest {
     }
 
     @Test
+    void 變更清單把改名的兩端都列出來且中文檔名照原字() throws Exception {
+        // 純文件判定靠這份清單：程式檔改名搬進 docs/ 若只列新路徑，就會被誤判成純文件而略過建置測試。
+        Path ws = manager.provision(task("1201"));
+        Files.createDirectories(ws.resolve("src"));
+        Files.writeString(ws.resolve("src/App.java"), "class App {}\n");
+        run(ws, "git", "add", "."); run(ws, "git", "commit", "-qm", "加程式");
+        String base = manager.headSha("1201");
+        run(ws, "git", "config", "--local", "ai-team.base-sha", base);
+        Files.createDirectories(ws.resolve("docs"));
+        run(ws, "git", "mv", "src/App.java", "docs/App.java");
+        Files.writeString(ws.resolve("docs/操作手冊.md"), "內容\n");
+        run(ws, "git", "add", "."); run(ws, "git", "commit", "-qm", "搬家");
+
+        assertThat(manager.changedPathsSinceBase("1201"))
+                .contains("src/App.java", "docs/App.java", "docs/操作手冊.md");
+    }
+
+    @Test
     void 原任務HEAD已變動時拒絕承接() throws Exception {
         manager.provision(task("1103"));
         String stale = manager.headSha("1103");

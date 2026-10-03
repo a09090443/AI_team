@@ -64,7 +64,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 | `name`、`repositoryEnv`、`baseBranch` | 專案名稱、存放 repo 路徑的環境變數名、基準分支 |
 | `buildInstructions`、`testInstructions` | 注入角色的建置／測試規範；`testInstructions` 的每一步都要有對應 `operations` |
 | `operations` | 操作契約：`{ "<id>": { nodes, directory, argv, writes } }`。`argv` 不支援管線，多步驟請拆開 |
-| `verification` | 系統獨立驗證：管理者固定的 `commands` 與 `timeoutSeconds`，在 QA 前於全新 clone 執行 |
+| `verification` | 系統獨立驗證：管理者固定的 `commands` 與 `timeoutSeconds`，在 QA 前於全新 clone 執行；選填 `docOnlyPaths`（路徑 glob）：系統依 git diff 判定變更全部落在其中、且不含強制全跑檔時略過建置測試（見 engineering-workflow） |
 | `requiredTools` | 啟動時沙箱工具鏈自檢逐一檢查，缺任一項服務不啟動 |
 | `protectedPaths`、`cachePaths` | 任何角色不可寫的路徑；允許的快取目錄（只限 `.m2/repository`、`.npm`、`.gradle/caches`、`.cache/<名稱>`） |
 | `requirePlanApproval`、`autoApprovePlanWhenValid` | 測試計畫是否需真人核准；通過機械檢查時是否自動核准（預設 false） |

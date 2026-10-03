@@ -241,7 +241,7 @@ v2 配置式流程的整份執行快照，對應 `com.zipe.aiteam.flow.FlowRun`�
 | `planApprovals` | Map&lt;節點,`PlanApproval`&gt; | 真人核准收據：`plan`、`planRevision`、`baseline`、`configuration`、`user`、`at`。**只由已授權真人指令建立**，不接受 agent 報告裡的 `approved` 欄位 |
 | `approvalHead` | String | 核准當下的 HEAD |
 | `executionContexts` | Map&lt;節點,`OperationPreflight.Evidence`&gt; | 沙箱預檢證據：`workspace`、`head`、`configuration`、`checkedAt`、`log`、`sha256` |
-| `independentEvidence` | `IndependentVerifier.Receipt` | 獨立驗證收據：`head`、`baseline`、`configuration`、`startedAt`、`completedAt`、`commands[]`（每項含 `argv`、`exitCode`、`log`、`sha256`） |
+| `independentEvidence` | `IndependentVerifier.Receipt` | 獨立驗證收據：`head`、`baseline`、`configuration`、`startedAt`、`completedAt`、`commands[]`（每項含 `argv`、`exitCode`、`log`、`sha256`）；`docOnlyChanges`（2026-10-03 新增）非 null 表示純文件變更、依配置略過建置測試，此時 `commands` 為空並列出判定依據的變更檔案。**回滾到舊 JAR 會讀不了含此欄位的任務** |
 | `recoveryGrants` | Map&lt;節點,配置版本&gt; | 一次性的 verification 恢復授權 |
 | `recoveryRevisions` | Set&lt;配置版本&gt; | 已用掉恢復授權的配置版本，同一版本不給第二次 |
 | `remediationRecoveryGrants` | Map&lt;節點,commit&gt; | 人工修復後尚待使用的一次性 verification 授權；同時以 `recoveryGrants` 綁定配置版本 |

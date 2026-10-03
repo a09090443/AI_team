@@ -31,7 +31,13 @@ public record TeamDefinition(int version, String id, Project project, Map<String
     /** 管理者宣告各節點的必要操作；不接受模型新增權限。writes 相對於 repository 根目錄。 */
     public record Operation(List<String> nodes, String directory, List<String> argv, List<String> writes) {}
     /** 管理者固定的 argv；不能由模型的 command 欄位提供。 */
-    public record Verification(List<List<String>> commands, int timeoutSeconds) {}
+    /**
+     * @param docOnlyPaths 選填。系統查得的變更檔案全部符合這些路徑（且不在 {@link DocOnlyChanges} 的強制全跑名單）時，
+     *                     略過建置測試指令；未設定＝一律全跑。
+     */
+    public record Verification(List<List<String>> commands, int timeoutSeconds, List<String> docOnlyPaths) {
+        public Verification(List<List<String>> commands, int timeoutSeconds) { this(commands, timeoutSeconds, null); }
+    }
     public record Role(String name, String runtime, String model, String prompt,
                        String botTokenEnv, String appTokenEnv, List<String> tools, String reasoningEffort) {
         public Role(String name, String runtime, String model, String prompt,

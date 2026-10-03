@@ -177,6 +177,11 @@ public class TeamCatalog {
                         && !Set.of("sh", "bash", "zsh", "cmd", "powershell", "pwsh").contains(command.getFirst()),
                         "驗證執行檔須來自 requiredTools，不能使用 shell");
             }
+            if (verification.docOnlyPaths() != null) {
+                require(!verification.docOnlyPaths().isEmpty() && verification.docOnlyPaths().size() <= 20,
+                        "verification.docOnlyPaths 若有設定須為 1～20 條");
+                verification.docOnlyPaths().forEach(DocOnlyChanges::validate);
+            }
         }
         Set<String> reached = new HashSet<>(); visit(d, d.entry(), reached);
         require(reached.size() == d.nodes().size(), "存在不可到達節點，請修正流程");

@@ -428,3 +428,12 @@ node-web、bestpartner 完全驗不了文件修改，spring-starters 只能驗 `
 只在單一配置加 `git diff` 無法套用到其他專案。放寬 shell 讓腳本可被驗收屬另一個安全決策，這次不做。
 
 取捨：說明放在程式產生的上下文，部署後進行中的任務也適用（不改配置版本）；能否濫用在行為驗證上只靠提示詞與審查約束。
+
+## 2026-10-03 — 純文件變更略過系統獨立驗證的建置測試（Claude Code）
+
+決策：`project.verification.docOnlyPaths`（選填、逐專案啟用）有設定時，系統以 `git diff --name-only --no-renames` 自行列出變更，
+全部符合且不含程式強制的全跑名單（`src` 路徑段、主要建置檔、`gradle/`、`.mvn/`、`.github/`）才略過建置測試；收據改列變更檔案。
+QA 逐項驗收、程式審查、PR 真人核准照常。
+
+理由：#1012 只改一行 SKILL.md 卻要跑完 Gradle 與前端全部測試。只看副檔名或採信 agent 自陳都不安全，所以以系統查得的變更判定，
+並用配置無法覆蓋的強制名單防止 docOnlyPaths 寫得太寬；改名以 `--no-renames` 列出刪除端。目前只在 bestpartner 啟用。

@@ -75,6 +75,20 @@ Node 範例依序 `npm ci`、`npm test`、`npm run build`；需依實際 repo �
   檔名含空白時，交給 systemd 的路徑整段加雙引號（`ExecutionSandbox.pathProperty`；VM 實測確實唯讀，`\x20` 跳脫實測仍可寫，不採用）；
   含雙引號、反斜線或控制字元的路徑直接拒絕。2026-10-03 前未加引號，bestpartner 的「General rule.pdf」讓獨立驗證以
   `Invalid ReadOnlyPaths` 在啟動前失敗（#1012）。
+
+**純文件變更略過建置測試（2026-10-03 起，逐專案啟用）**：`project.verification.docOnlyPaths` 有設定時，系統以
+`git diff --name-only --no-renames <工作區基準>..HEAD`（`WorkspaceManager.changedPathsSinceBase`）自行列出變更，**不採信 agent 自陳**。
+以下全部成立才略過（`DocOnlyChanges.qualifies`），否則照常全跑：
+- 變更清單非空，且每個檔都符合 `docOnlyPaths`；
+- 沒有任何檔落在程式強制的全跑名單（配置無法覆蓋）：路徑任一段是 `src`；`pom.xml`、`build.gradle(.kts)`、`settings.gradle(.kts)`、
+  `gradle.properties`、`gradlew(.bat)`、`mvnw(.cmd)`、`package.json`、`package-lock.json`、`yarn.lock`、`pnpm-lock.yaml`、`Dockerfile*`；
+  或位於 `gradle/`、`.mvn/`、`.github/` 之下。
+- `--no-renames` 讓「程式檔改名搬進 docs/」同時列出刪除端，不會被當成純文件。
+
+略過時不 clone、不跑指令，收據 `commands=[]`、`docOnlyChanges` 列出檔案，仍綁定 HEAD、需求與配置版本；`blockingReason` 會重驗清單仍符合配置。
+Slack 會說明「只改了文件，依專案設定略過建置與測試」，QA／審查收到的收據說明這是配置設計而非查無證據，PR 說明列出檔案。
+**QA 逐項驗收（`inspect-content`）、程式審查與 PR 真人核准照常。** `docOnlyPaths` 不可為 `*`、`**`、`**/*`、絕對路徑或含 `..`、`.git`。
+目前只有 bestpartner 啟用；設定屬新快照，啟用前建立的任務仍全跑。
 - 指令使用空白環境加少量明確變數、獨立 HOME，不把 Slack/GitHub token 或 CLI session 透過環境傳入。
 - 不沿用共享依賴快取與個人 Maven/npm 設定；第一次建置可能很慢。私有依賴可能受阻，不可用複製整包憑證來解決。
 - 記錄系統觀察的結束碼、argv、起訖時間、commit、配置與需求版本；log 存在可寫目錄外，單指令輸出超過 8 MB 即停止。

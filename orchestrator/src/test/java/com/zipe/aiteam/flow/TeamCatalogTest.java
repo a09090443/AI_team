@@ -120,6 +120,19 @@ class TeamCatalogTest {
         var config = config(); ((ObjectNode)config.path("nodes").path("intake")).putArray("requires").add("plan");
         assertThatThrownBy(() -> validate(config)).hasMessageContaining("循環");
     }
+    @Test void docOnlyPathsMustBeNarrowAndRelative() throws Exception {
+        for (String bad : new String[]{"**", "**/*", "*", "../x/**", "/abs/**", ".git/**", "a\\b"}) {
+            var config = config();
+            ((ObjectNode)config.path("project").path("verification")).putArray("docOnlyPaths").add(bad);
+            assertThatThrownBy(() -> validate(config)).as(bad).hasMessageContaining("docOnlyPaths");
+        }
+        var config = config();
+        ((ObjectNode)config.path("project").path("verification")).putArray("docOnlyPaths").add(".agents/**").add("*.md").add("docs/**");
+        validate(config);
+        var empty = config();
+        ((ObjectNode)empty.path("project").path("verification")).putArray("docOnlyPaths");
+        assertThatThrownBy(() -> validate(empty)).hasMessageContaining("docOnlyPaths");
+    }
     @Test void implementationCannotBypassTestPlan() throws Exception {
         var config = config(); ((ObjectNode)config.path("nodes").path("implementation")).putArray("requires").add("intake");
         assertThatThrownBy(() -> validate(config)).hasMessageContaining("實作必須相依於測試計畫");

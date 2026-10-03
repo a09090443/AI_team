@@ -16,8 +16,18 @@ import java.util.concurrent.TimeUnit;
 @Component
 public class IndependentVerifier {
     public record CommandResult(List<String> argv, int exitCode, String log, String sha256) {}
+    /**
+     * @param docOnlyChanges 非 null 表示系統依 git diff 判定為純文件變更、依配置略過建置測試；此時 commands 為空，
+     *                       這裡列出判定所依據的變更檔案。null 為一般收據。
+     */
     public record Receipt(String head, String baseline, String configuration, String startedAt, String completedAt,
-                          List<CommandResult> commands) {}
+                          List<CommandResult> commands, List<String> docOnlyChanges) {
+        public Receipt(String head, String baseline, String configuration, String startedAt, String completedAt,
+                       List<CommandResult> commands) {
+            this(head, baseline, configuration, startedAt, completedAt, commands, null);
+        }
+        public boolean docOnly() { return docOnlyChanges != null; }
+    }
 
     /**
      * 管理者配置的檢查指令執行完畢但結束碼不為 0：產品程式或測試沒有通過，屬於實作的責任，
@@ -76,6 +86,17 @@ public class IndependentVerifier {
         if (!head.matches("[0-9a-f]{40,64}") || !workspaces.clean(task.id())) throw new IllegalStateException("獨立驗證需要已提交且乾淨的最終版本");
         var spec = flow.snapshot.definition().project().verification();
         if (spec == null) throw new IllegalStateException("缺少管理者配置的驗證指令");
+        // 純文件變更：由系統查得的變更檔案判定，不採信 agent 自陳；判定不了（查不到基準等）就照常全跑。
+        if (spec.docOnlyPaths() != null) {
+            List<String> changed;
+            try { changed = workspaces.changedPathsSinceBase(task.id()); }
+            catch (Exception e) { changed = List.of(); }
+            if (DocOnlyChanges.qualifies(spec.docOnlyPaths(), changed)) {
+                String now = Instant.now().toString();
+                if (!head.equals(workspaces.headSha(task.id())) || !workspaces.clean(task.id())) throw new IllegalStateException("驗證期間來源工作區變更，收據作廢");
+                return new Receipt(head, flow.baselineRevision, flow.snapshot.revision(), now, now, List.of(), List.copyOf(changed));
+            }
+        }
         Path root = props.homePath().resolve("verification-runs").resolve(task.id()).toAbsolutePath().normalize();
         Files.createDirectories(root);
         Path run = Files.createTempDirectory(root, "run-");
@@ -113,6 +134,10 @@ public class IndependentVerifier {
         if (receipt == null || spec == null) return "缺少系統獨立驗證收據";
         if (!Objects.equals(head, receipt.head()) || !Objects.equals(flow.baselineRevision, receipt.baseline())
                 || !Objects.equals(flow.snapshot.revision(), receipt.configuration())) return "獨立驗證的 commit／需求／配置版本已失效";
+        if (receipt.docOnly())
+            return receipt.commands() != null && receipt.commands().isEmpty()
+                    && DocOnlyChanges.qualifies(spec.docOnlyPaths(), receipt.docOnlyChanges())
+                    ? null : "純文件收據不符配置或含非文件變更";
         if (receipt.commands() == null || receipt.commands().size() != spec.commands().size()) return "獨立驗證缺少必要指令結果";
         try {
             Path root = props.homePath().resolve("verification-runs").toRealPath();

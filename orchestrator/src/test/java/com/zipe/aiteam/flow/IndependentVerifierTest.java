@@ -94,6 +94,66 @@ class IndependentVerifierTest {
         assertThat(calls).isEmpty();
     }
 
+    // ---- 純文件變更：依系統查得的變更略過建置測試（#1012） ----
+
+    void enableDocOnly(String... patterns) throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var json = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.valueToTree(flow.snapshot.definition());
+        var array = ((com.fasterxml.jackson.databind.node.ObjectNode) json.path("project").path("verification")).putArray("docOnlyPaths");
+        for (String p : patterns) array.add(p);
+        flow.snapshot = new TeamDefinition.Snapshot(flow.snapshot.revision(), mapper.treeToValue(json, TeamDefinition.class),
+                flow.snapshot.repository(), flow.snapshot.assets());
+    }
+
+    @Test void documentationOnlyChangeSkipsBuildCommandsWithAVerifiableReceipt() throws Exception {
+        enableDocOnly("*.md", "docs/**", ".agents/**");
+        when(workspace.changedPathsSinceBase("42")).thenReturn(List.of(".agents/skills/test-confirmation/SKILL.md", "docs/rag/General rule.pdf"));
+        verifyNow();
+        assertThat(calls).isEmpty();
+        assertThat(flow.independentEvidence.docOnly()).isTrue();
+        assertThat(flow.independentEvidence.commands()).isEmpty();
+        assertThat(flow.independentEvidence.docOnlyChanges()).contains(".agents/skills/test-confirmation/SKILL.md");
+        assertThat(verifier.blockingReason(flow, head)).isNull();
+        assertThat(PrReport.independent(flow.independentEvidence)).contains("純文件變更");
+    }
+
+    @Test void anyNonDocumentOrBuildFileRunsEverything() throws Exception {
+        enableDocOnly("*.md", "docs/**", "**/*.md");
+        for (var changed : List.of(
+                List.of("README.md", "src/main/java/App.java"),          // 混有程式檔
+                List.of("docs/guide.md", "pom.xml"),                       // 建置檔
+                List.of("service/src/main/resources/prompt.md"),           // 符合 **/*.md 但在 src 底下：強制全跑
+                List.of("docs/App.java", "src/main/java/App.java"),        // 程式檔改名搬進 docs（--no-renames 列出兩端）
+                List.of(".github/workflows/ci.md"),                        // CI 目錄
+                List.<String>of())) {                                      // 沒有變更
+            calls.clear();
+            when(workspace.changedPathsSinceBase("42")).thenReturn(changed);
+            verifyNow();
+            assertThat(flow.independentEvidence.docOnly()).as(changed.toString()).isFalse();
+            assertThat(calls).as(changed.toString()).hasSize(5);
+        }
+    }
+
+    @Test void withoutDocOnlyPathsEveryChangeRunsEverything() throws Exception {
+        when(workspace.changedPathsSinceBase("42")).thenReturn(List.of("README.md"));
+        verifyNow();
+        assertThat(flow.independentEvidence.docOnly()).isFalse();
+        assertThat(calls).hasSize(5);
+    }
+
+    @Test void forgedDocumentReceiptIsRejected() throws Exception {
+        enableDocOnly("*.md", "docs/**");
+        when(workspace.changedPathsSinceBase("42")).thenReturn(List.of("README.md"));
+        verifyNow();
+        var r = flow.independentEvidence;
+        flow.independentEvidence = new IndependentVerifier.Receipt(r.head(), r.baseline(), r.configuration(), r.startedAt(),
+                r.completedAt(), List.of(), List.of("README.md", "src/main/java/App.java"));
+        assertThat(verifier.blockingReason(flow, head)).contains("純文件收據");
+        flow.independentEvidence = new IndependentVerifier.Receipt(r.head(), r.baseline(), r.configuration(), r.startedAt(),
+                r.completedAt(), List.of(), List.of());
+        assertThat(verifier.blockingReason(flow, head)).contains("純文件收據");
+    }
+
     // ---- 程式失敗與環境失敗要分開：前者交回實作，後者才需要人 ----
 
     @Test void summaryPicksTheFailingTestsOutOfALongBuildLog() {

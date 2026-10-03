@@ -247,6 +247,10 @@ public class ConfiguredExecutor {
 
     /** REPORT 等階段本來就不產生系統收據；顯示 null 會被誤讀成「查無建置證據」。 */
     static String receiptView(FlowRun flow, Node node) {
+        if (flow.independentEvidence != null && flow.independentEvidence.docOnly())
+            return "純文件變更：系統依 git diff 判定這次只改了 " + String.join("、", flow.independentEvidence.docOnlyChanges())
+                    + "，依專案配置（verification.docOnlyPaths）未執行建置與測試指令。這是配置的設計，不是查無建置證據；"
+                    + "請以讀檔（inspect-content）逐項驗收內容。收據：" + flow.independentEvidence;
         if (flow.independentEvidence != null) return flow.independentEvidence.toString();
         if (node.gate() == Gate.VERIFICATION || node.gate() == Gate.REVIEW)
             return "（尚未產生；系統會在本階段執行後補上）";

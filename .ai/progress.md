@@ -2,6 +2,15 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-03 — Claude Code（純文件變更略過系統獨立驗證的建置測試）
+
+- 使用者核准計畫後實作：`Verification.docOnlyPaths`、`DocOnlyChanges`（判定與強制全跑名單、路徑驗證）、
+  `IndependentVerifier`（略過時收據 `commands=[]`＋`docOnlyChanges`，`blockingReason` 重驗）、`changedPathsSinceBase` 加 `--no-renames`
+  與 `core.quotePath=false`、Slack 說明、`receiptView` 與 PR 說明。bestpartner.json 啟用 `*.md`、`docs/**`、`.claude/**`、`.agents/**`。
+- 測試：IndependentVerifierTest 4、TeamCatalogTest 1、ConfiguredExecutorTest 1、WorkspaceManagerTest 1（改名兩端與中文檔名）；
+  本機 503 項（僅既有 4 項 Windows 失敗）；check-source PASS；docs build 通過。
+- 已修正文件：engineering-workflow、configurable-team、configuration、data-model（回滾風險）、project-tree；decisions 追加。
+
 ## 2026-10-03 — Claude Code（沙箱路徑含空白：獨立驗證 Invalid ReadOnlyPaths）
 
 - #1012 測試計畫以 inspect-content 通過並自動核准、實作完成，但獨立驗證 check-0.log 只有

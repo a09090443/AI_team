@@ -470,6 +470,10 @@ public class FlowEngine {
                         }
                         store.saveFlow(task.id(), flow);
                         audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "獨立驗證收據：" + flow.independentEvidence);
+                        if (flow.independentEvidence.docOnly())
+                            slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id()
+                                    + " 只改了文件（系統依 git diff 判定 " + flow.independentEvidence.docOnlyChanges().size()
+                                    + " 個檔案），依專案設定略過建置與測試；QA 驗收、程式審查與 PR 核准照常。");
                         // 驗證指令全數正常結束才會走到這裡，收據有效可保留；但不再啟動驗收角色。
                         if (stopForInterrupt(task, flow)) return;
                     }

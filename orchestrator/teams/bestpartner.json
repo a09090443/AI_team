@@ -473,7 +473,13 @@
           "test"
         ]
       ],
-      "timeoutSeconds": 1800
+      "timeoutSeconds": 1800,
+      "docOnlyPaths": [
+        "*.md",
+        "docs/**",
+        ".claude/**",
+        ".agents/**"
+      ]
     }
   },
   "roles": {

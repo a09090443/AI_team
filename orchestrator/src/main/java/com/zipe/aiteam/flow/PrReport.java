@@ -104,6 +104,13 @@ final class PrReport {
         out.append("- 配置版本：").append(code(receipt.configuration())).append('\n');
         out.append("- 開始：").append(time(receipt.startedAt())).append('\n');
         out.append("- 完成：").append(time(receipt.completedAt())).append('\n');
+        if (receipt.docOnly()) {
+            out.append("- **純文件變更，依配置略過建置與測試**（系統依 git diff 判定，").append(receipt.docOnlyChanges().size())
+               .append(" 個檔案）：\n");
+            receipt.docOnlyChanges().stream().limit(30).forEach(path -> out.append("  - ").append(code(path)).append('\n'));
+            if (receipt.docOnlyChanges().size() > 30) out.append("  - …等共 ").append(receipt.docOnlyChanges().size()).append(" 個\n");
+            return out.toString();
+        }
         List<IndependentVerifier.CommandResult> commands = receipt.commands() == null ? List.of() : receipt.commands();
         out.append("- 指令（").append(commands.size()).append(" 項）：\n");
         for (var command : commands) {
