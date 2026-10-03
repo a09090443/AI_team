@@ -23,6 +23,7 @@
   拿不到 CPU 的 stall 警告，疑主機端排程／休眠，未證實）。使用者重開 VM 後兩服務皆 STOPPED、無未結束任務、提示詞仍舊版；
   補完部署（舊檔備份 `intake.md.bak-before-6d46677`）：bestpartner PID 3042（配置 ea77edd3…）、starters PID 4855（配置 cfe287b5…），
   皆 0 ERROR、自檢與 5 角色連線正常。VM 無 swap（7.4 GB RAM）。
+  之後部署 784ba9b（系統身分不覆寫名稱，JAR `7c0db7d4…`）：starters PID 10315、bestpartner PID 13678。
   回滾注意：有任務寫入 `spinoffs`／`spinoffOf` 後，舊 JAR 讀不了這些任務（見 data-model）。
   下一步：Slack 實測「開成新需求」按鈕與同串訊息新說明；「中斷這一輪」真實操作；兩個實例的完整管線驗收。
 

@@ -8,7 +8,7 @@
   根因：`Identity.SYSTEM` 名稱寫死 `zipe-ai-team`，且系統身分無專屬 token 旗標，每次發言都被 chat:write.customize 覆寫。
 - 修正（commit 784ba9b）：`SlackNotifier.overridesName` 系統身分不覆寫；SYSTEM 後備名改 `AI Team`；空白提及範例改用實際 mention。
   `SystemIdentityTest` 3 項；本機 478 項（僅既有 4 項 Windows 失敗）；VM Linux 478 項 0 失敗，JAR `7c0db7d4…`。
-- 部署：starters PID 10315（備份 `orchestrator-backup.W2jK02`）0 ERROR。**bestpartner 未部署**：#1011 正在執行（unit 在跑，腳本拒絕）。
+- 部署：starters PID 10315（備份 `orchestrator-backup.W2jK02`）；bestpartner 待 #1011 停在 AWAIT_HUMAN 後部署，PID 13678（備份 `orchestrator-backup.17NBOM`）。皆 0 ERROR、任務資料前後一致（#1010、#1011 AWAIT_HUMAN 保留）。
 - 已修正文件：interaction-model（主 App 依實例、系統身分不覆寫名稱）。
 - 真實 Slack 端對端：#1009（新提示詞詢問）→ 按「開成新需求 1」→ #1010 建立（新討論串、稽核 BUTTON／RECEIVED 正確）→
   使用者在 #1010 按「承接成新任務」→ #1011。開成新需求按鈕已實測可用。
