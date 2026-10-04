@@ -2,6 +2,18 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-04 — Claude Code（LIMITED 節點缺少的明確可寫目錄改為預先建立）
+
+- 起因：bestpartner #1015（承接 #1014）受保護路徑改派**真實成功**（builder_codex 實作，系統代為提交 490e009），
+  但驗收在派工前檢查停下：`寫入超出沙箱政策：…/task-1015/bestpartner-service/build`。實作只改文件、沒跑建置，`build/` 不存在；
+  `PathRules.writableRoots` 原本只對 `localTestNetwork` 節點建立缺少的明確目錄，其他節點不納入可寫政策，`OperationPreflight` 因此拒絕。
+- 修正（commit 816f006，使用者選方案 1）：明確目錄一律預先建立；萬用字元不猜測、全無匹配仍 fail closed；symlink 祖先仍拒絕。
+- 測試：ConfiguredExecutorTest 改寫 1 項＋新增 1 項；本機 514 項僅既有 4 項 Windows 失敗；VM 隔離建置 `writable-dir-build.aies7p`
+  check-source PASS、514 項 0 失敗（11 略過），JAR `bb5e8503b8b0090a1bb54ff57e694318ec184413507193f0721598b468ae4eea`；docs build 通過。
+- 已核對的文件：configuration、configurable-team、local-test-capabilities、multi-runtime、system-map（無需改）。
+  發現的落差：local-test-capabilities 寫「其他節點缺目錄即失敗」是舊設計；已修正 configuration、configurable-team、local-test-capabilities；decisions 追加。
+- **未部署**：deploy-jar-safe 被 Claude Code 權限分類器擋下（Production Deploy），待使用者本人執行或授權。
+
 ## 2026-10-03 — Claude Code（純文件變更略過系統獨立驗證的建置測試）
 
 - 使用者核准計畫後實作：`Verification.docOnlyPaths`、`DocOnlyChanges`（判定與強制全跑名單、路徑驗證）、
