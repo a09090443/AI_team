@@ -714,7 +714,7 @@
         "bestpartner-ui/node_modules/**",
         "bestpartner-ui/dist/**"
       ],
-      "localTestNetwork": false,
+      "localTestNetwork": true,
       "plan": "plan",
       "next": "review",
       "blocked": "triage",
