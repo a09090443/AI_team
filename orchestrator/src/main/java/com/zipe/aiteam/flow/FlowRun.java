@@ -44,8 +44,17 @@ public class FlowRun {
     public Map<Integer,String> spinoffs = new LinkedHashMap<>();
     /** 本任務由哪個任務的純詢問發現開立；不沿用該任務的任何核准或工作區。 */
     public String spinoffOf;
-    /** 受保護路徑改派：節點 → 實際執行的角色。決定後同一任務重跑該節點沿用，不再重新判定。 */
+    /**
+     * 受保護路徑改派（2026-10-04 前的舊行為）：節點 → 實際執行的角色，整個節點交給改派角色。
+     * 只保留給已經這樣決定的舊任務沿用；新決定改走 {@link #delegatedParts} 的分段改派。
+     */
     public Map<String,String> roleOverrides = new LinkedHashMap<>();
+    /**
+     * 受保護路徑分段改派：節點 → 本輪改派段的結果。改派角色只改允許的受保護路徑，系統核對後代為提交，
+     * 其餘工作接著由原角色完成。startHead 等於本輪起始 commit 時代表同一輪已完成，續跑時略過改派段。
+     */
+    public Map<String,DelegatedPart> delegatedParts = new LinkedHashMap<>();
+    public record DelegatedPart(String role, String startHead, String head, List<String> files, String summary) {}
     public String acceptanceOwner;
     public String baselineRevision;
     public String changeTarget;

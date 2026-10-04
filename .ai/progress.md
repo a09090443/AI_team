@@ -2,6 +2,26 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-04 — Claude Code（分段改派＋bestpartner QA 開 localTestNetwork）
+
+- 使用者核准計畫後實作：`FlowEngine.runDelegatedPart` 先由改派角色只改 `protectedPathFallback.paths` 內的檔案
+  （`ProtectedPathFallback.partViolations` 要求全部在範圍內，系統代為提交，結果存 `FlowRun.delegatedParts`），再由原角色完成其餘工作
+  （`primaryNotice`）；改派段未完成就以它的報告當節點結果。續跑同一輪略過已完成的改派段，checkpoint 只交給 runtime 相符的一段；
+  節點新的一輪開始時清掉紀錄。已在 `roleOverrides` 的舊任務（#1020）維持整節點改派。
+- `teams/bestpartner.json` 的 `verification` 開 `localTestNetwork`（讓 Codex QA 能跑 `qa-backend-*`，依 VM 對照實測 C）。
+- 測試：FlowEngineTest 改寫 1 項並新增 3 項（分段順序、越界停止、額度續跑略過改派段、舊任務沿用）；ConfiguredExecutorTest 新增 1 項；
+  本機 525 項只有既有的 4 項 Windows 失敗；TeamCatalogTest 通過（新設定合法）。
+- 已修正文件：multi-runtime（改派段落改寫）、configurable-team（三列）、data-model（`delegatedParts`、`roleOverrides`）、configuration、operations。
+  已核對：engineering-workflow、system-map（不需改）。decisions 追加。未 commit；等佇列清空後與 JAR 一起部署。
+
+## 2026-10-04 — Claude Code（查證 #1020 改派後文件寫不進去）
+
+- #1020（group 拼法）要改 `build.gradle.kts`、`.claude/skills|rules/**`、`.agents/skills/**`；整個實作節點改派給 `builder_codex`。
+  只有 `build.gradle.kts` 提交成功（84f134d）；三份文件的 patch 被拒；後端測試因 Gradle 起不來沒跑；分流後停在 AWAIT_HUMAN。
+- VM 實測（codex-cli 0.156.1，`codex sandbox -P :workspace`，暫存目錄已刪）：`.claude/rules`、`.claude/skills`、`src` 可寫，
+  `.agents/skills` 唯讀（Read-only file system）。原因是 Codex 把 `.agents` 掛成唯讀。
+- 已修正文件：configurable-team（新增「改派後 `.agents/**` 寫不進去」已知問題列）。docs build 通過。未改程式、未 commit。
+
 ## 2026-10-04 — Claude Code（查證 Codex 沙箱內 Gradle 起不來）
 
 - 起因：#1018（純文件一行）改派 `builder_codex` 實作時自行跑 `gradle compileKotlin` 失敗，回報 BLOCKED，分流後停在 AWAIT_HUMAN。

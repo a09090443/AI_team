@@ -121,6 +121,17 @@ class ConfiguredExecutorTest {
         assertThat(DocOnlyChanges.implementationNotice(List.of())).isEmpty();
     }
 
+    @Test void delegatedPartAndPrimaryImplementerGetMatchingBoundaries() {
+        var fb = new TeamDefinition.Fallback("builder_codex", List.of(".claude/rules/**", ".claude/skills/**"));
+        assertThat(ProtectedPathFallback.partNotice(fb, "Backend Agent"))
+                .contains(".claude/rules/**", "其餘變更（包含 .agents/", "不要執行建置或測試操作", "不要 commit");
+        var part = new FlowRun.DelegatedPart("builder_codex", "h0", "h1", List.of(".claude/rules/a.md"), "改了 a.md 第 3 行");
+        assertThat(ProtectedPathFallback.primaryNotice(part, "Backend Agent（codex）"))
+                .contains("commit h1", ".claude/rules/a.md", "改了 a.md 第 3 行", "不要修改或還原這些檔案", "建置、測試");
+        assertThat(ProtectedPathFallback.partViolations(List.of(".claude/rules/a.md", ".agents/skills/x/SKILL.md", ".claude/settings.json"), fb))
+                .containsExactly(".agents/skills/x/SKILL.md", ".claude/settings.json");
+    }
+
     @Test void verificationStageSaysReceiptIsStillPending() {
         var verification = flow.snapshot.definition().nodes().get("verification");
         assertThat(ConfiguredExecutor.receiptView(flow, verification)).contains("尚未產生");

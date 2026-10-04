@@ -428,6 +428,8 @@ public class FlowEngine {
                         if (!workspaces.exists(task.id())) throw new IllegalStateException("原工作區遺失，拒絕重新 clone");
                         flow.beforeHead = workspaces.headSha(task.id());
                         flow.attemptHeads.put(flow.node, flow.beforeHead);
+                        // 新的一輪：上一輪的改派段結果不沿用（續跑同一輪時不會走到這裡）。
+                        flow.delegatedParts.remove(flow.node);
                     } else flow.beforeHead = null;
                     flow.activeNode = flow.node;
                     if (node.gate() == Gate.REQUIREMENTS && flow.baselineRevision != null) {
@@ -483,12 +485,18 @@ public class FlowEngine {
                 AgentRuntime.RuntimeResult result;
                 long started = System.nanoTime();
                 Node runner = actingNode(task, flow, node);
-                try (var progress = new StageProgress(slack, store, task,
-                        flow.snapshot.definition().roles().get(runner.role()).executionLabel() + "／" + flow.node, props.progressIntervalSeconds(), true)) {
-                    result = executor.execute(task, flow, runner);
+                // 分段改派：受保護檔案先交給改派角色；改派段沒完成時以它的結果當本節點結果，交一般判定處理。
+                result = runner == node ? runDelegatedPart(task, flow, node) : null;
+                if (aborted(task)) return;
+                if (result == null && interruptRequests.containsKey(task.id()) && stopForInterrupt(task, flow)) return;
+                if (result == null) {
+                    try (var progress = new StageProgress(slack, store, task,
+                            flow.snapshot.definition().roles().get(runner.role()).executionLabel() + "／" + flow.node, props.progressIntervalSeconds(), true)) {
+                        result = executor.execute(task, flow, runner);
+                    }
+                    catch (Exception e) { auditScope(task, flow, node); auditFallback(task, flow, node, runner); throw e; }
+                    auditFallback(task, flow, node, runner);
                 }
-                catch (Exception e) { auditScope(task, flow, node); auditFallback(task, flow, node, runner); throw e; }
-                auditFallback(task, flow, node, runner);
                 if (aborted(task)) return;
                 // 被要求中斷時，runtime 可能以結束碼 0 交回半成品（#1019：Codex 被停下時交出開頭一句「我會先核對…」，
                 // 被當成正式測試計畫而顯示「沒有情境」）。無法分辨是剛好做完還是被截斷，一律不採用；
@@ -648,26 +656,87 @@ public class FlowEngine {
         }
     }
     /**
-     * 受保護路徑改派（{@link ProtectedPathFallback}）：需求要改原角色 runtime 必定寫不了、而且管理者允許改派的路徑時，
-     * 這個節點改由 fallback 角色執行。決定記在 flow.roleOverrides，同一任務重跑沿用。
+     * 整節點改派的舊任務（2026-10-04 前已記在 flow.roleOverrides）沿用原決定，中途不換規則。
+     * 新的改派判定走 {@link #runDelegatedPart} 的分段改派。
      */
     private Node actingNode(Task task, FlowRun flow, Node node) {
-        var fb = node.protectedPathFallback();
-        if (fb == null || flow.dialogue) return node;
+        if (node.protectedPathFallback() == null || flow.dialogue) return node;
         String chosen = flow.roleOverrides.get(flow.node);
-        if (chosen != null) return node.withRole(chosen);
-        AgentRuntime primary = executor.runtimeFor(flow.snapshot.definition().roles().get(node.role()).runtime());
+        return chosen == null ? node : node.withRole(chosen);
+    }
+    /**
+     * 分段改派（{@link ProtectedPathFallback}）：需求要改原角色 runtime 必定寫不了、而且管理者允許改派的路徑時，
+     * 先由 fallback 角色只改那些檔案，系統核對全部落在允許範圍後代為提交，其餘工作再由原角色完成。
+     * #1020 整個節點交給 Codex：它寫不了 `.agents/`、跑不了 Gradle，只有 build.gradle.kts 改成。
+     *
+     * @return null 表示改派段不需要或已完成，接著由原角色執行；非 null 表示改派段沒完成，以它的結果作為本節點結果。
+     */
+    private AgentRuntime.RuntimeResult runDelegatedPart(Task task, FlowRun flow, Node node) throws Exception {
+        var fb = node.protectedPathFallback();
+        if (fb == null || flow.dialogue) return null;
+        var done = flow.delegatedParts.get(flow.node);
+        if (done != null && Objects.equals(done.startHead(), flow.beforeHead)) return null;
+        Role primaryRole = flow.snapshot.definition().roles().get(node.role());
+        AgentRuntime primary = executor.runtimeFor(primaryRole.runtime());
         var needed = ProtectedPathFallback.needed(flow, node, task.requestText(), primary);
-        if (needed.isEmpty()) return node;
-        flow.roleOverrides.put(flow.node, fb.role());
-        store.saveFlow(task.id(), flow);
+        if (needed.isEmpty()) return null;
         Role alternate = flow.snapshot.definition().roles().get(fb.role());
-        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "受保護路徑改派：節點 " + flow.node + " 需修改 "
-                + needed.get() + "，原角色 " + node.role() + " 的 runtime 無法寫入，改由 " + fb.role() + " 實作；允許範圍 " + fb.paths());
+        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "受保護路徑分段改派：節點 " + flow.node + " 需修改 "
+                + needed.get() + "，原角色 " + node.role() + " 的 runtime 無法寫入，先由 " + fb.role() + " 只修改允許範圍 " + fb.paths()
+                + " 內的檔案，其餘由 " + node.role() + " 完成");
         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id() + " 要修改 "
-                + String.join("、", needed.get()) + "，原實作角色無法寫入這些檔案，依專案設定改由 " + alternate.name() + "（"
-                + alternate.runtime() + "）實作；完成後系統會逐檔核對允許範圍並代為提交。");
-        return node.withRole(fb.role());
+                + String.join("、", needed.get()) + "，原實作角色無法寫入這些檔案，依專案設定先由 " + alternate.name() + "（"
+                + alternate.runtime() + "）只修改這些檔案，系統逐檔核對後代為提交；其餘修改與建置測試接著由 " + primaryRole.name() + " 完成。");
+        Node delegate = node.withRole(fb.role());
+        // checkpoint 以節點為單位；兩段的 runtime 不同，只把相符的那一段交給對應角色續跑。
+        Checkpoint saved = task.continuation();
+        task.continuation(sameRuntime(saved, alternate) ? saved : null);
+        AgentRuntime.RuntimeResult result;
+        try (var progress = new StageProgress(slack, store, task, alternate.executionLabel() + "／" + flow.node, props.progressIntervalSeconds(), true)) {
+            result = executor.execute(task, flow, delegate);
+        } catch (Exception e) {
+            auditDelegatedPart(task, flow, node, delegate);
+            throw e;
+        } finally {
+            task.continuation(sameRuntime(saved, primaryRole) ? saved : null);
+        }
+        List<String> files = auditDelegatedPart(task, flow, node, delegate);
+        audit.record(task.id(), fb.role(), AuditLog.ACTION_RUNTIME, "節點=" + flow.node + "（分段改派）；配置=" + flow.snapshot.revision(),
+                result.costEstimate(), result.sessionId());
+        if (result.permissionDenials() != null && !result.permissionDenials().isEmpty())
+            audit.record(task.id(), fb.role(), AuditLog.ACTION_DENIED, Diagnostics.toolFailures(result.permissionDenials()));
+        JsonNode report = result.isError() ? null : result.structuredOutput();
+        boolean completed = report != null && FailureReport.blockingReason("generic", report) == null
+                && "SUCCESS".equals(report.path("status").asText()) && !report.hasNonNull("boundary_conflict");
+        if (!completed) {
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "分段改派的改派段未完成，以它的報告作為節點 " + flow.node + " 的結果");
+            return result;
+        }
+        flow.delegatedParts.put(flow.node, new FlowRun.DelegatedPart(fb.role(), flow.beforeHead, workspaces.headSha(task.id()),
+                files, Diagnostics.clip(report.path("summary").asText(""), 2000)));
+        store.saveFlow(task.id(), flow);
+        return null;
+    }
+    private static boolean sameRuntime(Checkpoint checkpoint, Role role) {
+        return checkpoint != null && checkpoint.runtime().equals(role.runtime())
+                && Objects.equals(checkpoint.model(), Objects.toString(role.model(), ""));
+    }
+    /** 改派段的變更必須全部落在允許範圍；通過後由系統代為提交（Codex 沙箱不能寫 .git）。回傳改派段變更的檔案。 */
+    private List<String> auditDelegatedPart(Task task, FlowRun flow, Node node, Node delegate) throws Exception {
+        if (flow.beforeHead == null) throw new SecurityException("缺少改派段的起始 commit，不能核實寫入範圍");
+        List<String> changed = workspaces.auditPaths(task.id(), flow.beforeHead);
+        List<String> bad = ProtectedPathFallback.partViolations(changed, node.protectedPathFallback());
+        if (!bad.isEmpty()) {
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_DENIED, "分段改派越權：" + bad);
+            throw new SecurityException("改派段修改了允許範圍以外的路徑，禁止下游與發布：" + bad);
+        }
+        List<String> dirty = workspaces.uncommittedPaths(task.id());
+        if (!dirty.isEmpty()) {
+            String head = workspaces.commitPaths(task.id(), dirty, "任務 #" + task.id() + " 受保護檔案（分段改派 " + delegate.role() + "，系統核對後代為提交）");
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "分段改派核對通過，系統代為提交 "
+                    + dirty.size() + " 個檔案：" + String.join(", ", dirty) + "；commit=" + head);
+        }
+        return changed;
     }
     /**
      * 改派的實作跑完（或失敗）後由系統核對實際變更，不採信 agent：碰到禁止清單、或原 runtime 的受保護路徑卻不在允許範圍，

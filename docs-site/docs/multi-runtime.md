@@ -56,11 +56,24 @@
   目標專案的慣例：會隨版本或功能變動的資訊（版本號、模組清單）不要寫在 `.claude/rules/` 等受保護路徑，
   改寫在建置檔、`AGENTS.md` 或一般文件，受保護路徑只放穩定的規則並指向那些檔案。
 
-**受保護路徑改派（2026-10-04 起，程式完成、尚未部署與真實任務實測）**：實作節點可設 `protectedPathFallback`
+**受保護路徑改派（2026-10-04 起；整節點改派已在 #1018～#1020 實測，分段改派尚未真實任務實測）**：實作節點可設 `protectedPathFallback`
 （`{"role": ..., "paths": [...]}`）。`ProtectedPathFallback` 從需求文字與已完成節點報告擷取路徑，原角色 runtime 寫不了、
-且全部落在 `paths` 內時，改由該角色（不同 runtime，例如 Codex）實作，決定記在 `FlowRun.roleOverrides`。
+且全部落在 `paths` 內時，改派給該角色（不同 runtime，例如 Codex）。
 `.claude/settings*`、`hooks`、`commands`、`agents`、`plugins`、`.git`、`.mcp.json`、`.vscode`、`.idea`、`.github` 等寫死禁止，配置無法覆蓋。
-改派的實作跑完後系統以 `auditPaths` 逐檔核對，越界即 `SecurityException`；通過後系統代為提交（Codex 沙箱不能寫 `.git`）。
+
+**分段改派（2026-10-04 起，取代整節點改派）**：同一輪實作分兩段依序執行（`FlowEngine.runDelegatedPart`）：
+1. 改派段：改派角色只修改 `paths` 內的檔案，不跑建置測試、不 commit（說明 `ProtectedPathFallback.partNotice`）。
+   系統以 `auditPaths` 核對，變更必須**全部**落在 `paths` 內（`partViolations`，連 `.agents/`、一般檔案也不行），越界即 `SecurityException`；
+   通過後系統代為提交，結果記在 `FlowRun.delegatedParts`（起始 commit、提交後 commit、檔案、摘要）。
+   改派段回報未完成（`status` 不是 SUCCESS、有 `boundary_conflict` 或 `execution_status` 受阻）時，以它的報告當本節點結果，照一般受阻流程處理，不執行第二段。
+2. 主實作段：原角色收到「受保護檔案已在 commit X 完成、不要修改」的說明（`primaryNotice`），完成其餘變更與建置測試；節點報告以這一段為準。
+
+同一輪續跑（例如額度用完後恢復）時，`delegatedParts` 的起始 commit 等於本輪起始 commit 就略過改派段，checkpoint 只交給 runtime 相符的那一段；
+節點新的一輪開始時清掉上一輪的紀錄。改派段若改錯，原角色寫不了那些檔案，由 QA 驗收擋下後返工重跑兩段。
+改成分段的原因：#1020 整個節點交給 Codex 時，Codex 內層沙箱把 `.agents` 掛成唯讀、也啟動不了 Gradle，只有 `build.gradle.kts` 改成。
+
+**整節點改派（舊行為）**：2026-10-04 前已記在 `FlowRun.roleOverrides` 的任務沿用，整個節點由改派角色執行，
+系統以 `violations` 核對（原 runtime 寫不了又不在 `paths` 內的路徑才算越界），通過後代為提交。新任務不再寫入 `roleOverrides`。
 VM 實測（`CodexSandboxVmTest.workspaceImplementerCanWriteClaudeRulesButNotGit`，不呼叫模型）：實作節點外層政策下
 Codex 可寫 `.claude/rules/`、`.claude/skills/`，`.git` 與 `.git/hooks` 不可寫。bestpartner 設 `builder_codex`，paths 為 `.claude/rules/**`、`.claude/skills/**`。
 

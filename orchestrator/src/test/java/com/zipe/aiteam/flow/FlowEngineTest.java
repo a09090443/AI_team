@@ -777,19 +777,38 @@ class FlowEngineTest {
         when(executor.runtimeFor("claude-code")).thenReturn(claude);
     }
 
-    @Test void protectedRuleChangeIsImplementedByTheFallbackRoleAndCommittedBySystem() throws Exception {
+    @Test void protectedFilesGoToTheFallbackRoleThenThePrimaryImplementerFinishes() throws Exception {
+        // #1020：整個節點交給 Codex 時寫不了 .agents/、跑不了 Gradle。改成只交出受保護檔案，其餘由原角色完成。
         mode = "protectedRule";
         enableProtectedPathFallback();
         when(workspace.uncommittedPaths("42")).thenReturn(List.of(".claude/rules/api-endpoints.md"), List.of());
-        // 只有改派實作那一輪看得到這個變更；系統代為提交後，下游節點的起始 commit 已包含它。
+        // 只有改派段看得到這個變更；系統代為提交後，下游節點的起始 commit 已包含它。
         when(workspace.auditPaths(eq("42"), anyString())).thenReturn(List.of(".claude/rules/api-endpoints.md"), List.of());
 
         engine.run(task);
 
-        assertThat(calls).contains("implementation:builder_codex").doesNotContain("implementation:builder");
-        assertThat(store.flow(task.id()).orElseThrow().roleOverrides).containsEntry("implementation", "builder_codex");
-        verify(workspace).commitPaths(eq("42"), eq(List.of(".claude/rules/api-endpoints.md")), contains("改派 builder_codex"));
+        assertThat(calls).containsSubsequence("implementation:builder_codex", "implementation:builder");
+        var flow = store.flow(task.id()).orElseThrow();
+        assertThat(flow.roleOverrides).isEmpty();
+        assertThat(flow.delegatedParts.get("implementation").files()).containsExactly(".claude/rules/api-endpoints.md");
+        assertThat(flow.delegatedParts.get("implementation").role()).isEqualTo("builder_codex");
+        verify(workspace).commitPaths(eq("42"), eq(List.of(".claude/rules/api-endpoints.md")), contains("分段改派 builder_codex"));
         assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+    }
+
+    @Test void delegatedPartTouchingAnythingOutsideTheAllowedPathsStops() throws Exception {
+        // 改派段只准動允許範圍：連一般檔案（例如 .agents/ 的 skill）也不行，那是原角色的工作。
+        mode = "protectedRule";
+        enableProtectedPathFallback();
+        when(workspace.auditPaths(eq("42"), anyString())).thenReturn(List.of(".claude/rules/api-endpoints.md", ".agents/skills/x/SKILL.md"));
+
+        engine.run(task);
+
+        assertThat(calls).contains("implementation:builder_codex").doesNotContain("implementation:builder")
+                .noneMatch(c -> c.startsWith("verification:"));
+        assertThat(task.state()).isNotEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        verify(workspace, never()).commitPaths(eq("42"), anyList(), contains("改派"));
+        verify(audit).record(eq("42"), any(), eq(AuditLog.ACTION_DENIED), contains(".agents/skills/x/SKILL.md"));
     }
 
     @Test void reassignedImplementerTouchingSettingsStopsBeforeAnyDownstreamStep() throws Exception {
@@ -803,6 +822,40 @@ class FlowEngineTest {
         assertThat(task.state()).isNotEqualTo(Task.State.AWAIT_PR_APPROVAL);
         verify(workspace, never()).commitPaths(eq("42"), anyList(), contains("改派"));
         verify(audit).record(eq("42"), any(), eq(AuditLog.ACTION_DENIED), contains(".claude/settings.json"));
+    }
+
+    @Test void resumingAfterQuotaSkipsTheCompletedDelegatedPart() throws Exception {
+        // 改派段已提交、原角色跑到一半額度用完：續跑只接原角色的 session，不重跑改派段。
+        mode = "protectedRuleQuota";
+        enableProtectedPathFallback();
+        when(workspace.uncommittedPaths("42")).thenReturn(List.of(".claude/rules/api-endpoints.md"), List.of());
+        when(workspace.auditPaths(eq("42"), anyString())).thenReturn(List.of(".claude/rules/api-endpoints.md"), List.of());
+        engine.run(task);
+        assertThat(task.state()).isEqualTo(Task.State.WAITING_QUOTA);
+        assertThat(calls).containsSubsequence("implementation:builder_codex", "implementation:builder");
+
+        calls.clear(); mode = "protectedRule"; List<Runnable> jobs = new ArrayList<>();
+        engine.resume(task, null, "u", jobs::add); jobs.get(0).run();
+
+        assertThat(calls).first().isEqualTo("implementation:builder");
+        assertThat(calls).doesNotContain("implementation:builder_codex");
+        verify(workspace, times(1)).commitPaths(eq("42"), anyList(), contains("分段改派"));
+    }
+
+    @Test void legacyWholeNodeReassignmentIsKeptForTasksThatAlreadyChoseIt() throws Exception {
+        // 部署前已整節點改派的任務（例如 #1020）中途不換規則。
+        mode = "protectedRule";
+        enableProtectedPathFallback();
+        var flow = store.flow(task.id()).orElseThrow();
+        flow.roleOverrides.put("implementation", "builder_codex"); store.saveFlow(task.id(), flow);
+        when(workspace.uncommittedPaths("42")).thenReturn(List.of(".claude/rules/api-endpoints.md"), List.of());
+        when(workspace.auditPaths(eq("42"), anyString())).thenReturn(List.of(".claude/rules/api-endpoints.md"), List.of());
+
+        engine.run(task);
+
+        assertThat(calls).contains("implementation:builder_codex").doesNotContain("implementation:builder");
+        assertThat(store.flow(task.id()).orElseThrow().delegatedParts).isEmpty();
+        verify(workspace).commitPaths(eq("42"), eq(List.of(".claude/rules/api-endpoints.md")), contains("改派 builder_codex"));
     }
 
     @Test void ordinaryChangesStayWithTheConfiguredImplementer() throws Exception {
@@ -952,6 +1005,10 @@ class FlowEngineTest {
             if (mode.equals("interruptAfter") && flow.node.equals("implementation")) engine.interrupt(executing, "u");
             if (mode.equals("usage") && flow.node.equals("verification"))
                 throw new RuntimeUsageError("Codex CLI 用法錯誤，指令未送達模型（結束碼 2）：error: unexpected argument '-P' found");
+            if (mode.equals("protectedRuleQuota") && flow.node.equals("implementation") && node.role().equals("builder")) {
+                store.saveCheckpoint(new Checkpoint("42", flow.node, "claude-code", "sonnet", "builder-session", "context", "head1", "quota"));
+                throw new QuotaExceeded("usage_limit_reached");
+            }
             if (mode.equals("quota") && flow.node.equals("verification")) {
                 store.saveCheckpoint(new Checkpoint("42", flow.node, "claude-code", "sonnet", "saved-session", "context", "head1", "quota"));
                 throw new QuotaExceeded("usage_limit_reached");
@@ -985,7 +1042,7 @@ class FlowEngineTest {
             if (node.gate() == TeamDefinition.Gate.VERIFICATION)
                 ((ObjectNode) report).put("plan_revision", Traceability.digest(flow.receipts.get(node.plan())));
             if (flow.node.equals("design")) ((ObjectNode)report).put("route", "ready");
-            if (mode.equals("protectedRule") && flow.node.equals("intake"))
+            if (mode.startsWith("protectedRule") && flow.node.equals("intake"))
                 ((ObjectNode)report).put("summary", "把 `.claude/rules/api-endpoints.md` 第 49 行的 all 改成 admin");
             if (mode.startsWith("question") && flow.node.equals("intake")) {
                 ((ObjectNode)report).put("route", "question").put("summary", "API 共 69 個，文件寫 68 個");

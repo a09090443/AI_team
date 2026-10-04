@@ -252,7 +252,8 @@ v2 配置式流程的整份執行快照，對應 `com.zipe.aiteam.flow.FlowRun`�
 | `successor` / `continuationOf` | String / String | 承接成的新任務／本任務承接自哪個任務 |
 | `spinoffs` | Map&lt;項目序號,任務編號&gt; | 純詢問結束後以「開成新需求」按鈕從最後報告的 `out_of_scope` 開立的任務（序號從 1 起，最多 5）。用來防止同一項重複開立（2026-10-03 新增） |
 | `spinoffOf` | String | 本任務由哪個任務的純詢問發現開立；不沿用該任務的核准、工作區或結論（2026-10-03 新增） |
-| `roleOverrides` | Map&lt;節點,角色&gt; | 受保護路徑改派後實際執行的角色；同一任務重跑沿用（2026-10-04 新增，回滾風險同上） |
+| `roleOverrides` | Map&lt;節點,角色&gt; | 整節點改派（舊行為）實際執行的角色；同一任務重跑沿用。分段改派上線後新任務不再寫入（2026-10-04 新增，回滾風險同上） |
+| `delegatedParts` | Map&lt;節點,DelegatedPart&gt; | 分段改派的改派段結果：`role`、`startHead`（本輪起始 commit）、`head`（系統代為提交後）、`files`、`summary`（摘要，最多 2000 字）。續跑同一輪時略過已完成的改派段；節點新的一輪開始時移除（2026-10-04 新增，回滾風險同上） |
 | `prUrl` / `publishedHead` | String | 發布結果 |
 
 **回滾風險**：`TaskStore` 以預設 ObjectMapper 讀 `flow_run.data`，未知欄位會拋錯。新版寫入的欄位

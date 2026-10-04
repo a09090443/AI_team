@@ -75,8 +75,17 @@ public class ConfiguredExecutor {
         if (!flow.dialogue) context.append("\n本階段可使用／規畫的操作契約：").append(availableOperations(flow, node));
         if (!flow.dialogue) context.append(inspectionNotice(flow, node));
         Node defined = flow.snapshot.definition().nodes().get(flow.node);
-        if (!flow.dialogue && defined != null && defined.protectedPathFallback() != null && !defined.role().equals(node.role()))
-            context.append(ProtectedPathFallback.notice(defined.protectedPathFallback()));
+        if (!flow.dialogue && defined != null && defined.protectedPathFallback() != null) {
+            var fb = defined.protectedPathFallback();
+            String primaryName = flow.snapshot.definition().roles().get(defined.role()).name();
+            if (!defined.role().equals(node.role()))
+                context.append(flow.roleOverrides.containsKey(flow.node) ? ProtectedPathFallback.notice(fb) : ProtectedPathFallback.partNotice(fb, primaryName));
+            else {
+                var part = flow.delegatedParts.get(flow.node);
+                if (part != null && Objects.equals(part.startHead(), flow.beforeHead))
+                    context.append(ProtectedPathFallback.primaryNotice(part, flow.snapshot.definition().roles().get(part.role()).name()));
+            }
+        }
         if (!flow.dialogue && node.gate() == Gate.IMPLEMENTATION && flow.snapshot.definition().project().verification() != null)
             context.append(DocOnlyChanges.implementationNotice(flow.snapshot.definition().project().verification().docOnlyPaths()));
         if (!flow.dialogue && node.gate() == Gate.VERIFICATION) context.append(changedFiles(task, flow));
@@ -209,7 +218,7 @@ public class ConfiguredExecutor {
                     delegates.add(role == null ? fb.role() : role.name() + "（" + role.runtime() + "）");
                 });
         String delegation = delegated.isEmpty() ? ""
-                : "\n例外：其中 " + delegated + " 之下的檔案，系統會改派給 " + delegates + " 實作並逐檔核對，"
+                : "\n例外：其中 " + delegated + " 之下的檔案，系統會先交給 " + delegates + " 修改並逐檔核對，其餘工作仍由原實作角色完成，"
                   + "需求要改這些檔案時照常整理成需求與驗收（可用 inspect-content 讀檔驗收），不要因此停下來問人、也不要列為需真人處理。"
                   + "例外不含 .claude/settings*、hooks、commands、agents 等行為設定，那些仍須真人處理。";
         return "\n本流程的實作角色無法寫入下列路徑，任何權限設定都開放不了（目錄以 / 結尾）：" + paths
