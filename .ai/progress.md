@@ -22,7 +22,13 @@
   （原本不列入的理由「docs-site 會被建置」不成立，獨立驗證 5 條指令都不建置 docs-site）；B `DocOnlyChanges.implementationNotice`，
   由 `ConfiguredExecutor` 在 IMPLEMENTATION 節點、專案有 docOnlyPaths 時附加「純文件變更規則」。ConfiguredExecutorTest 新增 1 項；
   本機 521 項只有既有的 4 項 Windows 失敗。已修正文件：configurable-team（獨立驗證列、Codex Gradle 已知問題列）、engineering-workflow、configuration。
-  已核對：operations、data-model（不需改）。未 commit；等佇列清空與核准訊息一起部署到兩個實例。
+  已核對：operations、data-model（不需改）。
+- commit 728d989（核准排隊訊息）、9988a7a（純文件不編譯）。VM 隔離建置 `doconly-build.h4itQZ` check-source PASS、521 項 0 失敗（11 略過），
+  JAR `a5bdf1d973d39c30fcf626055147c93c3c86a32e497a82d19523573e39d3877b`。等佇列清空（#1018 AWAIT_PR_APPROVAL、#1019 PR_CREATED、
+  #1020 AWAIT_HUMAN）後部署：bestpartner.json 備份 `bak-before-9988a7a`，兩實例 `--validate-team` 通過；
+  bestpartner PID 64315（配置 6743989e…，備份 `orchestrator-backup.GOyqIs`）、starters PID 67509（配置 9913fb8e…，備份 `orchestrator-backup.gVxDmB`），
+  皆 0 ERROR、自檢通過、任務資料前後一致。#1019 PR https://github.com/a09090443/bestpartner/pull/2 base=`dev`（基準分支改為 dev 的真實端對端通過）。
+  核准排隊訊息與純文件不編譯的真實 Slack 行為尚未驗證。
 
 ## 2026-10-04 — Claude Code（開成新需求按鈕顯示短標題）
 
