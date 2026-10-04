@@ -11,7 +11,11 @@
 - 測試：SpinoffButtonsTest、FlowEngineTest 各新增 1 項並更新既有斷言；本機 518 項僅既有 4 項 Windows 失敗；check-source PASS；docs build 通過。
 - 已核對的文件：operations、configurable-team、plan-approval-buttons、data-model、engineering-workflow、interaction-model。
   已修正：operations（提示詞與按鈕說明）、configurable-team（欄位來源）、plan-approval-buttons（按鈕名稱）；decisions 追加。
-- 未 commit、未部署；真實 Slack 顯示尚未驗證。
+- 部署（commit cba9ab7，使用者授權）：VM 隔離建置 `spinoff-title-build.eQoZ1N`（`git -c core.autocrlf=false archive`）check-source PASS、
+  518 項 0 失敗（11 略過），JAR `852779f99e8ade7dcd628382211d15b8e131c4725e44bd6a7b8dac1931ad6e36`。兩實例 `intake.md`、`requirements.json`
+  備份為 `*.bak-before-cba9ab7` 後更新，`--validate-team` 通過，以 deploy-jar-safe 換 JAR：
+  bestpartner PID 46239（配置 6f752df8…，備份 `orchestrator-backup.kyanHF`）、starters PID 49601（配置 9913fb8e…，備份 `orchestrator-backup.gtyis6`），
+  皆 0 ERROR、自檢通過、任務資料前後一致。真實 Slack 按鈕顯示尚未驗證（需新的純詢問任務且有發現）。
 
 ## 2026-10-04 — Claude Code（bestpartner 基準分支改為 dev）
 

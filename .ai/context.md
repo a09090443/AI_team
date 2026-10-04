@@ -29,6 +29,7 @@
   再部署 68548aa（按鈕＋輸入視窗）、a0d84ef（沙箱路徑含空白加引號）、27dd80d（純文件略過建置測試，bestpartner 啟用）：
   目前 bestpartner PID 53254（配置 dafe84b2…）、starters PID 56461（JAR `5827e12e…`）。
   2026-10-04 bestpartner 基準分支改為 `dev`（c27be38，只換配置）：bestpartner PID 39362（配置 3d061a81…）。
+  2026-10-04 部署 cba9ab7（開成新需求按鈕短標題，JAR `852779f9…`）：bestpartner PID 46239（配置 6f752df8…）、starters PID 49601（配置 9913fb8e…）。
   下一步：#1012（承接 #1011，計畫已以 inspect-content 通過、實作完成）在獨立驗證停下，使用者按「繼續執行」重跑；
   Slack 輸入視窗（modal）尚未真實實測。
   回滾注意：有任務寫入 `spinoffs`／`spinoffOf` 後，舊 JAR 讀不了這些任務（見 data-model）。
