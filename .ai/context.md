@@ -89,3 +89,7 @@
   備份並更新 bestpartner.json、`deploy-jar-safe.sh` 部署兩個實例、#1014 按「改用新任務繼續」實測。
 - 2026-10-04 部署 5026aa8 時 VM 又失去回應（SSH banner 逾時，與 10-03 13:30 UTC 同症狀）；原始碼上傳未完成，兩實例未變動。
   VM 恢復後：先唯讀確認服務與任務，再隔離建置／測試／--validate-team、備份並更新 bestpartner.json、deploy-jar-safe 兩實例。
+- 2026-10-04 VM 恢復後完成部署 5026aa8（受保護路徑改派；JAR `7fca04d7…`，VM Linux 513 項 0 失敗，bestpartner.json `--validate-team` 通過，
+  舊配置備份 `bestpartner.json.bak-before-5026aa8`）：bestpartner PID 5391（配置 9dc1ba27…）、starters PID 8379（配置 661d8af4…），皆 0 ERROR、
+  5 個角色連線、任務資料前後一致（#1010～#1012、#1014 AWAIT_HUMAN）。前兩次 VM 失去回應的 journal 都停在 xx:30（13:30:02、20:30:00 UTC）。
+  下一步：使用者在 #1014 按「改用新任務繼續」實測改派。
