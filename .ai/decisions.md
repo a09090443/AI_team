@@ -437,3 +437,11 @@ QA 逐項驗收、程式審查、PR 真人核准照常。
 
 理由：#1012 只改一行 SKILL.md 卻要跑完 Gradle 與前端全部測試。只看副檔名或採信 agent 自陳都不安全，所以以系統查得的變更判定，
 並用配置無法覆蓋的強制名單防止 docOnlyPaths 寫得太寬；改名以 `--no-renames` 列出刪除端。目前只在 bestpartner 啟用。
+
+## 2026-10-04 — 受保護路徑改派實作者（Claude Code）
+
+決策：實作節點可設 `protectedPathFallback`，需求要改原角色 runtime 寫不了、且全在允許目錄內的路徑時，改由不同 runtime 的角色實作；
+`.claude/settings*`、hooks、commands、agents、`.git`、`.mcp.json` 等行為／版控路徑寫死禁止；系統事後逐檔核對，通過後代為提交。
+
+理由：Claude Code 官方受保護路徑在 dontAsk 下開放不了，`bypassPermissions` 會讓工具白名單失效，不採用。bestpartner #1014 只改
+`.claude/rules/` 兩個字就停下。settings／hooks 被改寫會讓同一工作區後續的 Claude Code 角色載入並執行任意指令，所以只開放內容類目錄。
