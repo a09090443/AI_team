@@ -210,10 +210,18 @@ class ConfiguredExecutorTest {
         var policy = executor.policy(flow, flow.snapshot.definition().nodes().get("review"), runtime, repo);
         assertThat(policy.writablePaths()).containsExactly(tmp.resolve("state"));
     }
-    @Test void missingLimitedDirectoriesFailClosed() throws Exception {
+    @Test void missingExplicitLimitedDirectoriesArePreparedNotRejected() throws Exception {
+        // #1015：只改文件的實作沒跑建置，build/ 不存在，驗收的操作預檢就判定「寫入超出沙箱政策」。
+        Path empty = tmp.resolve("empty"); Files.createDirectories(empty.resolve(".git"));
+        var policy = executor.policy(flow, flow.snapshot.definition().nodes().get("verification"), runtime, empty);
+        assertThat(policy.writablePaths()).contains(empty.resolve("tests"), empty.resolve("dist")).doesNotContain(empty);
+        assertThat(empty.resolve("dist")).isDirectory();
+    }
+    @Test void wildcardPolicyWithNoExistingDirectoryStillFailsClosed() throws Exception {
         Path empty = tmp.resolve("empty"); Files.createDirectory(empty);
-        assertThatThrownBy(() -> executor.policy(flow, flow.snapshot.definition().nodes().get("verification"), runtime, empty))
+        assertThatThrownBy(() -> PathRules.writableRoots(empty, List.of("**/src/test/**")))
                 .hasMessageContaining("找不到任何");
+        assertThat(empty.resolve("src")).doesNotExist();
     }
     @Test void acceptanceContractIsNotSilentlyTruncatedAtOldReportLimit() throws Exception {
         var baseline = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode().put("acceptance", "x".repeat(15000) + "驗收末端");

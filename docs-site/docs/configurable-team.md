@@ -137,7 +137,11 @@ App-Level Token 留空**：發言與交接 tag 使用同一個角色身分，不
 
 - `READ_ONLY`：只允許 runtime 自身狀態寫入，不開放產品目錄。
 - `WORKSPACE`：僅獨立 clone 可寫，必須配 `IMPLEMENTATION` 契約。
-- `LIMITED`：只給配置匹配到的已存在目錄及該 clone 的 Git 狀態寫入；不把整個專案交給測試角色。
+- `LIMITED`：只給配置匹配到的目錄及該 clone 的 Git 狀態寫入；不把整個專案交給測試角色。
+  不含萬用字元的明確目錄（例如 `bestpartner-service/build/**`）不存在時，派工前先建立空目錄再納入可寫範圍；
+  路徑祖先是 symlink 時停止。含萬用字元的政策不猜測缺少的目錄，全部找不到時停止（fail closed）。
+  2026-10-04 起適用所有 LIMITED 節點；之前只對 `localTestNetwork` 節點建立，#1015 只改文件、沒跑建置，
+  `build/` 不存在，驗收的操作預檢因此判定「寫入超出沙箱政策」而停下。
   在沙箱外逐筆核對新增 commit、未提交與未追蹤路徑，攔截 Git index 繞道及「修改後再還原」；
   單階段超過 100 個新增 commit 會停止要求查核。沒有可寫目錄時拒絕，不自動放寬。
 

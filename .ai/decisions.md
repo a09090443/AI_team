@@ -445,3 +445,11 @@ QA 逐項驗收、程式審查、PR 真人核准照常。
 
 理由：Claude Code 官方受保護路徑在 dontAsk 下開放不了，`bypassPermissions` 會讓工具白名單失效，不採用。bestpartner #1014 只改
 `.claude/rules/` 兩個字就停下。settings／hooks 被改寫會讓同一工作區後續的 Claude Code 角色載入並執行任意指令，所以只開放內容類目錄。
+
+## 2026-10-04 — LIMITED 節點的明確可寫目錄一律預先建立
+
+#1015 改派 builder_codex 只改文件，沒跑建置，工作區沒有 `bestpartner-service/build`；
+驗收節點的操作宣告要寫入它，`OperationPreflight` 判定「寫入超出沙箱政策」，在呼叫模型前停下。
+原本只有 `localTestNetwork` 節點會建立缺少的明確目錄，其他節點缺目錄即失敗。
+決策：所有 LIMITED 節點的明確目錄（無萬用字元、已在配置逐字核准）不存在時先建立空目錄。
+這不擴大權限：路徑本來就允許寫入，仍拒絕越界與 symlink 祖先；萬用字元不猜測，全無匹配仍 fail closed。

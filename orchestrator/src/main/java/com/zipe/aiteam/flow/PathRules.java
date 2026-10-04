@@ -27,10 +27,12 @@ public final class PathRules {
         return path.matches(regex.append('$').toString());
     }
     public static boolean allows(List<String> patterns, String path) { return patterns != null && patterns.stream().anyMatch(p -> matches(p, path)); }
+    /**
+     * 明確目錄（無萬用字元）不存在時先建立：它已在配置中逐字核准，建立空目錄不擴大權限。
+     * #1015：只改文件的實作沒跑建置，build/ 不存在，驗收的操作預檢因此判定越界。
+     * 萬用字元不猜測缺少的目錄，全部都找不到時 fail closed。
+     */
     public static List<Path> writableRoots(Path workspace, List<String> patterns) throws java.io.IOException {
-        return writableRoots(workspace, patterns, false);
-    }
-    public static List<Path> writableRoots(Path workspace, List<String> patterns, boolean prepareMissing) throws java.io.IOException {
         Path root = workspace.toRealPath();
         List<Path> found = new ArrayList<>();
         for (String pattern : patterns) {
@@ -44,8 +46,8 @@ public final class PathRules {
                 Path existing = p;
                 while (!Files.exists(existing, LinkOption.NOFOLLOW_LINKS)) existing = existing.getParent();
                 TeamCatalog.require(existing.toRealPath().equals(existing), "symlink 寫入政策越界");
-                if (prepareMissing) Files.createDirectories(p);
-                if (Files.isDirectory(p)) found.add(p);
+                Files.createDirectories(p);
+                found.add(p);
             } else try (var paths = Files.walk(root)) {
                 paths.filter(Files::isDirectory).filter(p -> matches(base, root.relativize(p).toString().replace('\\', '/')))
                         .forEach(found::add);

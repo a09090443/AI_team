@@ -361,7 +361,7 @@ public class ConfiguredExecutor {
         if (flow.dialogue || node.scope() == Scope.READ_ONLY) return SandboxPolicy.readOnly(state);
         List<Path> writable = new ArrayList<>(state.writable());
         if (node.scope() == Scope.WORKSPACE) writable.add(cwd);
-        else { writable.addAll(PathRules.writableRoots(cwd, node.writablePaths(), node.localTestNetwork())); writable.add(cwd.resolve(".git")); }
+        else { writable.addAll(PathRules.writableRoots(cwd, node.writablePaths())); writable.add(cwd.resolve(".git")); }
         var caches = flow.snapshot.definition().project().cachePaths();
         if (caches != null) for (String cache : caches) {
             validateCache(cache);

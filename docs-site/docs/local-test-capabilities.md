@@ -22,8 +22,9 @@ Codex runtime、LIMITED 範圍、VERIFICATION 閘門、且宣告 node 工具。�
 `node_modules/.codex`（`EBUSY`）。指令可寫的快取與核准的 `cachePaths` 對齊，不把 runtime 的 `~/.codex` 開放給指令；
 產品路徑、Git metadata 與原始文件的限制不撤除。
 
-只對明確核准的 `localTestNetwork` 節點準備精確的目錄掛載根；wildcard 不猜測缺少的目錄，
-路徑祖先或本身是 symlink 時停止。其他節點維持缺目錄即失敗（fail-closed）。
+所有 LIMITED 節點都會為明確（無萬用字元）的可寫目錄準備掛載根，不再限於 `localTestNetwork` 節點
+（2026-10-04 起；原本其他節點缺目錄即失敗，見[配置式團隊](configurable-team.md)）。wildcard 不猜測缺少的目錄，
+路徑祖先或本身是 symlink 時停止。
 
 呼叫模型前，以相同內外層設定測試 localhost TCP 往返及可寫路徑（unit 最長 25 秒、客戶端最長 30 秒），
 失敗就停止，不略過不相容的 CLI、不退回無沙箱。於 Codex 0.153.4 實測；未宣稱所有 CLI／OS 版本都支援。

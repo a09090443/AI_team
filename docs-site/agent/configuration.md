@@ -102,7 +102,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 |---|---|
 | `READ_ONLY` | 只允許 runtime 自身狀態寫入 |
 | `WORKSPACE` | 獨立 clone 可寫；必須配 `IMPLEMENTATION` 契約 |
-| `LIMITED` | 只有 `writablePaths` 匹配的既有目錄與該 clone 的 Git 狀態；沙箱外逐筆核對 commit 與未提交路徑 |
+| `LIMITED` | 只有 `writablePaths` 匹配的目錄與該 clone 的 Git 狀態（明確目錄不存在時先建立空目錄；萬用字元只匹配既有目錄，全無匹配即停止）；沙箱外逐筆核對 commit 與未提交路徑 |
 
 | `gate` | 契約 |
 |---|---|
