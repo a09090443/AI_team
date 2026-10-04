@@ -1449,8 +1449,24 @@ public class FlowEngine {
                 flow.prUrl = result.prUrl(); flow.publishedHead = head; store.saveFlow(task.id(), flow);
                 state(task, Task.State.PR_CREATED, "PR 已建立，尚未確認合併／發布／產品驗收：" + result.prUrl());
                 slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), result.prUrl());
-            } catch (Exception e) { waitHumanForError(task, flow, "推分支、開 PR 沒有完成，任務沒有發布出去；確認下面的原因後，需要重新核准 PR。", e); }
+            } catch (PullRequestPublisher.PublishException e) { publishFailed(task, flow, e); }
+            catch (Exception e) { waitHumanForError(task, flow, "推分支、開 PR 沒有完成，任務沒有發布出去；確認下面的原因後，需要重新核准 PR。", e); }
         });
+    }
+    /**
+     * 推送或開 PR 本身失敗（token、權限、網路）：成果與證據都沒變，留在等待核准 PR，修好設定後再按一次即可。
+     * 錯誤原文是系統寫給管理者的操作說明（缺哪個變數、填在哪），直接貼出，不交給 agent 改寫 ——
+     * #1015 改寫後只剩「缺少認證憑證」，看不出是 GitHub token、也不知道去哪裡設定。
+     * 證據或工作區有變的失敗不走這裡，照樣停給人。
+     */
+    private void publishFailed(Task task, FlowRun flow, PullRequestPublisher.PublishException e) {
+        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_ERROR, "推分支、開 PR 失敗：" + Diagnostics.safe(Diagnostics.describe(e)));
+        if (aborted(task)) return;
+        state(task, Task.State.AWAIT_PR_APPROVAL, "任務 #" + task.id() + " 開 PR 失敗，等待重新核准 PR");
+        String message = "任務 #" + task.id() + " 推分支、開 PR 沒有完成，任務還沒有發布出去；實作、驗收與審查結果都保留。\n"
+                + "原因：" + Diagnostics.clip(Diagnostics.safe(e.getMessage()), 1500)
+                + "\n修正上面的原因後，直接再按一次核准即可，不必重跑任何步驟（核准前仍會重新檢查證據與 commit）。\ncommit=" + flow.approvalHead;
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), message, SlackBlocks.approvalBlocks(task.id(), message));
     }
     public void recover(Task task) {
         if (task.state().isRunning() || task.state() == Task.State.QUEUED || task.state() == Task.State.RESUME_QUEUED)

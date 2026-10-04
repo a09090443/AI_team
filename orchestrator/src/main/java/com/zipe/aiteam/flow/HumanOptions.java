@@ -140,7 +140,12 @@ public final class HumanOptions {
                     "核准恢復前置契約 " + restorable + (ws.head() == null ? "" : " " + ws.head())));
 
         boolean resume = !stuck && restorable == null && resumeWillProceed(flow);
-        if (resume)
+        Node atNode = flow.snapshot == null ? null : flow.snapshot.definition().nodes().get(flow.node);
+        if (resume && atNode != null && atNode.kind() == Kind.APPROVAL)
+            options.add(new Option(RESUME, "重新進入核准 PR",
+                    "系統會重新檢查驗收證據、commit 與工作區，通過後重新貼出「核准 PR」按鈕；這一步不會推送，也不會呼叫 agent。",
+                    "續跑"));
+        else if (resume)
             options.add(new Option(RESUME, "繼續執行",
                     "現在直接繼續就會開始處理，不需要其他授權，也不會多用掉一次自動處理的機會。",
                     "續跑"));
@@ -386,6 +391,9 @@ public final class HumanOptions {
         if (flow.snapshot == null || flow.dialogue || flow.changeTarget != null || flow.pendingPlanRevision != null)
             return false;
         Node node = flow.snapshot.definition().nodes().get(flow.node);
+        // 停在發布核准（例如開 PR 失敗或證據檢查擋下）：續跑只會重新檢查證據並貼出核准按鈕，不呼叫 agent、不推送。
+        // 以前這裡一律回 false，#1015 補好 GitHub token 後找不到任何能回到核准 PR 的按鈕。
+        if (node != null && node.kind() == Kind.APPROVAL) return true;
         if (node == null || node.kind() != Kind.AGENT) return false;
         // 這個節點已經在本輪做出判斷（成功或受阻）時，原樣重跑只會得到同樣的結論 ——
         // 那正是 #1014 反覆「續跑」卻原地踏步的原因。只有還沒開始的節點才建議直接繼續。

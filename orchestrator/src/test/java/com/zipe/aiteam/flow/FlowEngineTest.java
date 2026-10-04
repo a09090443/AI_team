@@ -1343,6 +1343,35 @@ class FlowEngineTest {
         verify(slack, atLeastOnce()).post(any(), any(), any(), contains("系統自動退回"));
         verifyNoInteractions(publisher);
     }
+    @Test void publishFailureStaysAwaitingPrApprovalWithOriginalReasonAndCanBeApprovedAgain() throws Exception {
+        // #1015：token 沒設定導致開 PR 失敗後轉成 AWAIT_HUMAN，白話改寫又藏掉了原因，補好 token 也沒有按鈕可以再核准。
+        engine.run(task);
+        when(publisher.publish(eq("42"), any(), any(), eq("feature/task42")))
+                .thenThrow(new PullRequestPublisher.PublishException("未設定 AI_TEAM_GITHUB_TOKEN，無法推分支或開 PR。請在 ~/ai-team/env.sh 加入該變數後重啟服務"))
+                .thenReturn(new PullRequestPublisher.Result("feature/task42", "https://example.test/pr/2", 2));
+        List<Runnable> jobs = new ArrayList<>(); engine.approve(task, "u", jobs::add); jobs.removeFirst().run();
+
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        verify(slack).post(any(), any(), any(), contains("未設定 AI_TEAM_GITHUB_TOKEN"), any());
+        verify(explainer, never()).explain(any(), any(), any(), any());
+
+        engine.approve(store.find("42").orElseThrow(), "u", jobs::add); jobs.removeFirst().run();
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.PR_CREATED);
+    }
+    @Test void stoppedAtApprovalCanReenterPrApprovalAfterEvidenceIsBack() throws Exception {
+        engine.run(task); String head = workspace.headSha("42");
+        when(workspace.headSha("42")).thenReturn("changed");
+        List<Runnable> jobs = new ArrayList<>(); engine.approve(task, "u", jobs::add); jobs.removeFirst().run();
+        Task stopped = store.find("42").orElseThrow();
+        assertThat(stopped.state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        assertThat(HumanOptions.options(stopped, store.flow("42").orElseThrow(), true, false, null, null))
+                .extracting(HumanOptions.Option::label).contains("重新進入核准 PR").doesNotContain("繼續執行");
+
+        when(workspace.headSha("42")).thenReturn(head); calls.clear();
+        engine.resume(stopped, "續跑", "u", jobs::add); jobs.removeFirst().run();
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        assertThat(calls).isEmpty(); verifyNoInteractions(publisher);
+    }
     @Test void corruptedEvidenceAfterApprovalNeverPublishes() throws Exception {
         engine.run(task); when(verifier.blockingReason(any(), anyString())).thenReturn("log 雜湊不符");
         List<Runnable> jobs = new ArrayList<>(); engine.approve(task, "u", jobs::add); jobs.get(0).run();

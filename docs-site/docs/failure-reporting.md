@@ -32,7 +32,7 @@ VM 供授權查核。格式檢查保證欄位存在，不保證 agent 自陳內�
 
 ## 系統例外的白話說明
 
-配置流程中任何例外停給人時（agent 執行失敗、CLI 用法錯誤、系統層重試用完、發布失敗、角色對話失敗、
+配置流程中任何例外停給人時（agent 執行失敗、CLI 用法錯誤、系統層重試用完、發布前證據或 Git 目標不符、角色對話失敗、
 使用者操作時的系統錯誤），停止訊息不貼 `Diagnostics.describe` 的技術內容，而是：
 
 1. 系統確定的事實在前（例如「次數已還原」「不需重新核准」）；
@@ -42,5 +42,15 @@ VM 供授權查核。格式檢查保證欄位存在，不保證 agent 自陳內�
 
 說明失敗（逾時、額度、輸出不完整）時退回固定白話後備文字，不影響停止流程。
 額度停止不呼叫說明 agent（同帳號額度已用完）。使用者操作被拒（IllegalArgumentException）仍直接顯示本專案寫好的白話原因。
+
+**推分支、開 PR 本身失敗**（`PullRequestPublisher.PublishException`：token 未設定、權限不足、網路、GitHub API 錯誤）
+不呼叫說明 agent，也不停成 `AWAIT_HUMAN`（2026-10-04 起）：
+
+- 任務留在 `AWAIT_PR_APPROVAL`，重新貼出錯誤原文（經 `Diagnostics.safe` 遮蔽）與核准按鈕，修好設定後直接再按核准，不必重跑。
+- 原因：錯誤原文本身就是寫給管理者的操作說明（缺哪個變數、填在哪、需要什麼權限）。#1015 交給說明 agent 改寫後只剩
+  「缺少認證憑證」，看不出是 GitHub token；轉成 `AWAIT_HUMAN` 後也沒有任何按鈕能回到核准 PR。
+- 再按核准時仍重新檢查 commit、工作區、證據與 Git 目標；這些不符時才停給人（走上面的白話說明）。
+- 已停在 approval 節點的 `AWAIT_HUMAN` 任務（例如證據不符，或本修正前就失敗的任務）會提供「重新進入核准 PR」，
+  見 [operations 按鈕語意](/agent/operations#按鈕語意)。
 舊版管線（`StageRunner`、remediation）目前未啟用，未接上此機制。
 設定：`AI_TEAM_EXPLAINER_MODEL`（預設 haiku）、`AI_TEAM_EXPLAINER_ENABLED`（預設 true）。
