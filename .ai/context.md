@@ -95,4 +95,7 @@
   下一步：使用者在 #1014 按「改用新任務繼續」實測改派。
 - 2026-10-04 #1014 已承接為 #1015，改派真實成功，但驗收因 `build/` 不存在被派工前檢查擋下（AWAIT_HUMAN）。
   修正 commit 816f006 已部署兩個實例（JAR `bb5e8503…`）：bestpartner PID 17060、starters PID 19807，皆 0 ERROR。
-  下一步：使用者在 #1015 按「續跑」重試驗收（verification 已用 1/3）。
+  之後 #1015 驗收、審查通過，核准 PR 時因 bestpartner GitHub token 未設定失敗（AWAIT_HUMAN，停在 approval）。
+  使用者已填 bestpartner token 並重啟（PID 24262）；starters token 仍未設定（PID 27003）。
+  修正 commit 0567b3a（開 PR 失敗留在等待核准、「重新進入核准 PR」）VM 建置通過（JAR `e76c625a…`，`publish-retry-build.fWcxMr`），**尚未部署**。
+  下一步：部署兩實例 → #1015 按「重新進入核准 PR」→ 核准 PR。

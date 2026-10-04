@@ -2,6 +2,19 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-04 — Claude Code（開 PR 失敗留在等待核准 PR、重新進入核准 PR）
+
+- 起因：816f006 部署後 #1015 驗收、審查通過，使用者核准 PR，但 bestpartner `AI_TEAM_GITHUB_TOKEN` 為空（新 VM 沿用範本 `""`）開 PR 失敗；
+  explainer 改寫成「缺少認證憑證」看不出原因，且 AWAIT_HUMAN 選項中沒有能回到核准 PR 的按鈕。
+- 使用者本人填入 bestpartner token，兩實例重啟：bestpartner PID 24262（token 警告消失）、starters PID 27003（token 仍未設定），皆 0 ERROR。
+- 修正（commit 0567b3a，使用者核准計畫）：`FlowEngine.publishFailed`（PublishException 留 AWAIT_PR_APPROVAL、貼原文＋核准按鈕、不呼叫 explainer）；
+  `HumanOptions.resumeWillProceed` 接受 APPROVAL 節點，選項顯示「重新進入核准 PR」（指令仍為「續跑」）。
+- 測試：FlowEngineTest 新增 2 項；本機 516 項僅既有 4 項 Windows 失敗；VM 隔離建置 `publish-retry-build.fWcxMr` check-source PASS、
+  516 項 0 失敗（11 略過），JAR `e76c625ac2344dfe8cb2343ba277c4113114caacde9109d932b20a359f797570`；docs build 通過。
+- 已核對的文件：failure-reporting、operations、engineering-workflow、review-gate、system-map、interaction-model。
+  已修正：failure-reporting（發布失敗不再走 explainer）、operations（按鈕表）、engineering-workflow（PR 段落）；decisions 追加。
+- **未部署**：deploy-jar-safe 被權限分類器擋下，待使用者執行或授權。部署後 #1015 按「重新進入核准 PR」→ 核准 PR（真實端對端尚未驗證）。
+
 ## 2026-10-04 — Claude Code（LIMITED 節點缺少的明確可寫目錄改為預先建立）
 
 - 起因：bestpartner #1015（承接 #1014）受保護路徑改派**真實成功**（builder_codex 實作，系統代為提交 490e009），
