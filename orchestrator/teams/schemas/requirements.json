@@ -6,6 +6,7 @@
     "route",
     "requirements",
     "out_of_scope",
+    "out_of_scope_titles",
     "open_questions"
   ],
   "properties": {
@@ -89,6 +90,13 @@
       }
     },
     "out_of_scope": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "out_of_scope_titles": {
       "type": "array",
       "items": {
         "type": "string",

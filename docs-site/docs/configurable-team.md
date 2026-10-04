@@ -209,6 +209,7 @@ LIMITED 驗收節點若只在其核准的測試路徑留下未提交變更，系
 同一工作討論串不會因一般 @主機器人訊息再建第二個平行工作任務（原任務已結束也一樣）；新需求請開新討論串。
 回覆內容依原任務狀態區分（`TaskOrchestrator.threadTakenMessage`），只有 `AWAIT_HUMAN`／`WAITING_QUOTA` 才建議「補充」，細節見 `docs-site/agent/operations.md` 的「建立任務」。
 純詢問（route=`question` → `end`）的回答若列了 `out_of_scope`，結束時會附「開成新需求」按鈕（`SpinoffButtons`、`FlowEngine.spinoff`），
+按鈕名稱取自同一份報告的 `out_of_scope_titles`（`schemas/requirements.json` 必填、與 `out_of_scope` 等長；不等長時全部退回序號），
 在新討論串開立任務，原討論串仍是一串一任務。
 用量暫停走既有繼續按鈕；新模式不使用舊版「重新開始」按鈕，以免誤封存工作區或套錯流程。
 配置角色的一般對話使用獨立子請求，不會覆蓋原驗收；新加入、但不在原快照裡的角色不能接手舊任務對話。

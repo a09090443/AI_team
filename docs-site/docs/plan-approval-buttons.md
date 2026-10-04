@@ -71,7 +71,7 @@
 - 操作被拒（例如承接時檔案已變動）且任務仍在等你：附「重新整理選項」。
 - 角色本人貼的階段報告最後仍是文字「完整報告：補充 #N 檢視完整報告」：角色 App 沒開 interactivity，按鈕按了收不到。
 - 只認任務原本的討論串；轉貼到別處的按鈕不會生效。
-- 另一種按鈕不在停止訊息上：純詢問結束時的「開成新需求 N」（`SpinoffButtons`，action_id `ai_team_spinoff_N`，
+- 另一種按鈕不在停止訊息上：純詢問結束時的「開成新需求 N：短標題」（`SpinoffButtons`，action_id `ai_team_spinoff_N`，
   value 只放 `任務編號|序號`，原文由系統從任務紀錄讀回）。行為見 `docs-site/agent/operations.md` 的「建立任務」。
 - 角色報告的顯示也同步白話化：`route` 翻成「交回工程實作修正（implementation）」這種形式，
   保留原鍵以便對照配置；`execution_status` 與 `verdict` 一併改為口語說法。

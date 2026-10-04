@@ -2,6 +2,17 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-04 — Claude Code（開成新需求按鈕顯示短標題）
+
+- 起因：bestpartner #1016（純詢問）結束時有 4 顆「開成新需求 1～4」，只有序號、分不出各自要做什麼；使用者選擇由 agent 產生短標題。
+- 修改：`schemas/requirements.json` 新增必填 `out_of_scope_titles`；intake 提示詞要求 20 字內、開頭互異、需決定項以「決定…」開頭；
+  `SpinoffButtons.blocks` 改收標題清單，按鈕「開成新需求 N：短標題」（30 字截斷、去反引號、無標題退回序號）；
+  `FlowEngine.spinoffTitles`（不等長全部退回序號）、訊息內文每項粗體標題；`PrReport` 略過此欄位。
+- 測試：SpinoffButtonsTest、FlowEngineTest 各新增 1 項並更新既有斷言；本機 518 項僅既有 4 項 Windows 失敗；check-source PASS；docs build 通過。
+- 已核對的文件：operations、configurable-team、plan-approval-buttons、data-model、engineering-workflow、interaction-model。
+  已修正：operations（提示詞與按鈕說明）、configurable-team（欄位來源）、plan-approval-buttons（按鈕名稱）；decisions 追加。
+- 未 commit、未部署；真實 Slack 顯示尚未驗證。
+
 ## 2026-10-04 — Claude Code（bestpartner 基準分支改為 dev）
 
 - 使用者要求：`teams/bestpartner.json` 的 `project.baseBranch` 由 `master` 改為 `dev`（任務分支從 `origin/dev` 開、PR 合併到 `dev`）。

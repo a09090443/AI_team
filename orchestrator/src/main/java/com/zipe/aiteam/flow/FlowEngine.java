@@ -1007,6 +1007,26 @@ public class FlowEngine {
         }
         return items;
     }
+    /**
+     * 與 spinoffItems 一一對應的按鈕短標題；元素為 null 表示沒有標題、按鈕只顯示序號。
+     * 標題陣列與 out_of_scope 不等長時無法確定對應關係，寧可全部不用也不要貼錯標題（舊快照沒有這個欄位也走這裡）。
+     */
+    static List<String> spinoffTitles(FlowRun flow) {
+        JsonNode last = null;
+        for (JsonNode receipt : flow.receipts.values()) last = receipt;
+        if (last == null || !"question".equals(last.path("route").asText())) return List.of();
+        JsonNode scope = last.path("out_of_scope"), titles = last.path("out_of_scope_titles");
+        boolean aligned = titles.isArray() && titles.size() == scope.size();
+        List<String> result = new ArrayList<>();
+        for (int i = 0; i < scope.size(); i++) {
+            JsonNode item = scope.get(i);
+            String text = item.isTextual() ? item.asText().trim() : item.toString();
+            if (text.isBlank()) continue;
+            JsonNode title = aligned ? titles.get(i) : null;
+            result.add(title != null && title.isTextual() && !title.asText().isBlank() ? title.asText().trim() : null);
+        }
+        return result;
+    }
     private static String lastQuestionSummary(FlowRun flow) {
         JsonNode last = null;
         for (JsonNode receipt : flow.receipts.values()) last = receipt;
@@ -1015,14 +1035,18 @@ public class FlowEngine {
     private void offerSpinoffs(Task task, FlowRun flow) {
         List<String> items = spinoffItems(flow);
         if (items.isEmpty()) return;
+        List<String> titles = spinoffTitles(flow);
         StringBuilder text = new StringBuilder("回答時另外發現以下事項（這次是詢問，沒有處理）：\n");
-        for (int i = 0; i < items.size(); i++)
-            text.append(i + 1).append(". ").append(Diagnostics.clip(items.get(i), 400)).append('\n');
+        for (int i = 0; i < items.size(); i++) {
+            text.append(i + 1).append(". ");
+            if (titles.get(i) != null) text.append('*').append(titles.get(i).replace("*", "")).append("*：");
+            text.append(Diagnostics.clip(items.get(i), 400)).append('\n');
+        }
         text.append(items.size() > SpinoffButtons.MAX_BUTTONS
                 ? "前 " + SpinoffButtons.MAX_BUTTONS + " 項可以按按鈕開成新需求，其餘請在頻道另開討論串提出。"
                 : "要處理哪一項，按下按鈕就會在頻道開新討論串建立任務；需求仍會照正常流程確認。");
         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), text.toString(),
-                SpinoffButtons.blocks(task.id(), text.toString(), items.size()));
+                SpinoffButtons.blocks(task.id(), text.toString(), titles));
     }
     /**
      * 把純詢問的一項發現開成新任務：在頻道開新討論串、從 intake 照正常流程走、不沿用任何核准或工作區。

@@ -39,17 +39,33 @@ public final class SpinoffButtons {
         }
     }
 
-    /** @param count 發現項目數；只有前 MAX_BUTTONS 項有按鈕。 */
-    public static List<LayoutBlock> blocks(String taskId, String text, int count) {
+    /** 按鈕文字上限 75 字元；短標題再長也只取這麼多，其餘看訊息內文。 */
+    static final int TITLE_LIMIT = 30;
+
+    /**
+     * @param titles 每項發現一個元素（長度即發現項目數），元素是按鈕上的短標題；null 或空白時只顯示序號。
+     *               只有前 MAX_BUTTONS 項有按鈕。
+     */
+    public static List<LayoutBlock> blocks(String taskId, String text, List<String> titles) {
         List<BlockElement> buttons = new ArrayList<>();
-        for (int i = 1; i <= Math.min(count, MAX_BUTTONS); i++) {
+        for (int i = 1; i <= Math.min(titles.size(), MAX_BUTTONS); i++) {
             int index = i;
+            String label = label(index, titles.get(i - 1));
             buttons.add(button(b -> b.actionId(ACTION + "_" + index).value(new Choice(taskId, index).value())
-                    .text(plainText("開成新需求 " + index))));
+                    .text(plainText(label))));
         }
         List<LayoutBlock> blocks = new ArrayList<>(asBlocks(section(s -> s.text(markdownText(clip(text))))));
         if (!buttons.isEmpty()) blocks.add(actions(a -> a.elements(buttons)));
         return blocks;
+    }
+
+    /** 按鈕是純文字，反引號會原樣顯示，所以去掉；換行與連續空白壓成一格。 */
+    static String label(int index, String title) {
+        String clean = title == null ? "" : title.replace("`", "").replaceAll("\\s+", " ").trim();
+        if (clean.isEmpty()) return "開成新需求 " + index;
+        if (clean.codePointCount(0, clean.length()) > TITLE_LIMIT)
+            clean = clean.substring(0, clean.offsetByCodePoints(0, TITLE_LIMIT)) + "…";
+        return "開成新需求 " + index + "：" + clean;
     }
 
     /** section 的文字上限是 3000 字元。 */

@@ -52,7 +52,8 @@ final class PrReport {
     /** 陣列元素的標題欄位與附在標題後的狀態欄位。 */
     private static final List<String> TITLE_KEYS = List.of("scenario_id", "id");
     private static final List<String> BADGE_KEYS = List.of("status", "severity", "kind");
-    private static final Set<String> SKIP = Set.of("human_decision");
+    /** out_of_scope_titles 只是 Slack 按鈕上的短標題，內容與 out_of_scope 重複。 */
+    private static final Set<String> SKIP = Set.of("human_decision", "out_of_scope_titles");
 
     /** 依流程節點順序列出每個節點的報告；未在配置中的節點（舊快照）排在最後。 */
     static String receipts(FlowRun flow) {

@@ -159,8 +159,23 @@ class FlowEngineTest {
         assertThat(task.state()).isEqualTo(Task.State.COMPLETED);
         assertThat(calls).containsExactly("intake:coordinator");
         verify(slack).post(any(), eq("c"), eq("t"), argThat((String t) -> t.contains("回答時另外發現")
-                && t.contains("1. 修正文件計數：68 改為 69") && t.contains("2. 補上 API 範例")),
+                && t.contains("1. *文件計數改 69*：修正文件計數：68 改為 69") && t.contains("2. *補 API 範例*：補上 API 範例")),
                 argThat(blocks -> blocks != null && blocks.size() == 2));
+        assertThat(FlowEngine.spinoffTitles(store.flow(task.id()).orElseThrow())).containsExactly("文件計數改 69", "補 API 範例");
+    }
+
+    @Test void spinoffTitlesFallBackToNumbersWhenMissingOrMisaligned() {
+        // 舊快照沒有 out_of_scope_titles；長度對不上時無法確定對應，不可貼錯標題。
+        mode = "question";
+        engine.run(task);
+        var flow = store.flow(task.id()).orElseThrow();
+        var report = (ObjectNode) flow.receipts.get("intake");
+        report.remove("out_of_scope_titles");
+        assertThat(FlowEngine.spinoffTitles(flow)).containsExactly(null, null);
+        report.putArray("out_of_scope_titles").add("只有一個");
+        assertThat(FlowEngine.spinoffTitles(flow)).containsExactly(null, null);
+        report.putArray("out_of_scope_titles").add("文件計數改 69").add(" ");
+        assertThat(FlowEngine.spinoffTitles(flow)).containsExactly("文件計數改 69", null);
     }
 
     @Test void noSpinoffButtonsWithoutFindingsOrForImplementationTasks() {
@@ -977,6 +992,7 @@ class FlowEngineTest {
                 ((ObjectNode)report).putArray("requirements");
                 var outOfScope = ((ObjectNode)report).putArray("out_of_scope");
                 if (mode.equals("question")) outOfScope.add("修正文件計數：68 改為 69").add("補上 API 範例");
+                if (mode.equals("question")) ((ObjectNode)report).putArray("out_of_scope_titles").add("文件計數改 69").add("補 API 範例");
             }
             if (flow.node.equals("triage")) ((ObjectNode)report).put("route", mode.equals("repair") ? "verification"
                     : mode.equals("dirtyVerification") ? "verification"
