@@ -1151,6 +1151,26 @@ class FlowEngineTest {
         List<Runnable> jobs = new ArrayList<>(); engine.approve(task, "u", jobs::add); jobs.get(0).run();
         verifyNoInteractions(publisher); assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
     }
+    @Test void approvalTellsWhetherPublishingStartsNowOrWaitsInQueue() throws Exception {
+        // #1019：核准後排在 #1018 後面，Slack 沒有任何訊息，使用者以為按鈕沒作用。
+        engine.run(task);
+        var busy = new Task("7", "c", "t7", "u", "別的任務"); busy.state(Task.State.STAGE_RUNNING); store.save(busy);
+        var queued = new Task("8", "c", "t8", "u", "排隊任務"); queued.state(Task.State.QUEUED); store.save(queued);
+        var waiting = new Task("9", "c", "t9", "u", "等人任務"); waiting.state(Task.State.AWAIT_HUMAN); store.save(waiting);
+        when(publisher.publish(eq("42"), any(), any(), eq("feature/task42"))).thenReturn(new PullRequestPublisher.Result("feature/task42", "https://example.test/pr/1", 1));
+        List<Runnable> jobs = new ArrayList<>(); engine.approve(task, "u", jobs::add);
+        verify(slack).post(any(), eq("c"), eq("t"), argThat((String t) -> t.contains("已排入中央佇列")
+                && t.contains("#7 執行中") && t.contains("#8 排隊中") && !t.contains("#9") && !t.contains("#42")));
+        jobs.get(0).run();
+        verify(slack).post(any(), eq("c"), eq("t"), eq("輪到任務 #42，開始推分支、開 PR。"));
+        assertThat(task.state()).isEqualTo(Task.State.PR_CREATED);
+    }
+    @Test void approvalWithIdleQueueSaysPublishingStartsNow() throws Exception {
+        engine.run(task);
+        List<Runnable> jobs = new ArrayList<>(); engine.approve(task, "u", jobs::add);
+        verify(slack).post(any(), eq("c"), eq("t"), eq("已收到 PR 核准，開始推分支、開 PR；完成後會貼出 PR 連結。"));
+        verify(slack, never()).post(any(), any(), any(), argThat((String t) -> t.startsWith("輪到任務")));
+    }
     @Test void onlyWhitelistedHumanCanPublishAndDoubleClickIsAtomic() throws Exception {
         engine.run(task); List<Runnable> jobs = new ArrayList<>(); engine.approve(task, "stranger", jobs::add); assertThat(jobs).isEmpty();
         engine.approve(task, "u", jobs::add); engine.approve(task, "u", jobs::add); assertThat(jobs).hasSize(1);

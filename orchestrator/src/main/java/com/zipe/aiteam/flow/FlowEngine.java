@@ -1457,10 +1457,18 @@ public class FlowEngine {
         if (!props.allowedUsers().contains(user)) return;
         if (!store.claimState(task.id(), Task.State.AWAIT_PR_APPROVAL, Task.State.PUBLISH_RUNNING)) return;
         audit.record(task.id(), user, AuditLog.ACTION_BUTTON, "人工核准配置流程的 PR");
+        // 發布和其他任務共用中央佇列；#1019 核准後排在別的任務後面，Slack 毫無動靜，使用者以為按鈕沒作用。
+        List<String> ahead = busyTasks(task.id());
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), ahead.isEmpty()
+                ? "已收到 PR 核准，開始推分支、開 PR；完成後會貼出 PR 連結。"
+                : "已收到 PR 核准，推分支、開 PR 已排入中央佇列，不需要再按一次。目前 " + String.join("、", ahead)
+                        + "，要等前面的工作結束才會輪到；開始時會再通知，完成後貼出 PR 連結。");
         enqueue.accept(() -> {
             FlowRun flow = store.flow(task.id()).orElseThrow();
             try {
                 if (aborted(task)) return;
+                if (!ahead.isEmpty()) slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                        "輪到任務 #" + task.id() + "，開始推分支、開 PR。");
                 requireWorkspace(task, flow);
                 String head = workspaces.headSha(task.id());
                 String reason = FlowGates.publicationReason(flow, head);
@@ -1476,6 +1484,17 @@ public class FlowEngine {
             } catch (PullRequestPublisher.PublishException e) { publishFailed(task, flow, e); }
             catch (Exception e) { waitHumanForError(task, flow, "推分支、開 PR 沒有完成，任務沒有發布出去；確認下面的原因後，需要重新核准 PR。", e); }
         });
+    }
+    /** 佔用或等待中央佇列的其他任務，例如「#1018 執行中」「#1020 排隊中」；等人或已結束的不算。 */
+    private List<String> busyTasks(String self) {
+        List<String> busy = new ArrayList<>();
+        for (Task other : store.findUnfinished()) {
+            if (other.id().equals(self)) continue;
+            Task.State s = other.state();
+            if (s.isRunning()) busy.add("#" + other.id() + " 執行中");
+            else if (s == Task.State.QUEUED || s == Task.State.RESUME_QUEUED || s == Task.State.TRIAGE_QUEUED) busy.add("#" + other.id() + " 排隊中");
+        }
+        return busy;
     }
     /**
      * 推送或開 PR 本身失敗（token、權限、網路）：成果與證據都沒變，留在等待核准 PR，修好設定後再按一次即可。
