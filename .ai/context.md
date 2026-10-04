@@ -31,7 +31,8 @@
   2026-10-04 bestpartner 基準分支改為 `dev`（c27be38，只換配置）：bestpartner PID 39362（配置 3d061a81…）。
   2026-10-04 部署 cba9ab7（開成新需求按鈕短標題，JAR `852779f9…`）：bestpartner PID 46239（配置 6f752df8…）、starters PID 49601（配置 9913fb8e…）。
   2026-10-04 部署 9988a7a（核准排隊訊息＋純文件不編譯，JAR `a5bdf1d9…`）：bestpartner PID 64315（配置 6743989e…）、starters PID 67509。
-  已知問題：Codex 節點（builder_codex、bestpartner QA）跑不了 Gradle，見 configurable-team；QA 開 localTestNetwork 尚待決定。
+  2026-10-04 部署 a84128e（分段改派＋bestpartner QA localTestNetwork，JAR `159e5475…`）：bestpartner PID 74870（配置 d2e5ca0a…）、starters PID 78060。
+  下一步：用新任務實測分段改派（改 `.claude/` 加其他檔）與 Codex QA 跑 `qa-backend-*`；#1020 建議重開新任務。
   下一步：#1012（承接 #1011，計畫已以 inspect-content 通過、實作完成）在獨立驗證停下，使用者按「繼續執行」重跑；
   Slack 輸入視窗（modal）尚未真實實測。
   回滾注意：有任務寫入 `spinoffs`／`spinoffOf` 後，舊 JAR 讀不了這些任務（見 data-model）。

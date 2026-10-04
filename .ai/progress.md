@@ -12,7 +12,12 @@
 - 測試：FlowEngineTest 改寫 1 項並新增 3 項（分段順序、越界停止、額度續跑略過改派段、舊任務沿用）；ConfiguredExecutorTest 新增 1 項；
   本機 525 項只有既有的 4 項 Windows 失敗；TeamCatalogTest 通過（新設定合法）。
 - 已修正文件：multi-runtime（改派段落改寫）、configurable-team（三列）、data-model（`delegatedParts`、`roleOverrides`）、configuration、operations。
-  已核對：engineering-workflow、system-map（不需改）。decisions 追加。未 commit；等佇列清空後與 JAR 一起部署。
+  已核對：engineering-workflow、system-map（不需改）。decisions 追加。
+- commit 729f03b（分段改派）、a84128e（QA localTestNetwork）。VM 隔離建置 `split-fallback-build.V0Oc9F` check-source PASS、
+  525 項 0 失敗（11 略過），JAR `159e547550c3b9e0433746b504d8902b7c075de5ae667d4d1baf465bbd08a65f`。佇列空時部署：
+  bestpartner.json 備份 `bak-before-a84128e`，兩實例 `--validate-team` 通過；bestpartner PID 74870（配置 d2e5ca0a…，備份 `orchestrator-backup.i7vX23`）、
+  starters PID 78060（配置 9913fb8e…，備份 `orchestrator-backup.pB7KAS`），皆 0 ERROR、自檢通過、任務資料前後一致。
+  分段改派與 QA 跑 Gradle 的真實任務尚未實測；#1018（AWAIT_PR_APPROVAL）、#1020（AWAIT_HUMAN，舊快照、整節點改派）不受影響。
 
 ## 2026-10-04 — Claude Code（查證 #1020 改派後文件寫不進去）
 
