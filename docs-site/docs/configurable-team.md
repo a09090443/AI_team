@@ -101,7 +101,10 @@ App-Level Token 留空**：發言與交接 tag 使用同一個角色身分，不
 ## bestpartner 配置
 
 `orchestrator/teams/bestpartner.json`（2026-10-03）是第一個 Gradle 專案配置，供 bestpartner 實例
-（Kotlin/Quarkus＋Gradle 後端、Vue/Vite 前端、Docusaurus 文件，基準分支 `master`）使用。
+（Kotlin/Quarkus＋Gradle 後端、Vue/Vite 前端、Docusaurus 文件，基準分支 `dev`）使用。
+2026-10-04 起基準分支由 `master` 改為 `dev`：任務分支從 `origin/dev` 開，PR 合併到 `dev`。
+遠端必須先有 `dev` 分支，否則建工作區時 `git fetch … refs/remotes/origin/dev` 失敗、任務停止；
+改設定前建立的任務沿用快照裡的 `master`，不受影響。
 角色、模型與流程節點沿用 `spring-starters.json`，差異在專案段：
 
 | 項目 | 內容與理由 |

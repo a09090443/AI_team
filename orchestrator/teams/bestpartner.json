@@ -375,7 +375,7 @@
     ],
     "name": "bestpartner",
     "repositoryEnv": "AI_TEAM_REPO",
-    "baseBranch": "master",
+    "baseBranch": "dev",
     "buildInstructions": "依 repo 的 AGENTS.md 與 .claude/rules/（單一事實來源）；套件名是 tw.zipe.bastpartner。後端用 PATH 上的 gradle（與 gradlew 同為 8.14.5），一律 -p bestpartner-service --no-daemon，使用已宣告的 backend-* 操作；前端以 npm --prefix bestpartner-ui ci／run build／run test；文件以 npm --prefix docs-site ci／run build。改動 Kotlin、命名、i18n 或版本設定後，以 bash scripts/harness-drift-scan.sh 確認「新漂移 0 項」。不使用 pwsh、npx 或絕對路徑替代。VM 沒有 PostgreSQL 與 Docker：@QuarkusTest 類測試在此環境一定連不上資料庫，不得以修改設定或關閉測試來讓它通過。",
     "testInstructions": "先制定情境測試計畫，再驗收；不得只看單元測試數量。後端只執行 qa-backend-test-a、qa-backend-test-b 與 qa-backend-test-code-executor（共 23 個不需資料庫的測試類別，含 ArchitectureTest；CodeExecutorTest 的無窮迴圈逾時測試在負載下不穩定，所以單獨執行，單獨仍逾時才算失敗）；需要 PostgreSQL、外部 API 金鑰或 Google 憑證的情境一律標為「無法核實」並說明原因，不得宣稱通過，也不得改寫成 mock 後宣稱等同。前端依序 qa-ui-install、qa-ui-build（vue-tsc 型別檢查＋建置）、qa-ui-test（vitest）。另以 bash scripts/harness-drift-scan.sh 確認「新漂移 0 項」（只讀）。Gradle 一律 --offline、npm ci 一律 --offline；快取不足須回報，不得下載或繞過沙箱。",
     "protectedPaths": [

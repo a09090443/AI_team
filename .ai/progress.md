@@ -2,6 +2,14 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-04 — Claude Code（bestpartner 基準分支改為 dev）
+
+- 使用者要求：`teams/bestpartner.json` 的 `project.baseBranch` 由 `master` 改為 `dev`（任務分支從 `origin/dev` 開、PR 合併到 `dev`）。
+- 發現：遠端 `a09090443/bestpartner` 目前只有 `master` 與 `feature/ai-team-task-1015`，**沒有 `dev`**；
+  未建立前新任務會在建工作區的 `git fetch … refs/remotes/origin/dev` 失敗。#1015 等既有任務沿用快照的 `master`。
+- 驗證：check-source PASS；docs build 通過；TeamCatalogTest 21、TeamMigrationTest 4、ConfiguredExecutorTest 31 項 0 失敗。未部署、未 commit。
+- 已核對的文件：configurable-team、configuration、INSTALL、cross-project-execution。已修正：configurable-team（bestpartner 段落改為 `dev`，附前置條件）。
+
 ## 2026-10-04 — Claude Code（開 PR 失敗留在等待核准 PR、重新進入核准 PR）
 
 - 起因：816f006 部署後 #1015 驗收、審查通過，使用者核准 PR，但 bestpartner `AI_TEAM_GITHUB_TOKEN` 為空（新 VM 沿用範本 `""`）開 PR 失敗；
