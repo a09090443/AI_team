@@ -77,6 +77,8 @@ public class ConfiguredExecutor {
         Node defined = flow.snapshot.definition().nodes().get(flow.node);
         if (!flow.dialogue && defined != null && defined.protectedPathFallback() != null && !defined.role().equals(node.role()))
             context.append(ProtectedPathFallback.notice(defined.protectedPathFallback()));
+        if (!flow.dialogue && node.gate() == Gate.IMPLEMENTATION && flow.snapshot.definition().project().verification() != null)
+            context.append(DocOnlyChanges.implementationNotice(flow.snapshot.definition().project().verification().docOnlyPaths()));
         if (!flow.dialogue && node.gate() == Gate.VERIFICATION) context.append(changedFiles(task, flow));
         if (!flow.dialogue) context.append(commandPatterns(role, runtime, OperationContract.forNode(flow.snapshot.definition(), flow.node)));
         if (!flow.dialogue) context.append(protectedPathNotice(flow.snapshot.definition(), flow.node, runtimes::require));

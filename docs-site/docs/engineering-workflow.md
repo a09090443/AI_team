@@ -89,6 +89,9 @@ Node 範例依序 `npm ci`、`npm test`、`npm run build`；需依實際 repo �
 Slack 會說明「只改了文件，依專案設定略過建置與測試」，QA／審查收到的收據說明這是配置設計而非查無證據，PR 說明列出檔案。
 **QA 逐項驗收（`inspect-content`）、程式審查與 PR 真人核准照常。** `docOnlyPaths` 不可為 `*`、`**`、`**/*`、絕對路徑或含 `..`、`.git`。
 目前只有 bestpartner 啟用；設定屬新快照，啟用前建立的任務仍全跑。
+實作節點（`IMPLEMENTATION` 閘門）在專案有 `docOnlyPaths` 時，系統會在脈絡加一段「純文件變更規則」（`DocOnlyChanges.implementationNotice`）：
+變更全部符合上述條件時不執行後端／前端編譯與測試操作，也不因缺建置證據回報 BLOCKED；有任一檔不符合就照建置規範完整執行
+（2026-10-04 起；#1018 只改一行 Markdown，改派的 Codex 角色仍自行跑 Gradle 而受阻）。這是給角色的指示，略過與否仍以系統 git diff 判定為準。
 - 指令使用空白環境加少量明確變數、獨立 HOME，不把 Slack/GitHub token 或 CLI session 透過環境傳入。
 - 不沿用共享依賴快取與個人 Maven/npm 設定；第一次建置可能很慢。私有依賴可能受阻，不可用複製整包憑證來解決。
 - 記錄系統觀察的結束碼、argv、起訖時間、commit、配置與需求版本；log 存在可寫目錄外，單指令輸出超過 8 MB 即停止。

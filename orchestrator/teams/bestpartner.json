@@ -478,7 +478,9 @@
         "*.md",
         "docs/**",
         ".claude/**",
-        ".agents/**"
+        ".agents/**",
+        "docs-site/docs/**",
+        "docs-site/blog/**"
       ]
     }
   },

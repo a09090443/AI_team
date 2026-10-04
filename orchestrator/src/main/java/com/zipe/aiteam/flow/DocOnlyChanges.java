@@ -28,6 +28,20 @@ public final class DocOnlyChanges {
         return BUILD_FILES.contains(name) || name.startsWith("Dockerfile");
     }
 
+    /**
+     * 給實作角色的說明：純文件變更不必編譯。#1018 只改一行 Markdown，改派的 Codex 角色仍自行跑 Gradle，
+     * 撞上沙箱限制後回報受阻。判定仍以系統的 git diff 為準，這裡只是讓角色不做多餘的建置。
+     */
+    public static String implementationNotice(List<String> docOnlyPaths) {
+        if (docOnlyPaths == null || docOnlyPaths.isEmpty()) return "";
+        return "\n純文件變更規則：本次變更若全部落在 " + String.join("、", docOnlyPaths)
+                + "，而且沒有碰到建置檔（pom.xml、build.gradle(.kts)、settings.gradle(.kts)、gradle.properties、gradlew、mvnw、"
+                + "package.json、各種 lockfile、Dockerfile）、任何 src 目錄，或 gradle／.mvn／.github 目錄，"
+                + "就不要執行後端／前端的編譯與測試操作，也不要因為沒有建置或測試證據而回報 BLOCKED；"
+                + "系統獨立驗證會依 git diff 判定為純文件並同樣略過，QA 以讀檔驗收。文件本身的檢查（例如連結、表格格式）照常做。"
+                + "只要有一個檔案不符合，就照建置規範完整執行。";
+    }
+
     /** 配置有 docOnlyPaths、變更非空、每個檔都符合且沒有一個在強制全跑名單，才算純文件變更。 */
     public static boolean qualifies(List<String> docOnlyPaths, List<String> changed) {
         if (docOnlyPaths == null || docOnlyPaths.isEmpty() || changed == null || changed.isEmpty()) return false;

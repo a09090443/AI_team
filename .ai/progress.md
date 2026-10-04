@@ -2,6 +2,28 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-04 — Claude Code（查證 Codex 沙箱內 Gradle 起不來）
+
+- 起因：#1018（純文件一行）改派 `builder_codex` 實作時自行跑 `gradle compileKotlin` 失敗，回報 BLOCKED，分流後停在 AWAIT_HUMAN。
+- VM 對照實測（codex-cli 0.156.1，`codex sandbox`，暫存目錄 `gradle-probe.*` 已刪）：
+  A 預設 `:workspace`＋`GRADLE_USER_HOME=~/.cache/gradle` → native library 失敗；B 快取改到可寫的工作區內 → `--version` 正常，
+  但跑 `help` 出現 wildcard IP 失敗（加 `network_access=true` 也一樣）；C `localTestNetwork` 同款 profile（快取可寫＋隔離網路）→ BUILD SUCCESSFUL；
+  D 只開快取可寫、不開網路 → wildcard IP 失敗。結論：兩個條件都要有，只有 VERIFICATION 節點能開 `localTestNetwork`。
+- 發現：bestpartner `verification`（Codex QA）也沒開 `localTestNetwork`，qa-backend-* 操作會撞同樣問題（尚未在實際任務遇到）。
+  2026-10-03 的「模擬沙箱實測」只模擬外層 systemd，沒有測 Codex 內層。
+- 已修正文件：configurable-team（bestpartner 表新增「Codex 節點跑 Gradle」已知問題）。docs build 通過。未改程式、未 commit。
+- 另查 #1019「核准了沒動作」：21:44:27 核准已收到（稽核有 BUTTON、狀態 PUBLISH_RUNNING），但 `FlowEngine.approve` 把發布排進
+  中央佇列，`AI_TEAM_MAX_CONCURRENCY=1` 下排在 #1018（使用者回覆後重跑 implementation）之後。不是錯誤；
+  發現 operations 沒寫這點（缺漏），已補在「核准，推分支並開 PR」列。
+- 依使用者要求補等待訊息：`FlowEngine.approve` 按下即回覆（佇列沒有工作就說開始；否則列出本實例執行中／排隊中的任務、
+  說明不需要再按一次），輪到時再貼「輪到任務 #N，開始推分支、開 PR」。FlowEngineTest 新增 2 項；本機 520 項只有既有的 4 項 Windows 失敗。
+  operations 同步改寫。未 commit、未部署。
+- 純文件不編譯（使用者核准 A＋B）：A `teams/bestpartner.json` 的 `docOnlyPaths` 加 `docs-site/docs/**`、`docs-site/blog/**`
+  （原本不列入的理由「docs-site 會被建置」不成立，獨立驗證 5 條指令都不建置 docs-site）；B `DocOnlyChanges.implementationNotice`，
+  由 `ConfiguredExecutor` 在 IMPLEMENTATION 節點、專案有 docOnlyPaths 時附加「純文件變更規則」。ConfiguredExecutorTest 新增 1 項；
+  本機 521 項只有既有的 4 項 Windows 失敗。已修正文件：configurable-team（獨立驗證列、Codex Gradle 已知問題列）、engineering-workflow、configuration。
+  已核對：operations、data-model（不需改）。未 commit；等佇列清空與核准訊息一起部署到兩個實例。
+
 ## 2026-10-04 — Claude Code（開成新需求按鈕顯示短標題）
 
 - 起因：bestpartner #1016（純詢問）結束時有 4 顆「開成新需求 1～4」，只有序號、分不出各自要做什麼；使用者選擇由 agent 產生短標題。

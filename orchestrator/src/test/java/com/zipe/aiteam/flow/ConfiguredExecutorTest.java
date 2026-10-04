@@ -107,6 +107,20 @@ class ConfiguredExecutorTest {
                 .contains("純文件變更", "README.md", "不是查無建置證據");
     }
 
+    @Test void implementationIsToldNotToBuildForDocOnlyChanges() throws Exception {
+        // #1018：只改 docs-site 的一行 Markdown，改派的 Codex 角色仍自行跑 Gradle、撞沙箱後回報受阻。
+        var paths = TeamCatalog.load(Path.of("teams/bestpartner.json"), key -> repo.toString()).definition()
+                .project().verification().docOnlyPaths();
+        assertThat(DocOnlyChanges.qualifies(paths, List.of("docs-site/docs/architecture/tech-stack.md"))).isTrue();
+        assertThat(DocOnlyChanges.qualifies(paths, List.of("docs-site/blog/2026-10-04-release.md"))).isTrue();
+        assertThat(DocOnlyChanges.qualifies(paths, List.of("docs-site/docusaurus.config.ts"))).isFalse();
+        assertThat(DocOnlyChanges.qualifies(paths, List.of("docs-site/src/components/Home.tsx"))).isFalse();
+        assertThat(DocOnlyChanges.implementationNotice(paths))
+                .contains("docs-site/docs/**", "不要執行後端／前端的編譯與測試操作", "不要因為沒有建置或測試證據而回報 BLOCKED", "照建置規範完整執行");
+        assertThat(DocOnlyChanges.implementationNotice(null)).isEmpty();
+        assertThat(DocOnlyChanges.implementationNotice(List.of())).isEmpty();
+    }
+
     @Test void verificationStageSaysReceiptIsStillPending() {
         var verification = flow.snapshot.definition().nodes().get("verification");
         assertThat(ConfiguredExecutor.receiptView(flow, verification)).contains("尚未產生");

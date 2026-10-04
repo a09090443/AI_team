@@ -64,7 +64,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 | `name`、`repositoryEnv`、`baseBranch` | 專案名稱、存放 repo 路徑的環境變數名、基準分支 |
 | `buildInstructions`、`testInstructions` | 注入角色的建置／測試規範；`testInstructions` 的每一步都要有對應 `operations` |
 | `operations` | 操作契約：`{ "<id>": { nodes, directory, argv, writes } }`。`argv` 不支援管線，多步驟請拆開 |
-| `verification` | 系統獨立驗證：管理者固定的 `commands` 與 `timeoutSeconds`，在 QA 前於全新 clone 執行；選填 `docOnlyPaths`（路徑 glob）：系統依 git diff 判定變更全部落在其中、且不含強制全跑檔時略過建置測試（見 engineering-workflow） |
+| `verification` | 系統獨立驗證：管理者固定的 `commands` 與 `timeoutSeconds`，在 QA 前於全新 clone 執行；選填 `docOnlyPaths`（路徑 glob）：系統依 git diff 判定變更全部落在其中、且不含強制全跑檔時略過建置測試；同一份清單也會寫進實作節點的指示，要求純文件變更不要自行編譯（見 engineering-workflow） |
 | `nodes.<實作>.protectedPathFallback` | 選填 `{"role", "paths"}`：需求要改原實作角色 runtime 寫不了的路徑、且全在 `paths`（目錄 `/**`）內時改派給該角色；行為設定類路徑寫死禁止，系統事後逐檔核對並代為提交（見 multi-runtime） |
 | `requiredTools` | 啟動時沙箱工具鏈自檢逐一檢查，缺任一項服務不啟動 |
 | `protectedPaths`、`cachePaths` | 任何角色不可寫的路徑；允許的快取目錄（只限 `.m2/repository`、`.npm`、`.gradle/caches`、`.cache/<名稱>`） |
