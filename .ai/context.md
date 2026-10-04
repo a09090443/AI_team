@@ -87,3 +87,5 @@
   僅既有 4 項 Windows 失敗）、VM 雙層沙箱實測（不呼叫模型）、multi-runtime／data-model／project-tree 文件已完成並 commit。
 - **未做**：configurable-team／configuration 文件補欄位說明、decisions 追加、VM 隔離建置與全部測試、`--validate-team`、
   備份並更新 bestpartner.json、`deploy-jar-safe.sh` 部署兩個實例、#1014 按「改用新任務繼續」實測。
+- 2026-10-04 部署 5026aa8 時 VM 又失去回應（SSH banner 逾時，與 10-03 13:30 UTC 同症狀）；原始碼上傳未完成，兩實例未變動。
+  VM 恢復後：先唯讀確認服務與任務，再隔離建置／測試／--validate-team、備份並更新 bestpartner.json、deploy-jar-safe 兩實例。
