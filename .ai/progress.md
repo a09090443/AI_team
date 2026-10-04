@@ -12,7 +12,9 @@
   check-source PASS、514 項 0 失敗（11 略過），JAR `bb5e8503b8b0090a1bb54ff57e694318ec184413507193f0721598b468ae4eea`；docs build 通過。
 - 已核對的文件：configuration、configurable-team、local-test-capabilities、multi-runtime、system-map（無需改）。
   發現的落差：local-test-capabilities 寫「其他節點缺目錄即失敗」是舊設計；已修正 configuration、configurable-team、local-test-capabilities；decisions 追加。
-- **未部署**：deploy-jar-safe 被 Claude Code 權限分類器擋下（Production Deploy），待使用者本人執行或授權。
+- 部署（使用者授權後，deploy-jar-safe，只換 JAR）：bestpartner PID 17060（備份 `orchestrator-backup.IzCkOS`）、starters PID 19807（備份 `orchestrator-backup.m1J2oy`），
+  皆 0 ERROR、沙箱自檢通過、任務資料前後一致。#1015 在修正前（01:37 UTC）按過「續跑」又被同錯誤擋下；verification visits 仍為 1/3。
+  待使用者在 #1015 按「續跑」做真實驗收。
 
 ## 2026-10-03 — Claude Code（純文件變更略過系統獨立驗證的建置測試）
 
