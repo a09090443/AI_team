@@ -13,7 +13,8 @@
   516 項 0 失敗（11 略過），JAR `e76c625ac2344dfe8cb2343ba277c4113114caacde9109d932b20a359f797570`；docs build 通過。
 - 已核對的文件：failure-reporting、operations、engineering-workflow、review-gate、system-map、interaction-model。
   已修正：failure-reporting（發布失敗不再走 explainer）、operations（按鈕表）、engineering-workflow（PR 段落）；decisions 追加。
-- **未部署**：deploy-jar-safe 被權限分類器擋下，待使用者執行或授權。部署後 #1015 按「重新進入核准 PR」→ 核准 PR（真實端對端尚未驗證）。
+- 部署（使用者授權）：bestpartner PID 31542（備份 `orchestrator-backup.duv9KQ`）、starters PID 34723（備份 `orchestrator-backup.mt19ts`），
+  皆 0 ERROR、任務資料前後一致。待 #1015 按「重新進入核准 PR」→ 核准 PR（真實端對端尚未驗證）。
 
 ## 2026-10-04 — Claude Code（LIMITED 節點缺少的明確可寫目錄改為預先建立）
 
