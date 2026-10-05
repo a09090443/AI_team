@@ -9,7 +9,7 @@
 
 新報告必須提供 verification_status 與 blockers。只有 VERIFIED、
 HIGH／MEDIUM confidence、APPROVE／COMMENT、空 blockers、非空 checked，
-且 findings 沒有 HIGH 才可進入人工核准。
+且 findings 的等級只有 MEDIUM 或 LOW（HIGH 與任何其他寫法都擋下，見下方 2026-10-06 段落）才可進入人工核准。
 缺失或舊格式報告需重新 review，不能視為通過。
 
 無法核實、要求修正及 reviewer 執行失敗時，任務轉為 AWAIT_HUMAN，
@@ -35,3 +35,14 @@ ReviewGate 的硬性條件不變。規則是配置資產，只套用到新任務
 
 另：驗收（QA，Codex）補的測試若都在驗收節點允許寫入的路徑內且不碰保護路徑，由系統代為提交並回到驗收節點重驗，
 不再交給實作節點、不消耗自動處理額度（程式變更，所有任務立即生效）。
+
+## 審查等級限定三級（2026-10-06）
+
+bestpartner #1022 的審查結論是 APPROVE、沒有 blockers，但 findings 有一項 `INFO`（「資料庫類測試沒有核實」的提醒）。
+`ReviewGate` 只放行 MEDIUM／LOW，把 `INFO` 判為「Code Review 有 HIGH 或無法判定等級的問題」而擋下發布；
+負責人兩次選「接受保留並發布」「授權發布」都繞不過（核准不能覆蓋這道閘門），分流沒有可重派的節點，只能一再停下。
+原因是配置式審查 schema（`teams/schemas/review.json`）的 `severity` 只要求非空字串，提示詞也沒限定等級。
+
+修正：schema 的 `severity` 改為 `enum` `HIGH`／`MEDIUM`／`LOW`（Structured Outputs 由 runtime 強制）；
+`teams/prompts/review.md` 寫明只能用這三級，純提醒寫在 summary 或列 LOW。`ReviewGate` 本身不放寬。
+這是配置資產：已在跑的任務沿用快照，要套用需走「檢視配置更新 → 核准配置更新 → 重新執行這一步」。

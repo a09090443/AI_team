@@ -121,4 +121,20 @@ class ReviewGateTest {
                     contains("sandbox initialization failed"));
         } finally { orchestrator.shutdown(); }
     }
+
+    /**
+     * bestpartner #1022：schema 沒限定 severity，審查寫了 INFO，閘門判為無法判定等級而擋下已 APPROVE 的發布。
+     * 配置式審查的 schema 只能允許閘門認得的等級（HIGH 會擋、MEDIUM／LOW 放行）。
+     */
+    @Test void teamReviewSchemaOnlyAllowsSeveritiesTheGateUnderstands() throws Exception {
+        var schema = new ObjectMapper().readTree(java.nio.file.Path.of("teams/schemas/review.json").toFile());
+        var values = new java.util.ArrayList<String>();
+        schema.at("/properties/findings/items/properties/severity/enum").forEach(v -> values.add(v.asText()));
+        assertThat(values).containsExactlyInAnyOrder("HIGH", "MEDIUM", "LOW");
+        ObjectNode report = verified();
+        report.putArray("findings").addObject().put("severity", "INFO").put("detail", "提醒");
+        assertThat(ReviewGate.blockingReason(report)).contains("無法判定等級");
+        ((ObjectNode) report.withArray("findings").get(0)).put("severity", "LOW");
+        assertThat(ReviewGate.blockingReason(report)).isNull();
+    }
 }

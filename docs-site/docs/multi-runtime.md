@@ -56,7 +56,7 @@
   目標專案的慣例：會隨版本或功能變動的資訊（版本號、模組清單）不要寫在 `.claude/rules/` 等受保護路徑，
   改寫在建置檔、`AGENTS.md` 或一般文件，受保護路徑只放穩定的規則並指向那些檔案。
 
-**受保護路徑改派（2026-10-04 起；整節點改派已在 #1018～#1020 實測，分段改派尚未真實任務實測）**：實作節點可設 `protectedPathFallback`
+**受保護路徑改派（2026-10-04 起；整節點改派已在 #1018～#1020 實測；分段改派 2026-10-05 在 bestpartner #1022 實作段真實通過，見下）**：實作節點可設 `protectedPathFallback`
 （`{"role": ..., "paths": [...]}`）。`ProtectedPathFallback` 從需求文字與已完成節點報告擷取路徑，原角色 runtime 寫不了、
 且全部落在 `paths` 內時，改派給該角色（不同 runtime，例如 Codex）。
 `.claude/settings*`、`hooks`、`commands`、`agents`、`plugins`、`.git`、`.mcp.json`、`.vscode`、`.idea`、`.github` 等寫死禁止，配置無法覆蓋。
@@ -73,6 +73,9 @@
 
 同一輪續跑（例如額度用完後恢復）時，`delegatedParts` 的起始 commit 等於本輪起始 commit 就略過改派段，checkpoint 只交給 runtime 相符的那一段；
 節點新的一輪開始時清掉上一輪的紀錄。改派段若改錯，原角色寫不了那些檔案，由 QA 驗收擋下後返工重跑兩段。
+真實實測（2026-10-05，bestpartner #1022，JAR 242d49f）：改派段 `builder_codex` 只改 `.claude/rules/naming-conventions.md`、
+`.claude/skills/docker-build/SKILL.md`，核對通過由系統提交（1621998）；主實作段 `builder` 接著改 `.agents/skills/docker-build/SKILL.md`（60b8ca5），
+獨立驗證與 QA 通過。發布另因審查等級被擋，見 [review-gate](review-gate.md)。
 改成分段的原因：#1020 整個節點交給 Codex 時，Codex 內層沙箱把 `.agents` 掛成唯讀、也啟動不了 Gradle，只有 `build.gradle.kts` 改成。
 
 **整節點改派（舊行為）**：2026-10-04 前已記在 `FlowRun.roleOverrides` 的任務沿用，整個節點由改派角色執行，

@@ -2,6 +2,27 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-06 — Claude Code（#1022 審查 INFO 等級擋發布）
+
+- #1022 分段改派實作段真實通過（1621998 改派段、60b8ca5 主實作段），獨立驗證與 QA 通過；審查 APPROVE 但 findings 有 `INFO`，
+  `ReviewGate` 只認 MEDIUM／LOW 而擋下；負責人兩次授權發布都無效，分流反覆停在 AWAIT_HUMAN（audit 315–329）。
+- 修正：`teams/schemas/review.json` 的 severity 加 enum HIGH／MEDIUM／LOW；`teams/prompts/review.md` 限定三級；ReviewGate 不放寬。
+  ReviewGateTest 新增 1 項（schema 與閘門一致）。本機 529 項只有既有 4 項 Windows 失敗；check-source PASS。
+- 發現的落差：review-gate 寫「findings 沒有 HIGH 才可核准」，實際是只放行 MEDIUM／LOW。
+- 已修正文件：review-gate（落差＋新段落）、multi-runtime、configurable-team（分段改派實測證據）。已核對：configuration、operations（不需改）。docs build 通過。
+
+## 2026-10-05 — Claude Code（Codex 額度解禁時間換算台北時間）
+
+- 使用者要求 Codex 解禁時間換算成易讀的台灣時間。查 codex-rs 0.156.1 原始碼：`format_retry_timestamp` 以 chrono `Local` 輸出，
+  不同天 `Sep 15th, 2026 1:09 PM`、同一天只有 `1:09 PM`；措辭用彎引號 `You’ve`。
+- 修改：`CodexRuntime` 以 `env TZ=UTC` 啟動 Codex；`QuotaRetryTime` 以 UTC 解讀 Codex 時間（含只有時刻），移除 UTC+14／−12 邊界推理；
+  `TaipeiTime.friendly`（今天／明天、星期、約多久後）；`QuotaMessage.resetLine` 兩家都換算並附原文，`QuotaAutoResume` 下次嘗試同格式；
+  `QuotaExceeded.explicit` 先把 `’` 統一成 `'`。
+- 發現的落差：0.156.1 的 Codex 額度訊息是彎引號，原本只認直引號，會被當成一般失敗（新 VM 上尚無實際樣本可佐證）。
+- 測試：QuotaRetryTimeTest、QuotaMessageTest 改寫，QuotaExceededTest 新增 1 項；本機 528 項只有既有 4 項 Windows 失敗。
+- 已修正文件：quota-continuation（供應商表、排程、Slack 呈現）、INSTALL（額度段）；decisions 追加（取代 09-10 原文照登決策）。
+  已核對：codex-cli-argument-contract、multi-runtime、codex-nested-sandbox、operations（不需改）。docs build 通過。未 commit、未部署。
+
 ## 2026-10-05 — Claude Code（查證 #1021 分段改派文件仍寫不進去）
 
 - bestpartner #1021（承接 #1020）第一次走分段改派：`builder_codex` 改派段回報 BLOCKED、沒改任何檔案，以它的報告當節點結果，
