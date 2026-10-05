@@ -90,7 +90,7 @@ public class ConfiguredExecutor {
             context.append(DocOnlyChanges.implementationNotice(flow.snapshot.definition().project().verification().docOnlyPaths()));
         if (!flow.dialogue && node.gate() == Gate.VERIFICATION) context.append(changedFiles(task, flow));
         if (!flow.dialogue) context.append(commandPatterns(role, runtime, OperationContract.forNode(flow.snapshot.definition(), flow.node)));
-        if (!flow.dialogue) context.append(protectedPathNotice(flow.snapshot.definition(), flow.node, runtimes::require));
+        if (!flow.dialogue) context.append(protectedPathNotice(flow.snapshot.definition(), flow.node, node.role(), runtimes::require));
         // 同一角色常同時負責訂計畫與驗收，角色提示會提到驗收要引用 plan_revision；
         // 但 plan_revision 是系統在計畫完成後依計畫內容計算的，訂計畫時本來就不存在。
         // boundary_conflict 會讓整份實作不被採用。#1016／#1017 的實作都成功了，卻把
@@ -187,10 +187,18 @@ public class ConfiguredExecutor {
      * 因為驗收條件與分流選項是它們定的。沒有任何限制時不輸出，不影響不用這類 runtime 的團隊。
      */
     static String protectedPathNotice(TeamDefinition definition, String nodeId, Function<String, AgentRuntime> runtimeOf) {
+        return protectedPathNotice(definition, nodeId, null, runtimeOf);
+    }
+    /**
+     * actingRole 是實際執行本節點的角色（分段改派時是改派角色）。bestpartner #1021：改派給 Codex 的那一段拿到
+     * 原角色（Claude）的「.claude/ 一律拒寫、不要嘗試」，與改派說明矛盾，Codex 照這條只做唯讀就回報受阻。
+     */
+    static String protectedPathNotice(TeamDefinition definition, String nodeId, String actingRole, Function<String, AgentRuntime> runtimeOf) {
         Node node = definition.nodes().get(nodeId);
         if (node == null || node.kind() != Kind.AGENT) return "";
         if (writes(node)) {
-            List<String> paths = runtimeOf.apply(definition.roles().get(node.role()).runtime()).protectedWritePaths();
+            String role = actingRole == null ? node.role() : actingRole;
+            List<String> paths = runtimeOf.apply(definition.roles().get(role).runtime()).protectedWritePaths();
             if (paths.isEmpty()) return "";
             return "\n下列路徑你這個角色的 runtime 一律拒絕寫入，任何權限設定都開放不了（目錄以 / 結尾，表示其下任何檔案）："
                     + paths + "。需求要求修改這些檔案時不要嘗試（Edit、Write、Bash 重導都會被拒，白用回合），"

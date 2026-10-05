@@ -331,6 +331,14 @@ class ConfiguredExecutorTest {
                 .contains("不要嘗試").contains("human_decision").contains("這不是 boundary_conflict");
     }
 
+    @Test void delegatedCodexPartIsNotToldTheOriginalRolesLimits() throws Exception {
+        // bestpartner #1021：分段改派的 Codex 拿到 Claude 的「.claude/ 一律拒寫、不要嘗試」，只做唯讀就回報受阻。
+        assertThat(ConfiguredExecutor.protectedPathNotice(springDefinition(), "implementation", "tester",
+                ConfiguredExecutorTest::runtimeOf)).isEmpty();
+        assertThat(ConfiguredExecutor.protectedPathNotice(springDefinition(), "implementation", "builder",
+                ConfiguredExecutorTest::runtimeOf)).contains("不要嘗試");
+    }
+
     @Test void requirementPlanningAndTriageNodesLearnTheImplementersLimits() throws Exception {
         var definition = springDefinition();
         for (String node : List.of("intake", "design", "plan", "triage", "review")) {

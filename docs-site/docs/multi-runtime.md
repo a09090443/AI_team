@@ -63,6 +63,9 @@
 
 **分段改派（2026-10-04 起，取代整節點改派）**：同一輪實作分兩段依序執行（`FlowEngine.runDelegatedPart`）：
 1. 改派段：改派角色只修改 `paths` 內的檔案，不跑建置測試、不 commit（說明 `ProtectedPathFallback.partNotice`）。
+   派工前的受保護路徑告知（`ConfiguredExecutor.protectedPathNotice`）依**實際執行的角色**的 runtime 判斷，改派給 Codex 時不會出現
+   「`.claude/` 一律拒寫」的說明。2026-10-05 前它誤用節點原定角色（Claude），bestpartner #1021 的改派段因此收到互相矛盾的指示，
+   只做唯讀查核就回報 BLOCKED（受保護文件一個也沒改，稽核顯示「改派段未完成」）。
    系統以 `auditPaths` 核對，變更必須**全部**落在 `paths` 內（`partViolations`，連 `.agents/`、一般檔案也不行），越界即 `SecurityException`；
    通過後系統代為提交，結果記在 `FlowRun.delegatedParts`（起始 commit、提交後 commit、檔案、摘要）。
    改派段回報未完成（`status` 不是 SUCCESS、有 `boundary_conflict` 或 `execution_status` 受阻）時，以它的報告當本節點結果，照一般受阻流程處理，不執行第二段。

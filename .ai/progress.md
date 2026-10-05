@@ -2,6 +2,15 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-05 — Claude Code（查證 #1021 分段改派文件仍寫不進去）
+
+- bestpartner #1021（承接 #1020）第一次走分段改派：`builder_codex` 改派段回報 BLOCKED、沒改任何檔案，以它的報告當節點結果，
+  分流後 AWAIT_HUMAN（audit 270–276）。Codex 自述「任務指示明定 `.claude/**` runtime 一律拒絕寫入，且要求不要嘗試」。
+- 根因：`ConfiguredExecutor.protectedPathNotice` 以 `flow.node` 查節點原定角色（builder＝Claude）的 runtime，
+  改派段也收到 Claude 的拒寫告知，與 `partNotice` 矛盾。修正為依實際執行角色（新增 actingRole 參數）。
+  ConfiguredExecutorTest 新增 1 項；ConfiguredExecutorTest、FlowEngineTest、ProtectedPathFallbackTest 本機通過。
+- 已修正文件：multi-runtime（改派段說明）、configurable-team（`.claude/` 文件修改列）。docs build 通過。未 commit、未部署。
+
 ## 2026-10-04 — Claude Code（分段改派＋bestpartner QA 開 localTestNetwork）
 
 - 使用者核准計畫後實作：`FlowEngine.runDelegatedPart` 先由改派角色只改 `protectedPathFallback.paths` 內的檔案
