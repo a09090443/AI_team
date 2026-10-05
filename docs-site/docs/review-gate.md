@@ -45,4 +45,5 @@ bestpartner #1022 的審查結論是 APPROVE、沒有 blockers，但 findings �
 
 修正：schema 的 `severity` 改為 `enum` `HIGH`／`MEDIUM`／`LOW`（Structured Outputs 由 runtime 強制）；
 `teams/prompts/review.md` 寫明只能用這三級，純提醒寫在 summary 或列 LOW。`ReviewGate` 本身不放寬。
-這是配置資產：已在跑的任務沿用快照，要套用需走「檢視配置更新 → 核准配置更新 → 重新執行這一步」。
+這是配置資產：已在跑的任務沿用快照。提示／schema 資產變更**不能原地遷移**（`TeamMigration.preview`，見
+[跨專案執行](cross-project-execution.md)），停下的任務不會出現「檢視配置更新」；要套用只能「改用新任務繼續」，或由負責人手動開 PR。

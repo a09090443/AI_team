@@ -14,7 +14,7 @@
   JAR `4589e7da5ec5cb10df243c9d55723962745c70ba5dabde8ffe1655c6657732ef`。兩實例 `teams/schemas/review.json`、`teams/prompts/review.md`
   （部署前雜湊與 repo 舊版一致）備份為 `*.bak-before-1a3e37d` 後更新，`--validate-team` 通過；deploy-jar-safe 換 JAR：
   bestpartner PID 106078（配置 a202552b…，備份 `orchestrator-backup.WP3inP`）、starters PID 108925（配置 ba1ddf63…，備份 `orchestrator-backup.WrQN5F`），
-  皆 0 ERROR、自檢通過、任務資料前後一致。#1022 仍用舊快照，需配置遷移後重跑審查；Codex 額度時間換算尚無真實額度事件驗證。
+  皆 0 ERROR、自檢通過、任務資料前後一致。#1022 仍用舊快照；提示／schema 變更不能原地遷移，需改用新任務繼續或手動開 PR；Codex 額度時間換算尚無真實額度事件驗證。
 
 ## 2026-10-05 — Claude Code（Codex 額度解禁時間換算台北時間）
 
