@@ -10,6 +10,11 @@
   ReviewGateTest 新增 1 項（schema 與閘門一致）。本機 529 項只有既有 4 項 Windows 失敗；check-source PASS。
 - 發現的落差：review-gate 寫「findings 沒有 HIGH 才可核准」，實際是只放行 MEDIUM／LOW。
 - 已修正文件：review-gate（落差＋新段落）、multi-runtime、configurable-team（分段改派實測證據）。已核對：configuration、operations（不需改）。docs build 通過。
+- commit 097d43a（Codex 額度時間）、1a3e37d（審查等級）。VM 隔離建置 `review-enum-build.fD23dJ` check-source PASS、529 項 0 失敗（11 略過），
+  JAR `4589e7da5ec5cb10df243c9d55723962745c70ba5dabde8ffe1655c6657732ef`。兩實例 `teams/schemas/review.json`、`teams/prompts/review.md`
+  （部署前雜湊與 repo 舊版一致）備份為 `*.bak-before-1a3e37d` 後更新，`--validate-team` 通過；deploy-jar-safe 換 JAR：
+  bestpartner PID 106078（配置 a202552b…，備份 `orchestrator-backup.WP3inP`）、starters PID 108925（配置 ba1ddf63…，備份 `orchestrator-backup.WrQN5F`），
+  皆 0 ERROR、自檢通過、任務資料前後一致。#1022 仍用舊快照，需配置遷移後重跑審查；Codex 額度時間換算尚無真實額度事件驗證。
 
 ## 2026-10-05 — Claude Code（Codex 額度解禁時間換算台北時間）
 
