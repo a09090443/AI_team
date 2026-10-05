@@ -9,7 +9,8 @@ public final class QuotaExceeded extends AgentRuntime.RuntimeExecutionException 
     public QuotaExceeded(String message) { super(message); }
 
     public static boolean explicit(String message) {
-        String s = message.toLowerCase(Locale.ROOT);
+        // Codex CLI（0.156.1 實查原始碼）寫的是彎引號「You’ve」，統一成直引號再比對，否則額度停止會被當成一般失敗。
+        String s = message.toLowerCase(Locale.ROOT).replace('’', '\'');
         return s.contains("usage_limit_reached") || s.contains("insufficient_quota")
                 || s.contains("usage limit reached") || s.contains("usage limit has been reached")
                 || s.contains("you've hit your usage limit") || s.contains("you have hit your usage limit")

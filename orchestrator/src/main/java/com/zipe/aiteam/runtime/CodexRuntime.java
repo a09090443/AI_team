@@ -118,8 +118,11 @@ public class CodexRuntime implements AgentRuntime {
 
             String unit = props.unitPrefix() + req.taskId() + "-" + req.role()
                     + "-codex-" + (System.currentTimeMillis() / 1000);
-            List<String> cmd = sandbox.wrap(unit, req.sandboxPolicy(),
-                    req.workingDirectory(), buildCommand(req, schemaFile));
+            // Codex 額度訊息「try again at …」以本地時區輸出且不標時區；固定 UTC 才能精確換算成台北時間（QuotaRetryTime）。
+            // 只套在 Codex 這個程序：systemd unit 不繼承 ProcessBuilder 的環境，所以用 env 前置。
+            List<String> inner = new ArrayList<>(List.of("env", "TZ=UTC"));
+            inner.addAll(buildCommand(req, schemaFile));
+            List<String> cmd = sandbox.wrap(unit, req.sandboxPolicy(), req.workingDirectory(), inner);
 
             ProcessBuilder pb = new ProcessBuilder(cmd);
             pb.redirectError(ProcessBuilder.Redirect.appendTo(stderrLog.toFile()));

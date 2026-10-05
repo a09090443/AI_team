@@ -478,3 +478,12 @@ bestpartner 的 QA（Codex）開 `localTestNetwork`。
 理由：#1020 整節點交給 Codex 後，Codex 內層沙箱把 `.agents` 掛成唯讀、也啟動不了 Gradle（VM 對照實測），
 需求只完成建置檔一處。實作節點不能開 `localTestNetwork`，放寬 Codex 實作節點的沙箱等於擴權，故改成只交出受保護檔案。
 影響：一輪實作多一次模型呼叫；改派段改錯時原角色無法修正，靠 QA 驗收擋下返工。`FlowRun` 新增 `delegatedParts`，回滾舊 JAR 讀不了寫入過的任務。
+
+## 2026-10-05 — Codex 解禁時間固定 UTC 並換算台北時間（取代 2026-09-10 的「原文照登」）
+
+決策：`CodexRuntime` 以 `env TZ=UTC` 啟動 Codex，`QuotaRetryTime` 把 `try again at …`（含只有時刻的同日格式）以 UTC 解讀；
+Slack 的解禁與下次嘗試時間都用台北時間口語格式（`TaipeiTime.friendly`）並附原文。
+理由：查 codex-rs 0.156.1 原始碼，`format_retry_timestamp` 用 chrono `Local` 輸出，時區是執行端可控的，不是未知；
+固定 TZ 後不需要猜。使用者要求看得懂的台北時間。舊做法排程最多晚一天，且解析不了同日只有時刻的格式。
+代價：依賴 Codex 以本地時區輸出的實作細節，換 CLI 版本要重查；`TZ=UTC` 也套在 Codex 執行的指令上（VM 本來就是 UTC，行為不變）。
+另修：0.156.1 措辭為彎引號 `You’ve`，原本只認直引號，Codex 額度停止會被當成一般失敗。
