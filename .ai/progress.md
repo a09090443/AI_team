@@ -9,7 +9,11 @@
 - 根因：`ConfiguredExecutor.protectedPathNotice` 以 `flow.node` 查節點原定角色（builder＝Claude）的 runtime，
   改派段也收到 Claude 的拒寫告知，與 `partNotice` 矛盾。修正為依實際執行角色（新增 actingRole 參數）。
   ConfiguredExecutorTest 新增 1 項；ConfiguredExecutorTest、FlowEngineTest、ProtectedPathFallbackTest 本機通過。
-- 已修正文件：multi-runtime（改派段說明）、configurable-team（`.claude/` 文件修改列）。docs build 通過。未 commit、未部署。
+- 已修正文件：multi-runtime（改派段說明）、configurable-team（`.claude/` 文件修改列）。docs build 通過。
+- commit 242d49f。VM 隔離建置 `notice-role-build.sFD9MV` check-source PASS、526 項 0 失敗（11 略過），
+  JAR `8867c9fd1a2a7b701e9410a1d6b2ad729ff4159808330a9fa24212b6439b9acc`。無執行中 unit 時以 deploy-jar-safe 換 JAR（只換 JAR）：
+  bestpartner PID 86276（備份 `orchestrator-backup.Dhj4kX`）、starters PID 89428（備份 `orchestrator-backup.HEjGAe`），
+  皆 0 ERROR、自檢通過、任務資料前後一致。#1021 仍 AWAIT_HUMAN，需使用者在 Slack 重新執行；分段改派真實端對端尚未通過。
 
 ## 2026-10-04 — Claude Code（分段改派＋bestpartner QA 開 localTestNetwork）
 

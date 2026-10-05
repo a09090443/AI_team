@@ -3,7 +3,7 @@
 > 換手前務必更新這份檔案。內容只寫「現在正在做什麼、卡在哪、下一步」，
 > 長期結論寫 `decisions.md`，已完成的寫 `progress.md`。舊內容查 git 歷史，不要在這裡累積流水帳。
 
-最後更新：2026-09-30（Claude Code）
+最後更新：2026-10-05（Claude Code）
 
 ## 正在進行
 
@@ -32,7 +32,9 @@
   2026-10-04 部署 cba9ab7（開成新需求按鈕短標題，JAR `852779f9…`）：bestpartner PID 46239（配置 6f752df8…）、starters PID 49601（配置 9913fb8e…）。
   2026-10-04 部署 9988a7a（核准排隊訊息＋純文件不編譯，JAR `a5bdf1d9…`）：bestpartner PID 64315（配置 6743989e…）、starters PID 67509。
   2026-10-04 部署 a84128e（分段改派＋bestpartner QA localTestNetwork，JAR `159e5475…`）：bestpartner PID 74870（配置 d2e5ca0a…）、starters PID 78060。
-  下一步：用新任務實測分段改派（改 `.claude/` 加其他檔）與 Codex QA 跑 `qa-backend-*`；#1020 建議重開新任務。
+  2026-10-05 部署 242d49f（改派段受保護路徑告知依實際角色，JAR `8867c9fd…`）：bestpartner PID 86276、starters PID 89428。
+  #1021（第一個分段改派任務）改派段因收到 Claude 拒寫告知而沒動手，停在 AWAIT_HUMAN，此版修正後待使用者重新執行。
+  下一步：以 #1021 重跑實測分段改派（改 `.claude/` 加其他檔）與 Codex QA 跑 `qa-backend-*`；#1020 建議重開新任務。
   下一步：#1012（承接 #1011，計畫已以 inspect-content 通過、實作完成）在獨立驗證停下，使用者按「繼續執行」重跑；
   Slack 輸入視窗（modal）尚未真實實測。
   回滾注意：有任務寫入 `spinoffs`／`spinoffOf` 後，舊 JAR 讀不了這些任務（見 data-model）。
