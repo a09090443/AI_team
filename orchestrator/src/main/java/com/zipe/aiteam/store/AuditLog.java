@@ -31,6 +31,8 @@ public class AuditLog {
     public static final String ACTION_RECOVERY    = "RECOVERY";
     /** Agent 想用但被權限設定擋下的工具呼叫。不記錄的話會被誤判成 agent 能力不足。 */
     public static final String ACTION_DENIED      = "TOOL_DENIED";
+    /** 負責人以 agent 提出的結案選項結束任務；狀態仍是 ABORTED，但啟動清理時保留工作區。 */
+    public static final String ACTION_OWNER_CLOSE = "OWNER_CLOSE";
 
     public static final String ACTOR_SYSTEM = "system";
 
@@ -64,6 +66,13 @@ public class AuditLog {
             log.info("[稽核] task={} actor={} {} : {}{}", taskId, actor, action, truncate(detail),
                     costUsd == null ? "" : String.format(" (US$%.4f)", costUsd));
         }
+    }
+
+    /** 任務是否留有某種稽核事件。查詢失敗會拋出例外，由呼叫端決定保守做法。 */
+    public boolean has(String taskId, String action) {
+        Integer n = jdbc.queryForObject("SELECT COUNT(*) FROM audit_log WHERE task_id=? AND action=?",
+                Integer.class, taskId, action);
+        return n != null && n > 0;
     }
 
     /** 狀態轉換是最常查的事件，給它一個專用入口確保格式一致。 */

@@ -84,7 +84,7 @@ task (1) ──┬── (0..1) task_checkpoint     中斷現場
 | 執行中 | `PM_RUNNING`、`ARCH_RUNNING`、`QA_PLAN_RUNNING`、`IMPL_RUNNING`、`QA_RUNNING`、`REVIEW_RUNNING` | legacy 固定管線使用 |
 | 終止 | `COMPLETED` | 完成 |
 | 終止 | `PR_CREATED` | 自動開發管線結束。**不代表已合併、發布或產品驗收** |
-| 終止 | `ABORTED` | 中止。注意：下次服務重啟的 `purgeWorkspaces()` 會刪掉這類任務的工作區 |
+| 終止 | `ABORTED` | 中止。注意：下次服務重啟的 `purgeWorkspaces()` 會刪掉這類任務的工作區；例外是 audit 有 `OWNER_CLOSE`（負責人結案）或舊管線審查未通過的任務 |
 | 終止 | `FAILED` | 失敗，原因在 `failure_reason` |
 
 `findUnfinished()` 以 `state NOT IN ('COMPLETED','PR_CREATED','ABORTED','FAILED')` 判定「未結束」。
@@ -145,6 +145,7 @@ Slack `event_id` 去重表。
 | `REJECTED` | 權限或閘門拒絕 |
 | `RECOVERY` | 恢復授權相關 |
 | `TOOL_DENIED` | Agent 想用但被權限設定擋下的工具呼叫。不記錄的話會被誤判成 agent 能力不足 |
+| `OWNER_CLOSE` | 驗收負責人按了 agent 提出的結案選項（`action=close`）。任務狀態同樣是 `ABORTED`，啟動清理靠這筆紀錄保留工作區（2026-10-06 起；舊版 JAR 不認得，會照一般中止刪除） |
 
 稽核寫入失敗不會讓任務失敗，但會留下 `log.error`。常用查詢：
 

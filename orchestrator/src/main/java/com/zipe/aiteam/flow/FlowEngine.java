@@ -1220,6 +1220,25 @@ public class FlowEngine {
         else presentPlan(task, flow, plan, task.state() == Task.State.AWAIT_HUMAN && PlanApproval.blockingReason(flow, plan) != null);
     }
 
+    /**
+     * 負責人選了 agent 提出的結案選項：系統直接結束任務，不再交回分流。
+     * 狀態沿用 ABORTED（不新增狀態，舊版 JAR 仍讀得懂），以 OWNER_CLOSE 紀錄區分，啟動清理時保留工作區。
+     */
+    private void closeByOwner(Task task, FlowRun flow, Task.State from, String user, String choice) {
+        String reply = from != Task.State.AWAIT_HUMAN ? "任務 #" + task.id() + " 目前為 " + from + "，只有停下等人時才能結案。"
+                : !user.equals(flow.acceptanceOwner) ? "只有驗收負責人可以結案任務 #" + task.id() + "。" : null;
+        if (reply != null) { slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), reply); return; }
+        if (!store.claimState(task.id(), from, Task.State.ABORTED)) return;
+        task.state(Task.State.ABORTED);
+        audit.record(task.id(), user, AuditLog.ACTION_OWNER_CLOSE,
+                "負責人結案（工作區保留）" + (choice.isBlank() ? "" : "：" + Diagnostics.clip(choice, 600)));
+        audit.stateChange(task, from, task.state(), user);
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                "✅ 任務 #" + task.id() + " 已由 <@" + user + "> 結案，不會再派送任何節點。"
+                        + "工作區保留" + (flow.branch == null ? "" : "（分支 `" + flow.branch + "`）")
+                        + "，PR 與合併請在系統外處理；之後要清理工作區請告訴管理者。");
+    }
+
     private void requireWorkspace(Task task, FlowRun flow) {
         if (!workspaces.exists(task.id()) || flow.workspacePath == null
                 || !flow.workspacePath.equals(workspaces.pathFor(task.id()).toAbsolutePath().normalize().toString()))
@@ -1263,6 +1282,10 @@ public class FlowEngine {
             } catch (Exception e) {
                 tellUser(task, "沒有建立承接任務：", e);
             }
+            return;
+        }
+        if (command.equals(HumanOptions.CLOSE_COMMAND) || command.startsWith(HumanOptions.CLOSE_COMMAND + " ")) {
+            closeByOwner(task, flow, from, user, command.substring(HumanOptions.CLOSE_COMMAND.length()).trim());
             return;
         }
         if (feedback != null && feedback.startsWith("核准延長自動交接")) {

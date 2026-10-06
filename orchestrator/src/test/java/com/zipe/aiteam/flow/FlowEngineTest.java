@@ -357,6 +357,36 @@ class FlowEngineTest {
         assertThat(jobs).isEmpty();
     }
 
+    @Test void ownerCloseEndsTheTaskDirectlyWithoutHandingBackToTriage() throws Exception {
+        // #1022：「確認結案」以前只會送回分流，按了五次每次都重跑分流後又停下。
+        task.state(Task.State.AWAIT_HUMAN); store.save(task);
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(task, HumanOptions.CLOSE_COMMAND + " 要怎麼收尾？　選擇：自己開 PR，結案", "u", jobs::add);
+
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.ABORTED);
+        assertThat(jobs).isEmpty();
+        verify(audit).record(eq("42"), eq("u"), eq(AuditLog.ACTION_OWNER_CLOSE), contains("自己開 PR，結案"));
+        verify(slack).post(any(), eq("c"), eq("t"), contains("已由 <@u> 結案"));
+        verify(executor, never()).execute(any(), any(), any());
+    }
+
+    @Test void ownerCloseIsRefusedForOthersAndWhenNotWaitingForAHuman() throws Exception {
+        when(props.allowedUsers()).thenReturn(Set.of("u", "someone-else"));
+        task.state(Task.State.AWAIT_HUMAN); store.save(task);
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(task, HumanOptions.CLOSE_COMMAND, "someone-else", jobs::add);
+        verify(slack).post(any(), eq("c"), eq("t"), contains("只有驗收負責人可以結案"));
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
+
+        task.state(Task.State.WAITING_QUOTA); store.save(task);
+        engine.resume(task, HumanOptions.CLOSE_COMMAND, "u", jobs::add);
+        verify(slack).post(any(), eq("c"), eq("t"), contains("只有停下等人時才能結案"));
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.WAITING_QUOTA);
+        verify(audit, never()).record(any(), any(), eq(AuditLog.ACTION_OWNER_CLOSE), any());
+    }
+
     @Test void ownerCanMoveAStoppedTaskToANewTaskWithTheLatestRulesEvenBeforeItIsExhausted() throws Exception {
         // #1019：還能延長，但舊快照的審查規則只會繼續退回；改進後的規則只能透過新任務套用。
         task.state(Task.State.AWAIT_HUMAN); store.save(task);

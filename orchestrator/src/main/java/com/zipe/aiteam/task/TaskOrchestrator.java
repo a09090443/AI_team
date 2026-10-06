@@ -239,8 +239,18 @@ public class TaskOrchestrator {
      *
      * 保留的兩種：等待中的任務（可能還要推 PR）、以及 FAILED 的任務
      * —— 失敗現場是診斷用的，砍掉就查不出當時發生什麼事。
-     * 其餘（COMPLETED、ABORTED、以及資料庫裡已經查無此任務的孤兒）一律刪除。
+     * 其餘（COMPLETED、ABORTED、以及資料庫裡已經查無此任務的孤兒）一律刪除；
+     * 例外是負責人結案（OWNER_CLOSE）的 ABORTED 任務，對方還要在系統外確認 PR。
      */
+    /** 負責人結案的任務保留工作區，等對方在系統外確認 PR；查不到紀錄時寧可保留。 */
+    private boolean closedByOwner(String id) {
+        try { return audit.has(id, AuditLog.ACTION_OWNER_CLOSE); }
+        catch (Exception e) {
+            log.warn("查詢任務 {} 是否由負責人結案失敗，保留工作區：{}", id, e.getMessage());
+            return true;
+        }
+    }
+
     private void purgeWorkspaces() {
         List<String> ids = workspaces.listTaskIds();
         if (ids.isEmpty()) return;
@@ -257,8 +267,9 @@ public class TaskOrchestrator {
                                    || x.state() == Task.State.PR_CREATED
                                    || x.state() == Task.State.FAILED
                                    || (x.state() == Task.State.ABORTED
-                                       && x.stage("code_review").map(o ->
-                                           ReviewGate.blockingReason(o.result()) != null).orElse(false)))
+                                       && (x.stage("code_review").map(o ->
+                                           ReviewGate.blockingReason(o.result()) != null).orElse(false)
+                                           || closedByOwner(id))))
                     .orElse(false);
             if (keep) {
                 kept++;

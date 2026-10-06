@@ -2,6 +2,28 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-06 — Claude Code（#1022 真人選項「結案」做不到）
+
+- 唯讀調查 #1022（bestpartner）：審查 INFO 被 ReviewGate 擋下後，負責人依序按了分流給的「授權發布」「我手動開 PR」
+  「PR 已開，結案」「確認結案」「規則修好後重跑」（audit 326–345），每次只把選擇當補充重跑分流（約 $0.9–1.8／次）又回 AWAIT_HUMAN。
+  原因：`human_decision` 選項只送「負責人決定：…」交回流程（`HumanOptions.decisionOptions`），流程沒有結案路線；分流換問法使
+  `repeatedDecision` 攔不到。任務分支已在 GitHub（60b8ca5），但**沒有 PR**（bestpartner 只有 #1、#2）。
+- 修正（第 1 點）：`FailureReport.INSTRUCTIONS` 禁止把結束任務／系統外開 PR 收尾／改用新任務寫成選項，改指向「中止任務」「改用新任務繼續」
+  並給空 options；契約隨 JAR 注入，既有任務也適用。FailureReportTest 新增 1 項。commit d8d113b。
+- 測試：本機 530 項只有既有 4 項 Windows 失敗；VM 隔離建置 `choice-close-build.USIksU` check-source PASS、530 項 0 失敗（11 略過），
+  JAR `23bccc524900d3c4858f27b47401e716b51be3a1a81e9f74f8ed40a366cb7d7e`。**尚未部署**（等使用者確認）。
+  教訓：`git archive` 要加 `-c core.autocrlf=false`，否則 shell 腳本變 CRLF、check-source 失敗。
+- 發現的落差：無（文件原本就寫「選項按下去交由流程重新判斷」，只是沒寫結案類選項的限制）。
+- 已修正文件：plan-approval-buttons（human_decision 段）、configurable-team（選擇題的邊界）。已核對：pm-triage、operations（不需改）。docs build 通過。
+- 第 2 點（計畫已核准，取代第 1 點的「空 options」做法）：`human_decision.options` 加必填 `action`（decide／close／successor）。
+  `HumanOptions.decisionOptions(flow, ws)` 依 action 產生按鈕：close 送 `負責人結案 <問題與選項>`、successor 送固定承接指令
+  （不可承接時略過）、decide 照舊；同一題重問時只略過 decide。`FlowEngine.closeByOwner`：只限驗收負責人與 AWAIT_HUMAN，
+  `claimState` 到 ABORTED、audit `OWNER_CLOSE`，不呼叫 agent。`AuditLog.has`；`TaskOrchestrator.purgeWorkspaces` 保留 OWNER_CLOSE 的工作區
+  （查詢失敗也保留）。不新增 Task.State、不改 FlowRun。
+- 測試：FailureReportTest（schema action enum 且 required 數＝properties 數）、HumanOptionsTest +4、FlowEngineTest +2、新增 WorkspacePurgeTest。
+- 已修正文件：plan-approval-buttons（action 表、取代第 1 點段落並註明歷程）、configurable-team、operations（按鈕表）、pm-triage、data-model
+  （ABORTED 例外、OWNER_CLOSE）；decisions 追加。已核對：configuration、system-map（不涉及設定鍵與流程節點，不需改）。
+
 ## 2026-10-06 — Claude Code（#1022 審查 INFO 等級擋發布）
 
 - #1022 分段改派實作段真實通過（1621998 改派段、60b8ca5 主實作段），獨立驗證與 QA 通過；審查 APPROVE 但 findings 有 `INFO`，

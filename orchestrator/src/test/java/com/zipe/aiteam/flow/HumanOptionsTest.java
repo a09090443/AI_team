@@ -411,6 +411,71 @@ class HumanOptionsTest {
         assertThat(HumanOptions.render(task, flow, true, true, null)).contains("這個問題你已經回答過了");
     }
 
+    // ---- 選項的 action：系統直接執行的結案與承接（#1022） ----
+
+    private com.fasterxml.jackson.databind.JsonNode actionReport() throws Exception {
+        return new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+                {"execution_status":"COMPLETED","route":"human",
+                 "human_decision":{"headline":"h","question":"要怎麼收尾？",
+                   "options":[{"label":"自己開 PR，結案","consequence":"PR 由你處理","action":"close"},
+                              {"label":"改用新任務","consequence":"用新規則重跑","action":"successor"},
+                              {"label":"再等等","consequence":"維持暫停","action":"decide"}],
+                   "recommendation":"r","also_needed":[]}}
+                """);
+    }
+
+    @Test void closeOptionSendsTheCloseCommandWithASystemNotice() throws Exception {
+        flow.node = "triage";
+        flow.receipts.put("triage", actionReport());
+
+        var decisions = HumanOptions.options(task, flow, true, true, null).stream()
+                .filter(o -> HumanOptions.DECISION.equals(o.kind())).toList();
+
+        assertThat(decisions).extracting(HumanOptions.Option::label)
+                .containsExactly("自己開 PR，結案", "改用新任務", "再等等");
+        assertThat(decisions.get(0).command()).startsWith(HumanOptions.CLOSE_COMMAND + " 要怎麼收尾？")
+                .doesNotStartWith("負責人決定：");
+        assertThat(decisions.get(0).hint()).startsWith("PR 由你處理").contains("系統直接結案").contains("工作區保留");
+        assertThat(decisions.get(1).command()).isEqualTo(HumanOptions.SUCCESSOR_COMMAND);
+        assertThat(decisions.get(2).command()).startsWith("負責人決定：");
+    }
+
+    @Test void successorOptionCarriesTheSaveFingerprintAndIsDroppedWhenNotAvailable() throws Exception {
+        flow.node = "triage";
+        flow.receipts.put("triage", actionReport());
+        var dirty = new HumanOptions.Workspace("h", false, java.util.List.of("src/A.java"), "fp7");
+
+        assertThat(HumanOptions.options(task, flow, true, true, null, dirty))
+                .filteredOn(o -> HumanOptions.DECISION.equals(o.kind()))
+                .anyMatch(o -> o.command().equals(HumanOptions.SUCCESSOR_SAVE_COMMAND + " fp7"));
+
+        flow.dialogue = true;
+        assertThat(HumanOptions.options(task, flow, true, true, null))
+                .filteredOn(o -> HumanOptions.DECISION.equals(o.kind()))
+                .extracting(HumanOptions.Option::label).doesNotContain("改用新任務");
+    }
+
+    @Test void closeIsNeverTurnedIntoARequirementChangeApproval() throws Exception {
+        flow.node = "triage";
+        flow.changeTarget = "intake";
+        flow.receipts.put("triage", actionReport());
+
+        assertThat(HumanOptions.options(task, flow, true, true, null))
+                .filteredOn(o -> o.label().equals("自己開 PR，結案"))
+                .singleElement().satisfies(o -> assertThat(o.command()).startsWith(HumanOptions.CLOSE_COMMAND));
+    }
+
+    @Test void repeatedQuestionStillOffersTheDirectActionsButNotTheHandBackChoice() throws Exception {
+        flow.node = "triage";
+        flow.receipts.put("triage", actionReport());
+        flow.context = FlowContext.append("", "使用者 u 補充：負責人決定：要怎麼收尾？　選擇：再等等（維持暫停）");
+
+        assertThat(HumanOptions.options(task, flow, true, true, null))
+                .filteredOn(o -> HumanOptions.DECISION.equals(o.kind()))
+                .extracting(HumanOptions.Option::label).containsExactly("自己開 PR，結案", "改用新任務");
+        assertThat(HumanOptions.render(task, flow, true, true, null)).doesNotContain("這個問題你已經回答過了");
+    }
+
     @Test void stuckAtLimitOffersNoDecisionSupplementOrContinue() throws Exception {
         flow.node = "plan";
         flow.visits.put("plan", flow.snapshot.definition().nodes().get("plan").maxVisits()); flow.repeats.put("plan", flow.snapshot.definition().nodes().get("plan").maxVisits());

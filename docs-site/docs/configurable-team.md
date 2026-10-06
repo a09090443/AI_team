@@ -275,8 +275,9 @@ CLI session 仍存在原 runtime 狀態目錄，checkpoint 保存其 ID；環境
   「檢視配置更新」→「核准配置更新」→「重新執行這一步」三顆依序出現的按鈕。受控恢復授權
   適用任何卡在重試上限的 agent 節點（仍需配置有能力變更、負責人核准、流程總次數未用盡、前置契約有效）。
 - **選擇題的邊界**：`human_decision.options` 只能放「負責人選了、流程就能照做」的事；需要有人改配置、補環境、
-  給權限的，寫進 `also_needed`；結束任務、系統外開 PR 後收尾、改用新任務繼續也不是選項（流程沒有結案路線），
-  由「中止任務」「改用新任務繼續」固定按鈕處理。同一個問題已回答過卻又被問時，不再提供按鈕並說明原因。
+  給權限的，寫進 `also_needed`。結案與改用新任務要用選項的 `action=close`／`successor`，由系統直接執行，
+  不可寫成交回流程的 `decide`（流程沒有結案路線，見 [plan-approval-buttons](plan-approval-buttons.md#由-agent-本人說明需要你決定的事)）。
+  同一個問題已回答過卻又被問時，不再提供 `decide` 按鈕並說明原因。
 - **計畫階段與 plan_revision**：`plan_revision` 由系統在計畫完成後計算；系統會明確告知計畫節點不得因缺少它而受阻
   （同一角色常兼任計畫與驗收，會看到驗收要引用 plan_revision 的規則）。
 - **操作契約與測試規範要一致**：`testInstructions` 要求的每一步都必須有對應的 `operations`，

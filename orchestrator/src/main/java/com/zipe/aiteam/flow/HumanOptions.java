@@ -131,7 +131,7 @@ public final class HumanOptions {
                     STATUS_COMMAND));
 
         // agent 提出的選擇題放最前面：這是對方停下來最主要要回答的事。卡在上限時選了也不會重新執行。
-        if (!stuck) options.addAll(decisionOptions(flow));
+        if (!stuck) options.addAll(decisionOptions(flow, ws));
 
         String restorable = flow.snapshot == null ? null : ContractRecovery.candidate(flow, ws.head(), ws.clean());
         if (restorable != null)
@@ -185,7 +185,7 @@ public final class HumanOptions {
                         + "只寫「續跑」不會改變上一輪的判斷依據。", null));
 
         // 任務還能繼續時也允許承接：舊任務永遠用建立時的配置，改進後的團隊規則只能透過新任務套用。
-        if (flow.snapshot != null && !flow.dialogue) {
+        if (canContinueAsNewTask(flow)) {
             if (ws.canSaveAndContinue())
                 options.add(new Option(SUCCESSOR, "保存修改並改用新任務繼續",
                         "工作區有 " + ws.uncommitted().size() + " 個檔案改了但還沒 commit，系統會先代為提交；之後同「改用新任務繼續」。",
@@ -219,9 +219,19 @@ public final class HumanOptions {
         return flow.context.contains("負責人決定：" + question) || flow.context.contains("核准需求變更 " + question);
     }
 
-    static List<Option> decisionOptions(FlowRun flow) {
+    static List<Option> decisionOptions(FlowRun flow) { return decisionOptions(flow, Workspace.NONE); }
+
+    /**
+     * 選項的 action 決定按下去由誰處理：decide 交回流程重新判斷；close、successor 由系統直接執行。
+     * #1022 的「確認結案」以前只能送回分流，按了五次每次都重跑後又停下 —— 流程本身沒有結案路線。
+     * 舊報告沒有 action，一律視為 decide。
+     */
+    static List<Option> decisionOptions(FlowRun flow, Workspace workspace) {
         com.fasterxml.jackson.databind.JsonNode report = latestReport(flow);
-        if (!com.zipe.aiteam.slack.SlackReport.hasDecision(report) || repeatedDecision(flow)) return List.of();
+        if (!com.zipe.aiteam.slack.SlackReport.hasDecision(report)) return List.of();
+        Workspace ws = workspace == null ? Workspace.NONE : workspace;
+        // 同一題再問一次時，交回流程的選項只會原地重跑；系統直接執行的動作不受影響，照樣提供。
+        boolean repeated = repeatedDecision(flow);
         var d = report.get("human_decision");
         String question = clip(d.path("question").asText(), 300);
         // 等待需求變更核准時，系統只接受「核准需求變更 <內容>」，其他補充一律擋下。
@@ -235,11 +245,37 @@ public final class HumanOptions {
             if (label.isBlank()) continue;
             String consequence = clip(option.path("consequence").asText(), 300);
             String choice = question + "　選擇：" + label + "（" + consequence + "）";
-            result.add(approvesChange
-                    ? new Option(DECISION, "核准：" + label, consequence, "核准需求變更 " + choice)
-                    : new Option(DECISION, label, consequence, "負責人決定：" + choice));
+            switch (option.path("action").asText(ACTION_DECIDE)) {
+                case ACTION_CLOSE -> result.add(new Option(DECISION, label, consequence + CLOSE_NOTICE,
+                        CLOSE_COMMAND + " " + clip(question + "　選擇：" + label, 300)));
+                case ACTION_SUCCESSOR -> {
+                    if (!canContinueAsNewTask(flow)) continue;
+                    result.add(new Option(DECISION, label, consequence + SUCCESSOR_NOTICE, ws.canSaveAndContinue()
+                            ? SUCCESSOR_SAVE_COMMAND + " " + ws.fingerprint() : SUCCESSOR_COMMAND));
+                }
+                default -> {
+                    if (repeated) continue;
+                    result.add(approvesChange
+                            ? new Option(DECISION, "核准：" + label, consequence, "核准需求變更 " + choice)
+                            : new Option(DECISION, label, consequence, "負責人決定：" + choice));
+                }
+            }
         }
         return result;
+    }
+
+    public static final String ACTION_DECIDE = "decide";
+    public static final String ACTION_CLOSE = "close";
+    public static final String ACTION_SUCCESSOR = "successor";
+    /** 負責人結案：任務中止但保留工作區；後面接所選的問題與選項，只作紀錄。 */
+    public static final String CLOSE_COMMAND = "負責人結案";
+    static final String CLOSE_NOTICE = "（系統直接結案：任務中止、不再派送任何節點，工作區保留供你確認；"
+            + "PR 與合併由你在系統外處理。）";
+    static final String SUCCESSOR_NOTICE = "（系統直接開新任務、以最新配置接著做；需求、測試計畫與 PR 仍要重新核准。）";
+
+    /** 與停止訊息固定的「改用新任務繼續」同一個條件。 */
+    static boolean canContinueAsNewTask(FlowRun flow) {
+        return flow.snapshot != null && !flow.dialogue && flow.successor == null;
     }
 
     /** 受阻發現比 receipt 新：節點受阻時不會清掉舊的成功 receipt。 */
@@ -308,7 +344,8 @@ public final class HumanOptions {
             else
                 out.append("\n目前沒有可用的恢復方式。若 agent 回報需要調整配置、環境或權限，要由管理者修正並部署新配置；")
                    .append("部署後按「重新整理選項」，就會出現「檢視配置更新」。");
-        } else if (repeatedDecision(flow)) {
+        } else if (repeatedDecision(flow) && options.stream().noneMatch(o -> DECISION.equals(o.kind()))) {
+            // 還有結案／承接這類由系統直接執行的選項時，不說「光靠選擇解決不了」。
             out.append("\n\n*這個問題你已經回答過了*\nagent 收到你的選擇後仍停在同一個地方，代表光靠選擇解決不了。")
                .append("請看 agent 說明裡「另外也需要處理」的項目，那通常需要管理者或維運去做。");
         }

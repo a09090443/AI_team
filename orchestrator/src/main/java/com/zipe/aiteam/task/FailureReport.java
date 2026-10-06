@@ -51,14 +51,17 @@ public final class FailureReport {
         必要時放在括號補充。
         headline：一句話說為什麼停下來。
         question：一次只問一件最需要對方決定的事，具體到對方能直接選。
-        options：2 到 4 個選項（只有下面說的固定按鈕情況給空陣列）；label 是按鈕文字（15 字內），consequence 說選了之後會發生什麼、
+        options：2 到 4 個選項；label 是按鈕文字（15 字內），consequence 說選了之後會發生什麼、
         要多花什麼、有什麼風險。每個選項都必須是「對方按下去、流程就能照這個決定繼續」的事。
         若阻礙必須有人修改配置、補環境、給權限才能解除，那不是選擇題：不要做成「請某人去處理」的選項，
         寫進 also_needed 並說清楚要誰做什麼；對方按了按鈕也無法替別人完成那件事，只會讓流程原地重跑。
-        選項按下去只會把選擇交回流程重新判斷，流程沒有「結案」路線：結束或放棄任務、在系統外自行開 PR 後收尾、
-        改用新任務繼續，都不是選項，不要寫成「選了任務就結束」。這些由停止訊息上系統固定的按鈕處理
-        （「中止任務」結束任務；「改用新任務繼續」以最新配置接著做）。負責人已決定走這類路線，或剩下的事
-        只能在系統外完成時，不要換個問法再出選擇題：options 給空陣列，question 白話說明對方接下來要按哪顆固定按鈕。
+        action 決定按下去由誰處理：
+        decide：把選擇交回流程重新判斷，流程依此繼續派工；
+        close：系統直接結案（任務中止、不再派送任何節點、保留工作區），用於負責人決定不再由流程處理、
+        例如在系統外自行開 PR 收尾或放棄這個任務；
+        successor：系統直接改用新任務、以最新配置從目前成果接著做。
+        結案或改用新任務一定要用 close／successor，不可用 decide 寫成「選了任務就結束」——decide 只會讓流程重跑後再停下。
+        負責人已選過 close 類的決定卻又被問時，不要換個問法再問，直接提供 close 選項。
         recommendation：你建議選哪個、為什麼。
         also_needed：不是選擇題、但也需要真人或維運去做的事（例如補環境、給權限），每項一句；沒有就空陣列。
         其他需要決定的事放進 also_needed，不要硬塞進同一題。
@@ -88,8 +91,9 @@ public final class FailureReport {
                "headline":{"type":"string","minLength":1},
                "question":{"type":"string","minLength":1},
                "options":{"type":"array","items":{"type":"object","additionalProperties":false,
-                  "properties":{"label":{"type":"string","minLength":1},"consequence":{"type":"string","minLength":1}},
-                  "required":["label","consequence"]}},
+                  "properties":{"label":{"type":"string","minLength":1},"consequence":{"type":"string","minLength":1},
+                    "action":{"type":"string","enum":["decide","close","successor"]}},
+                  "required":["label","consequence","action"]}},
                "recommendation":{"type":"string","minLength":1},
                "also_needed":{"type":"array","items":{"type":"string","minLength":1}}},
              "required":["headline","question","options","recommendation","also_needed"]}

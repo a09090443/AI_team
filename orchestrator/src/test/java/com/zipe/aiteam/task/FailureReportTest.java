@@ -49,8 +49,12 @@ class FailureReportTest {
             assertThat(decision.path("type").toString()).contains("null", "object");
             assertThat(decision.path("required").toString())
                     .contains("headline", "question", "options", "recommendation", "also_needed");
-            assertThat(decision.path("properties").path("options").path("items").path("required").toString())
-                    .contains("label", "consequence");
+            var option = decision.path("properties").path("options").path("items");
+            assertThat(option.path("required").toString()).contains("label", "consequence", "action");
+            // Codex Structured Outputs 的 strict 模式要求每個屬性都列入 required。
+            assertThat(option.path("required").size()).isEqualTo(option.path("properties").size());
+            assertThat(option.path("properties").path("action").path("enum").toString())
+                    .isEqualTo("[\"decide\",\"close\",\"successor\"]");
         }
     }
 
@@ -59,10 +63,10 @@ class FailureReportTest {
                 .contains("route=human").contains("also_needed");
     }
 
-    /** #1022：「確認結案」按了五次，每次只是把選擇交回分流，流程沒有結案路線。 */
-    @Test void instructionsForbidOptionsTheFlowCannotCarryOut() {
-        assertThat(FailureReport.INSTRUCTIONS).contains("沒有「結案」路線")
-                .contains("中止任務").contains("改用新任務繼續").contains("options 給空陣列");
+    /** #1022：「確認結案」按了五次，每次只是把選擇交回分流；結案與承接要用系統直接執行的 action。 */
+    @Test void instructionsRequireDirectActionsForClosingOrContinuingAsANewTask() {
+        assertThat(FailureReport.INSTRUCTIONS).contains("action").contains("decide：").contains("close：")
+                .contains("successor：").contains("不可用 decide 寫成「選了任務就結束」");
     }
 
     @Test void reportsWithoutHumanDecisionStayValidSoOldReceiptsStillParse() throws Exception {
