@@ -30,6 +30,41 @@ class ReviewGateTest {
         assertThat(ReviewGate.blockingReason(verified())).isNull();
     }
 
+    private ObjectNode withFindings(String... severities) throws Exception {
+        ObjectNode r = verified();
+        r.put("verdict", "APPROVE");
+        var findings = r.putArray("findings");
+        for (String s : severities) findings.addObject().put("severity", s).put("detail", s + " 項目");
+        return r;
+    }
+
+    /** #1022：APPROVE、沒有 blockers，只因一項 INFO 被擋；這是唯一可由負責人放行的情況。 */
+    @Test void onlyInformationalSeveritiesCanBeWaivedByTheOwner() throws Exception {
+        var info = withFindings("INFO", "LOW");
+        assertThat(ReviewGate.blockingReason(info)).contains("無法判定等級");
+        assertThat(ReviewGate.waivable(info)).singleElement()
+                .satisfies(f -> assertThat(f.path("severity").asText()).isEqualTo("INFO"));
+        assertThat(ReviewGate.waivable(withFindings("note"))).hasSize(1);
+    }
+
+    @Test void substantiveOrUnknownProblemsCanNeverBeWaived() throws Exception {
+        assertThat(ReviewGate.waivable(withFindings("INFO", "HIGH"))).isNull();
+        assertThat(ReviewGate.waivable(withFindings("CRITICAL"))).isNull();
+        assertThat(ReviewGate.waivable(withFindings("嚴重"))).isNull();
+        assertThat(ReviewGate.waivable(withFindings("LOW"))).as("全部標準等級時不需要放行").isNull();
+
+        var blocked = withFindings("INFO"); blocked.putArray("blockers").add("缺測試");
+        assertThat(ReviewGate.waivable(blocked)).isNull();
+        var changes = withFindings("INFO"); changes.put("verdict", "REQUEST_CHANGES");
+        assertThat(ReviewGate.waivable(changes)).isNull();
+        var unverified = withFindings("INFO"); unverified.put("verification_status", "UNVERIFIED");
+        assertThat(ReviewGate.waivable(unverified)).isNull();
+        var unsure = withFindings("INFO"); unsure.put("confidence", "LOW");
+        assertThat(ReviewGate.waivable(unsure)).isNull();
+        var unchecked = withFindings("INFO"); unchecked.putArray("checked");
+        assertThat(ReviewGate.waivable(unchecked)).isNull();
+    }
+
     @Test void historicalMailReportCannotPass() throws Exception {
         ObjectNode r = verified();
         r.remove("verification_status");

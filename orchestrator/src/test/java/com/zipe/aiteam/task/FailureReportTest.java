@@ -54,7 +54,7 @@ class FailureReportTest {
             // Codex Structured Outputs 的 strict 模式要求每個屬性都列入 required。
             assertThat(option.path("required").size()).isEqualTo(option.path("properties").size());
             assertThat(option.path("properties").path("action").path("enum").toString())
-                    .isEqualTo("[\"decide\",\"close\",\"successor\"]");
+                    .isEqualTo("[\"decide\",\"close\",\"successor\",\"publish\"]");
         }
     }
 

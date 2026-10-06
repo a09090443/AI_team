@@ -1151,6 +1151,11 @@ public class TaskOrchestrator {
     }
     public void requestTriage(Task task, String feedback, String byUser) {
         if (flowEngine != null && flowEngine.owns(task.id())) { flowEngine.resume(task, feedback, byUser, job -> work.offer(job)); return; }
+        if (com.zipe.aiteam.flow.HumanOptions.PUBLISH_COMMAND.equals(feedback)) {
+            slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                    "任務 #" + task.id() + " 是舊版管線任務，不支援「開 PR」指令；請用核准卡上的按鈕。");
+            return;
+        }
         if (legacyBlockedByNewConfiguration(task)) return;
         if (task.stage("qa").isEmpty() || task.stage("qa_plan").isEmpty()) {
             slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "此任務缺少 QA／測試計畫，不能沿用本處理流程；請人工查核。");

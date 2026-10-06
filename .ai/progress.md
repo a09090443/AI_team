@@ -2,6 +2,20 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-06 — Claude Code（Slack 命令開 PR、放行審查提醒等級）
+
+- 使用者要求在 Slack 命令 agent 開 PR（#1022 審查實質通過但 INFO 擋發布、舊快照套不到新規則）。使用者選擇：只放行無實質問題的情況；
+  文字指令、停止訊息按鈕、agent 選項三種入口都要。
+- 實作：`ReviewGate.waivable`（只認 INFO／INFORMATIONAL／NOTE／NIT／NONE，CRITICAL 等不放行）；新類別 `flow/OwnerPublish`
+  （以 `FlowGates.publicationReason` 試算、commit 必須等於 `attemptHeads` 的審查 commit、放行寫成帶 `owner_waiver` 的 receipt）；
+  `FlowEngine.ownerPublish`（`AWAIT_PR_APPROVAL` 等同核准；`AWAIT_HUMAN` 時排入中央佇列、缺收據重跑獨立驗證、通過即發布，失敗不保存放行）；
+  `approve` 抽出 `publishApproved` 共用；`prBody` 加「負責人放行的審查項目」；`HumanOptions` 固定「開 PR」按鈕與 `action=publish`；
+  `SlackListener` 文字指令 `開 PR #id`／`開PR #id`；舊管線任務回覆不支援。
+- 測試：ReviewGateTest +2、FlowEngineTest +4、HumanOptionsTest +1、TriageRoutingTest +3、FailureReportTest 更新。本機 547 項只有既有 4 項 Windows 失敗。
+- 已修正文件：review-gate（新段落、例外說明）、plan-approval-buttons、operations（指令表與按鈕表）、pm-triage、data-model（receipts 例外）、
+  project-tree（OwnerPublish）、catalog（review-gate code）；decisions 追加。已核對：configuration、system-map（不涉及設定鍵與節點）。docs build 通過。
+- 另發現（未處理）：分流節點啟動時 `Traceability.invalidate` 會清掉系統獨立驗證收據，之後發布一定要重跑驗證。
+
 ## 2026-10-06 — Claude Code（#1022 真人選項「結案」做不到）
 
 - 唯讀調查 #1022（bestpartner）：審查 INFO 被 ReviewGate 擋下後，負責人依序按了分流給的「授權發布」「我手動開 PR」

@@ -63,7 +63,7 @@ public final class HumanGate {
             // 文字不再附打字指令，按鈕被截掉就等於選項消失；上限放寬到 8（Slack 單排上限 25）。
             if (!option.button() || HumanOptions.DECISION.equals(option.kind()) || buttons.size() >= 8) continue;
             // 只標一顆主要按鈕：系統建議的那一步（恢復、繼續或延長，依序只會出現其中之一）。
-            boolean primary = !primaryUsed && java.util.Set.of(HumanOptions.SUCCESSOR, HumanOptions.RECOVER,
+            boolean primary = !primaryUsed && java.util.Set.of(HumanOptions.PUBLISH, HumanOptions.SUCCESSOR, HumanOptions.RECOVER,
                     HumanOptions.CONFIG_APPROVE, HumanOptions.CONFIG_UPDATE, HumanOptions.RESTORE,
                     HumanOptions.RESUME, HumanOptions.EXTEND).contains(option.kind());
             primaryUsed |= primary;

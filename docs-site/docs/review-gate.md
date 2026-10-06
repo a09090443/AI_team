@@ -17,7 +17,8 @@ HIGH／MEDIUM confidence、APPROVE／COMMENT、空 blockers、非空 checked，
 說明原因、核實阻礙與重新審查要求。PM mention 是通知，不自動啟動 PM。
 
 人工核准及真正發布前都重讀資料庫並檢查狀態與報告，避免舊按鈕或
-排隊期間中止後繼續發布。核准不能覆蓋核實失敗。
+排隊期間中止後繼續發布。核准不能覆蓋核實失敗；唯一例外是 2026-10-06 起驗收負責人可放行「等級寫成提醒」的審查項目，
+條件見文末「負責人命令開 PR 與放行提醒等級」。
 
 本修正未解除 Codex 內層沙箱的 `.agents` 初始化問題；環境仍需修復並
 重新取得獨立 review 證據。不能以放行 PR 作為環境問題的替代處理。
@@ -46,4 +47,26 @@ bestpartner #1022 的審查結論是 APPROVE、沒有 blockers，但 findings �
 修正：schema 的 `severity` 改為 `enum` `HIGH`／`MEDIUM`／`LOW`（Structured Outputs 由 runtime 強制）；
 `teams/prompts/review.md` 寫明只能用這三級，純提醒寫在 summary 或列 LOW。`ReviewGate` 本身不放寬。
 這是配置資產：已在跑的任務沿用快照。提示／schema 資產變更**不能原地遷移**（`TeamMigration.preview`，見
-[跨專案執行](cross-project-execution.md)），停下的任務不會出現「檢視配置更新」；要套用只能「改用新任務繼續」，或由負責人手動開 PR。
+[跨專案執行](cross-project-execution.md)），停下的任務不會出現「檢視配置更新」；要套用只能「改用新任務繼續」，或由負責人手動開 PR
+（2026-10-06 起可改用下節的 `開 PR #<id>` 指令放行）。
+
+## 負責人命令開 PR 與放行提醒等級（2026-10-06）
+
+#1022 套不到上面的新規則（舊快照），流程內沒有路徑能開 PR。新增驗收負責人在 Slack 命令開 PR：
+`開 PR #<id>`（或 `補充 #<id> 開 PR`）、停止訊息的「開 PR」按鈕、agent 選項 `action=publish` 都送同一串指令 `開 PR`，
+由 `FlowEngine.ownerPublish` 處理，判斷集中在 `OwnerPublish.evaluate`。
+
+- 只限驗收負責人；任務是配置式流程，狀態 `AWAIT_PR_APPROVAL`（等同按核准）或 `AWAIT_HUMAN`。
+- 其他證據照舊：用發布核准節點同一套 `FlowGates.publicationReason` 試算，驗收、需求基準、commit 一致性都必須有效；工作區要乾淨。
+- **唯一可放行的閘門失敗**（`ReviewGate.waivable`）：審查 `VERIFIED`、把握度 HIGH／MEDIUM、APPROVE／COMMENT、沒有 blockers、
+  有 checked，沒有 HIGH，而且不標準的等級只屬於提醒類（`INFO`、`INFORMATIONAL`、`NOTE`、`NIT`、`NONE`，不分大小寫）。
+  `CRITICAL`、`BLOCKER` 或看不懂的寫法一律不能放行。目前 commit 必須等於審查當時看到的 commit（`attemptHeads`）。
+- 放行做法：把受阻的審查報告複製成 receipt，提醒類 finding 改列 `LOW` 並記 `waived_from` 原等級，報告加 `owner_waiver`
+  （放行者、時間、原因）；原始報告仍在 `stage_result`／`stage_attempt`。audit 記 `RECOVERY`。
+- 系統獨立驗證收據缺少或失效時（分流節點啟動會清掉收據），先在目前 commit 的全新 clone 重新執行；不通過就不開 PR。
+- 全部通過才把流程指到發布核准節點並直接推分支開 PR——指令本身就是負責人的發布核准。任何一步沒過：放行、收據與節點變更
+  都不保存，任務回到原本停下的位置並說明原因。
+- PR 說明新增「負責人放行的審查項目」段落；這些項目不再混進「審查建議」。
+- 停止訊息的「開 PR」按鈕只在 `OwnerPublish.evaluate` 通過時出現（收據會在執行時補跑，不列入判斷）。
+
+程式測試通過（ReviewGateTest、FlowEngineTest、HumanOptionsTest、TriageRoutingTest）；真實 Slack 端對端尚未實測。

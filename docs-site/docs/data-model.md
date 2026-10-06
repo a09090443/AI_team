@@ -232,7 +232,7 @@ v2 配置式流程的整份執行快照，對應 `com.zipe.aiteam.flow.FlowRun`�
 | `acceptanceOwner` | String | 需求／驗收負責人，來自 `task.requester_user_id`。所有核准都比對這個值 |
 | `baselineRevision` | String | 需求基準摘要。需求節點產出後建立；需求變更會清空並連帶清掉 `receipts`／`heads` |
 | `baselineHistory` | List | 歷次需求基準報告的深拷貝，不覆蓋 |
-| `receipts` | Map&lt;節點,報告&gt; | 各節點**通過**時的結構化報告；受阻報告不寫進來 |
+| `receipts` | Map&lt;節點,報告&gt; | 各節點**通過**時的結構化報告；受阻報告不寫進來。例外：驗收負責人以「開 PR」放行的審查報告會寫進來，帶 `owner_waiver`（放行者、時間、原因），被放行的 finding 改列 `LOW` 並帶 `waived_from` 原等級（2026-10-06 起，見 [review-gate](review-gate.md#負責人命令開-pr-與放行提醒等級2026-10-06)） |
 | `blockedFindings` | Map&lt;節點,報告&gt; | 尚未解除的受阻發現，以來源節點為鍵。受阻時寫入，該節點自己通過時移除。**不受 `context` 長度上限影響**，必定注入下游節點提示；這是開放缺陷唯一保證送達的來源。需求變更不清除，採 fail closed |
 | `heads` | Map&lt;節點,commit&gt; | 各節點結束時的 HEAD |
 | `origin` / `branch` | String | 工作區的 origin 與分支 |

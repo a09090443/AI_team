@@ -185,9 +185,9 @@ export const docs = [
     title: 'Code Review 發布阻擋',
     category: 'gates',
     status: 'current',
-    summary: 'Reviewer 報告必須 VERIFIED 且無 blocker／HIGH finding 才能進人工 PR 核准；審查收斂規則。',
-    readWhen: '判斷為何任務沒有進入 PR 核准，或調整審查閘門。',
-    code: ['orchestrator/src/main/java/com/zipe/aiteam/task/ReviewGate.java'],
+    summary: 'Reviewer 報告必須 VERIFIED 且無 blocker／HIGH finding 才能進人工 PR 核准；審查收斂規則；負責人命令開 PR 與放行提醒等級。',
+    readWhen: '判斷為何任務沒有進入 PR 核准、調整審查閘門，或負責人要在 Slack 命令開 PR。',
+    code: ['orchestrator/src/main/java/com/zipe/aiteam/task/ReviewGate.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/OwnerPublish.java'],
   },
   {
     id: 'quota-continuation',

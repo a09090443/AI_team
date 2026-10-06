@@ -59,7 +59,9 @@ public final class FailureReport {
         decide：把選擇交回流程重新判斷，流程依此繼續派工；
         close：系統直接結案（任務中止、不再派送任何節點、保留工作區），用於負責人決定不再由流程處理、
         例如在系統外自行開 PR 收尾或放棄這個任務；
-        successor：系統直接改用新任務、以最新配置從目前成果接著做。
+        successor：系統直接改用新任務、以最新配置從目前成果接著做；
+        publish：負責人要直接開 PR。系統會重新檢查發布證據（審查只允許放行等級寫成 INFO 之類提醒的項目），
+        不符合時這個選項不會出現，所以 consequence 不要承諾一定能開成。
         結案或改用新任務一定要用 close／successor，不可用 decide 寫成「選了任務就結束」——decide 只會讓流程重跑後再停下。
         負責人已選過 close 類的決定卻又被問時，不要換個問法再問，直接提供 close 選項。
         recommendation：你建議選哪個、為什麼。
@@ -92,7 +94,7 @@ public final class FailureReport {
                "question":{"type":"string","minLength":1},
                "options":{"type":"array","items":{"type":"object","additionalProperties":false,
                   "properties":{"label":{"type":"string","minLength":1},"consequence":{"type":"string","minLength":1},
-                    "action":{"type":"string","enum":["decide","close","successor"]}},
+                    "action":{"type":"string","enum":["decide","close","successor","publish"]}},
                   "required":["label","consequence","action"]}},
                "recommendation":{"type":"string","minLength":1},
                "also_needed":{"type":"array","items":{"type":"string","minLength":1}}},

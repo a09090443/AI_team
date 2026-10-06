@@ -815,7 +815,8 @@ public class FlowEngine {
             if (node.gate() != Gate.REVIEW || flow.receipts.get(id) == null) return;
             for (JsonNode finding : flow.receipts.get(id).path("findings")) {
                 String severity = finding.path("severity").asText();
-                if (!Set.of("MEDIUM", "LOW").contains(severity)) continue;
+                // 負責人放行的提醒另列一段（OwnerPublish.waivedItems），不混進建議。
+                if (!Set.of("MEDIUM", "LOW").contains(severity) || finding.has("waived_from")) continue;
                 lines.add(("MEDIUM".equals(severity) ? "建議" : "小建議") + "："
                         + Diagnostics.clip(finding.path("detail").asText(), 300));
             }
@@ -829,9 +830,13 @@ public class FlowEngine {
         String review = suggestions.isEmpty() ? "" : "\n\n## 審查建議（未擋發布，可另開任務處理）\n\n"
                 + String.join("\n", suggestions.stream().limit(max).map(line -> "- " + line.replace("\n", " ")).toList())
                 + (suggestions.size() > max ? "\n- …另有 " + (suggestions.size() - max) + " 項，見完整審查報告" : "");
+        List<String> waived = OwnerPublish.waivedItems(flow);
+        String waiver = waived.isEmpty() ? "" : "\n\n## 負責人放行的審查項目\n\n"
+                + "審查等級寫成提醒（不在 HIGH／MEDIUM／LOW 內），系統閘門原本擋下發布，由驗收負責人以「開 PR」放行：\n\n"
+                + String.join("\n", waived.stream().map(line -> "- " + line).toList());
         return "- 配置版本：`" + flow.snapshot.revision() + "`\n- 需求基準：`" + flow.baselineRevision
                 + "`\n- 驗收負責人：" + flow.acceptanceOwner
-                + "\n\n## 需求\n\n" + task.requestText() + review
+                + "\n\n## 需求\n\n" + task.requestText() + waiver + review
                 + "\n\n## 驗收紀錄\n\n" + PrReport.receipts(flow)
                 + "\n## 系統獨立驗證\n\n" + PrReport.independent(flow.independentEvidence);
     }
@@ -1252,6 +1257,10 @@ public class FlowEngine {
             FlowRun current = store.flow(task.id()).orElse(null);
             if (current != null) { readOnlyView(task, current, requested); return; }
         }
+        if (requested.equals(HumanOptions.PUBLISH_COMMAND)) {
+            FlowRun current = store.flow(task.id()).orElse(null);
+            if (current != null) { ownerPublish(task, current, user, enqueue); return; }
+        }
         Task.State from = task.state();
         if (from != Task.State.AWAIT_HUMAN && from != Task.State.WAITING_QUOTA) {
             slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id() + " 目前為 " + from + "，不能新增續跑或平行實作。"); return;
@@ -1557,24 +1566,100 @@ public class FlowEngine {
                         + "，要等前面的工作結束才會輪到；開始時會再通知，完成後貼出 PR 連結。");
         enqueue.accept(() -> {
             FlowRun flow = store.flow(task.id()).orElseThrow();
+            if (aborted(task)) return;
+            if (!ahead.isEmpty()) slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                    "輪到任務 #" + task.id() + "，開始推分支、開 PR。");
+            publishApproved(task, flow);
+        });
+    }
+    /** 已在 PUBLISH_RUNNING：重新檢查證據與工作區後推分支、開 PR。核准按鈕與負責人「開 PR」共用。 */
+    private void publishApproved(Task task, FlowRun flow) {
+        try {
+            requireWorkspace(task, flow);
+            String head = workspaces.headSha(task.id());
+            String reason = FlowGates.publicationReason(flow, head);
+            if (reason == null && flow.snapshot.definition().version() >= 2) reason = verifier.blockingReason(flow, head);
+            if (reason != null || !head.equals(flow.approvalHead) || !workspaces.clean(task.id())) throw new IllegalStateException("發布前證據／工作區已變更：" + reason);
+            if (!Objects.equals(flow.origin, workspaces.origin(task.id())) || !Objects.equals(flow.branch, workspaces.currentBranch(task.id()))
+                    || !flow.snapshot.definition().project().baseBranch().equals(workspaces.baseBranch(task.id()))) throw new SecurityException("Git 發布目標與配置快照不一致");
+            var result = publisher.publish(task.id(), "任務 #" + task.id() + " " + Diagnostics.clip(task.requestText().replace('\n', ' '), 90),
+                    prBody(task, flow), flow.branch);
+            flow.prUrl = result.prUrl(); flow.publishedHead = head; store.saveFlow(task.id(), flow);
+            state(task, Task.State.PR_CREATED, "PR 已建立，尚未確認合併／發布／產品驗收：" + result.prUrl());
+            slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), result.prUrl());
+        } catch (PullRequestPublisher.PublishException e) { publishFailed(task, flow, e); }
+        catch (Exception e) { waitHumanForError(task, flow, "推分支、開 PR 沒有完成，任務沒有發布出去；確認下面的原因後，需要重新核准 PR。", e); }
+    }
+    /**
+     * 驗收負責人在 Slack 命令「開 PR」（文字指令、停止訊息按鈕或 agent 的 publish 選項）。
+     * 等待核准 PR 時等同按核准；停下等人時，證據有效（審查只允許放行等級寫成提醒的項目，見 OwnerPublish）就直接發布，
+     * 命令本身就是負責人的發布核准。不符合時只回原因，不改任何狀態。
+     */
+    private void ownerPublish(Task task, FlowRun flow, String user, Consumer<Runnable> enqueue) {
+        Task.State from = task.state();
+        String refuse = !user.equals(flow.acceptanceOwner) ? "只有驗收負責人可以命令開 PR。"
+                : from == Task.State.AWAIT_PR_APPROVAL || from == Task.State.AWAIT_HUMAN ? null
+                : "任務目前為 " + from + "，只有停下等人或等待核准 PR 時才能開 PR。";
+        if (refuse != null) { slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id() + " " + refuse); return; }
+        if (from == Task.State.AWAIT_PR_APPROVAL) { approve(task, user, enqueue); return; }
+        OwnerPublish.Result check;
+        try {
+            boolean exists = flow.workspaceReady && workspaces.exists(task.id());
+            check = OwnerPublish.evaluate(flow, exists ? workspaces.headSha(task.id()) : null, exists && workspaces.clean(task.id()));
+        } catch (Exception e) { tellUser(task, "沒有開 PR：", e); return; }
+        if (!check.allowed()) {
+            audit.record(task.id(), user, AuditLog.ACTION_REJECTED, "命令開 PR 未通過：" + check.reason());
+            postHumanOptions(task, flow, "任務 #" + task.id() + " 還不能開 PR：" + check.reason(), false);
+            return;
+        }
+        if (!store.claimState(task.id(), Task.State.AWAIT_HUMAN, Task.State.RESUME_QUEUED)) return;
+        task.state(Task.State.RESUME_QUEUED);
+        audit.record(task.id(), user, AuditLog.ACTION_BUTTON, "驗收負責人命令開 PR"
+                + (check.needsWaiver() ? "（放行審查提醒 " + check.waived().size() + " 項）" : ""));
+        List<String> ahead = busyTasks(task.id());
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), (ahead.isEmpty()
+                ? "已收到開 PR 指令，開始最後檢查並推分支、開 PR；完成後會貼出 PR 連結。"
+                : "已收到開 PR 指令，已排入中央佇列，不需要再送一次。目前 " + String.join("、", ahead) + "，輪到時會再通知。")
+                + (check.needsWaiver() ? "\n審查中等級寫成提醒的 " + check.waived().size() + " 項由你放行，PR 說明會列出。" : ""));
+        enqueue.accept(() -> {
+            if (aborted(task)) return;
+            FlowRun current = store.flow(task.id()).orElseThrow();
             try {
-                if (aborted(task)) return;
-                if (!ahead.isEmpty()) slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
-                        "輪到任務 #" + task.id() + "，開始推分支、開 PR。");
-                requireWorkspace(task, flow);
+                requireWorkspace(task, current);
                 String head = workspaces.headSha(task.id());
-                String reason = FlowGates.publicationReason(flow, head);
-                if (reason == null && flow.snapshot.definition().version() >= 2) reason = verifier.blockingReason(flow, head);
-                if (reason != null || !head.equals(flow.approvalHead) || !workspaces.clean(task.id())) throw new IllegalStateException("發布前證據／工作區已變更：" + reason);
-                if (!Objects.equals(flow.origin, workspaces.origin(task.id())) || !Objects.equals(flow.branch, workspaces.currentBranch(task.id()))
-                        || !flow.snapshot.definition().project().baseBranch().equals(workspaces.baseBranch(task.id()))) throw new SecurityException("Git 發布目標與配置快照不一致");
-                var result = publisher.publish(task.id(), "任務 #" + task.id() + " " + Diagnostics.clip(task.requestText().replace('\n', ' '), 90),
-                        prBody(task, flow), flow.branch);
-                flow.prUrl = result.prUrl(); flow.publishedHead = head; store.saveFlow(task.id(), flow);
-                state(task, Task.State.PR_CREATED, "PR 已建立，尚未確認合併／發布／產品驗收：" + result.prUrl());
-                slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), result.prUrl());
-            } catch (PullRequestPublisher.PublishException e) { publishFailed(task, flow, e); }
-            catch (Exception e) { waitHumanForError(task, flow, "推分支、開 PR 沒有完成，任務沒有發布出去；確認下面的原因後，需要重新核准 PR。", e); }
+                var recheck = OwnerPublish.evaluate(current, head, workspaces.clean(task.id()));
+                if (!recheck.allowed()) throw new IllegalArgumentException("排隊期間狀況改變，不能開 PR：" + recheck.reason());
+                state(task, Task.State.PUBLISH_RUNNING, "任務 #" + task.id() + " 依負責人指令發布中");
+                if (recheck.needsWaiver()) OwnerPublish.applyWaiver(current, recheck.reviewNode(), head, user);
+                current.node = recheck.approvalNode();
+                if (current.snapshot.definition().version() >= 2 && verifier.blockingReason(current, head) != null) {
+                    // 分流等節點啟動時會清掉收據；發布前一律在目前 commit 重新取得。
+                    current.independentEvidence = null;
+                    slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id()
+                            + " 缺少有效的系統獨立驗證收據，正在全新 clone 重新執行；通過後才會開 PR。");
+                    try (var progress = new StageProgress(slack, store, task, "系統獨立驗證", props.progressIntervalSeconds(), true)) {
+                        current.independentEvidence = verifier.verify(task, current);
+                    }
+                }
+                String reason = FlowGates.publicationReason(current, head);
+                if (reason == null && current.snapshot.definition().version() >= 2) reason = verifier.blockingReason(current, head);
+                if (reason != null) throw new IllegalStateException("發布前檢查未通過：" + reason);
+                AutomaticHandoff.clear(current);
+                current.approvalHead = head;
+                store.saveFlow(task.id(), current);
+                if (recheck.needsWaiver())
+                    audit.record(task.id(), user, AuditLog.ACTION_RECOVERY, "負責人放行審查「" + recheck.reviewNode() + "」等級寫成提醒的項目："
+                            + Diagnostics.clip(String.join("；", OwnerPublish.waivedItems(current)), 1500));
+                audit.record(task.id(), user, AuditLog.ACTION_BUTTON, "負責人指令即核准配置流程的 PR；commit=" + head);
+                publishApproved(task, current);
+            } catch (Exception e) {
+                // 沒走到發布：放行、收據與節點變更都不保存，任務回到原本停下的位置。
+                FlowRun original = store.flow(task.id()).orElse(current);
+                if (e instanceof IllegalArgumentException) {
+                    state(task, Task.State.AWAIT_HUMAN, "任務 #" + task.id() + " 等待人工，禁止發布");
+                    tellUser(task, "沒有開 PR：", e);
+                } else waitHumanForError(task, original, "依你的指令開 PR 沒有完成，任務沒有發布出去。", e);
+            }
         });
     }
     /** 佔用或等待中央佇列的其他任務，例如「#1018 執行中」「#1020 排隊中」；等人或已結束的不算。 */

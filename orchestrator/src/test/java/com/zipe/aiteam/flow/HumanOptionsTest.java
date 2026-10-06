@@ -455,6 +455,18 @@ class HumanOptionsTest {
                 .extracting(HumanOptions.Option::label).doesNotContain("改用新任務");
     }
 
+    @Test void publishOptionIsDroppedWhenTheEvidenceCannotPublish() throws Exception {
+        flow.node = "triage";
+        var report = (com.fasterxml.jackson.databind.node.ObjectNode) actionReport();
+        ((com.fasterxml.jackson.databind.node.ObjectNode) report.path("human_decision").path("options").get(2))
+                .put("label", "直接開 PR").put("action", "publish");
+        flow.receipts.put("triage", report);
+
+        // 沒有驗收、審查結果：按了也開不出來，選項與固定按鈕都不出現。
+        var options = HumanOptions.options(task, flow, true, true, null, new HumanOptions.Workspace("h", true));
+        assertThat(options).extracting(HumanOptions.Option::label).doesNotContain("直接開 PR", "開 PR");
+    }
+
     @Test void closeIsNeverTurnedIntoARequirementChangeApproval() throws Exception {
         flow.node = "triage";
         flow.changeTarget = "intake";

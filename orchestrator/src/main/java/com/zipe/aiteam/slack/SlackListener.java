@@ -38,7 +38,7 @@ public class SlackListener {
             candidate = value.substring(1, value.length() - 1).trim();
         }
         // 只解開整則已知管理指令；不從一般問題或程式範例中擷取指令。
-        return candidate.matches("(?s)^(補充|處理|中斷)\\s+#\\d+(?:\\s+.*)?$") ? candidate : value;
+        return candidate.matches("(?s)^(補充|處理|中斷|開\\s*PR)\\s+#\\d+(?:\\s+.*)?$") ? candidate : value;
     }
 
     private final AiTeamProperties props;
@@ -201,6 +201,17 @@ public class SlackListener {
                 return;
             }
             orchestrator.interrupt(existing, e.getUser());
+            return;
+        }
+        // 驗收負責人命令開 PR：與停止訊息的「開 PR」按鈕送同一串指令，權限與證據檢查都在流程引擎。
+        var publish = Pattern.compile("^開\\s*PR\\s+#(\\d+)\\s*$", Pattern.CASE_INSENSITIVE).matcher(text);
+        if (publish.matches()) {
+            Task existing = orchestrator.lookup(publish.group(1)).orElse(null);
+            if (existing == null || !existing.slackChannel().equals(e.getChannel()) || !existing.slackThreadTs().equals(threadTs)) {
+                notifier.post(SlackNotifier.Identity.SYSTEM, e.getChannel(), threadTs, "請在該任務原討論串送出開 PR 指令，未變更任何任務。");
+                return;
+            }
+            orchestrator.requestTriage(existing, com.zipe.aiteam.flow.HumanOptions.PUBLISH_COMMAND, e.getUser());
             return;
         }
         var triage = Pattern.compile("^(處理|補充)\\s+#(\\d+)(?:\\s+([\\s\\S]+))?$").matcher(text);

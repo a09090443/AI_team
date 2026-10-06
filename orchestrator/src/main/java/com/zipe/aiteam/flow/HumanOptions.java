@@ -66,6 +66,18 @@ public final class HumanOptions {
     public static final String CONFIG_APPROVE = "CONFIG_APPROVE";
     public static final String STATUS = "STATUS";
     public static final String STATUS_COMMAND = "狀態";
+    public static final String PUBLISH = "PUBLISH";
+    /** 驗收負責人命令系統開 PR；文字指令、按鈕與 agent 的 publish 選項都送這串。 */
+    public static final String PUBLISH_COMMAND = "開 PR";
+
+    /** 證據有效、可以直接開 PR 時的說明；不能開時回 null（按鈕不出現）。 */
+    static String publishHint(FlowRun flow, Workspace ws) {
+        var check = OwnerPublish.evaluate(flow, ws.head(), ws.clean());
+        if (!check.allowed()) return null;
+        return "只有驗收負責人可以按。系統會再做一次發布前檢查（缺少系統獨立驗證收據時先重新執行），通過就推分支、開 PR，不必再按核准。"
+                + (check.needsWaiver() ? "審查有 " + check.waived().size() + " 項等級寫成提醒（例如 INFO）原本擋下發布，"
+                        + "按下去等於由你放行，PR 說明會列出這些項目。" : "");
+    }
 
     public static List<Option> options(Task task, FlowRun flow, boolean canSupplement,
                                        boolean briefReports, String extensionToken, Workspace workspace) {
@@ -109,6 +121,9 @@ public final class HumanOptions {
             else options.add(new Option(SUCCESSOR, "承接成新任務",
                     "開一個新任務，從這個任務的最新 commit 接著做，並帶入已做過的決定；次數重新計算，"
                             + "需求、測試計畫與 PR 仍要重新核准。", SUCCESSOR_COMMAND));
+            // 開 PR 不經過任何 agent 節點，換手次數用完也不受影響。
+            String publish = publishHint(flow, ws);
+            if (publish != null) options.add(new Option(PUBLISH, "開 PR", publish, PUBLISH_COMMAND));
             if (briefReports) options.add(new Option(REPORT, "看完整報告",
                     "只是把完整內容叫出來看，不會改變任務狀態。", "檢視完整報告"));
             return List.copyOf(options);
@@ -132,6 +147,11 @@ public final class HumanOptions {
 
         // agent 提出的選擇題放最前面：這是對方停下來最主要要回答的事。卡在上限時選了也不會重新執行。
         if (!stuck) options.addAll(decisionOptions(flow, ws));
+
+        // 開 PR 不重跑任何 agent 節點，卡在上限也能用。agent 的 publish 選項已經是同一個指令時不重複。
+        String publish = publishHint(flow, ws);
+        if (publish != null && options.stream().noneMatch(o -> PUBLISH_COMMAND.equals(o.command())))
+            options.add(new Option(PUBLISH, "開 PR", publish, PUBLISH_COMMAND));
 
         String restorable = flow.snapshot == null ? null : ContractRecovery.candidate(flow, ws.head(), ws.clean());
         if (restorable != null)
@@ -253,6 +273,12 @@ public final class HumanOptions {
                     result.add(new Option(DECISION, label, consequence + SUCCESSOR_NOTICE, ws.canSaveAndContinue()
                             ? SUCCESSOR_SAVE_COMMAND + " " + ws.fingerprint() : SUCCESSOR_COMMAND));
                 }
+                case ACTION_PUBLISH -> {
+                    // 證據不符合時按了也開不出來，選項直接不出現。
+                    String hint = publishHint(flow, ws);
+                    if (hint == null) continue;
+                    result.add(new Option(DECISION, label, consequence + "（" + hint + "）", PUBLISH_COMMAND));
+                }
                 default -> {
                     if (repeated) continue;
                     result.add(approvesChange
@@ -267,6 +293,7 @@ public final class HumanOptions {
     public static final String ACTION_DECIDE = "decide";
     public static final String ACTION_CLOSE = "close";
     public static final String ACTION_SUCCESSOR = "successor";
+    public static final String ACTION_PUBLISH = "publish";
     /** 負責人結案：任務中止但保留工作區；後面接所選的問題與選項，只作紀錄。 */
     public static final String CLOSE_COMMAND = "負責人結案";
     static final String CLOSE_NOTICE = "（系統直接結案：任務中止、不再派送任何節點，工作區保留供你確認；"

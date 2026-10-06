@@ -1233,6 +1233,97 @@ class FlowEngineTest {
         verify(workspace, times(1)).provision(any(), any(), any());
         assertThat(resumed).containsExactly("verification:saved-session");
     }
+    // ---- 驗收負責人命令開 PR（#1022：審查 APPROVE 但寫了 INFO，閘門擋下、停在分流、收據已被清掉） ----
+
+    private void reviewBlockedAtTriage(String severity) {
+        engine.run(task);
+        var flow = store.flow("42").orElseThrow();
+        ObjectNode review = (ObjectNode) flow.receipts.remove("review");
+        review.putArray("findings").addObject().put("severity", severity).put("detail", "需要資料庫的測試沒有核實");
+        flow.blockedFindings.put("review", review);
+        flow.heads.remove("review");
+        flow.attemptHeads.put("review", workspaceHead);
+        flow.node = "triage"; flow.independentEvidence = null; flow.approvalHead = null;
+        store.saveFlow("42", flow);
+        task.state(Task.State.AWAIT_HUMAN); store.save(task);
+        // 與真的 IndependentVerifier 相同：沒有收據就不算通過。
+        when(verifier.blockingReason(any(), any())).thenAnswer(c ->
+                ((FlowRun) c.getArgument(0)).independentEvidence == null ? "缺少系統獨立驗證收據" : null);
+        clearInvocations(verifier, slack, audit);
+    }
+
+    @Test void ownerCommandWaivesAnInformationalReviewFindingReverifiesAndPublishes() throws Exception {
+        reviewBlockedAtTriage("INFO");
+        when(publisher.publish(eq("42"), any(), any(), eq("feature/task42"))).thenReturn(new PullRequestPublisher.Result("feature/task42", "https://example.test/pr/9", 9));
+        assertThat(HumanOptions.options(task, store.flow("42").orElseThrow(), true, true, null,
+                new HumanOptions.Workspace(workspaceHead, true)))
+                .anyMatch(o -> HumanOptions.PUBLISH.equals(o.kind()) && o.hint().contains("由你放行"));
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(task, HumanOptions.PUBLISH_COMMAND, "u", jobs::add);
+        assertThat(jobs).hasSize(1);
+        jobs.getFirst().run();
+
+        verify(verifier, times(1)).verify(any(), any());
+        var body = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(publisher).publish(eq("42"), any(), body.capture(), eq("feature/task42"));
+        assertThat(body.getValue()).contains("負責人放行的審查項目").contains("原等級 INFO：需要資料庫的測試沒有核實");
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.PR_CREATED);
+        var flow = store.flow("42").orElseThrow();
+        assertThat(flow.receipts.get("review").path("owner_waiver").path("by").asText()).isEqualTo("u");
+        assertThat(flow.receipts.get("review").path("findings").get(0).path("waived_from").asText()).isEqualTo("INFO");
+        assertThat(flow.blockedFindings).doesNotContainKey("review");
+        verify(audit).record(eq("42"), eq("u"), eq(AuditLog.ACTION_RECOVERY), contains("負責人放行審查"));
+    }
+
+    @Test void ownerCannotWaiveASubstantiveReviewProblemOrActForSomeoneElse() throws Exception {
+        when(props.allowedUsers()).thenReturn(Set.of("u", "someone-else"));
+        reviewBlockedAtTriage("HIGH");
+        assertThat(HumanOptions.options(task, store.flow("42").orElseThrow(), true, true, null,
+                new HumanOptions.Workspace(workspaceHead, true)))
+                .noneMatch(o -> HumanOptions.PUBLISH.equals(o.kind()));
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(task, HumanOptions.PUBLISH_COMMAND, "u", jobs::add);
+        engine.resume(task, HumanOptions.PUBLISH_COMMAND, "someone-else", jobs::add);
+
+        assertThat(jobs).isEmpty();
+        verifyNoInteractions(publisher);
+        verify(slack).post(any(), eq("c"), eq("t"), contains("只有驗收負責人可以命令開 PR"));
+        var text = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(slack, atLeastOnce()).post(any(), eq("c"), eq("t"), text.capture(), any());
+        assertThat(text.getAllValues()).anySatisfy(t -> assertThat(t).contains("還不能開 PR").contains("不是可以由你放行的情況"));
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        assertThat(store.flow("42").orElseThrow().blockedFindings).containsKey("review");
+    }
+
+    @Test void failedReverificationPublishesNothingAndKeepsTheWaiverUnsaved() throws Exception {
+        reviewBlockedAtTriage("INFO");
+        doThrow(new IllegalStateException("npm test 失敗")).when(verifier).verify(any(), any());
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(task, HumanOptions.PUBLISH_COMMAND, "u", jobs::add);
+        jobs.getFirst().run();
+
+        verifyNoInteractions(publisher);
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        var flow = store.flow("42").orElseThrow();
+        assertThat(flow.blockedFindings).containsKey("review");
+        assertThat(flow.receipts).doesNotContainKey("review");
+        assertThat(flow.node).isEqualTo("triage");
+    }
+
+    @Test void ownerCommandWhileAwaitingPrApprovalIsTheApproval() throws Exception {
+        engine.run(task);
+        when(publisher.publish(eq("42"), any(), any(), eq("feature/task42"))).thenReturn(new PullRequestPublisher.Result("feature/task42", "https://example.test/pr/1", 1));
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(task, HumanOptions.PUBLISH_COMMAND, "u", jobs::add);
+        jobs.getFirst().run();
+
+        assertThat(task.state()).isEqualTo(Task.State.PR_CREATED);
+    }
+
     @Test void changedHeadAfterApprovalNeverPublishes() throws Exception {
         engine.run(task); when(workspace.headSha("42")).thenReturn("changed");
         List<Runnable> jobs = new ArrayList<>(); engine.approve(task, "u", jobs::add); jobs.get(0).run();
