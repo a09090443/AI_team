@@ -9,6 +9,8 @@
 - 修正：`FlowEngine.ownerPublish` 接受 audit 有 OWNER_CLOSE 的 ABORTED 任務（`claimState(from, RESUME_QUEUED)`）；檢查沒過時回到 ABORTED
   並說明「任務維持結案」；一般中止的 ABORTED 仍拒絕。FlowEngineTest +3。
 - 已修正文件：review-gate、operations、pm-triage、plan-approval-buttons（含 close 真實證據）。docs build 通過。
+- commit bb5e93c；本機 550 項只有既有 4 項 Windows 失敗；VM `closed-publish-build.VOnKsT` check-source PASS、550 項 0 失敗，JAR `c5b0096bb36578e501a8831392934d2992d0f2b1cfda9c1b189ca6480b777ebe`。
+  部署：bestpartner PID 140689（備份 `orchestrator-backup.lCDH9Z`）、starters PID 143800（備份 `orchestrator-backup.ay2s0n`），皆 0 ERROR、5 個連線、任務資料前後一致。
 
 ## 2026-10-06 — Claude Code（Slack 命令開 PR、放行審查提醒等級）
 
