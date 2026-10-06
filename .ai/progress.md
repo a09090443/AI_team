@@ -14,6 +14,9 @@
 - 測試：ReviewGateTest +2、FlowEngineTest +4、HumanOptionsTest +1、TriageRoutingTest +3、FailureReportTest 更新。本機 547 項只有既有 4 項 Windows 失敗。
 - 已修正文件：review-gate（新段落、例外說明）、plan-approval-buttons、operations（指令表與按鈕表）、pm-triage、data-model（receipts 例外）、
   project-tree（OwnerPublish）、catalog（review-gate code）；decisions 追加。已核對：configuration、system-map（不涉及設定鍵與節點）。docs build 通過。
+- VM 隔離建置 `owner-publish-build.Ko6L35` check-source PASS、547 項 0 失敗；JAR `d62c1b6d0ddc236461866c4e9193837be7f2b50d560c507063a6db8e2fcde90d`。
+  使用者確認後 deploy-jar-safe 部署：bestpartner PID 132552（備份 `orchestrator-backup.o0vgga`）、starters PID 135655（備份 `orchestrator-backup.1wjvV0`），
+  皆 0 ERROR、5 個連線、任務資料前後一致。真實 Slack 端對端未實測。
 - 另發現（未處理）：分流節點啟動時 `Traceability.invalidate` 會清掉系統獨立驗證收據，之後發布一定要重跑驗證。
 
 ## 2026-10-06 — Claude Code（#1022 真人選項「結案」做不到）
