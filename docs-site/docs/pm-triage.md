@@ -80,6 +80,7 @@ Slack 會區分「已排隊」、「PM 處理中」、「已派工」與「等�
 
 另有「負責人結案」：agent 的選項帶 `action=close` 時出現，只限驗收負責人、任務在 `AWAIT_HUMAN`。狀態同樣是 `ABORTED`，
 但 audit 記 `OWNER_CLOSE`，重啟時**保留工作區**供負責人在系統外確認 PR（見 [plan-approval-buttons](plan-approval-buttons.md#由-agent-本人說明需要你決定的事)）。
+結案後改變主意，仍可送 `開 PR #<id>` 讓系統開 PR（檢查沒過就維持結案）。
 
 ## 恢復與紀錄
 

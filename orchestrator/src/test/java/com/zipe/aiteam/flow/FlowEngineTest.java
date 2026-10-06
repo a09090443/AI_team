@@ -1313,6 +1313,47 @@ class FlowEngineTest {
         assertThat(flow.node).isEqualTo("triage");
     }
 
+    @Test void ownerClosedTaskCanStillBePublishedOnCommand() throws Exception {
+        // #1022：先按了「結案，系統外處理」，之後才想讓系統開 PR。
+        reviewBlockedAtTriage("INFO");
+        task.state(Task.State.ABORTED); store.save(task);
+        when(audit.has("42", AuditLog.ACTION_OWNER_CLOSE)).thenReturn(true);
+        when(publisher.publish(eq("42"), any(), any(), eq("feature/task42"))).thenReturn(new PullRequestPublisher.Result("feature/task42", "https://example.test/pr/9", 9));
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(task, HumanOptions.PUBLISH_COMMAND, "u", jobs::add);
+        jobs.getFirst().run();
+
+        verify(publisher).publish(eq("42"), any(), contains("負責人放行的審查項目"), eq("feature/task42"));
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.PR_CREATED);
+    }
+
+    @Test void closedTaskThatFailsTheChecksStaysClosed() throws Exception {
+        reviewBlockedAtTriage("INFO");
+        task.state(Task.State.ABORTED); store.save(task);
+        when(audit.has("42", AuditLog.ACTION_OWNER_CLOSE)).thenReturn(true);
+        doThrow(new IllegalStateException("npm test 失敗")).when(verifier).verify(any(), any());
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(task, HumanOptions.PUBLISH_COMMAND, "u", jobs::add);
+        jobs.getFirst().run();
+
+        verifyNoInteractions(publisher);
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.ABORTED);
+        verify(slack).post(any(), eq("c"), eq("t"), contains("任務維持結案"));
+    }
+
+    @Test void plainAbortedTaskCannotBePublished() throws Exception {
+        reviewBlockedAtTriage("INFO");
+        task.state(Task.State.ABORTED); store.save(task);
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(task, HumanOptions.PUBLISH_COMMAND, "u", jobs::add);
+
+        assertThat(jobs).isEmpty();
+        verify(slack).post(any(), eq("c"), eq("t"), contains("由負責人結案的任務才能開 PR"));
+    }
+
     @Test void ownerCommandWhileAwaitingPrApprovalIsTheApproval() throws Exception {
         engine.run(task);
         when(publisher.publish(eq("42"), any(), any(), eq("feature/task42"))).thenReturn(new PullRequestPublisher.Result("feature/task42", "https://example.test/pr/1", 1));

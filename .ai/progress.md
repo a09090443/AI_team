@@ -2,6 +2,14 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-06 — Claude Code（負責人結案的任務也能開 PR）
+
+- #1022 在 21:04（台北）先按了分流的「結案，系統外處理」（`action=close`，audit 350–352，**close 的第一筆真實證據**：直接 ABORTED、
+  記 OWNER_CLOSE、未呼叫 agent，重啟後工作區仍在），21:23 才部署「開 PR」，之後送指令因 ABORTED 被拒。
+- 修正：`FlowEngine.ownerPublish` 接受 audit 有 OWNER_CLOSE 的 ABORTED 任務（`claimState(from, RESUME_QUEUED)`）；檢查沒過時回到 ABORTED
+  並說明「任務維持結案」；一般中止的 ABORTED 仍拒絕。FlowEngineTest +3。
+- 已修正文件：review-gate、operations、pm-triage、plan-approval-buttons（含 close 真實證據）。docs build 通過。
+
 ## 2026-10-06 — Claude Code（Slack 命令開 PR、放行審查提醒等級）
 
 - 使用者要求在 Slack 命令 agent 開 PR（#1022 審查實質通過但 INFO 擋發布、舊快照套不到新規則）。使用者選擇：只放行無實質問題的情況；

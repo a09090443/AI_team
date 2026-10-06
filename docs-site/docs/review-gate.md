@@ -56,7 +56,8 @@ bestpartner #1022 的審查結論是 APPROVE、沒有 blockers，但 findings �
 `開 PR #<id>`（或 `補充 #<id> 開 PR`）、停止訊息的「開 PR」按鈕、agent 選項 `action=publish` 都送同一串指令 `開 PR`，
 由 `FlowEngine.ownerPublish` 處理，判斷集中在 `OwnerPublish.evaluate`。
 
-- 只限驗收負責人；任務是配置式流程，狀態 `AWAIT_PR_APPROVAL`（等同按核准）或 `AWAIT_HUMAN`。
+- 只限驗收負責人；任務是配置式流程，狀態 `AWAIT_PR_APPROVAL`（等同按核准）、`AWAIT_HUMAN`，或負責人結案的 `ABORTED`
+  （audit 有 `OWNER_CLOSE`、工作區有保留）。結案任務檢查沒過時維持結案，不會變成等人的任務；一般「中止任務」的 `ABORTED` 不接受。
 - 其他證據照舊：用發布核准節點同一套 `FlowGates.publicationReason` 試算，驗收、需求基準、commit 一致性都必須有效；工作區要乾淨。
 - **唯一可放行的閘門失敗**（`ReviewGate.waivable`）：審查 `VERIFIED`、把握度 HIGH／MEDIUM、APPROVE／COMMENT、沒有 blockers、
   有 checked，沒有 HIGH，而且不標準的等級只屬於提醒類（`INFO`、`INFORMATIONAL`、`NOTE`、`NIT`、`NONE`，不分大小寫）。

@@ -1597,9 +1597,11 @@ public class FlowEngine {
      */
     private void ownerPublish(Task task, FlowRun flow, String user, Consumer<Runnable> enqueue) {
         Task.State from = task.state();
+        // 負責人結案（選了「結案，系統外處理」）後改變主意要系統開 PR：工作區有保留，照樣可以開。#1022 就是先結案才有這個指令。
+        boolean closed = from == Task.State.ABORTED && closedByOwner(task);
         String refuse = !user.equals(flow.acceptanceOwner) ? "只有驗收負責人可以命令開 PR。"
-                : from == Task.State.AWAIT_PR_APPROVAL || from == Task.State.AWAIT_HUMAN ? null
-                : "任務目前為 " + from + "，只有停下等人或等待核准 PR 時才能開 PR。";
+                : from == Task.State.AWAIT_PR_APPROVAL || from == Task.State.AWAIT_HUMAN || closed ? null
+                : "任務目前為 " + from + "，只有停下等人、等待核准 PR，或由負責人結案的任務才能開 PR。";
         if (refuse != null) { slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id() + " " + refuse); return; }
         if (from == Task.State.AWAIT_PR_APPROVAL) { approve(task, user, enqueue); return; }
         OwnerPublish.Result check;
@@ -1609,10 +1611,13 @@ public class FlowEngine {
         } catch (Exception e) { tellUser(task, "沒有開 PR：", e); return; }
         if (!check.allowed()) {
             audit.record(task.id(), user, AuditLog.ACTION_REJECTED, "命令開 PR 未通過：" + check.reason());
-            postHumanOptions(task, flow, "任務 #" + task.id() + " 還不能開 PR：" + check.reason(), false);
+            String text = "任務 #" + task.id() + " 還不能開 PR：" + check.reason();
+            // 已結案的任務沒有其他選項可列，只說原因。
+            if (closed) slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), text + "\n任務維持結案。");
+            else postHumanOptions(task, flow, text, false);
             return;
         }
-        if (!store.claimState(task.id(), Task.State.AWAIT_HUMAN, Task.State.RESUME_QUEUED)) return;
+        if (!store.claimState(task.id(), from, Task.State.RESUME_QUEUED)) return;
         task.state(Task.State.RESUME_QUEUED);
         audit.record(task.id(), user, AuditLog.ACTION_BUTTON, "驗收負責人命令開 PR"
                 + (check.needsWaiver() ? "（放行審查提醒 " + check.waived().size() + " 項）" : ""));
@@ -1655,12 +1660,22 @@ public class FlowEngine {
             } catch (Exception e) {
                 // 沒走到發布：放行、收據與節點變更都不保存，任務回到原本停下的位置。
                 FlowRun original = store.flow(task.id()).orElse(current);
-                if (e instanceof IllegalArgumentException) {
+                if (closed) {
+                    // 原本已結案：回到結案，不變成等人的任務。
+                    state(task, Task.State.ABORTED, "任務 #" + task.id() + " 維持負責人結案，未發布");
+                    slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id()
+                            + " 沒有開 PR，任務維持結案。\n" + (e instanceof IllegalArgumentException ? Diagnostics.forUser(e)
+                            : explainer.explain(task, "依你的指令開 PR 時", e, List.of())));
+                } else if (e instanceof IllegalArgumentException) {
                     state(task, Task.State.AWAIT_HUMAN, "任務 #" + task.id() + " 等待人工，禁止發布");
                     tellUser(task, "沒有開 PR：", e);
                 } else waitHumanForError(task, original, "依你的指令開 PR 沒有完成，任務沒有發布出去。", e);
             }
         });
+    }
+    private boolean closedByOwner(Task task) {
+        try { return audit.has(task.id(), AuditLog.ACTION_OWNER_CLOSE); }
+        catch (Exception e) { return false; }
     }
     /** 佔用或等待中央佇列的其他任務，例如「#1018 執行中」「#1020 排隊中」；等人或已結束的不算。 */
     private List<String> busyTasks(String self) {
