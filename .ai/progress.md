@@ -2,6 +2,22 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-06 — Claude Code（查證 #1023 無法上網查版本）
+
+- bestpartner #1023「確認 langchain4j 新版本」intake 跑了 4 輪都查不到版本，停在 AWAIT_HUMAN。
+- 原因：Claude Code 以 `--permission-mode dontAsk` 執行，`teams/bestpartner.json` 的 `coordinator.tools`
+  沒列 `WebSearch`／`WebFetch`，呼叫一律被拒（stage_attempt 86–89 摘要有拒絕訊息原文）。不是網路被擋。
+- 發現的缺漏：`configuration.md` 沒寫白名單外的工具（含網路工具）會被拒。已修正文件：`docs-site/agent/configuration.md`、`docs-site/docs/direct-agent-requests.md`（對話不受角色 tools 影響）。
+- 核對過的文件：`configuration.md`、`configurable-team.md`（無相關內容）。docs-site build 通過。
+- 使用者同意後，兩個實例的 `coordinator.tools` 都加上 `WebSearch` 和 `WebFetch`，WebFetch 限定
+  repo1.maven.org、central.sonatype.com、github.com 三個網域。check-source PASS；本機沒有 Maven，
+  這次只改配置、JAR 沒動，所以沒跑 Maven 測試。
+  部署（JAR 不變）：`--validate-team` 通過，舊檔備份為 `teams/<名>.json.bak-before-web-tools`；
+  bestpartner PID 149196（配置 35682c41…）、starters PID 151906（配置 5b279064…）。
+  兩邊 log 都是 0 ERROR、沙箱與工具鏈自檢通過，任務資料前後一致。
+- 限制：直接 @PM 提問（dialogue）在程式裡寫死只能用 Read／Grep／Glob（`ConfiguredExecutor`），不受這次配置影響。
+  #1023 的快照是舊配置，重跑還是查不了網路，要開新任務。真實上網查詢尚未實測。
+
 ## 2026-10-06 — Claude Code（負責人結案的任務也能開 PR）
 
 - #1022 在 21:04（台北）先按了分流的「結案，系統外處理」（`action=close`，audit 350–352，**close 的第一筆真實證據**：直接 ABORTED、

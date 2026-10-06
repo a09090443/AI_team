@@ -39,7 +39,7 @@
 回覆規則寫在對話的系統提示（`ConfiguredExecutor.DIALOGUE_REPLY_RULES`）：第一句直接回答、用白話不用內部代號、
 以系統查得的工作區現況為準、最後寫「你可以怎麼做」並給可複製的指令（例如 `@QA Agent 執行 <要做的事>`）、不確定就說不確定。
 共用中央工作佇列與並行槽，不會在 Backend 寫入中途另啟聊天讀檔。
-只准 Read/Grep/Glob，且沙箱自檢必須通過。對話不能 commit、派工、核准 PR 或取代 QA／Review 證據。
+只准 Read/Grep/Glob（程式寫死，不看角色 `tools`；即使角色配置了 `WebSearch`／`WebFetch`，對話也不能上網），且沙箱自檢必須通過。對話不能 commit、派工、核准 PR 或取代 QA／Review 證據。
 同串已有未完成對話時拒絕重複排隊；用量中斷保持 `WAITING_QUOTA`，按主 App 的繼續按鈕。
 重啟中斷的對話會明示失敗，請重新提問，不會誤入實作管線。
 

@@ -80,7 +80,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 | `reasoningEffort` | 選填，目前僅 Codex 支援 `low`／`medium`／`high`／`xhigh` |
 | `prompt` | 角色一般職責的提示檔 |
 | `botTokenEnv`、`appTokenEnv` | Slack token 的**環境變數名稱**（值不進 JSON、不進快照） |
-| `tools` | 工具白名單，例如 `Read`、`Bash(mvn *)`。要角色核實產物就必須給對應唯讀工具，否則被拒後報告作廢 |
+| `tools` | 工具白名單，例如 `Read`、`Bash(mvn *)`。要角色核實產物就必須給對應唯讀工具，否則被拒後報告作廢。Claude Code 以 `--permission-mode dontAsk` 執行，**沒列在這裡的工具一律拒絕**，包含 `WebSearch`、`WebFetch`：角色要查網路（例如查套件最新版）必須明列，可寫成 `WebFetch(domain:repo1.maven.org)` 限定網域。Codex runtime 目前未開啟網頁搜尋 |
 
 ### `nodes.<節點 ID>`
 
