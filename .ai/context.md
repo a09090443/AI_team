@@ -34,7 +34,10 @@
   2026-10-04 部署 a84128e（分段改派＋bestpartner QA localTestNetwork，JAR `159e5475…`）：bestpartner PID 74870（配置 d2e5ca0a…）、starters PID 78060。
   2026-10-05 部署 242d49f（改派段受保護路徑告知依實際角色，JAR `8867c9fd…`）：bestpartner PID 86276、starters PID 89428。
   2026-10-06 部署 097d43a＋1a3e37d（Codex 額度台北時間、審查等級限定三級，JAR `4589e7da…`）：bestpartner PID 106078（配置 a202552b…）、starters PID 108925（配置 ba1ddf63…）。
-  #1022 分段改派實作通過，卡在審查 INFO 等級；提示／schema 變更不能原地遷移，需改用新任務繼續或手動開 PR。
+  2026-10-06 部署 b4ad5a9（真人選項 action：close 直接結案保留工作區、successor 直接承接，JAR `85262242…`）：
+  bestpartner PID 124273（備份 `orchestrator-backup.Xl7UsF`）、starters PID 127380（備份 `orchestrator-backup.wSqWu6`），皆 0 ERROR、自檢通過、任務資料前後一致。
+  #1022 分段改派實作通過，卡在審查 INFO 等級；負責人按了五次分流給的「結案」類選項都只是重跑分流。分支已推（60b8ca5）但**沒有 PR**。
+  下一步：使用者從 `feature/ai-team-task-1022` 開 PR（base dev）後，送「補充 #1022 狀態」或讓分流重跑，實測 close 結案按鈕（真實 Slack 未實測）。
   #1021（第一個分段改派任務）改派段因收到 Claude 拒寫告知而沒動手，停在 AWAIT_HUMAN，此版修正後待使用者重新執行。
   下一步：以 #1021 重跑實測分段改派（改 `.claude/` 加其他檔）與 Codex QA 跑 `qa-backend-*`；#1020 建議重開新任務。
   下一步：#1012（承接 #1011，計畫已以 inspect-content 通過、實作完成）在獨立驗證停下，使用者按「繼續執行」重跑；

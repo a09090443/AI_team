@@ -25,7 +25,9 @@
   （ABORTED 例外、OWNER_CLOSE）；decisions 追加。已核對：configuration、system-map（不涉及設定鍵與流程節點，不需改）。
 - commit b4ad5a9。本機 537 項只有既有 4 項 Windows 失敗；VM 隔離建置 `owner-close-build.QfWDY3` check-source PASS、537 項 0 失敗（11 略過），
   JAR `852622420efa16fc676b776548a634ae51a6eb225cc66f17fb519db55bac2940`（取代第 1 點的 `23bccc52…`，該建置目錄已刪）。
-  **尚未部署**：自動部署被權限機制擋下，等使用者確認。只換 JAR，不動 teams 配置。
+  使用者確認後以 deploy-jar-safe 部署（只換 JAR）：bestpartner PID 124273（備份 `orchestrator-backup.Xl7UsF`）、
+  starters PID 127380（備份 `orchestrator-backup.wSqWu6`），皆 0 ERROR、5 個 Socket Mode 連線、沙箱自檢通過、任務資料前後一致。
+  真實 Slack 端對端（close／successor 選項）尚未實測。
 
 ## 2026-10-06 — Claude Code（#1022 審查 INFO 等級擋發布）
 
