@@ -59,6 +59,12 @@ class FailureReportTest {
                 .contains("route=human").contains("also_needed");
     }
 
+    /** #1022：「確認結案」按了五次，每次只是把選擇交回分流，流程沒有結案路線。 */
+    @Test void instructionsForbidOptionsTheFlowCannotCarryOut() {
+        assertThat(FailureReport.INSTRUCTIONS).contains("沒有「結案」路線")
+                .contains("中止任務").contains("改用新任務繼續").contains("options 給空陣列");
+    }
+
     @Test void reportsWithoutHumanDecisionStayValidSoOldReceiptsStillParse() throws Exception {
         var completed = mapper.readTree("{\"execution_status\":\"COMPLETED\",\"failure_report\":null}");
         assertThat(FailureReport.blockingReason("generic", completed)).isNull();
