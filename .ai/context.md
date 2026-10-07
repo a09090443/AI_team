@@ -40,6 +40,7 @@
   2026-10-06 部署 9fc71be（Slack 命令開 PR、放行審查提醒等級，JAR `d62c1b6d…`）：bestpartner PID 132552（備份 `orchestrator-backup.o0vgga`）、
   starters PID 135655（備份 `orchestrator-backup.1wjvV0`），皆 0 ERROR、5 個連線、任務資料前後一致。
   2026-10-06 PM 角色開放 WebSearch／WebFetch（只換配置）：bestpartner PID 149196、starters PID 151906。
+  2026-10-07 實作階段可下載依賴（只換 testInstructions）：bestpartner PID 164609、starters PID 167424；#1025 待遷移配置後重跑。
   2026-10-06 部署 bb5e93c（負責人結案的任務也能開 PR，JAR `c5b0096b…`）：bestpartner PID 140689（備份 `orchestrator-backup.lCDH9Z`）、
   starters PID 143800（備份 `orchestrator-backup.ay2s0n`），皆 0 ERROR、5 個連線、任務資料前後一致；#1022 為 ABORTED（OWNER_CLOSE），工作區仍在。
   下一步：使用者在 #1022 討論串送 `@主機器人 開 PR #1022` 實測（會先重跑系統獨立驗證）；close 結案按鈕也未實測。

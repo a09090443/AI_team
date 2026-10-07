@@ -2,6 +2,19 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-07 — Claude Code（升級任務因「不得下載」停下 → 開放實作階段下載依賴）
+
+- bestpartner #1025（升級 langchain4j＋Quarkus）intake 連續三輪都卡在「離線快取不足，要維運補」，對話 #1027、#1028 也答不能下載。
+  原因是 `testInstructions` 寫了「Gradle 一律 --offline…不得下載」。實際上實作操作（backend-*、ui-install）本來就沒加 offline，
+  VM 與 systemd 沙箱也都能連外（沙箱內 curl Maven Central 回 200，已實測）。另外 intake 查的是 `~/.gradle`，
+  但 bestpartner 的 GRADLE_USER_HOME 其實是 `~/.cache/gradle`。
+- 修改：兩個實例的 `testInstructions` 改成實作階段可以下載依賴；QA 因 localTestNetwork 不連外，維持 offline 使用共用快取，
+  遇到缺件就退回實作補跑。QA 的 Codex 沙箱沒有開外網。
+- 部署（JAR 不變，備份 `teams/<名>.json.bak-before-online-deps`）：bestpartner PID 164609（配置 78940e69…）、
+  starters PID 167424（配置 b426785e…），兩邊都 0 ERROR、自檢通過、任務資料前後一致。check-source PASS、docs build 通過。
+- 已修正文件：`local-test-capabilities.md`。已核對：configuration、configurable-team、cross-project-execution（遷移可涵蓋 testInstructions）。
+- #1025 的快照仍是舊配置，要用「檢視配置更新 → 核准配置更新」遷移後再重跑。真實升級建置尚未實測。
+
 ## 2026-10-06 — Claude Code（查證 #1023 無法上網查版本）
 
 - bestpartner #1023「確認 langchain4j 新版本」intake 跑了 4 輪都查不到版本，停在 AWAIT_HUMAN。

@@ -31,7 +31,7 @@
     "repositoryEnv": "AI_TEAM_REPO",
     "baseBranch": "develop",
     "buildInstructions": "依 AGENTS.md 與專案 skills；mvn -B verify。需生成的文件必須依規定產生，未完成不能宣稱通過。文件建置請在 doc-site 目錄執行 npm ci（有 lockfile）或 npm install（無 lockfile），再執行 npm run build；使用 PATH 上的 npm，不使用 npx 或絕對路徑替代。",
-    "testInstructions": "先制定情境測試計畫，再驗收；不得只看程式或單元測試數量。QA localTestNetwork 僅開放隔離 namespace 內本機測試，不連外。Maven 使用 -o。文件在隔離產物副本建置與比對，依序使用操作 qa-docs-dir、qa-docs-snapshot、qa-docs-extract、qa-docs-install、qa-docs-build，再以 qa-docs-compare-llms 與 qa-docs-compare-llms-full 比對副本建置出的 llms 產物與根目錄提交的版本（結束碼 0 表示一致）。不要在原 doc-site 執行 npm ci/build。快取不足須回報，不得下載或繞過沙箱；根目錄 llms.txt/llms-full.txt 與原始文件保持唯讀。",
+    "testInstructions": "先制定情境測試計畫，再驗收；不得只看程式或單元測試數量。實作階段可以連網下載依賴（含升級套件版本），java-verify、docs-install 等實作操作會把套件寫進共用快取（~/.m2/repository、~/.npm）。QA localTestNetwork 僅開放隔離 namespace 內本機測試，不連外，所以 QA 的 Maven 使用 -o、npm 使用 --offline，依賴由實作階段先下載。文件在隔離產物副本建置與比對，依序使用操作 qa-docs-dir、qa-docs-snapshot、qa-docs-extract、qa-docs-install、qa-docs-build，再以 qa-docs-compare-llms 與 qa-docs-compare-llms-full 比對副本建置出的 llms 產物與根目錄提交的版本（結束碼 0 表示一致）。不要在原 doc-site 執行 npm ci/build。QA 遇到快取缺件時，判定為實作階段尚未執行對應建置，退回實作補跑，不是維運問題，也不得繞過沙箱；根目錄 llms.txt/llms-full.txt 與原始文件保持唯讀。",
     "protectedPaths": [
       "**/src/main/**",
       "**/pom.xml"
