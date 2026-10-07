@@ -10,7 +10,8 @@
   systemd 停掉 `user@1000.service`，兩個實例的 JVM 和沙箱 unit 都被 SIGTERM／SIGKILL。
   Hikari 先關閉，所以 AWAIT_HUMAN 寫入失敗，#1029 留在 STAGE_RUNNING。
 - 發現的缺漏：INSTALL 沒有要求 linger。已修正 `INSTALL.md` §4（必須 enable-linger）與 §10（這次的症狀）。docs build 通過。
-- 待辦：使用者本人執行 `loginctl enable-linger agent`，之後才啟動兩個實例。啟動時 #1029 會改為 AWAIT_HUMAN（服務重啟中斷），
+- 使用者已開啟 linger（Linger=yes）。重新啟動：bestpartner PID 174501、starters PID 176442，兩邊都 0 ERROR、自檢通過、13 條連線、任務數不變；#1029 已改為 AWAIT_HUMAN（服務重啟中斷）。
+- 原待辦：使用者本人執行 `loginctl enable-linger agent`，之後才啟動兩個實例。啟動時 #1029 會改為 AWAIT_HUMAN（服務重啟中斷），
   再由負責人決定是否重跑。實作節點逾時 30 分鐘裡含凍結時間；升級要下載新版 Quarkus，重跑仍可能逾時。
 
 ## 2026-10-07 — Claude Code（升級任務因「不得下載」停下 → 開放實作階段下載依賴）
