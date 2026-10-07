@@ -175,6 +175,17 @@ Ubuntu 24.04 起 AppArmor 預設 `kernel.apparmor_restrict_unprivileged_userns=1
 指令成功仍不能證明隔離有效：必須通過 orchestrator 的實際越界寫入自檢與工具鏈自檢。
 本工具尚未設定開機自動啟動；登出／重開機後要再次驗證 user manager 與服務狀態。
 
+**必須開啟 linger**（由使用者本人或管理員執行）：
+
+```bash
+loginctl enable-linger "$USER"
+loginctl show-user "$USER" -p Linger   # 應為 Linger=yes
+```
+
+沒開時，user manager 只在有登入 session 時存在。最後一個 session 結束後，systemd 會停掉 `user@<uid>.service`，
+服務 JVM 和所有 `systemd-run --user` 沙箱 unit 都會被 SIGTERM／SIGKILL，資料庫連線池先關閉，
+進行中的任務因此停在 `STAGE_RUNNING`。新 VM 在 2026-10-07 實際發生過，見 §10。
+
 ## 5. 安裝應用與目標 repo
 
 ```bash
@@ -403,6 +414,7 @@ Slack 相關問題見 [建立 Slack App](slack-agent-apps.md#疑難排解)。
 | `ssh host 'claude --version'` 找不到指令 | Ubuntu 的 `~/.bashrc` 開頭對非互動式 shell 會直接 return。自動化一律自行 `export PATH` 或用絕對路徑；bootstrap 的啟動腳本已自行設定 PATH |
 | 下載極慢、IP 每次重開機都變 | VirtualBox 橋接到 Wi-Fi 網卡。改用 NAT + 埠轉發（§1 的 `127.0.0.1:2223`）；VM 執行中新增轉發用 `controlvm … natpf1`，`modifyvm` 需要獨占鎖，常出現 `already locked for a session` |
 | `Cannot access central in offline mode` | `mvn dependency:go-offline` 只是盡力預熱，不保證抓齊傳遞相依；實際建置不要加 `-o` |
+| 兩個實例同時停掉、log 最後是 `HikariPool-1 - Shutdown completed`，任務卡在 `STAGE_RUNNING` | `Linger=no`，最後一個登入 session 結束後 systemd 停掉了 user manager（journal 有 `user@1000.service: State 'stop-sigterm' timed out. Killing.`）。2026-10-07 新 VM 先凍結約 7.5 分鐘（kernel `rcu_preempt kthread starved`），之後 session 被移除就發生了。處理：開啟 linger（§4），再以 `service.sh start` 啟動。啟動時系統會把卡住的任務改成 `AWAIT_HUMAN`（「服務重啟中斷」），不自動重跑，要負責人在 Slack 決定是否重跑 |
 | 遠端重啟後服務不見了 | 在單一 SSH 指令裡「停舊的再起新的」，中途斷線就只剩停止。分兩步各自確認，或用 `service.sh` 並在啟動後檢查 `status` |
 
 ## 文件優先序

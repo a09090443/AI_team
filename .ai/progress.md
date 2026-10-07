@@ -2,6 +2,17 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-07 — Claude Code（兩個實例被 systemd 停掉，#1029 卡在 STAGE_RUNNING）
+
+- 負責人把 #1025 承接成 #1029（配置 78940e69），intake、design、plan 都通過，12:37 UTC 進入實作。
+- 12:59～13:08 UTC VM 凍結約 7.5 分鐘（kernel `rcu_preempt kthread starved for 450403 jiffies`，跟 10-03 同一型）。
+  13:09:11 實作節點超過 30 分鐘逾時被強制終止，stdout 是空的。13:09:13 登入 session 4 被移除，因為 `Linger=no`，
+  systemd 停掉 `user@1000.service`，兩個實例的 JVM 和沙箱 unit 都被 SIGTERM／SIGKILL。
+  Hikari 先關閉，所以 AWAIT_HUMAN 寫入失敗，#1029 留在 STAGE_RUNNING。
+- 發現的缺漏：INSTALL 沒有要求 linger。已修正 `INSTALL.md` §4（必須 enable-linger）與 §10（這次的症狀）。docs build 通過。
+- 待辦：使用者本人執行 `loginctl enable-linger agent`，之後才啟動兩個實例。啟動時 #1029 會改為 AWAIT_HUMAN（服務重啟中斷），
+  再由負責人決定是否重跑。實作節點逾時 30 分鐘裡含凍結時間；升級要下載新版 Quarkus，重跑仍可能逾時。
+
 ## 2026-10-07 — Claude Code（升級任務因「不得下載」停下 → 開放實作階段下載依賴）
 
 - bestpartner #1025（升級 langchain4j＋Quarkus）intake 連續三輪都卡在「離線快取不足，要維運補」，對話 #1027、#1028 也答不能下載。
