@@ -57,19 +57,25 @@ public final class ProtectedPathFallback {
         return out;
     }
 
+    /** 提到的受保護路徑分成兩組：允許改派的（交給 fallback 角色）與允許範圍外的（不改派，留給原流程）。 */
+    public record Need(List<String> delegated, List<String> outside) {}
+
     /**
      * 需求、需求基準與已完成節點報告中提到、而原角色 runtime 必定寫不了的路徑。
-     * 全部落在 fallback.paths 內才回傳；有任何一條不在允許範圍（例如 settings）就回傳 empty，交給原流程停下來問人。
+     * 擷取的是「有提到」而不是「要修改」：#1029 的需求只要求 `.claude/CLAUDE.md`「維持不變」，舊版只要有一條在允許範圍外
+     * 就整個不改派，`.claude/rules/` 兩份檔案因此沒人改得了。現在允許範圍內的照樣改派；範圍外的（例如 settings）不交出去，
+     * 原角色真的要改時會被 runtime 拒絕，照原流程停下來問人。沒有允許範圍內的路徑時回傳 empty。
      */
-    public static Optional<List<String>> needed(FlowRun flow, Node node, String requestText, AgentRuntime primary) {
+    public static Optional<Need> needed(FlowRun flow, Node node, String requestText, AgentRuntime primary) {
         Fallback fb = node.protectedPathFallback();
         if (fb == null || primary == null) return Optional.empty();
         StringBuilder text = new StringBuilder(requestText == null ? "" : requestText);
         for (JsonNode receipt : flow.receipts.values()) text.append('\n').append(receipt);
         List<String> protectedPaths = mentionedPaths(text.toString()).stream().filter(primary::isProtectedWrite).toList();
-        if (protectedPaths.isEmpty()) return Optional.empty();
-        boolean allAllowed = protectedPaths.stream().allMatch(p -> PathRules.allows(fb.paths(), p.endsWith("/") ? p + "x" : p));
-        return allAllowed ? Optional.of(protectedPaths) : Optional.empty();
+        List<String> delegated = new ArrayList<>(), outside = new ArrayList<>();
+        for (String p : protectedPaths)
+            (!denied(p) && PathRules.allows(fb.paths(), p.endsWith("/") ? p + "x" : p) ? delegated : outside).add(p);
+        return delegated.isEmpty() ? Optional.empty() : Optional.of(new Need(List.copyOf(delegated), List.copyOf(outside)));
     }
 
     /** 改派的實作實際變更中，原 runtime 會拒絕、又不在允許範圍內的路徑（含禁止清單）；非空就必須停止。 */

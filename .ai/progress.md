@@ -2,6 +2,18 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-08 — Claude Code（查證 #1029 規則檔改不了）
+
+- 分段改派沒觸發：`ProtectedPathFallback.needed` 擷取需求與收據「提到」的受保護路徑，只要有一個不在 `paths` 內就整個不改派。
+  #1029 的 intake／plan 提到 `.claude/CLAUDE.md`（只要求維持不變），所以 `.claude/rules/` 兩份檔案沒交給 builder_codex，也沒有任何稽核紀錄。
+  升級本體 dc27430 已提交，只差兩份規則檔。
+- 使用者選擇修程式並重跑 #1029。修正：`ProtectedPathFallback.needed` 改回傳 `Need(delegated, outside)`，允許範圍內的照樣改派，範圍外的寫進稽核與 Slack 說明、留給原流程。
+  `FlowEngine.runDelegatedPart` 同步調整。ProtectedPathFallbackTest 改寫（含 #1029 案例）。
+- 本機沒有 Maven；check-source PASS。VM 隔離建置 `fallback-partial-build.UmhnGP` 550 項 0 失敗，JAR `50386fb616a290bcea6e051c38227f3a07e651c8b306c124e1bd426e0e8ed78f`。
+  deploy-jar-safe：bestpartner PID 188052（備份 `orchestrator-backup.cppObW`）、starters PID 191166（備份 `orchestrator-backup.yMFuG2`），兩邊都 0 ERROR、自檢通過、任務資料前後一致。
+- 已修正文件：`multi-runtime.md`（新規則＋舊行為紀錄）、`agent/configuration.md`（protectedPathFallback 欄位）。已核對：configurable-team（只描述 #1022 實測，不需改）。docs build 通過。
+- 待實測：在 #1029 送補充，讓分流派回實作，確認改派段由 builder_codex 改兩份規則檔。
+
 ## 2026-10-07 — Claude Code（兩個實例被 systemd 停掉，#1029 卡在 STAGE_RUNNING）
 
 - 負責人把 #1025 承接成 #1029（配置 78940e69），intake、design、plan 都通過，12:37 UTC 進入實作。

@@ -57,8 +57,13 @@
   改寫在建置檔、`AGENTS.md` 或一般文件，受保護路徑只放穩定的規則並指向那些檔案。
 
 **受保護路徑改派（2026-10-04 起；整節點改派已在 #1018～#1020 實測；分段改派 2026-10-05 在 bestpartner #1022 實作段真實通過，見下）**：實作節點可設 `protectedPathFallback`
-（`{"role": ..., "paths": [...]}`）。`ProtectedPathFallback` 從需求文字與已完成節點報告擷取路徑，原角色 runtime 寫不了、
-且全部落在 `paths` 內時，改派給該角色（不同 runtime，例如 Codex）。
+（`{"role": ..., "paths": [...]}`）。`ProtectedPathFallback.needed` 從需求文字與已完成節點報告擷取原角色 runtime 寫不了的路徑，
+分成兩組：落在 `paths` 內（且不在禁止清單）的交給該角色改派（不同 runtime，例如 Codex）；範圍外的不交出去，
+原角色真的要改時會被 runtime 拒絕，照一般受阻流程停下問人。只要有一條在範圍內就會改派，範圍外的路徑寫進稽核與 Slack 說明。
+擷取的是「有提到」的路徑，不分要不要修改，所以不能因為範圍外的路徑被提到就整個不改派。
+2026-10-08 前的行為是「全部落在 `paths` 內才改派」，而且不改派時不留紀錄。bestpartner #1029 的需求寫了
+「`.claude/CLAUDE.md` 的 import 維持不變」，`.claude/rules/` 兩份檔案因此沒有改派；`builder` 寫入被拒，連續三輪受阻後停在 AWAIT_HUMAN，
+分流還誤以為改派管道「沒產生提交」。
 `.claude/settings*`、`hooks`、`commands`、`agents`、`plugins`、`.git`、`.mcp.json`、`.vscode`、`.idea`、`.github` 等寫死禁止，配置無法覆蓋。
 
 **分段改派（2026-10-04 起，取代整節點改派）**：同一輪實作分兩段依序執行（`FlowEngine.runDelegatedPart`）：

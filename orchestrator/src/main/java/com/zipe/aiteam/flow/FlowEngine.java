@@ -680,13 +680,18 @@ public class FlowEngine {
         AgentRuntime primary = executor.runtimeFor(primaryRole.runtime());
         var needed = ProtectedPathFallback.needed(flow, node, task.requestText(), primary);
         if (needed.isEmpty()) return null;
+        var need = needed.get();
         Role alternate = flow.snapshot.definition().roles().get(fb.role());
+        String outside = need.outside().isEmpty() ? "" : "；需求另外提到 " + need.outside() + "，不在允許範圍內，不改派，"
+                + node.role() + " 若真的要改會被拒絕並停下來問人";
         audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "受保護路徑分段改派：節點 " + flow.node + " 需修改 "
-                + needed.get() + "，原角色 " + node.role() + " 的 runtime 無法寫入，先由 " + fb.role() + " 只修改允許範圍 " + fb.paths()
-                + " 內的檔案，其餘由 " + node.role() + " 完成");
+                + need.delegated() + "，原角色 " + node.role() + " 的 runtime 無法寫入，先由 " + fb.role() + " 只修改允許範圍 " + fb.paths()
+                + " 內的檔案，其餘由 " + node.role() + " 完成" + outside);
         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id() + " 要修改 "
-                + String.join("、", needed.get()) + "，原實作角色無法寫入這些檔案，依專案設定先由 " + alternate.name() + "（"
-                + alternate.runtime() + "）只修改這些檔案，系統逐檔核對後代為提交；其餘修改與建置測試接著由 " + primaryRole.name() + " 完成。");
+                + String.join("、", need.delegated()) + "，原實作角色無法寫入這些檔案，依專案設定先由 " + alternate.name() + "（"
+                + alternate.runtime() + "）只修改這些檔案，系統逐檔核對後代為提交；其餘修改與建置測試接著由 " + primaryRole.name() + " 完成。"
+                + (need.outside().isEmpty() ? "" : "需求也提到 " + String.join("、", need.outside())
+                        + "，這些不在可改派範圍內；只是要求維持不變就不影響，真的要修改時流程會停下來請人處理。"));
         Node delegate = node.withRole(fb.role());
         // checkpoint 以節點為單位；兩段的 runtime 不同，只把相符的那一段交給對應角色續跑。
         Checkpoint saved = task.continuation();

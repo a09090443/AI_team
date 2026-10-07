@@ -33,13 +33,21 @@ class ProtectedPathFallbackTest {
                 .contains(".claude/rules/api-endpoints.md", "bestpartner-service/src/A.kt");
     }
 
-    @Test void reassignsOnlyWhenEveryProtectedPathIsAllowed() throws Exception {
+    @Test void reassignsAllowedPathsAndLeavesTheRestToTheOriginalFlow() throws Exception {
         var node = definition(bestpartner()).nodes().get("implementation");
         var flow = new FlowRun(TeamCatalog.load(Path.of("teams/node-web.json"), key -> tmp.toString()));
         assertThat(ProtectedPathFallback.needed(flow, node, "把 `.claude/rules/api-endpoints.md` 的 all 改成 admin", claude))
-                .contains(List.of(".claude/rules/api-endpoints.md"));
-        // 行為類設定：不改派，照原流程停下問人。
-        assertThat(ProtectedPathFallback.needed(flow, node, "改 .claude/rules/a.md 並在 .claude/settings.json 加 hook", claude)).isEmpty();
+                .contains(new ProtectedPathFallback.Need(List.of(".claude/rules/api-endpoints.md"), List.of()));
+        // 行為類設定不交出去，但同一需求裡允許的規則檔照樣改派；settings 留給原角色，真要改會被拒絕而停下問人。
+        assertThat(ProtectedPathFallback.needed(flow, node, "改 .claude/rules/a.md 並在 .claude/settings.json 加 hook", claude))
+                .contains(new ProtectedPathFallback.Need(List.of(".claude/rules/a.md"), List.of(".claude/settings.json")));
+        // #1029：只要求 `.claude/CLAUDE.md`「維持不變」，不能讓 `.claude/rules/` 的改派整個失效。
+        assertThat(ProtectedPathFallback.needed(flow, node,
+                "更新 .claude/rules/tech-stack-and-versions.md 與 .claude/rules/gradle-conventions.md；.claude/CLAUDE.md 的 import 維持不變", claude))
+                .contains(new ProtectedPathFallback.Need(
+                        List.of(".claude/rules/tech-stack-and-versions.md", ".claude/rules/gradle-conventions.md"), List.of(".claude/CLAUDE.md")));
+        // 只有允許範圍外的受保護路徑：不改派。
+        assertThat(ProtectedPathFallback.needed(flow, node, "在 .claude/settings.json 加 hook", claude)).isEmpty();
         // 沒有受保護路徑：照常由原角色實作。
         assertThat(ProtectedPathFallback.needed(flow, node, "修改 bestpartner-service/src/main/A.kt", claude)).isEmpty();
         // 未配置 fallback 的節點。
