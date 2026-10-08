@@ -2,6 +2,14 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-08 — Claude Code（#1029 驗收全過仍不能發布，負責人結案）
+
+- 續跑後 QA 正常啟動（node_modules 修正生效）。第一輪 QA 提出 Jackson 2.21.7 低於 2.22.1，負責人選「接受風險繼續」；
+  第二輪 QA 7 個情境全數 PASS，但 `QaGate` 因 `uncertainties`（外部 LLM／MCP 實呼叫、PostgreSQL 的 @QuarkusTest）非空而禁止發布。
+  這兩項本來就是需求基準約定的「無法核實」，在這個環境必然存在。負責人 13:29 UTC 選「結案流程外處理」，任務 ABORTED（OWNER_CLOSE），工作區保留 dc27430、6d2ef5f。
+- 另外：QA 的 `npm --prefix bestpartner-ui run test` 被 localhost 沙箱政策擋（exit -1），QA 改採同 HEAD 的系統獨立驗證收據。
+- 已修正文件：`qa-scenario-workflow.md`（QaGate 行為＋已知問題）。docs build 通過。待使用者決定修法。
+
 ## 2026-10-08 — Claude Code（#1029 QA 以 Argument list too long 啟動失敗）
 
 - 分段改派修正生效：23:44 UTC builder_codex 改好兩份規則檔，系統代為提交 6d2ef5f；builder 重新建置測試，回報 SUCCESS。
