@@ -178,7 +178,7 @@ export const docs = [
     status: 'current',
     summary: 'execution_status 與八欄 failure_report、矛盾結果攔截、系統例外由 agent 白話說明。',
     readWhen: '處理角色回報 BLOCKED、階段失敗，或修改角色 schema。',
-    code: ['orchestrator/src/main/java/com/zipe/aiteam/task/FailureReport.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/ErrorExplainer.java'],
+    code: ['orchestrator/src/main/java/com/zipe/aiteam/task/FailureReport.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/ErrorExplainer.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/SystemFailure.java', 'orchestrator/src/main/java/com/zipe/aiteam/sandbox/ArgumentListTooLong.java'],
   },
   {
     id: 'review-gate',

@@ -15,7 +15,13 @@
 - 已修正文件：`configurable-team.md`（LIMITED 段落）。docs build 通過。待使用者在 #1029 續跑驗收。
 - 使用者問為何回報沒說明原因：停止訊息是 ErrorExplainer（haiku、無工具）寫的，只拿到 IOException 字串，裡面沒有參數大小資訊，所以照規則寫「無法確定原因」。
   QA agent 根本沒啟動，沒有角色能查。另外 `SystemFailure.transientFailure` 把提到 systemd-run 的 IOException 一律當暫時性錯誤，E2BIG 也重試。
-  已修正文件：`failure-reporting.md`（自動重試規則＋已知問題）。待使用者決定是否修程式。
+  已修正文件：`failure-reporting.md`（自動重試規則＋已知問題）。
+- 使用者要求兩個都修：新增 `sandbox/ArgumentListTooLong`（E2BIG 時附參數個數、總大小、最大參數、ReadOnlyPaths 數量），
+  套用在 Claude／Codex（含預檢）／opencode runtime、OperationPreflight、IndependentVerifier；`SystemFailure` 先排除 E2BIG，不再重試，
+  並移除 SIGNATURES 中的 "Argument list too long"（舊測試曾把它寫成應重試，已改）。測試：ArgumentListTooLongTest 3 項（含 Linux 實際 E2BIG）、SystemFailureTest +1。
+- check-source PASS；VM `e2big-build.91sWiT` 555 項 0 失敗，JAR `3b5d7503cab9d256df88fe62d9faa6c77868e7f2ce5ffdac075650b6d7d68a96`。
+  部署：bestpartner PID 212902（備份 `orchestrator-backup.GAQFaQ`）、starters PID 216036（備份 `orchestrator-backup.LXTYh0`），兩邊都 0 ERROR、任務資料前後一致。
+- 已修正文件：failure-reporting（改寫成新行為）、project-tree、catalog（failure-reporting code）。docs build 通過。
 
 ## 2026-10-08 — Claude Code（查證 #1029 規則檔改不了）
 

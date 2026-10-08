@@ -118,6 +118,7 @@ agent_team/
 │   │   │   ├── RuntimeUsageError.java # CLI 參數錯誤（未呼叫模型）
 │   │   │   └── Diagnostics.java      # 遮蔽後的診斷輸出與白話原因
 │   │   ├── sandbox/                  # 包在 runtime 外層的 systemd 執行沙箱
+│   │   │   ├── ArgumentListTooLong.java # 子行程參數超過作業系統上限時附上大小診斷，不重試
 │   │   │   ├── ExecutionSandbox.java # 把指令包成受限 systemd user unit
 │   │   │   ├── SandboxPolicy.java    # 單次執行的隔離條件（可寫路徑、網路、資源）
 │   │   │   └── TaskUnits.java        # 停掉某任務正在跑的 agent 與系統驗證

@@ -169,7 +169,7 @@ public class IndependentVerifier {
         command.addAll(delimiter, List.of("-p", "RuntimeMaxSec=" + seconds, "-p", "KillMode=control-group"));
         ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true).redirectOutput(log.toFile());
         sanitize(builder);
-        Process process = builder.start();
+        Process process = com.zipe.aiteam.sandbox.ArgumentListTooLong.start(builder);
         try {
             while (!process.waitFor(200, TimeUnit.MILLISECONDS)) {
                 if (System.nanoTime() >= deadline || Files.size(log) > 8_000_000) throw new IllegalStateException("獨立驗證超時或輸出超過 8 MB；紀錄：" + log);

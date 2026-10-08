@@ -173,7 +173,7 @@ public class ClaudeCodeRuntime implements AgentRuntime {
                     req.model() == null || req.model().isBlank() ? "(CLI 預設)" : req.model(),
                     cmd.size(), req.timeout());
 
-            process = pb.start();
+            process = com.zipe.aiteam.sandbox.ArgumentListTooLong.start(pb);
             // 行程真的啟動後才回報 session。先回報的話，啟動前就失敗（例如參數過長）時，
             // checkpoint 會記下一個從未建立的 session，之後每次續跑都 --resume 到不存在的對話而失敗。
             sessionStarted.accept(session);

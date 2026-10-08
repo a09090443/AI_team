@@ -138,7 +138,7 @@ public class CodexRuntime implements AgentRuntime {
                     req.model() == null || req.model().isBlank() ? "(CLI 預設)" : req.model(),
                     cmd.size(), req.timeout());
 
-            process = pb.start();
+            process = com.zipe.aiteam.sandbox.ArgumentListTooLong.start(pb);
 
             // 提示從 stdin 送入，寫完一定要關閉：codex exec 偵測到 stdin 是 pipe 就會等 EOF，
             // 不關閉會印一行 Reading additional input from stdin 然後靜靜掛到逾時 ——
@@ -224,8 +224,8 @@ public class CodexRuntime implements AgentRuntime {
                 + java.util.UUID.randomUUID(), req.sandboxPolicy(), req.workingDirectory(), probe));
         // 同時限制 unit 存活時間，避免用戶端逾時後留下 probe 子行程。
         if (wrapped.contains("--")) wrapped.addAll(wrapped.indexOf("--"),List.of("-p","RuntimeMaxSec=25","-p","KillMode=control-group"));
-        Process process = new ProcessBuilder(wrapped)
-                .redirectErrorStream(true).redirectOutput(output.toFile()).start();
+        Process process = com.zipe.aiteam.sandbox.ArgumentListTooLong.start(new ProcessBuilder(wrapped)
+                .redirectErrorStream(true).redirectOutput(output.toFile()));
         try {
             process.getOutputStream().close();
             if (!process.waitFor(30, TimeUnit.SECONDS)) {

@@ -68,7 +68,7 @@ public class OperationPreflight {
         String unit = props.unitPrefix() + "preflight-" + UUID.randomUUID();
         List<String> wrapped = new ArrayList<>(sandbox.wrap(unit, policy, cwd, command));
         wrapped.addAll(wrapped.indexOf("--"), List.of("-p", "RuntimeMaxSec=20", "-p", "KillMode=control-group"));
-        Process process = new ProcessBuilder(wrapped).redirectErrorStream(true).redirectOutput(log.toFile()).start();
+        Process process = com.zipe.aiteam.sandbox.ArgumentListTooLong.start(new ProcessBuilder(wrapped).redirectErrorStream(true).redirectOutput(log.toFile()));
         try {
             if (!process.waitFor(25, TimeUnit.SECONDS) || process.exitValue() != 0)
                 throw new IllegalStateException("派工前檢查失敗；請管理者確認工具／權限，未呼叫模型。證據：" + log);

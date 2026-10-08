@@ -9,7 +9,7 @@ class SystemFailureTest {
 
     @Test void recognisesFailuresThatMeanTheSystemNeverRan() {
         assertThat(SystemFailure.transientFailure(new IOException(
-                "Cannot run program \"systemd-run\": Exec failed, error: 7 (Argument list too long)"))).isTrue();
+                "Cannot run program \"systemd-run\": error=11, Resource temporarily unavailable"))).isTrue();
         assertThat(SystemFailure.transientFailure(new IllegalStateException(
                 "No conversation found with session ID: 8c834c09"))).isTrue();
         assertThat(SystemFailure.transientFailure(new IOException("slack.com: Temporary failure in name resolution"))).isTrue();
@@ -26,6 +26,14 @@ class SystemFailureTest {
         var wrapped = new IllegalStateException("無法執行 Claude Code",
                 new IOException("Cannot run program \"systemd-run\""));
         assertThat(SystemFailure.transientFailure(wrapped)).isTrue();
+    }
+
+    @Test void argumentListTooLongIsNeverRetried() {
+        // #1029：參數過長每次必定重現，卻因訊息提到 systemd-run 被重試兩次，每次先重跑約 25 分鐘的獨立驗證。
+        var e2big = new IOException("Cannot run program \"systemd-run\": Exec failed, error: 7 (Argument list too long)");
+        assertThat(SystemFailure.transientFailure(e2big)).isFalse();
+        assertThat(SystemFailure.transientFailure(new IllegalStateException("無法執行 Codex",
+                new IllegalStateException("包裝", e2big)))).isFalse();
     }
 
     @Test void workProblemsAreNotTreatedAsSystemFailures() {

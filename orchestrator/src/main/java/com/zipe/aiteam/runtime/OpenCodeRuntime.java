@@ -137,7 +137,7 @@ public class OpenCodeRuntime implements AgentRuntime {
                     req.model() == null || req.model().isBlank() ? "(CLI 預設)" : req.model(),
                     cmd.size(), req.timeout());
 
-            process = pb.start();
+            process = com.zipe.aiteam.sandbox.ArgumentListTooLong.start(pb);
 
             // 這一步不是形式。實測：opencode run 沒拿到位置參數時會去讀 stdin，
             // stdin 是 pipe 就一路等到逾時 —— 沒有錯誤、沒有結束碼。
