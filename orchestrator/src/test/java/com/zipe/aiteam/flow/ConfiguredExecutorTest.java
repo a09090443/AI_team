@@ -231,6 +231,15 @@ class ConfiguredExecutorTest {
                 .doesNotContain(repo, repo.resolve("src"));
         assertThat(policy.readOnlyPins()).contains(repo.resolve("src/main.ts"), repo.resolve(".git/config"));
     }
+    @Test void dependencyTreesAreNotPinnedAsProductFiles() throws Exception {
+        // #1029：node_modules 裡上千個 package.json 被釘選，Codex 參數超過 Linux 單一參數上限而 E2BIG。
+        Path ws = tmp.resolve("ws");
+        Files.createDirectories(ws.resolve("ui/node_modules/lodash/node_modules/x"));
+        Files.writeString(ws.resolve("ui/package.json"), "{}");
+        Files.writeString(ws.resolve("ui/node_modules/lodash/package.json"), "{}");
+        Files.writeString(ws.resolve("ui/node_modules/lodash/node_modules/x/package.json"), "{}");
+        assertThat(ConfiguredExecutor.protectedPins(ws, List.of("**/package.json"))).containsExactly(ws.resolve("ui/package.json"));
+    }
     @Test void reviewerIsReadOnlyRegardlessOfRoleName() throws Exception {
         var policy = executor.policy(flow, flow.snapshot.definition().nodes().get("review"), runtime, repo);
         assertThat(policy.writablePaths()).containsExactly(tmp.resolve("state"));

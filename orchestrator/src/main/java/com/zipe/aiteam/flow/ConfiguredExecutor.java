@@ -393,11 +393,29 @@ public class ConfiguredExecutor {
         List<Path> pins = new ArrayList<>(state.readOnlyPins());
         pins.add(cwd.resolve(".git/config")); pins.add(cwd.resolve(".git/hooks"));
         // 不讓可寫測試目錄包含管理者宣告的產品檔案。
-        try (var paths = Files.walk(cwd)) {
-            paths.filter(p -> PathRules.allows(flow.snapshot.definition().project().protectedPaths(), cwd.relativize(p).toString().replace('\\', '/')))
-                    .filter(p -> node.scope() == Scope.LIMITED).forEach(pins::add);
-        }
+        if (node.scope() == Scope.LIMITED) pins.addAll(protectedPins(cwd, flow.snapshot.definition().project().protectedPaths()));
         return new SandboxPolicy(List.copyOf(writable), List.copyOf(pins), 4096, 400, 512, node.localTestNetwork());
+    }
+    /** 安裝出來的相依套件目錄：不是產品檔案，驗收的 `npm ci` 還要整個刪掉重裝。 */
+    static final Set<String> DEPENDENCY_DIRS = Set.of("node_modules");
+    /**
+     * 工作區內符合 protectedPaths 的路徑，逐一釘成唯讀；不進入 {@link #DEPENDENCY_DIRS}。
+     * #1029：實作跑過 `npm ci` 後，保護樣式中的任意層 package.json 連 node_modules 裡的 1643 個都算進來，
+     * Codex 的 permissions 設定是單一參數，約 187 KB，超過 Linux 單一參數 128 KB 上限，QA 以 E2BIG 啟動失敗。
+     */
+    static List<Path> protectedPins(Path cwd, List<String> protectedPaths) throws java.io.IOException {
+        List<Path> pins = new ArrayList<>();
+        Files.walkFileTree(cwd, new SimpleFileVisitor<>() {
+            @Override public FileVisitResult preVisitDirectory(Path dir, java.nio.file.attribute.BasicFileAttributes attrs) {
+                if (!dir.equals(cwd) && DEPENDENCY_DIRS.contains(dir.getFileName().toString())) return FileVisitResult.SKIP_SUBTREE;
+                add(dir); return FileVisitResult.CONTINUE;
+            }
+            @Override public FileVisitResult visitFile(Path file, java.nio.file.attribute.BasicFileAttributes attrs) { add(file); return FileVisitResult.CONTINUE; }
+            private void add(Path p) {
+                if (PathRules.allows(protectedPaths, cwd.relativize(p).toString().replace('\\', '/'))) pins.add(p);
+            }
+        });
+        return pins;
     }
     static void validateCache(String cache) {
         TeamCatalog.require(cache != null && (Set.of(".m2/repository", ".npm", ".gradle/caches").contains(cache)

@@ -2,6 +2,18 @@
 
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
 
+## 2026-10-08 — Claude Code（#1029 QA 以 Argument list too long 啟動失敗）
+
+- 分段改派修正生效：23:44 UTC builder_codex 改好兩份規則檔，系統代為提交 6d2ef5f；builder 重新建置測試，回報 SUCCESS。
+- QA（Codex、localTestNetwork）三次都 `Cannot run program "systemd-run": error 7 (Argument list too long)`。前兩次被當成系統層失敗自動重試，
+  每次都重跑約 25 分鐘的獨立驗證，之後停在 AWAIT_HUMAN。
+- 原因：`ConfiguredExecutor.policy` 用 Files.walk 把符合 protectedPaths 的路徑逐一釘唯讀，`**/package.json` 連 `node_modules` 裡的 1643 個都算進來。
+  `CodexLocalTestPolicy` 把它們併成單一 `-c permissions…` 參數，約 187 KB，超過 128 KB 上限。#1022 是純文件任務，沒有 node_modules，所以沒遇到。
+- 修正：新增 `protectedPins`，走訪時略過 `node_modules`。ConfiguredExecutorTest +1。check-source PASS；VM `pins-build.yKbGrd` 551 項 0 失敗，
+  JAR `4fa82e34ec69805cf21141da97a9e1f3f43b2590be71cb5ebffa86778ca0fe07`。部署：bestpartner PID 204595（備份 `orchestrator-backup.3CvVZm`）、
+  starters PID 207754（備份 `orchestrator-backup.hsBZWN`），兩邊都 0 ERROR、任務資料前後一致。
+- 已修正文件：`configurable-team.md`（LIMITED 段落）。docs build 通過。待使用者在 #1029 續跑驗收。
+
 ## 2026-10-08 — Claude Code（查證 #1029 規則檔改不了）
 
 - 分段改派沒觸發：`ProtectedPathFallback.needed` 擷取需求與收據「提到」的受保護路徑，只要有一個不在 `paths` 內就整個不改派。

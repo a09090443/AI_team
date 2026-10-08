@@ -149,6 +149,11 @@ App-Level Token 留空**：發言與交接 tag 使用同一個角色身分，不
   `build/` 不存在，驗收的操作預檢因此判定「寫入超出沙箱政策」而停下。
   在沙箱外逐筆核對新增 commit、未提交與未追蹤路徑，攔截 Git index 繞道及「修改後再還原」；
   單階段超過 100 個新增 commit 會停止要求查核。沒有可寫目錄時拒絕，不自動放寬。
+  工作區內符合 `project.protectedPaths` 的檔案與目錄會逐一釘成唯讀（`ConfiguredExecutor.protectedPins`）；
+  走訪時不進入 `node_modules`，因為裡面是安裝產物，不是產品檔案，驗收的 `npm ci` 還要整個刪掉重裝。
+  2026-10-08 前會進入：bestpartner #1029 實作跑過 `npm ci` 後，`**/package.json` 釘了 1643 個 `node_modules` 內的檔案。
+  Codex 的 permissions 設定是單一參數，約 187 KB，超過 Linux 單一參數 128 KB 上限，QA 以 `Argument list too long` 啟動失敗。
+  系統把它當系統層失敗自動重試兩次，每次都重跑約 25 分鐘的獨立驗證。
 
 路徑使用 `/`、`*` 與 `**`，例如 `tests/**` 或 `**/src/test/**`。
 測試產物目錄應在實作階段依專案建置正常建立；限寫階段不能自行建立未獲授權的父目錄。
