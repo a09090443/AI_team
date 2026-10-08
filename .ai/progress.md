@@ -13,6 +13,9 @@
   JAR `4fa82e34ec69805cf21141da97a9e1f3f43b2590be71cb5ebffa86778ca0fe07`。部署：bestpartner PID 204595（備份 `orchestrator-backup.3CvVZm`）、
   starters PID 207754（備份 `orchestrator-backup.hsBZWN`），兩邊都 0 ERROR、任務資料前後一致。
 - 已修正文件：`configurable-team.md`（LIMITED 段落）。docs build 通過。待使用者在 #1029 續跑驗收。
+- 使用者問為何回報沒說明原因：停止訊息是 ErrorExplainer（haiku、無工具）寫的，只拿到 IOException 字串，裡面沒有參數大小資訊，所以照規則寫「無法確定原因」。
+  QA agent 根本沒啟動，沒有角色能查。另外 `SystemFailure.transientFailure` 把提到 systemd-run 的 IOException 一律當暫時性錯誤，E2BIG 也重試。
+  已修正文件：`failure-reporting.md`（自動重試規則＋已知問題）。待使用者決定是否修程式。
 
 ## 2026-10-08 — Claude Code（查證 #1029 規則檔改不了）
 

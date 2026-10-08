@@ -41,6 +41,15 @@ VM 供授權查核。格式檢查保證欄位存在，不保證 agent 自陳內�
 3. 完整技術內容一律寫進 audit（ERROR）。
 
 說明失敗（逾時、額度、輸出不完整）時退回固定白話後備文字，不影響停止流程。
+
+說明 agent 沒有任何工具，只看得到錯誤紀錄本身；紀錄沒寫出根因時，它只能照實寫「目前無法確定原因」。
+**系統層失敗的自動重試**（`SystemFailure.transientFailure`）：錯誤訊息符合已知的暫時性特徵
+（例如 `Failed to start transient service`、串流中斷），或是任何提到 `systemd-run` 的 IOException，就判定為系統沒跑起來，
+還原本輪計數後自動重試，最多 `RETRY_LIMIT`（2）次，用完才停給人。
+**已知問題（2026-10-08 查證，尚未修正）**：「提到 `systemd-run` 的 IOException」連必然重現的錯誤也算進去。
+bestpartner #1029 的 QA 以 `Argument list too long`（參數超過 Linux 上限）啟動失敗，被重試兩次，每次都先重跑約 25 分鐘的獨立驗證才再失敗。
+錯誤紀錄也沒有寫出是哪個參數過長，說明 agent 因此只能寫「無法確定原因」；根因是另外到 VM 上數檔案才查到的，見
+[configurable-team](configurable-team.md) 的 LIMITED 段落。
 額度停止不呼叫說明 agent（同帳號額度已用完）。使用者操作被拒（IllegalArgumentException）仍直接顯示本專案寫好的白話原因。
 
 **推分支、開 PR 本身失敗**（`PullRequestPublisher.PublishException`：token 未設定、權限不足、網路、GitHub API 錯誤）
