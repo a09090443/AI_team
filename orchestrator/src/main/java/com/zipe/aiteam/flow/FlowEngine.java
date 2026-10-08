@@ -136,6 +136,8 @@ public class FlowEngine {
         waitHuman(task, flow, reason, true);
     }
     private void waitHuman(Task task, FlowRun flow, String reason, boolean canSupplement) {
+        // 開 PR 指令只對那一次補跑有效；停下來之後要負責人再命令一次，不在之後的續跑自動發布。
+        flow.ownerPublishBy = null;
         store.saveFlow(task.id(), flow);
         state(task, Task.State.AWAIT_HUMAN, "任務 #" + task.id() + " 等待人工，禁止發布");
         postHumanOptions(task, flow, (flow.acceptanceOwner == null ? "" : "<@" + flow.acceptanceOwner + "> ")
@@ -315,7 +317,20 @@ public class FlowEngine {
                     String block = FlowGates.publicationReason(flow, head);
                     if (block == null && flow.snapshot.definition().version() >= 2) block = verifier.blockingReason(flow, head);
                     if (block != null || !workspaces.clean(task.id())) { waitHuman(task, flow, block == null ? "工作區尚有未提交修改" : block); return; }
-                    flow.approvalHead = head; store.saveFlow(task.id(), flow);
+                    flow.approvalHead = head;
+                    if (flow.ownerPublishBy != null) {
+                        // 負責人先前以「開 PR」命令發布、為此補跑了審查：指令本身就是發布核准。
+                        String by = flow.ownerPublishBy;
+                        flow.ownerPublishBy = null;
+                        store.saveFlow(task.id(), flow);
+                        audit.record(task.id(), by, AuditLog.ACTION_BUTTON, "負責人指令即核准配置流程的 PR（審查補跑後）；commit=" + head);
+                        state(task, Task.State.PUBLISH_RUNNING, "任務 #" + task.id() + " 依負責人指令發布中");
+                        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id()
+                                + " 審查已通過，依你先前的開 PR 指令推分支、開 PR；完成後會貼出 PR 連結。");
+                        publishApproved(task, flow);
+                        return;
+                    }
+                    store.saveFlow(task.id(), flow);
                     state(task, Task.State.AWAIT_PR_APPROVAL, "任務 #" + task.id() + " 等待人工核准 PR");
                     String message = "任務 #" + task.id() + " 已完成配置中的檢查，請核准才會推分支與開 PR（不代表產品已交付）。\ncommit=" + head
                             + "\n需求基準=" + flow.baselineRevision + "\n需求／驗收負責人=<@" + flow.acceptanceOwner + ">"
@@ -524,6 +539,15 @@ public class FlowEngine {
                     String caveat = ToolTrust.caveat(acting, result.permissionDenials());
                     if (block == null && caveat != null)
                         audit.record(task.id(), node.role(), AuditLog.ACTION_DENIED, caveat);
+                }
+                // 負責人已命令開 PR、為此補跑的審查只剩可放行的提醒等級：依同一指令放行，不再停下來要人再送一次。
+                if (block != null && flow.ownerPublishBy != null && node.gate() == Gate.REVIEW && ReviewGate.waivable(report) != null) {
+                    flow.blockedFindings.put(flow.node, report);
+                    OwnerPublish.applyWaiver(flow, flow.node, workspaces.headSha(task.id()), flow.ownerPublishBy);
+                    report = flow.receipts.get(flow.node);
+                    audit.record(task.id(), flow.ownerPublishBy, AuditLog.ACTION_RECOVERY, "依負責人開 PR 指令放行審查「" + flow.node
+                            + "」等級寫成提醒的項目：" + Diagnostics.clip(String.join("；", OwnerPublish.waivedItems(flow)), 1500));
+                    block = null;
                 }
                 slack.postConfigured(flow.snapshot.definition().roles().get(node.role()), task.slackChannel(), task.slackThreadTs(),
                         "任務 #" + task.id() + "｜" + flow.snapshot.definition().roles().get(node.role()).name()
@@ -839,9 +863,14 @@ public class FlowEngine {
         String waiver = waived.isEmpty() ? "" : "\n\n## 負責人放行的審查項目\n\n"
                 + "審查等級寫成提醒（不在 HIGH／MEDIUM／LOW 內），系統閘門原本擋下發布，由驗收負責人以「開 PR」放行：\n\n"
                 + String.join("\n", waived.stream().map(line -> "- " + line).toList());
+        List<String> unverified = OwnerPublish.waivedUncertainties(flow);
+        String uncertain = unverified.isEmpty() ? "" : "\n\n## 負責人放行的未核實事項\n\n"
+                + "驗收在這個環境無法核實下列項目（例如需要外部 API 金鑰、資料庫），系統閘門原本擋下發布，由驗收負責人以「開 PR」放行。"
+                + "合併前請在具備對應環境時實測：\n\n"
+                + String.join("\n", unverified.stream().map(line -> "- " + line).toList());
         return "- 配置版本：`" + flow.snapshot.revision() + "`\n- 需求基準：`" + flow.baselineRevision
                 + "`\n- 驗收負責人：" + flow.acceptanceOwner
-                + "\n\n## 需求\n\n" + task.requestText() + waiver + review
+                + "\n\n## 需求\n\n" + task.requestText() + uncertain + waiver + review
                 + "\n\n## 驗收紀錄\n\n" + PrReport.receipts(flow)
                 + "\n## 系統獨立驗證\n\n" + PrReport.independent(flow.independentEvidence);
     }
@@ -1625,12 +1654,18 @@ public class FlowEngine {
         if (!store.claimState(task.id(), from, Task.State.RESUME_QUEUED)) return;
         task.state(Task.State.RESUME_QUEUED);
         audit.record(task.id(), user, AuditLog.ACTION_BUTTON, "驗收負責人命令開 PR"
-                + (check.needsWaiver() ? "（放行審查提醒 " + check.waived().size() + " 項）" : ""));
+                + (check.needsWaiver() ? "（放行審查提醒 " + check.waived().size() + " 項）" : "")
+                + (check.waivesUncertainties() ? "（放行未核實事項 " + check.uncertainties().size() + " 項）" : "")
+                + (check.needsReview() ? "（先補跑審查 " + check.pendingReview() + "）" : ""));
         List<String> ahead = busyTasks(task.id());
         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), (ahead.isEmpty()
-                ? "已收到開 PR 指令，開始最後檢查並推分支、開 PR；完成後會貼出 PR 連結。"
+                ? (check.needsReview() ? "已收到開 PR 指令。審查還沒跑過，先執行審查；通過後直接推分支、開 PR，不必再按核准。"
+                        : "已收到開 PR 指令，開始最後檢查並推分支、開 PR；完成後會貼出 PR 連結。")
                 : "已收到開 PR 指令，已排入中央佇列，不需要再送一次。目前 " + String.join("、", ahead) + "，輪到時會再通知。")
-                + (check.needsWaiver() ? "\n審查中等級寫成提醒的 " + check.waived().size() + " 項由你放行，PR 說明會列出。" : ""));
+                + (check.needsWaiver() ? "\n審查中等級寫成提醒的 " + check.waived().size() + " 項由你放行，PR 說明會列出。" : "")
+                + (check.waivesUncertainties() ? "\n驗收中 " + check.uncertainties().size()
+                        + " 項未核實事項由你放行（這個環境無法驗證，需另外在有對應環境時實測），PR 說明會列出：\n・"
+                        + String.join("\n・", check.uncertainties().stream().map(u -> Diagnostics.clip(u, 200)).toList()) : ""));
         enqueue.accept(() -> {
             if (aborted(task)) return;
             FlowRun current = store.flow(task.id()).orElseThrow();
@@ -1639,6 +1674,22 @@ public class FlowEngine {
                 String head = workspaces.headSha(task.id());
                 var recheck = OwnerPublish.evaluate(current, head, workspaces.clean(task.id()));
                 if (!recheck.allowed()) throw new IllegalArgumentException("排隊期間狀況改變，不能開 PR：" + recheck.reason());
+                if (recheck.waivesUncertainties()) {
+                    OwnerPublish.applyUncertaintyWaiver(current, recheck.verificationNode(), head, user);
+                    audit.record(task.id(), user, AuditLog.ACTION_RECOVERY, "負責人放行驗收「" + recheck.verificationNode() + "」的未核實事項："
+                            + Diagnostics.clip(String.join("；", OwnerPublish.waivedUncertainties(current)), 1500));
+                }
+                if (recheck.needsReview()) {
+                    // 審查不能跳過：從審查節點接著跑，走到發布核准節點且檢查全過時依這個指令直接發布。
+                    if (recheck.needsWaiver()) OwnerPublish.applyWaiver(current, recheck.reviewNode(), head, user);
+                    current.node = recheck.pendingReview();
+                    current.activeNode = null;
+                    current.ownerPublishBy = user;
+                    AutomaticHandoff.clear(current);
+                    store.saveFlow(task.id(), current);
+                    run(store.find(task.id()).orElseThrow());
+                    return;
+                }
                 state(task, Task.State.PUBLISH_RUNNING, "任務 #" + task.id() + " 依負責人指令發布中");
                 if (recheck.needsWaiver()) OwnerPublish.applyWaiver(current, recheck.reviewNode(), head, user);
                 current.node = recheck.approvalNode();

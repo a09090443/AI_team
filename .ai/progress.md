@@ -9,6 +9,14 @@
   這兩項本來就是需求基準約定的「無法核實」，在這個環境必然存在。負責人 13:29 UTC 選「結案流程外處理」，任務 ABORTED（OWNER_CLOSE），工作區保留 dc27430、6d2ef5f。
 - 另外：QA 的 `npm --prefix bestpartner-ui run test` 被 localhost 沙箱政策擋（exit -1），QA 改採同 HEAD 的系統獨立驗證收據。
 - 已修正文件：`qa-scenario-workflow.md`（QaGate 行為＋已知問題）。docs build 通過。待使用者決定修法。
+- 使用者要求能直接在 Slack 開 PR，選「先跑審查再自動開 PR」。實作：`OwnerPublish` 新增驗收未核實事項放行（`waivableUncertainties`、`applyUncertaintyWaiver`、`waivedUncertainties`）
+  與 `pendingReview`；`FlowGates.publicationReason` 可略過待補跑節點；`FlowRun.ownerPublishBy`；`FlowEngine.ownerPublish` 需補跑審查時保存驗收放行、指到審查節點並執行，
+  發布核准節點遇 `ownerPublishBy` 直接發布；補跑的審查只剩提醒等級時同一指令放行；`waitHuman` 清除 `ownerPublishBy`。PR 說明新增「負責人放行的未核實事項」；HumanOptions 按鈕說明同步。
+- 測試：FlowEngineTest +4。check-source PASS；VM `waive-build.lgyXRe` 559 項 0 失敗，JAR `bcf85457e2bd50ee98318efa19a52ed6c04c798e57d224cf27f990ceab699a96`。
+  部署：bestpartner PID 225064（備份 `orchestrator-backup.nOGRet`）、starters PID 228228（備份 `orchestrator-backup.9lRHFW`），兩邊都 0 ERROR、任務資料前後一致。
+  回滾注意：新版存過的 flow 都帶 `ownerPublishBy`，舊 JAR 讀不了。
+- 已修正文件：review-gate（新小節）、qa-scenario-workflow（已知問題改寫）、operations（開 PR 指令）、data-model（receipts、ownerPublishBy）。docs build 通過。
+- #1029 確認可放行：工作區乾淨、HEAD=attemptHeads=6d2ef5f、7 情境 PASS、只剩 2 項 uncertainties、審查未執行。待使用者送 `開 PR #1029` 實測。
 
 ## 2026-10-08 — Claude Code（#1029 QA 以 Argument list too long 啟動失敗）
 

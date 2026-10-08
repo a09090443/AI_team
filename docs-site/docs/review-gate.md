@@ -17,8 +17,8 @@ HIGH／MEDIUM confidence、APPROVE／COMMENT、空 blockers、非空 checked，
 說明原因、核實阻礙與重新審查要求。PM mention 是通知，不自動啟動 PM。
 
 人工核准及真正發布前都重讀資料庫並檢查狀態與報告，避免舊按鈕或
-排隊期間中止後繼續發布。核准不能覆蓋核實失敗；唯一例外是 2026-10-06 起驗收負責人可放行「等級寫成提醒」的審查項目，
-條件見文末「負責人命令開 PR 與放行提醒等級」。
+排隊期間中止後繼續發布。核准不能覆蓋核實失敗；例外只有驗收負責人以「開 PR」放行的兩種：「等級寫成提醒」的審查項目（2026-10-06 起），
+以及驗收其他條件全過、只剩的未核實事項（2026-10-08 起）。條件見文末「負責人命令開 PR 與放行提醒等級」。
 
 本修正未解除 Codex 內層沙箱的 `.agents` 初始化問題；環境仍需修復並
 重新取得獨立 review 證據。不能以放行 PR 作為環境問題的替代處理。
@@ -71,3 +71,25 @@ bestpartner #1022 的審查結論是 APPROVE、沒有 blockers，但 findings �
 - 停止訊息的「開 PR」按鈕只在 `OwnerPublish.evaluate` 通過時出現（收據會在執行時補跑，不列入判斷）。
 
 程式測試通過（ReviewGateTest、FlowEngineTest、HumanOptionsTest、TriageRoutingTest）；真實 Slack 端對端尚未實測。
+
+### 放行未核實事項、補跑審查（2026-10-08）
+
+bestpartner 的測試規範要求需要外部 API 金鑰、資料庫的情境一律標「無法核實」，`QaGate` 卻把任何 `uncertainties` 當成禁止發布，
+連負責人的 `開 PR` 也放行不了。#1029 驗收 7 個情境全數 PASS 仍開不了 PR，審查也因此從未執行。
+
+- **可放行的驗收失敗**（`OwnerPublish.waivableUncertainties`）：把 `uncertainties` 清空後，驗收報告能通過 `FlowGates.blockingReason`
+  （判定 PASS、`verify_passed`、逐情境 PASS 且有證據、沒有 HIGH、引用目前的需求基準與測試計畫）。任何情境 FAIL 或其他缺漏都不能放行。
+  目前 commit 必須等於驗收當時看到的 commit（`attemptHeads`）。
+- 放行做法：受阻的驗收報告複製成 receipt，`uncertainties` 移到 `waived_uncertainties`，加 `owner_waiver`；audit 記 `RECOVERY`。
+  Slack 確認訊息逐項列出放行的事項；PR 說明新增「負責人放行的未核實事項」段落，註明合併前要在具備對應環境時實測。
+- **審查不能跳過**：審查節點沒有 receipt 也沒有被擋的報告（從未執行）時，`OwnerPublish` 回傳 `pendingReview`，試算時略過該節點
+  （`FlowGates.publicationReason(flow, head, pending)`），其餘證據照常必須有效。系統保存驗收放行、把流程指到審查節點、
+  在 `FlowRun.ownerPublishBy` 記下指令者，接著執行審查（缺系統獨立驗證收據時審查前先重跑）。
+- 流程走到發布核准節點且檢查全過時，`ownerPublishBy` 有值就直接推分支開 PR，不停在 `AWAIT_PR_APPROVAL`；
+  審查只剩可放行的提醒等級時也由同一個指令放行。審查有實質問題或任何原因停下等人時（`waitHuman`）清掉 `ownerPublishBy`，
+  要再發布必須重新命令；這時驗收的放行已保存，不必重新放行。
+- 與上一節不同：需要補跑審查時，驗收放行在審查前就保存，不是「全部通過才保存」。負責人結案（`ABORTED`）的任務在補跑審查後停下時，
+  會變成 `AWAIT_HUMAN`，不回到結案。
+
+程式測試通過（FlowEngineTest +4：放行並補跑審查後發布、審查只有 INFO 一併放行、審查 HIGH 停下並清除指令、情境 FAIL 不能放行）；
+真實 Slack 端對端尚未實測。

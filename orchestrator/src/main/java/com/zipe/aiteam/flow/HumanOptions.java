@@ -74,7 +74,11 @@ public final class HumanOptions {
     static String publishHint(FlowRun flow, Workspace ws) {
         var check = OwnerPublish.evaluate(flow, ws.head(), ws.clean());
         if (!check.allowed()) return null;
-        return "只有驗收負責人可以按。系統會再做一次發布前檢查（缺少系統獨立驗證收據時先重新執行），通過就推分支、開 PR，不必再按核准。"
+        return "只有驗收負責人可以按。"
+                + (check.needsReview() ? "審查還沒跑過，會先執行審查；審查通過（或只剩等級寫成提醒的項目）就推分支、開 PR，不必再按核准，審查有問題時停下來。"
+                        : "系統會再做一次發布前檢查（缺少系統獨立驗證收據時先重新執行），通過就推分支、開 PR，不必再按核准。")
+                + (check.waivesUncertainties() ? "驗收有 " + check.uncertainties().size() + " 項未核實事項原本擋下發布，"
+                        + "按下去等於由你放行，PR 說明會列出這些項目，合併前需另外實測。" : "")
                 + (check.needsWaiver() ? "審查有 " + check.waived().size() + " 項等級寫成提醒（例如 INFO）原本擋下發布，"
                         + "按下去等於由你放行，PR 說明會列出這些項目。" : "");
     }

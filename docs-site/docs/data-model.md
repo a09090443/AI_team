@@ -230,9 +230,10 @@ v2 配置式流程的整份執行快照，對應 `com.zipe.aiteam.flow.FlowRun`�
 | `context` | String | 滾動交接紀錄，預設空字串。上限 20000 字元，單筆事件上限 6000 字元；**超量時淘汰最舊的段落而不是截斷新內容**，並在開頭標示已淘汰。舊版以留頭截尾的 `clip` 累加，context 一旦飽和就永久凍結，之後的受阻報告與使用者補充都會被靜默丟棄（#1014） |
 | `lastBlockReason` | String | 上一次受阻原因，回報時附在訊息裡（截斷 4500 字元） |
 | `acceptanceOwner` | String | 需求／驗收負責人，來自 `task.requester_user_id`。所有核准都比對這個值 |
+| `ownerPublishBy` | String | 負責人以「開 PR」命令發布、但審查還沒跑時記下指令者；走到發布核准節點且檢查全過就直接發布。停下等人時清除。2026-10-08 起。null 也會寫出，所以新版存過的任務舊 JAR 都讀不了（回滾要注意） |
 | `baselineRevision` | String | 需求基準摘要。需求節點產出後建立；需求變更會清空並連帶清掉 `receipts`／`heads` |
 | `baselineHistory` | List | 歷次需求基準報告的深拷貝，不覆蓋 |
-| `receipts` | Map&lt;節點,報告&gt; | 各節點**通過**時的結構化報告；受阻報告不寫進來。例外：驗收負責人以「開 PR」放行的審查報告會寫進來，帶 `owner_waiver`（放行者、時間、原因），被放行的 finding 改列 `LOW` 並帶 `waived_from` 原等級（2026-10-06 起，見 [review-gate](review-gate.md#負責人命令開-pr-與放行提醒等級2026-10-06)） |
+| `receipts` | Map&lt;節點,報告&gt; | 各節點**通過**時的結構化報告；受阻報告不寫進來。例外：驗收負責人以「開 PR」放行的審查報告會寫進來，帶 `owner_waiver`（放行者、時間、原因），被放行的 finding 改列 `LOW` 並帶 `waived_from` 原等級（2026-10-06 起，見 [review-gate](review-gate.md#負責人命令開-pr-與放行提醒等級2026-10-06)）；放行未核實事項的驗收報告也會寫進來，`uncertainties` 清空、原項目移到 `waived_uncertainties`，帶 `owner_waiver`（2026-10-08 起） |
 | `blockedFindings` | Map&lt;節點,報告&gt; | 尚未解除的受阻發現，以來源節點為鍵。受阻時寫入，該節點自己通過時移除。**不受 `context` 長度上限影響**，必定注入下游節點提示；這是開放缺陷唯一保證送達的來源。需求變更不清除，採 fail closed |
 | `heads` | Map&lt;節點,commit&gt; | 各節點結束時的 HEAD |
 | `origin` / `branch` | String | 工作區的 origin 與分支 |

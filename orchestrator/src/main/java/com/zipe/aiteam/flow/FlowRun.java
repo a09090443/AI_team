@@ -56,6 +56,11 @@ public class FlowRun {
     public Map<String,DelegatedPart> delegatedParts = new LinkedHashMap<>();
     public record DelegatedPart(String role, String startHead, String head, List<String> files, String summary) {}
     public String acceptanceOwner;
+    /**
+     * 驗收負責人以「開 PR」命令發布、但審查還沒跑時記下指令者：先補跑審查，流程走到發布核准節點且檢查全過就直接發布，
+     * 不再停在等待核准 PR。審查只剩可放行的提醒等級時也依此放行。停下等人時清除，之後要再命令一次。
+     */
+    public String ownerPublishBy;
     public String baselineRevision;
     public String changeTarget;
     public String pendingPlanRevision;

@@ -25,6 +25,10 @@ public final class FlowGates {
         };
     }
     public static String publicationReason(FlowRun flow, String head) {
+        return publicationReason(flow, head, java.util.Set.of());
+    }
+    /** pending：還沒執行、之後會補跑的節點（負責人「開 PR」時尚未審查），試算時不檢查。 */
+    static String publicationReason(FlowRun flow, String head, java.util.Set<String> pending) {
         Node approval = flow.snapshot.definition().nodes().get(flow.node);
         if (flow.dialogue || approval == null || approval.kind() != Kind.APPROVAL) return "不是發布核准節點";
         if (flow.snapshot.definition().version() >= 2) {
@@ -34,6 +38,7 @@ public final class FlowGates {
             if (!Traceability.digest(Traceability.baseline(flow)).equals(flow.baselineRevision)) return "需求基準版本不一致";
         }
         for (String id : approval.requires()) {
+            if (pending.contains(id)) continue;
             Node node = flow.snapshot.definition().nodes().get(id);
             String block = blockingReason(node, flow.receipts.get(id), flow);
             if (block != null) return id + "：" + block;

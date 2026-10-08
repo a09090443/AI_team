@@ -1085,6 +1085,9 @@ class FlowEngineTest {
                     : mode.equals("dirtyVerification") ? "verification"
                     : mode.equals("automaticRepair") ? "implementation" : mode.equals("change") ? "requirements"
                     : mode.equals("replan") ? "plan" : "human");
+            if (mode.startsWith("review") && node.gate() == TeamDefinition.Gate.REVIEW)
+                ((ObjectNode) report).withArray("findings").addObject()
+                        .put("severity", mode.equals("reviewHigh") ? "HIGH" : "INFO").put("detail", "Jackson 版本低於需求");
             if (((mode.equals("blocked") || mode.equals("blockedDecision")) && flow.node.equals("verification")) || firstAutomaticVerification || firstDirtyVerification)
                 ((ObjectNode)report).withArray("uncertainties").add("SMTP 無法核實");
             if (mode.equals("blockedDecision") && flow.node.equals("triage"))
@@ -1352,6 +1355,85 @@ class FlowEngineTest {
 
         assertThat(jobs).isEmpty();
         verify(slack).post(any(), eq("c"), eq("t"), contains("由負責人結案的任務才能開 PR"));
+    }
+
+    // ---- #1029：驗收全過只剩約定「無法核實」的事項，審查還沒跑 ----
+
+    private void verificationBlockedOnlyByUncertainties() {
+        mode = "blocked"; engine.run(task);
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        var flow = store.flow("42").orElseThrow();
+        assertThat(flow.blockedFindings).containsKey("verification");
+        assertThat(flow.receipts).doesNotContainKey("review");
+        calls.clear(); clearInvocations(verifier, slack, audit);
+    }
+
+    @Test void ownerCommandWaivesUncertaintiesRunsThePendingReviewAndPublishes() throws Exception {
+        verificationBlockedOnlyByUncertainties();
+        mode = "normal";
+        when(publisher.publish(eq("42"), any(), any(), eq("feature/task42"))).thenReturn(new PullRequestPublisher.Result("feature/task42", "https://example.test/pr/7", 7));
+        assertThat(HumanOptions.options(store.find("42").orElseThrow(), store.flow("42").orElseThrow(), true, true, null,
+                new HumanOptions.Workspace(workspaceHead, true)))
+                .anyMatch(o -> HumanOptions.PUBLISH.equals(o.kind()) && o.hint().contains("未核實事項") && o.hint().contains("審查還沒跑過"));
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(store.find("42").orElseThrow(), HumanOptions.PUBLISH_COMMAND, "u", jobs::add);
+        jobs.getFirst().run();
+
+        // 審查不能跳過：只補跑審查，通過後不再停在等待核准 PR。
+        assertThat(calls).containsExactly("review:security_auditor");
+        var body = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(publisher).publish(eq("42"), any(), body.capture(), eq("feature/task42"));
+        assertThat(body.getValue()).contains("負責人放行的未核實事項").contains("SMTP 無法核實（u 放行）");
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.PR_CREATED);
+        var flow = store.flow("42").orElseThrow();
+        assertThat(flow.ownerPublishBy).isNull();
+        assertThat(flow.receipts.get("verification").path("owner_waiver").path("by").asText()).isEqualTo("u");
+        assertThat(flow.receipts.get("verification").path("uncertainties")).isEmpty();
+        verify(audit).record(eq("42"), eq("u"), eq(AuditLog.ACTION_RECOVERY), contains("未核實事項"));
+        verify(slack).post(any(), eq("c"), eq("t"), contains("審查還沒跑過，先執行審查"));
+    }
+
+    @Test void pendingReviewWithOnlyAnInformationalFindingIsWaivedByTheSameCommand() throws Exception {
+        verificationBlockedOnlyByUncertainties();
+        mode = "reviewInfo";
+        when(publisher.publish(eq("42"), any(), any(), eq("feature/task42"))).thenReturn(new PullRequestPublisher.Result("feature/task42", "https://example.test/pr/8", 8));
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(store.find("42").orElseThrow(), HumanOptions.PUBLISH_COMMAND, "u", jobs::add);
+        jobs.getFirst().run();
+
+        verify(publisher).publish(eq("42"), any(), contains("原等級 INFO：Jackson 版本低於需求"), eq("feature/task42"));
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.PR_CREATED);
+    }
+
+    @Test void pendingReviewWithARealProblemStopsAndForgetsTheCommand() throws Exception {
+        verificationBlockedOnlyByUncertainties();
+        mode = "reviewHigh";
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(store.find("42").orElseThrow(), HumanOptions.PUBLISH_COMMAND, "u", jobs::add);
+        jobs.getFirst().run();
+
+        verifyNoInteractions(publisher);
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        assertThat(store.flow("42").orElseThrow().ownerPublishBy).isNull();
+    }
+
+    @Test void verificationWithAFailedScenarioCannotBeWaived() throws Exception {
+        verificationBlockedOnlyByUncertainties();
+        var flow = store.flow("42").orElseThrow();
+        ((ObjectNode) flow.blockedFindings.get("verification").path("scenario_results").get(0)).put("status", "FAIL");
+        store.saveFlow("42", flow);
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(store.find("42").orElseThrow(), HumanOptions.PUBLISH_COMMAND, "u", jobs::add);
+
+        assertThat(jobs).isEmpty();
+        verifyNoInteractions(publisher);
+        var text = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(slack, atLeastOnce()).post(any(), eq("c"), eq("t"), text.capture(), any());
+        assertThat(text.getAllValues()).anySatisfy(t -> assertThat(t).contains("驗收沒有通過").contains("只剩未核實事項"));
     }
 
     @Test void ownerCommandWhileAwaitingPrApprovalIsTheApproval() throws Exception {

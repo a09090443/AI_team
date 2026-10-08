@@ -45,6 +45,7 @@
   2026-10-08 部署分段改派部分改派修正（JAR `50386fb6…`）：bestpartner PID 188052、starters PID 191166；#1029 待重跑實作驗證。
   2026-10-08 部署唯讀釘選略過 node_modules（JAR `4fa82e34…`）：bestpartner PID 204595、starters PID 207754；#1029 待續跑驗收。
   2026-10-08 部署 E2BIG 診斷且不重試（JAR `3b5d7503…`）：bestpartner PID 212902、starters PID 216036；#1029 仍待續跑驗收。
+  2026-10-08 部署負責人開 PR 放行未核實事項＋補跑審查（JAR `bcf85457…`）：bestpartner PID 225064、starters PID 228228；#1029 待送 `開 PR #1029` 實測。
   2026-10-06 部署 bb5e93c（負責人結案的任務也能開 PR，JAR `c5b0096b…`）：bestpartner PID 140689（備份 `orchestrator-backup.lCDH9Z`）、
   starters PID 143800（備份 `orchestrator-backup.ay2s0n`），皆 0 ERROR、5 個連線、任務資料前後一致；#1022 為 ABORTED（OWNER_CLOSE），工作區仍在。
   下一步：使用者在 #1022 討論串送 `@主機器人 開 PR #1022` 實測（會先重跑系統獨立驗證）；close 結案按鈕也未實測。
