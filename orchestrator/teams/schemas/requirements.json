@@ -19,7 +19,8 @@
       "enum": [
         "question",
         "implementation",
-        "human"
+        "human",
+        "service"
       ]
     },
     "requirements": {

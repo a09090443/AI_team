@@ -92,6 +92,26 @@ class TraceabilityTest {
         ((ObjectNode)plan.path("scenarios").get(0)).putArray("operation_ids").add(OperationContract.INSPECT_CONTENT).add("test");
         assertThat(Traceability.planReason(plan, flow)).isNull();
     }
+    @Test void unchangedFilesMustDeclareSafeConcretePathsAndRetainAcceptanceCoverage() {
+        ObjectNode scenario = (ObjectNode) plan.path("scenarios").get(0);
+        scenario.putArray("operation_ids").add(FileComparison.OPERATION);
+        assertThat(Traceability.planReason(plan, flow)).contains("unchanged_paths");
+        scenario.putArray("unchanged_paths").add("application.properties");
+        assertThat(Traceability.planReason(plan, flow)).isNull();
+        scenario.withArray("unchanged_paths").add("../secret");
+        assertThat(Traceability.planReason(plan, flow)).contains("路徑無效");
+        scenario.putArray("unchanged_paths").add("application.properties").add("application.properties");
+        assertThat(Traceability.planReason(plan, flow)).contains("重複");
+        scenario.putArray("operation_ids").add(OperationContract.INSPECT_CONTENT);
+        assertThat(Traceability.planReason(plan, flow)).contains("搭配");
+    }
+    @Test void oldPlanSchemaReceivesPathContractWithoutChangingSnapshot() throws Exception {
+        String original = java.nio.file.Files.readString(java.nio.file.Path.of("teams/schemas/plan.json"));
+        var extended = new com.fasterxml.jackson.databind.ObjectMapper().readTree(FileComparison.extendSchema(original));
+        assertThat(extended.path("properties").path("scenarios").path("items").path("properties").has("unchanged_paths")).isTrue();
+        assertThat(FileComparison.extendSchema(extended.toString())).isEqualTo(extended.toString());
+        assertThat(original).doesNotContain("unchanged_paths");
+    }
     @Test void everyNewScenarioMustReferenceAnOperationContract() {
         ((ObjectNode)plan.path("scenarios").get(0)).remove("operation_ids");
         assertThat(Traceability.planReason(plan, flow)).contains("S1", "operation_ids");

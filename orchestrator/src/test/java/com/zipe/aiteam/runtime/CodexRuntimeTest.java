@@ -132,6 +132,7 @@ class CodexRuntimeTest {
             {"type":"turn.completed"}
             """;
         var result = runtime.parse(events, tmp.resolve("err"), tmp.resolve("out"), request(null));
+        assertThat(result.permissionDenials().get(0).path("failure_kind").asText()).isEqualTo("COMMAND_FAILURE");
         assertThat(Diagnostics.toolFailures(result.permissionDenials()))
                 .contains("cmd-1", "git diff", "exit_code=1", "Read-only file system");
     }

@@ -391,6 +391,35 @@ public class WorkspaceManager {
                 .lines().filter(s -> !s.isBlank()).toList();
     }
 
+    public record FileIdentity(String path, String before, String after) {
+        public boolean unchanged() { return before.equals(after); }
+    }
+    /** 只讀 Git 物件，不讀檔案內容、不執行 diff driver，路徑一律按字面值解讀。 */
+    public List<FileIdentity> compareFiles(String taskId, String base, String head, List<String> paths) throws WorkspaceException {
+        if (base == null || head == null || !base.matches("[0-9a-f]{40,64}") || !head.matches("[0-9a-f]{40,64}"))
+            throw new WorkspaceException("缺少有效的實作前 Git 版本，不能以目前版本補作比較基準");
+        Path ws = pathFor(taskId);
+        for (String ref : List.of(base, head))
+            if (!"commit".equals(gitOutput(ws, "--no-replace-objects", "cat-file", "-t", ref))) throw new WorkspaceException("比較基準不是 Git commit");
+        if (paths.isEmpty() || paths.size() > 100) throw new WorkspaceException("檔案比對須指定 1 到 100 個檔案");
+        List<FileIdentity> result = new ArrayList<>();
+        for (String path : paths) {
+            if (!com.zipe.aiteam.flow.FileComparison.safePath(path)) throw new WorkspaceException("無效比較路徑：" + path);
+            String before = fileIdentity(ws, base, path, true);
+            if (before.isEmpty()) throw new WorkspaceException("實作前版本沒有指定檔案，不能證明保持不變：" + path);
+            result.add(new FileIdentity(path, before, fileIdentity(ws, head, path, false)));
+        }
+        return List.copyOf(result);
+    }
+    private String fileIdentity(Path ws, String ref, String path, boolean requireRegular) throws WorkspaceException {
+        String entry = gitOutput(ws, "--no-replace-objects", "--literal-pathspecs", "ls-tree", "-z", ref, "--", path);
+        if (entry.isEmpty()) return "";
+        int tab = entry.indexOf('\t');
+        if (tab < 0 || (requireRegular && !(entry.startsWith("100644 blob ") || entry.startsWith("100755 blob "))))
+            throw new WorkspaceException("比較路徑必須是一般版控檔案，不接受目錄、symlink 或子模組：" + path);
+        return entry.substring(0, tab);
+    }
+
     // ------------------------------------------------------------------ 未提交的修改
 
     /** 相對 HEAD 修改、刪除或新增（未追蹤、未忽略）的檔案，排序後回傳；乾淨時為空。 */

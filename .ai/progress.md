@@ -1,6 +1,268 @@
 # 工作進度（Codex 與 Claude Code 共用）
 
+## 2026-10-11 依使用者要求提交已部署版本
+
+- 本次 commit 涵蓋尚未提交的自主派工、服務建置、驗證修正與通用防漏修機制，以及相應測試、同步 skill 與文件；保留已通過完整 Linux 測試的整合版本。
+- 提交前檢查 105 個異動檔案，常見憑證格式掃描與 diff check 通過；建置快取、本機設定及登入檔未納入。沿用本輪已通過的 619 項測試與文件建置結果，未變更功能。
+- 已核對 contributing、engineering-workflow、部署紀錄與現有交接文件；本次僅補進度紀錄，沒有新增功能／文件落差。僅執行本機 commit，未 push。
+
+## 2026-10-11 通用防漏修機制已實作與部署（Codex，使用者核准）
+
+- 發現的缺漏／落差：已發現但未納入需求的問題可在分類、單項衍生與承接時遺失；需求覆蓋本身不能擋住這類漏項。已新增共用 IssueTracker 契約與持久 inventory／evidence，所有新 v2 團隊快照自動啟用。
+- WORK 目標內發現自動派修；入口錯誤分類／缺漏先有界自修。固定問題 ID、禁止空更新刪項與未授權降級、需求映射、驗證版本及全部問題逐項檢查，缺漏不能完成／發布。承接保留完整清單與歷史證據但須重新驗證；單項衍生標示局部範圍。明確唯讀、真人決策與既有核准權限保留。
+- 測試：Linux 隔離完整 verify 619 項、0 失敗、0 錯誤、11 略過，BUILD SUCCESS；含發現9項只驗1項會返工、question誤判自修、多團隊／舊快照／承接相容。check-source（20工具測試及16平台檢查）、docs-site build、diff check 通過。初次完整測試的舊 fixture 缺新必填欄位，補 fixture 後完整重跑通過，未降低正式契約。
+- 18:04 bestpartner 與18:06 spring-starters 已部署相同 JAR c646820de485d0f16a0b5392d480ad3e65ae0e494624abce833b232018257f2e。PID485056／489383；revision614ec4bb…／6cb231a9…。備份 EBTqLj／rE6nNs，完整路徑見部署紀錄。只換 JAR、保留線上 teams 設定；部署前後所有任務資料與工作區一致，Spring／沙箱／角色 Socket Mode 啟動通過，無 ERROR。
+- spring-starters Slack ping WARN 在升級前已有，部署後觀察計數10未繼續增加；不等於已驗收事件收送。本輪未發 Slack 訊息或新建／續跑模型任務，真實模型端對端尚未驗證；不宣稱模型必定發現所有問題或 #1037 剩餘8項已修正。
+- 已核對並修正文件：engineering-workflow、data-model、configurable-team、agent/system-map、agent/configuration、agent/operations、agent/project-tree、catalog、deploy-2026-09-06-v2。已核對無需變更：pm-triage、failure-reporting、direct-agent-requests、qa-scenario-workflow。更新 context／decisions，保留歷史證據及原工作樹修改，未提交 Git。
+
+## 2026-10-11 通用防漏修機制查核（規劃，尚未實作）
+
+- 使用者澄清目標為所有專案避免重演，而非另開一次性文件修正任務。已核對 engineering-workflow、configurable-team、operations、data-model 與 FlowEngine／FlowRun／Traceability／SpinoffButtons／requirements schema。
+- 目前驗收覆蓋僅涵蓋已寫入需求的項目；未納入需求的已發現問題沒有完整處理結果追蹤。單項 spinoff 與承接是預期的局部範圍，不能靠提示修正宣稱解決整體漏項。
+- 已提出共用持久問題清單、範圍內自動派修、承接完整保留、完成覆蓋檢查與局部／整體狀態區分的計畫；尚未修改 runtime、schema 或資料庫，待依 AGENTS 的大範圍計畫確認再實作。現行文件無新增行為要同步，未把規劃寫成已完成。
+
+## 2026-10-11 #1039 未涵蓋 #1037 其餘文件問題
+
+- 使用者指出最新任務沒有修正清單。唯讀 DB 與工作區確認 #1039 為 #1038 承接，已載入 5263f682… 新提示，但 request_text 仍只含資料庫初始化問題；狀態 PR_CREATED，PR https://github.com/a09090443/bestpartner/pull/4 ，publishedHead=503df687237b74d9c5ab8c0590cf83b1be7fbb8e。
+- git show 確認僅 docs/sql/bestpartner-ddl.sql 增加 4 行（註解、CREATE SCHEMA、SET search_path、空行）。其餘八項並未被本次派工涵蓋；不能將新提示部署視為完成整批修正。未代發訊息、未改任務或 PR。
+- 發現的操作說明缺漏：承接一項衍生任務不會帶入來源問答的其他發現。已核對 configurable-team、operations 與既有 intake；補寫 operations 的 #1037→#1038→#1039 範圍範例，其餘無需修改。
+- 文件建置與目錄／同步檢查通過；本輪僅查核與補文件，未宣稱剩餘問題已修正。
+
+## 2026-10-11 文件自主派修提示部署
+
+- 使用者明確授權部署；線上無執行／排隊任務，隔離 teams 副本以現行 JAR 靜態驗證通過。本次只更新 bestpartner 的 intake.md，不換 JAR、不改其他團隊。
+- 配置 5263f682d3abacc259cf550ee1dbee353d2e8bedf53b4e37a07424a8ad875126；提示 SHA256 bd15987a6391942ff2812e90d6cad840bc7e0f99bf93693d4b57bc2715db6037；PID419824。備份 `/home/agent/ai-team-bestpartner/intake-backup.EaSd48`（teams、DB、啟動前 log、狀態比對）；部署暫存 `/home/agent/intake-deploy-20261011`。
+- Spring 啟動／沙箱自檢／既有六角色 Socket Mode 通過，主服務 443 連線正常、無 ERROR；builder_codex 原本未配置獨立 App-Level Token，維持不啟用直接對話。task、flow_run、checkpoint、direct_request、stage_result、quota_retry 及所有任務工作區前後一致；JAR 仍 b1917796…。
+- 未續跑 #1037／#1038、不重寫舊任務快照、不送測試訊息；模型是否依新規則合併自主派修仍待新任務實測，不能稱文件問題已解決。
+- 已核對 INSTALL、部署紀錄、operations、configurable-team、system-map 與既有安全部署腳本；已修正 operations、configurable-team 的部署狀態，其餘無需修改。前輪 132 項 Maven、check-source 已通過；本輪 docs-site build 通過。另發現目錄樹已將 .build-cache 列為不進版控的本機快取，但 .gitignore 遺漏，補上忽略規則後目錄檢查通過。
+
+## 2026-10-11 #1037 文件查核誤分純詢問
+
+- 後續唯讀狀態查核：#1038 已提交 503df68，QA 5 情境 PASS，但 PostgreSQL 實機匯入未核實，被發布閘門擋下，triage 停 AWAIT_HUMAN。實際提供「接受限制並發布」「先在有資料庫的環境實測」「結案，自行處理」。後者實測選項只表示重新判斷，尚無可執行 SQL 驗證能力的證據，不能保證按下即可完成；建議隔離暫存資料庫驗證，不能重跑 DDL 破壞現有資料。
+
+- 唯讀查正式 DB：#1037 原文「確認系統建置的安裝文件是否有正確編寫」，intake 回 route=question、open_questions=[]、human_decision=null，9 項發現全列 out_of_scope，任務 COMPLETED。不是缺權限或等真人核准，而是分類與提示明令交給人逐項開需求。第 1 項已由使用者開成 #1038，查核時 STAGE_RUNNING；未改 DB、未代發訊息、未打斷它。
+- 發現的落差：intake 將 implementation 限縮為產品程式／新功能，缺少文件維護請求查到問題後自動派修規則，與使用者要求自主解決不符。
+- 已修正來源 intake.md：文件／設定／腳本也是 implementation；文件正確性維護請求有明確證據時合併派修，intake 自身唯讀不構成範圍外理由。明確只檢查不修改仍唯讀；產品取捨／新增權限／未授權資料操作不自動擴權。
+- 已核對文件：operations、configurable-team、system-map、pm-triage、failure-reporting、direct-agent-requests、qa-scenario-workflow、data-model。已修正 operations 與 configurable-team，其餘無需變更。來源提示與文件皆明示尚未部署／模型實測，既有任務快照不變。
+- check-source（20 項工具測試、16 項平台 fixture）、docs-site build、指定檔案 diff check 通過。Maven 初跑因 Windows 沙箱 Temp 路徑 AccessDenied 失敗，透過 argLine 設定 java.io.tmpdir 為工作區內暫存目錄後，FlowEngineTest／TeamCatalogTest 共 132 項通過（0 失敗／錯誤）；此為既有流程回歸，不代表模型分類已實測。
+
+
+## 2026-10-10 續跑 Slack #1036 與固定角色交接修正
+
+- 依使用者授權在 #1035 按承接，#1036 採 2280bc06… skill 配置。PM 曾因空需求自修；之後正確 service/infrastructure handoff 被原本固定角色 null 限制擋下。
+- 修正 AgentDispatch：固定 AGENT 目標只接受相同既定角色的有效交接，保存／恢復；拒絕其他角色、額外權限與未配置轉移。新增回歸測試。
+- Linux 完整 605 項、0 失敗／錯誤、11 略過；Python 15 項、check-source、docs build、diff check 通過。
+- 已部署 JAR b1917796408c3448cd64eab0bc6f4a9bd9aa84a63b6b90108d5040027ac8eada，配置未改，PID 84418，備份 orchestrator-backup.TIT6T4。所有任務／工作區部署前後一致。
+- Slack 文字補充未 @ 不會觸發；已用「告訴它還缺什麼」modal 正式提交，UI／DB 確認 #1036 進入 service，agent 實際產生 prepare request。
+- 已核對文件：configurable-team、service-delivery、data-model、operations、system-map；已修正前四份，system-map 無需改。未讀出憑證、未改 DB、未降低驗收。broker 及 dev 登入仍未就緒，未建置 dev 服務。
+
+
+## 2026-10-10 服務建置可攜式 skill（Codex，使用者指定）
+
+- 發現缺漏／落差：原流程只有 service 分流，沒有實際環境準備操作；把缺 SSH 交回使用者不符合目標。後續使用者要求將工具改成 skill，以利更換主機。
+- 已修正：service-build 單一來源，包含 SKILL.md／產品與主機 references／scripts／設定範本；sync 產生 Claude 和 teams 套件。新增節點 skills 的驗證、快照版本、派工注入及改派保留；舊欄位省略相容。
+- 四個操作由 Slack agent 發起，broker 經 SSH 或 VirtualBox 執行固定 helper。加入目標核對、來源雜湊、收據重送、長操作接單等待、資料保留、非敏感診斷。主機登入與 UUID 不寫死 skill 流程。
+- 驗證：Linux Maven 604 項、0 失敗、0 錯誤、11 略過；Python 15 項；quick_validate 在 Linux 通過（Windows Python 無 PyYAML，改在隔離 VM 執行）；check-source／docs-site build／diff check 通過。
+- 已部署：JAR 8c8538eb74bb2c8527c6cb1143ec65d9330945b0d6b17a3a8c15703be5947159，配置 2280bc066d87ac6e271ffaefeb08f0ed415a2e69e01abbef307e265e110616d3，PID 78337，備份 orchestrator-backup.E0Eb7Y。任務與工作區不變、啟動／沙箱與 Infrastructure Socket Mode 通過。
+- 未完成：#1035 仍舊快照等待；dev 登入憑證引用尚待使用者回覆，broker 未啟動。未建置 dev 服務，未做 Slack agent 真實端對端、SSH 換機、登入／資料持久化驗收。
+- 已核對並修正文件：service-delivery、agent/ai-tools、configuration、operations、system-map、project-tree、catalog、configurable-team、cross-project-execution、data-model、INSTALL、deploy/README。已更新 context／decisions。未提交 Git，保留原有工作樹修改。
+
+
 > 由新到舊追加。每則一行到數行：日期、由誰（Codex／Claude Code）、做了什麼、驗證方式。
+
+## 2026-10-10 — Codex（依授權實際操作 Slack，承接 #1035）
+
+- 使用者明確授權代操作 Slack 至服務建置完成。內建瀏覽器已有登入，已在 #1034 按承接，UI 與唯讀 DB 確認 #1035 採 c35b8bbc…；intake 停下要求配置服務目標，未再強制進 QA。已代貼進度，不含憑證；未代選結案／刪除驗收。
+- 唯讀 VBoxManage 確認 dev／Agent 為不同 NAT VM；dev 轉送 localhost:2224，Agent:2223。dev SSH 在 banner 前中斷，尚未登入；Agent 的 10.0.2.15 是自身，沒有 dev 帳號。已請使用者在 dev 本機啟用 openssh-server，等待回覆，不能宣稱服務已建置。
+- 尚未修改線上配置、安裝 Docker、建立憑證或寫入任務 DB。下一步先修復 dev 的連線入口，再配置受控操作並續跑。
+- 已核對 cross-project-execution、service-delivery、operations 及既有 dev 查核記錄；修正 service-delivery 補 NAT 位址重複與 #1035 狀態，更新 context。文件建置見本輪工具結果。
+
+## 2026-10-10 — Codex（確認 Slack 主機補充已收到）
+
+- 唯讀 DB：#1034 於 15:07 UTC（23:07 台灣時間）停在 triage／AWAIT_HUMAN；使用者補充已含 10.0.2.15，successor=null。未輸出含憑證關鍵字的補充行。
+- 比對快照：#1034 沒有 service 節點；正式 bestpartner 配置已有 service／service_triage，但 serviceTarget=null。當前是舊流程及目標操作未配置，不能歸因為使用者沒提供主機。舊 plan 漂移掃描契約問題仍被沿用，沒有實際啟動證據。
+- 已核對 data-model、pm-triage、service-delivery、catalog、project-tree；修正 service-delivery 的主機接收狀態並更新 context；未發現新的程式文件落差。未改線上任務、未代送 Slack。
+- 文件建置驗證見本輪工具結果。
+
+## 2026-10-10 — Codex（更正主機資訊的判斷）
+
+- 使用者指出建立任務時已提供主機。前次把 serviceTarget=null 推論為使用者未提供，證據不足，撤回該判斷；下方歷史記錄中的相同敘述以本則更正為準。
+- 唯讀查核 bestpartner task 原文與 flow_run 保存補充；#1030／1032／1033／1034 原文皆為「請建立測試環境」，已保存補充尚未找到目標主機。這不等於原始 Slack 沒有相關訊息。
+- 核對 SlackListener：建立任務採觸發事件的 text，此入口沒有自動抓取整個討論串；尚未取得原始 Slack 訊息，不能認定漏接原因。未讀憑證、未代送訊息、未修改線上任務。
+- 已核對 service-delivery、data-model、pm-triage、operations；修正 service-delivery 將未配置與未提供分開，更新 context。本輪文件建置結果另見工具輸出。
+
+## 2026-10-10 — Codex（服務建置分流、指定腳本與草稿修復，已部署 bestpartner）
+
+- 使用者確認建置既有服務不必先跑 QA 計畫，要求修正所有相關問題並明確要求部署。
+- 新增 Gate.SERVICE／ServiceDelivery 與 bestpartner service、service_triage：Infrastructure 建置後檢查、受阻自動分流重驗；服務分支不進 QA 計畫／開發 IndependentVerifier／PR 發布，產品開發閘門不變。
+- 完成條件核對目標、逐項操作、exit code、證據、需求覆蓋與未核實事項；限定可寫路徑與機密檔保護。服務證據為 agent 回報，不能宣稱已獨立登入遠端核實。
+- Operation 新增 scriptSha256，僅開放固定 bash 相對腳本（無 -c／額外參數），核對內容並釘選唯讀。bestpartner 新增 harness-drift-scan，核准 hash a5525e4a…；#1034 原腳本唯讀實測：基線 5、新漂移 0、exit 0。
+- 尚未建立基準的無待釐清問題需求草稿，結構／ID 錯誤自動交回 intake 修正，沿用既有上限；已保存基準不擅改，語意一致性仍需 agent 查核。
+- 驗證：本機 188 項僅既有 symlink 測試遇 Windows 權限錯誤；Linux 隔離 /home/agent/service-delivery-build-20261010 完整 verify 602 項、0 失敗、0 錯誤、11 略過；check-source、docs-site build、git diff --check 通過。
+- 已部署：JAR b820051bb2c1966da6142227639b06f028d58b9222aced294079d2c3aca5df1d；配置 c35b8bbc…；PID 69436。備份 /home/agent/ai-team-bestpartner/orchestrator-backup.HwK8g3；所有任務資料、工作區前後一致，Spring／沙箱自檢通過。
+- 已核對及修正文件：cross-project-execution、qa-scenario-workflow、configurable-team、pm-triage、failure-reporting、data-model、agent/configuration、operations、system-map、index、project-tree、catalog；新增 service-delivery。發現舊文件一律禁止 shell、流程一律先 QA 與 infrastructure 目錄用途描述已不符新契約，已同步；deploy/README 核對無須修改。
+- 真實服務建置尚未進行：使用者未提供目標主機，serviceTarget=null；已發出文字詢問。#1034 仍 AWAIT_HUMAN、舊快照未改，未代送 Slack／續跑。QA localhost 舊開發路線問題未另行修復；服務路線不依賴該前端 QA。
+
+## 2026-10-10 — Codex（查核 #1034 再次停止）
+
+- 唯讀 DB 確認 #1034 採最新配置 24a4936b…，已過 intake／design，plan 受阻後交 triage，現 AWAIT_HUMAN、triage 2 次；前次 command_execution 權限誤判未再次造成停止。
+- 直接原因：REQ-SIT-08 acceptance 包含漂移掃描新漂移 0 項，source 卻稱由審查檢查，acceptance_items 未列對應項目；計畫角色回報無已配置掃描操作，PM 轉請人核准改寫驗收。這是規劃／能力契約問題，並非掃描執行失敗。
+- 任務 out_of_scope 明確排除遠端部署、啟動 SIT、image 建置匯出、真實機密檔；與使用者表示要先正常建立服務有目標落差。設計另回報手冊登入 email 錯誤，尚未進實作修正；沒有證據可宣稱服務已啟動。
+- 已核對 failure-reporting、pm-triage、operations 與 Traceability 操作驗證；現行文件已說明自修範圍及能力限制，未發現需新增的功能文件缺漏。更新交接紀錄；未改程式、配置、任務狀態或代送 Slack。
+## 2026-10-10 — Codex（例行錯誤自動修正部署 bestpartner）
+
+- 依使用者要求完成受控部署：隔離來源 /home/agent/auto-repair-build-20261010；封存 SHA256 cb4d6fc9…；Linux 完整 Maven verify 587 項、0 失敗、0 錯誤、11 略過，check-source 通過。
+- 正式 JAR 2f44c42f4c6f470c465cadbc6c3371fc5fd93d9c41522604ead2f553c4e18ffd，配置 24a4936b…，PID 62762；備份 /home/agent/ai-team-bestpartner/orchestrator-backup.sXn0xN。
+- Spring 啟動／沙箱自檢通過，無 ERROR；所有任務資料與工作區部署前後一致。#1033 仍 AWAIT_HUMAN，未代送 Slack、未續跑，未宣稱 SIT 服務已啟動或模型端對端修復成功。
+- 已核對 deploy/README、INSTALL、failure-reporting、pm-triage、blocked-finding ADR、目錄樹及 catalog；無新增行為落差。已修正前兩份功能文件的部署狀態、追加 ADR 部署證據，更新 context；docs-site build 結果見本輪驗證。
+## 2026-10-10 — Codex（例行錯誤自動修正，尚未部署）
+
+- 修正 #1033 一般指令失敗被誤認缺權限：CodexRuntime 標記 COMMAND_FAILURE，ToolTrust 不套用工具白名單推論；真正拒絕仍保留原攔截。
+- FlowEngine 分開 RUNTIME_CALL／TOOL_DENIED 稽核，將指令失敗證據保存到下游 context，不把失敗當測試通過。
+- bestpartner design.blocked 改 triage；共用及分流提示要求既定範圍內先自修或交合格角色定位、修正、重驗，保留前置核准及交接上限。
+- 驗證：六組共 171 個不同測試通過（FlowEngine 103、ToolTrust 8、CodexRuntime 21、TeamCatalog 22、FailureReport 11、AutomaticHandoff 6）；check-source、docs-site build、git diff --check 通過。
+- 發現的落差：一般指令非零與權限拒絕混用，system-map 原稱任一節點受阻均分流不符 intake／triage 配置；均已修正。
+- 已核對文件：failure-reporting、pm-triage、system-map、operations、configurable-team、adr-automatic-blocker-routing、adr-blocked-finding-continuity、catalog；已修正前 3 份並追加 blocked-finding ADR，其他無需修改。
+- 本次僅程式與配置測試通過，未部署、未代送 Slack 或續跑 #1033；QA localhost 的真實根因與遠端服務啟動不在已修復結果內。
+## 2026-10-10 — Codex（查核 #1033 為何尚未建置服務）
+
+- 唯讀查核 DB、任務 Git tree 與程式：#1032 已產出 b879881 的 SIT Compose、00-schema.sql 與操作手冊；#1033 已承接，comparisonBase 正確保存，停在 design／AWAIT_HUMAN。
+- 直接阻礙：Codex 的 git diff --check 因 SQL 檔尾空白行 exit 2，ToolTrust 將 command_execution 事件名稱當未配置工具，誤報權限不足；不是前次檔案比對能力缺失。
+- 尚待釐清的另一阻礙：#1032 QA／triage 報告 Vitest localhost 被沙箱封鎖；實作階段同 HEAD 回報 479 個測試成功，不能替代 QA 證據。本輪未重現沙箱原因。
+- 任務明確只涵蓋環境設定與驗收，排除遠端部署／啟停；未啟動 dev VM 服務不是這次版本比對部署的交付結果。
+- 已核對 pm-triage、operations、failure-reporting、local-test-capabilities、configurable-team 與交接紀錄；發現 failure-reporting 的「不把非零結束碼當權限拒絕」在整體流程不成立，已補已知問題與實際證據。
+- 未修改功能、線上配置、任務狀態或代送 Slack 訊息。docs-site build 驗證見本次執行結果。
+
+## 2026-10-10 — Codex（指定舊檔版本比對部署 bestpartner）
+
+- 依使用者要求，部署已通過 583 項測試（0 失敗、0 錯誤、11 略過）的隔離候選；新功能來源 SHA256 與本機一致。
+- 使用 deploy-orchestrator.sh 完成靜態配置驗證、備份與受控部署：JAR a88cd3d9e5491adc596be1ab40d733626526e0a6d9b04817a1a4608a717c001c，bestpartner 配置 d16a284f…，PID 56394。
+- 備份 /home/agent/ai-team-bestpartner/orchestrator-backup.a9s7Ha；Spring／沙箱自檢通過、無 ERROR，所有任務資料及工作區部署前後完全一致。正式 plan／triage 提示與候選相同，六個角色 Socket Mode 已啟動。
+- #1032 仍 AWAIT_HUMAN，未改核准、未續跑。下一步由負責人選「改用新任務繼續」；真實 Slack 新能力使用與端對端尚待驗證。
+- 已核對 deploy/README、qa-scenario-workflow、data-model、operations 與前次文件變更，無新增落差；更新 context／progress 部署狀態。docs-site build 再次通過。
+
+## 2026-10-10 — Codex（指定舊檔版本比對，當時尚未部署）
+
+- 使用者核准計畫後新增內建 compare-unchanged-files，計畫以 unchanged_paths 列明確路徑；執行期擴充 schema，舊計畫保持相容。基準為工作區建立／承接時的 comparisonBase，不是需求 SHA-256，也不隨返工變動。
+- 系統以唯讀 Git mode／blob 比較兩個已提交版本；內容、模式、刪除、改名與型別改動都會被攔下；拒絕無效路徑、缺基準、基準缺檔與非一般檔案，忽略 Git replace 防止替代物件掩蓋差異。
+- 獨立驗證在建置／純文件捷徑之前產生比對紀錄，收據綁定基準、HEAD、完整計畫、路徑與 log 雜湊；發布前核對。差異沿既有 CheckFailed 路線交回實作，不刪除要求、不擴權。分流提示改為可用內建比對時退回 plan 修正計畫。
+- 驗證：Windows 194 項回歸僅既有 CRLF warning 混入 Git 輸出的測試失敗；Linux 隔離最終完整建置 /home/agent/file-comparison-build-20261010：583 項、0 失敗、0 錯誤、11 略過。check-source（含16個平台 fixture）、docs-site build、git diff --check 通過。
+- 新增 10 項測試涵蓋真實 Git 物件／二進位／中文空白路徑／模式／改名／Git replace／symlink、計畫路徑與舊 schema、收據序列化和失效、純文件不能跳過比對、誤改自動退回實作且不重建需求。尚未真實 Slack 端對端驗證。
+- 已核對：cross-project-execution、qa-scenario-workflow、engineering-workflow、pm-triage、data-model、agent operations／configuration／system-map／project-tree、catalog。
+- 已修正：上述文件除 configuration 外均同步新增能力、比對邊界、程式位置或操作；configuration 無新增設定鍵，無需修改。發現 cross-project-execution 仍寫「核准計畫不排工作」，與現行按鈕／程式不符，已改為核准後自動排入驗收。
+- #1032 仍 AWAIT_HUMAN，triage、changeTarget=null、已有舊工作區且未承接。未修改任務資料；新版部署後應由負責人承接新任務保留原要求，以建立可信比較基準。尚未部署。
+
+## 2026-10-10 — Codex（白話回覆部署 bestpartner）
+
+- 依使用者要求部署。與上一版隔離來源比對只差 FailureReport.java；線上有效 teams 資產只差 prompts/triage.md，沒有帶入其他功能變更。
+- 隔離來源 /home/agent/plain-reply-build-20261010；Linux 完整建置 573 項、0 失敗、0 錯誤、11 略過；check-source 與 docs-site build 通過。
+- 受控部署成功：JAR dc92476526689a7b49035f2a01446adf85a5a985c18d36f2d4147b4fb10026a4，bestpartner 配置 ce73b20a…，PID 27347。
+  完整備份 /home/agent/ai-team-bestpartner/orchestrator-backup.E2if8w；Spring／沙箱自檢通過、無 ERROR，所有任務資料與工作區前後一致。
+- 已核對 deploy/README、failure-reporting、plan-approval-buttons、operations（沿用本次已同步內容），本次部署未發現新增文件落差；已更新 context／progress 部署狀態。
+- 未代使用者發訊息、選擇 #1032 選項或續跑任務；既有報告不會改寫，真實 Slack 模型回覆易讀性仍待驗證。
+
+## 2026-10-10 — Codex（agent 回報與人工選項白話化，當時尚未部署）
+
+- 依使用者要求調整 FailureReport 共用提示與 triage：先說進度、原因、目標影響與下一步，再列技術證據；選項說明具體行動、少了哪項保證，推薦引用實際按鈕名稱。
+- 發現缺漏：既有「白話」規則過於籠統，triage 範例仍以需求編號開頭，且概括聲稱流程證據由系統稽核負責，容易誤導成已有等效保證。已改為核實實際檢查能力、明示限制。
+- 已核對文件：failure-reporting、plan-approval-buttons、pm-triage、agent operations、catalog／project-tree；已修正前三者中的 failure-reporting、plan-approval-buttons 及 operations，其他無需變動。
+- 驗證：FailureReportTest 11 項全過、check-source.sh 通過（含 16 項平台 fixture）、docs-site build 通過。最初受 Windows 沙箱 temp／Git Bash 權限阻擋，改用正常本機權限重跑通過。
+- 尚未部署、未重新呼叫模型或重寫 #1032 報告；提示遵循與真實 Slack 易讀性仍待部署後驗證。未新增僅比對提示字串的測試。
+
+## 2026-10-10 — Codex（解釋最新任務 #1032 的人工選項）
+
+- 唯讀查核 bestpartner DB：#1032「請建立測試環境」停在 AWAIT_HUMAN，設計已產出、實作尚未開始；triage 請負責人決定 AC-SIT-06-3（既有檔案與改動前完全相同）要移出驗收、改寫或結案。
+- 向使用者說明這是 agent 制定驗收條件與可用檢查方式的落差，不是缺少使用者的 Docker／資料庫設定；未代按選項、未續跑或改動線上資料。
+- 已核對文件：agent index／project-tree／operations、catalog、data-model、pm-triage、engineering-workflow；未發現本次需修正的文件缺漏，未修改功能文件。agent 所稱「系統稽核」不應解讀為已保證特定舊檔逐字不變。
+## 2026-10-09 — Codex（Agent 自主派工實作與 bestpartner 部署）
+
+- 使用者確認計畫後要求部署。新增 AgentDispatch：candidateRoles 合格角色集合、capabilities 能力描述、結構化 handoff；
+  上游依需求選下一階段負責人，未知／缺漏／不合資格或缺操作權限的指派會受阻。原節點契約與 QA／Review／核准不變。
+- bestpartner 開放設計與實作自主選角，Infrastructure 可在工作區產出環境檔案；一般 @ 對話仍唯讀，未開放遠端 VM 部署。
+  FlowRun 保存目前派工與歷史、續跑沿用角色；Codex 實作核對後代為提交；Slack 交接及「下一步」顯示所選角色。
+- 驗證：Windows 編譯通過，測試因 JUnit 暫存目錄 AccessDenied 未執行有效案例；改採 Linux 隔離建置
+  /home/agent/dispatch-build.YuGSeE，最終 573 項、0 失敗、0 錯誤、11 選用略過；check-source 與部署腳本 bash -n、docs-site build 通過。
+  新增測試涵蓋自主選角、非法／缺漏／越權指派、審查分離、派工快照、改派歷史、額度續跑、工具權限、Codex 提交與角色顯示。
+- 部署前發現 JAR-only 安裝沒有 orchestrator/src/main，舊 deploy-orchestrator.sh 在停服務前中止。已修正只在原安裝有來源時才備份／更新／回復來源；沒有放寬任務空檔與資料一致性檢查。
+- 首次部署 da10a5c8… 通過並保留完整升級前備份 orchestrator-backup.PG5hMD；再補角色顯示修正，最終 JAR
+  21b10e4f8e4ea062fc2742262fa073fc4e454f8bea8713456dc34b868fc8e755，配置 1fdba51a…，備份 orchestrator-backup.f5zFOE。
+- 已核對文件：configurable-team、cross-project-execution、engineering-workflow、multi-runtime、pm-triage、direct-agent-requests、
+  data-model、slack-agent-apps、agent index／configuration／operations／system-map／project-tree、catalog 與 deploy/README。
+- 已修正文件：configurable-team、pm-triage、data-model、slack-agent-apps、configuration、operations、system-map、project-tree、catalog、deploy/README；
+  發現的缺漏為自主派工契約、派工快照與回滾限制、Slack 實際角色顯示，以及 JAR-only 部署前提；已同步補齊。
+- 最終部署成功，bestpartner PID 17623，Spring／沙箱自檢通過、log 無 ERROR；受控部署確認所有任務資料與工作區前後完全一致。
+  #1030 沿用舊快照，需負責人承接新任務，未替使用者操作。真實 Slack 模型選角／端對端尚待驗證。
+
+## 2026-10-09 — Codex（查核最新測試環境任務的派工原因）
+
+- 唯讀查詢 bestpartner DB：#1030「請建立測試環境」選擇 SIT 部署環境後，intake 回傳 implementation，
+  快照固定映射至 design／architect；負責人中斷 design，任務為 AWAIT_HUMAN。#1031 為詢問錯派原因的唯讀對話。
+- 核對 FlowEngine：模型只能選已配置 routes，不能自行指定角色；Infrastructure 存在於角色表，但沒有流程節點，且只具唯讀能力。
+- 發現文件缺漏：既有文件分別描述 routes 與唯讀角色，未明示環境需求仍會落入固定 design 路線；已補 configurable-team.md。
+- 已核對 direct-agent-requests.md、pm-triage.md、cross-project-execution.md、data-model.md、agent index／project-tree 與 catalog。
+  本次僅提出依能力動態派工方向，未修改執行程式、線上配置或任務；docs-site build 通過。
+
+## 2026-10-09 — Codex（部署 Infrastructure Agent 配置，等待 token）
+
+- bestpartner 服務原本即為 STOPPED，資料庫沒有執行中／排隊任務；Infrastructure Agent 的 Bot／App-Level Token 均未設定。
+- 已把 `teams/bestpartner.json` 與 `teams/prompts/infrastructure.md` 部署到 `/home/agent/ai-team-bestpartner`；以線上既有 JAR
+  在暫存與正式位置各跑一次 `--validate-team`，皆通過，revision `862830f8…`。備份：
+  `/home/agent/ai-team-bestpartner/config-backup.xZJQ8D`。
+- 服務刻意保持停止，避免在缺 token 時啟動無法接收 Slack 事件的角色。下一步由使用者本人把兩個 token 寫入權限 600 的
+  `env.sh`，再啟動服務並驗證 6 個角色 Socket Mode 連線與直接 `@BP Infrastructure Agent`。
+- 補正部署準備缺漏：bestpartner VM 的 `env.sh` 原本沒有 Infrastructure 欄位；已備份為
+  `env.sh.bak-before-infrastructure.sWFDFY`，加入兩個空白欄位（Bot 第 28 行、App-Level 第 140 行），檔案仍為 `600 agent:agent`。
+- 使用者填入 token 後只檢查非空狀態（未讀出值）；重新靜態驗證通過並啟動服務。PID `4372`，Spring 與沙箱自檢通過、
+  log 無 ERROR，COORDINATOR／ARCHITECT／BUILDER／TESTER／INFRASTRUCTURE／INSPECTOR 共 6 個直接對話 Socket Mode 連線已啟動。
+  待真人在 `#bestpartner` 直接 `@BP Infrastructure Agent` 驗證事件送達與 Codex Sol 回覆。
+- 已修正 `configurable-team.md` 的現行部署狀態；docs-site build 通過。
+
+## 2026-10-09 — Codex（Infrastructure Agent 改用 Codex Sol）
+
+- 依使用者要求將 bestpartner 的 `infrastructure` 角色由 Claude Code／Opus 改為 Codex／`gpt-5.6-sol`，
+  推理強度沿用專案既有 Sol 角色設定 `medium`。
+- 已同步修正 `configurable-team.md` 與 `slack-agent-apps.md` 的現行設定／範例；核對 `configuration.md`、
+  agent index 與 catalog，無需修改。此步驟完成時尚未部署；後續已部署配置與 prompt，狀態見上節。
+- 驗證：bestpartner JSON 解析通過、`TeamCatalogTest` 21 項全過、docs-site build 通過。
+
+## 2026-10-09 — Codex（建立 BP Infrastructure Agent 並加入 Slack）
+
+- 新增 `infrastructure` 配置式角色、唯讀對話 prompt、Slack manifest 與 Bot／App-Level Token 環境變數占位；
+  角色目前未接入正式流程，不能部署、停止或刪除環境。`check-source.sh` 已納入 manifest 與 token 變數一致性檢查。
+- 在 `AI-team` 建立並安裝 `BP Infrastructure Agent`（App ID `A0C7WUJN0JF`），授予 `chat:write`、
+  `app_mentions:read`，啟用 Socket Mode，建立 `connections:write` App-Level Token，並加入 `#bestpartner`；頻道 App 數由 6 變 7，清單已確認。
+- 未在對話、repo 或文件保存 token 值。Bot／App-Level Token 仍須由使用者寫入 bestpartner 實例的 `env.sh`，之後部署配置、重啟並實測直接 `@`；
+  新 `dev` VM 的 SSH server 尚未可用，Preview Environment 流程與部署節點尚未實作。
+- 驗證：`TeamCatalogTest` 21 項全過；bestpartner JSON 可解析；Slack UI 已確認 App 安裝與頻道成員；已核對並修正
+  `configurable-team.md`、`slack-agent-apps.md`、`project-tree.md`、`deploy/README.md`、agent index／contributing 與 catalog。
+
+## 2026-10-09 — Codex（新增 Agent 必須附 Slack 加入方式）
+
+- 使用者要求後續每次新增 Agent 都要提供加入 Slack 的方式。已寫入唯一規則來源 `AGENTS.md`：完成回報必須包含 manifest、
+  App 建立／安裝、Bot／App-Level Token 環境變數、頻道邀請、服務重啟及直接 `@`／流程身分驗證；不建獨立 App 時要明示限制。
+- 已同步修正 `contributing.md` 與 `slack-agent-apps.md` 的交付檢查清單；已核對 agent 入口與 catalog，無需修改。
+
+## 2026-10-09 — Codex（補齊新增 Slack 角色 App 文件）
+
+- 回答使用者查詢時發現：`slack-agent-apps.md` 已完整說明現行五個角色 App，但沒有串起「新增第六個配置式角色」所需的
+  團隊 JSON、manifest、token 變數、頻道邀請、來源檢查、部署重啟與端對端驗收。
+- 已修正 `slack-agent-apps.md`，新增配置式角色的五階段流程與 Infrastructure Agent 範例；同步更新 agent 入口路由、catalog
+  標題／摘要／readWhen，以及 `deploy/README.md` 的用途說明。
+- 已核對 `configurable-team.md`、`interaction-model.md`、`INSTALL.md`、`configuration.md`、現行角色 manifest、
+  `env.sh.template`、`check-source.sh` 與 Slack token 載入程式；程式目前仍只固定檢查 legacy 五角色，新角色正式落地時需擴充來源檢查。
+
+## 2026-10-09 — Codex（bestpartner Infrastructure Agent 需求訪談與 VM 連線預檢）
+
+- 使用者確認：PR 前為每個任務建立不同 port 的 Preview Environment，QA 完成後清除；`dev` 長駐 8080；同意 Docker Compose、
+  單一對外 port、每任務獨立 PostgreSQL，以及合併 `dev` 後自動部署與失敗回滾。部署主機為本機 VirtualBox VM。
+- 唯讀 SSH 測試 `10.0.2.15:22` 逾時，未進入帳密驗證。`VBoxManage` 查證 `AI`、`Agent`、`dev` 均為 `poweroff`；
+  `AI` 與 `Agent` 分別有 host port 2222、2223 的 SSH forwarding，`dev` 沒有 forwarding。需先確認目標 VM 並開機。
+- 使用者確認目標為 `dev` 後，沙箱外查證 VM 正在執行；客體畫面確認 Ubuntu 已完成開機、`gary` 已登入、IP 為
+  `10.0.2.15`。新增 `127.0.0.1:2224 -> 22` NAT forwarding，`Test-NetConnection` 成功；SSH 連線在交換 server banner
+  前被客體重設，尚未進入密碼驗證。需先在 VM 內啟用 `openssh-server`／`ssh.service` 再重測。
+- 未連入或修改 VM；未保存使用者提供的密碼。正式方案採 SSH key，密碼不得進 repo、prompt、Slack 或 log。
+- 已核對 `cross-project-execution.md`、`configuration.md` 與既有 bestpartner 交接紀錄；現行契約沒有 Preview 部署 gate／收據，
+  後續實作不能只修改團隊 JSON，需擴充流程與外部部署安全邊界。
 
 ## 2026-10-08 — Claude Code（#1029 驗收全過仍不能發布，負責人結案）
 
@@ -676,3 +938,23 @@
 ### 2026-09-07（Claude Code）
 - 專案首次納入 git 並推上 GitHub（private，初始 commit `a50642d`），推送前掃描憑證樣式。
 - 建立跨工具交接檔 `.ai/context.md`、`.ai/progress.md`、`.ai/decisions.md`。
+
+- 2026-10-10 23:59 最終實測：Infrastructure 已呼叫 prepare 兩次，同一請求回 SERVICE_BROKER_OFFLINE／75，自動交 PM service_triage 後停 AWAIT_HUMAN。Slack 提供「恢復後原任務重試」。宿主 broker 尚未完成首次登入設定，dev SSH2224 複查仍在 banner 前中斷；不是恢復按鈕可解決。未盲目重開任務或減少驗收。
+
+- 2026-10-11：建立 repo 外的 bestpartner-dev 非敏感主機設定（LocalAppData/AI-Team/service-build），核對 #1036 仍等待；尚無可讀取的登入憑證，不啟動無法登入的 broker。已核對 service-build／host-setup、service-delivery、Slack manifest（無 history scope）；功能／文件無新落差，無需修改現行文件。未宣稱部署成功。
+
+- 2026-10-11：修正首次登入流程缺少使用者入口的缺漏；新增 login.ps1，自動依設定保存遮蔽輸入並限制 ACL。假密碼測試驗證不輸出內容、正確 bytes、ACL、不覆寫；Python15項、check-source（Git Bash；WSL缺bash已改用既有Git Bash）、docs build通過。已核對 catalog、operations、configuration、system-map、service-delivery、host-setup；已修正 operations、configuration、service-delivery、host-setup、project-tree，system-map無需修改。已登錄#1036來源286檔。真實登入視窗已開啟但尚無輸入檔，未啟動broker、未聲稱服務建置成功。
+
+- 2026-10-11：修復 login.ps1 在實際 Windows PowerShell 視窗 Set-Acl 模組載入失敗，改 .NET ACL 雙版本分支。Windows PowerShell 5.1 與 PowerShell 7.6.5 假密碼／ACL／不輸出密碼／拒絕覆寫均通過，已重開視窗。核對 operations、configuration、system-map、host-setup、service-delivery；修正 host-setup 與 service-delivery 的相容性說明，其他文件無需變更。
+
+- 2026-10-11：實測gary登入hostname dev成功，修正私人設定帳號；原#1036過期未接單請求封存，恢復Slack任務。修復VirtualBox mkdir權限解讀差異，客體mkdir -m0700／工具copyto實測通過，15項測試及文件build通過。後續登入檔傳輸診斷遭auto-review拒絕（缺明確憑證傳入VM授權），sudo -n不可用；停止broker15916並詢問最小必要授權，未宣稱安裝成功。已核對service-delivery、host-setup、operations、configuration、system-map；修正service-delivery實測紀錄，其他內容無變。
+
+- 2026-10-11 09:53：使用者明確核准dev sudo及暫存登入資料，並指定新VM無人工介入完整建置為驗收目標，已追加decisions。修復登入檔Windows來源路徑，實機傳输及刪除通過；新增失敗清理回歸測試，16項與docs build通過。核對service-delivery、host-setup、operations、configuration、system-map；service-delivery已補實測，其餘無需變更。宿主broker37240與Agent可讀副本一致。#1036由Slack Infrastructure呼叫prepare，收據ae00fa676ca94f3ca2516076f4ca252e成功（SSH/Docker/Compose）；已自行送start，請求01d7ae03db704164a7f81849074aa1b4執行中。尚未取得START_PASS／HEALTH_PASS，不宣稱完成。
+
+- 2026-10-11：#1036 prepare真實成功並自行start，首次Gradle建置後dev不接受新工作階段，未取得START_PASS。已補依RAM預算、JVM限額與持久快取，17測試通過，實機待驗證。正常ACPI關機無回應；強制重啟被auto-review拒絕，已詢問明確授權且未執行。已核對service-delivery、host-setup、operations、configuration、system-map；修正service-delivery、host-setup，其他無變。保留現場，不宣稱新VM驗收成功。
+
+- 2026-10-11 11:29：明確授權後reset dev成功、SSH恢复；核心journal確認OOM兩Java，docker已無殘留。補start互斥與900秒內部逾時/自有容器清理/持久診斷；19項Windows及Linux通過，Linux鎖另測通過。已核對service-delivery、operations、configuration、system-map與host-setup，修正service-delivery實際逾時/清理行為，其他設定欄位未改。已透過Slack續跑1036，服務待實測，不宣稱完成。
+
+- 2026-10-11 11:50：Slack agent送出的start d556…真實成功：Gradle12m28s、exit0/noOOM，PostgreSQL/後端與HTTP200；宿主localhost8088另驗HTTP200。模型先因額度停，#1036 WAITING_QUOTA排10/17 22:29自動嘗試；未手改狀態或稱agent已結案。已同步Slack維運證據。新增broker輪詢退避與修正Gradle指定cache，20測試/check-source通過；前版cache未生效如實更正，下一輪待驗。核對service-delivery、host-setup、operations、configuration、system-map、quota-continuation；修正service-delivery及host-setup，其餘規則仍一致。新VM全自動及產品登入/持久化未驗收。
+
+- 本輪最終驗證：隔離Linux Maven605項（0失敗、0錯誤、11略過）、工具20項、check-source、docs-site build均通過。服務已啟動，Slack模型額度與新VM自主驗收仍是未完成事項。

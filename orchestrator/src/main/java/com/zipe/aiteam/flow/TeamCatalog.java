@@ -33,10 +33,13 @@ public class TeamCatalog {
         for (Role role : definition.roles().values()) readAsset(root, role.prompt(), assets);
         for (Node node : definition.nodes().values()) if (node.kind() == Kind.AGENT) {
             if (node.instructions() != null) readAsset(root, node.instructions(), assets);
+            if (node.skills() != null) for (String skill : node.skills()) readAsset(root, skill, assets);
             readAsset(root, node.schema(), assets);
             JsonNode schema = mapper.readTree(assets.get(node.schema()));
             require(schema.isObject() && schema.path("properties").isObject(), "schema 必須是具 properties 的 object：" + node.schema());
         }
+        // Freeze the shared contract in new v2 snapshots; existing persisted snapshots remain unchanged.
+        if (definition.version() >= 2) assets.put(IssueTracker.CONTRACT, IssueTracker.INSTRUCTIONS);
         String repository = env.apply(definition.project().repositoryEnv());
         require(repository != null && !repository.isBlank(), "未設定專案 repositoryEnv");
         Path repo = Path.of(repository).toRealPath();
@@ -106,6 +109,10 @@ public class TeamCatalog {
             if (n != null) ProtectedPathFallback.validate(d, id, n);
             require(n != null && n.kind() != null, "節點缺 kind：" + id);
             if (n.kind() == Kind.AGENT) {
+                if (n.skills() != null) {
+                    require(n.skills().size() <= 8 && new HashSet<>(n.skills()).size() == n.skills().size(), "skills 最多八份且不得重複：" + id);
+                    for (String skill : n.skills()) require(skill != null && skill.matches("skills/[a-z0-9-]+/(SKILL\\.md|references/[a-z0-9-]+\\.md)"), "無效 skill 路徑：" + id);
+                }
                 require(d.roles().containsKey(n.role()), "節點引用不存在角色：" + id);
                 require(n.scope() != null && n.gate() != null, "節點缺權限或驗證政策：" + id);
                 require(!n.localTestNetwork() || (n.scope() == Scope.LIMITED && n.gate() == Gate.VERIFICATION
@@ -152,6 +159,8 @@ public class TeamCatalog {
         d.project().protectedPaths().forEach(PathRules::validate);
         if (d.project().cachePaths() != null) d.project().cachePaths().forEach(ConfiguredExecutor::validateCache);
         OperationContract.validate(d);
+        ServiceDelivery.validate(d);
+        AgentDispatch.validate(d);
         for (String id : d.nodes().keySet()) dependencies(d, id, new HashSet<>());
         if (d.version() >= 2) {
             require(d.nodes().values().stream().filter(n -> n.gate() == Gate.REQUIREMENTS).count() == 1,

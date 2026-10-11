@@ -25,6 +25,56 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class WorkspaceManagerTest {
 
+    @Test void comparesCommittedObjectsAndRejectsMissingBaselineOrUnsafePaths() throws Exception {
+        Path ws = manager.provision(task("1001"));
+        String base = manager.headSha("1001");
+        assertThat(manager.compareFiles("1001", base, base, List.of("README.md"))).allMatch(WorkspaceManager.FileIdentity::unchanged);
+        Files.writeString(ws.resolve("README.md"), "changed\n");
+        run(ws, "git", "add", "README.md");
+        run(ws, "git", "commit", "--quiet", "-m", "change");
+        assertThat(manager.compareFiles("1001", base, manager.headSha("1001"), List.of("README.md"))).noneMatch(WorkspaceManager.FileIdentity::unchanged);
+        run(ws, "git", "mv", "README.md", "中文 空白.md");
+        run(ws, "git", "commit", "--quiet", "-m", "rename");
+        String renamed = manager.headSha("1001");
+        assertThat(manager.compareFiles("1001", base, renamed, List.of("README.md")).getFirst().after()).isEmpty();
+        assertThat(manager.compareFiles("1001", renamed, renamed, List.of("中文 空白.md"))).allMatch(WorkspaceManager.FileIdentity::unchanged);
+        assertThatThrownBy(() -> manager.compareFiles("1001", null, renamed, List.of("README.md"))).hasMessageContaining("實作前");
+        assertThatThrownBy(() -> manager.compareFiles("1001", base, renamed, List.of("missing"))).hasMessageContaining("沒有指定檔案");
+        for (String path : List.of("../README.md", ":(glob)*", ".git/config", "dir/*", "/tmp/a", "a\nb"))
+            assertThatThrownBy(() -> manager.compareFiles("1001", base, renamed, List.of(path))).hasMessageContaining("無效");
+    }
+
+    @Test void fileComparisonDetectsModeAndBinaryChangesAndRejectsDirectories() throws Exception {
+        Path ws = manager.provision(task("1001"));
+        Files.createDirectories(ws.resolve("data"));
+        Files.write(ws.resolve("data/file.bin"), new byte[]{0, 1, 2});
+        run(ws, "git", "add", "."); run(ws, "git", "commit", "--quiet", "-m", "binary");
+        String base = manager.headSha("1001");
+        run(ws, "git", "update-index", "--chmod=+x", "README.md");
+        run(ws, "git", "commit", "--quiet", "-m", "mode");
+        assertThat(manager.compareFiles("1001", base, manager.headSha("1001"), List.of("README.md"))).noneMatch(WorkspaceManager.FileIdentity::unchanged);
+        Files.write(ws.resolve("data/file.bin"), new byte[]{0, 3, 2});
+        run(ws, "git", "add", "data/file.bin"); run(ws, "git", "commit", "--quiet", "-m", "binary change");
+        assertThat(manager.compareFiles("1001", base, manager.headSha("1001"), List.of("data/file.bin"))).noneMatch(WorkspaceManager.FileIdentity::unchanged);
+        assertThatThrownBy(() -> manager.compareFiles("1001", base, base, List.of("data"))).hasMessageContaining("一般版控檔案");
+    }
+    @Test void gitReplacementAndSymlinkCannotHideChangedFiles() throws Exception {
+        Path ws = manager.provision(task("1001"));
+        String base = manager.headSha("1001");
+        Files.writeString(ws.resolve("README.md"), "changed\n");
+        run(ws, "git", "add", "."); run(ws, "git", "commit", "--quiet", "-m", "change");
+        String head = manager.headSha("1001");
+        run(ws, "git", "replace", base, head);
+        assertThat(manager.compareFiles("1001", base, head, List.of("README.md"))).noneMatch(WorkspaceManager.FileIdentity::unchanged);
+        run(ws, "git", "replace", "-d", base);
+        String blob = out(ws, "git", "rev-parse", "HEAD:README.md");
+        run(ws, "git", "update-index", "--cacheinfo", "120000," + blob + ",README.md");
+        run(ws, "git", "commit", "--quiet", "-m", "symlink mode");
+        String linked = manager.headSha("1001");
+        assertThat(manager.compareFiles("1001", base, linked, List.of("README.md"))).noneMatch(WorkspaceManager.FileIdentity::unchanged);
+        assertThatThrownBy(() -> manager.compareFiles("1001", linked, linked, List.of("README.md"))).hasMessageContaining("一般版控檔案");
+    }
+
     @TempDir Path tmp;
 
     private Path origin;        // 模擬 GitHub 的 bare repo

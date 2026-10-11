@@ -9,8 +9,13 @@ releases/
 backups/
 orchestrator/target/
 .build-m2/
+.build-cache/
 *.tgz
 .codex/
 
 # Claude Code 個人設定（不共用）
 .claude/settings.local.json
+
+# Python skill helper caches
+**/__pycache__/
+*.pyc

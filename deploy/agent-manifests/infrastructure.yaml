@@ -1,0 +1,29 @@
+display_information:
+  name: BP Infrastructure Agent
+  description: Preview 環境部署、健康檢查與清理
+  background_color: "#5b6ee1"
+  long_description: >-
+    這是 bestpartner 專案 AI 軟體團隊中的「Infrastructure Agent」角色，
+    以 workspace 內獨立使用者的身分存在，讓部署與環境操作的發言能和開發、驗收及系統訊息清楚區分，
+    也能被個別 @ 提及與查看個人檔案。它負責建立任務專屬 Preview Environment、分配連接埠、執行健康檢查、
+    提供 QA 測試入口，以及在驗收完成後清理暫時服務與資料。正式部署行為仍由中央 orchestrator 的流程契約、
+    沙箱與稽核控制；直接 @本角色只進行唯讀對話，不會自行部署、刪除環境或變更正式服務。
+    Agent 彼此的交接訊息不會觸發工作。請將本 App 邀請進 bestpartner 頻道，並設定它自己的 Socket Mode Token。
+features:
+  bot_user:
+    display_name: BP Infrastructure Agent
+    always_online: false
+oauth_config:
+  scopes:
+    bot:
+      - chat:write
+      - app_mentions:read
+settings:
+  event_subscriptions:
+    bot_events:
+      - app_mention
+  interactivity:
+    is_enabled: false
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false

@@ -473,6 +473,17 @@ class FlowEngineTest {
         assertThat(flow.blockedFindings).doesNotContainKey("intake");
     }
 
+    @Test void commandFailurePreservesEvidenceAndContinuesInsteadOfInventingPermissionGap() throws Exception {
+        mode = "commandFailure";
+        deniedAt = "intake";
+        engine.run(task);
+        var flow = store.flow(task.id()).orElseThrow();
+        assertThat(flow.receipts).containsKey("intake");
+        assertThat(flow.blockedFindings).doesNotContainKey("intake");
+        assertThat(flow.context).contains("不代表權限拒絕", "new blank line at EOF");
+        assertThat(calls).anyMatch(c -> c.startsWith("implementation:"));
+    }
+
     @Test void deniedToolDoesNotBlockAWorkspaceNodeWhoseOutputIsAnArtifact() throws Exception {
         // #1014：implementation 成功並提交，只因為 for 迴圈跑 mvn 被拒就被否決，導致 verification 永遠啟動不了。
         deniedAt = "implementation";
@@ -1003,10 +1014,13 @@ class FlowEngineTest {
         when(catalog.snapshot()).thenReturn(TeamCatalog.load(Path.of(spring ? "teams/spring-starters.json" : "teams/node-web.json"), key -> tmp.resolve("repo").toString()));
         // 既有流程測試維持「不需計畫核准」契約；新核准測試另明確啟用。
         var original = catalog.snapshot();
+        // Existing scenarios exercise persisted pre-issue-tracking snapshots. New contract tests opt in explicitly.
+        var legacyAssets = new java.util.LinkedHashMap<>(original.assets());
+        legacyAssets.remove(IssueTracker.CONTRACT);
         ObjectNode legacyDefinition = mapper.valueToTree(original.definition());
         ((ObjectNode)legacyDefinition.path("project")).put("requirePlanApproval", false);
         when(catalog.snapshot()).thenReturn(new TeamDefinition.Snapshot(original.revision(),
-                mapper.treeToValue(legacyDefinition, TeamDefinition.class), original.repository(), original.assets()));
+                mapper.treeToValue(legacyDefinition, TeamDefinition.class), original.repository(), legacyAssets));
         when(props.allowedUsers()).thenReturn(Set.of("u"));
         when(workspace.exists("42")).thenAnswer(c -> provisioned);
         when(workspace.provision(eq(task), any(), anyString())).thenAnswer(c -> { provisioned = true; return tmp; });
@@ -1044,6 +1058,14 @@ class FlowEngineTest {
                 throw new QuotaExceeded("usage_limit_reached");
             }
             JsonNode report = report(node.gate());
+            if (mode.startsWith("service") && flow.node.equals("intake")) ((ObjectNode)report).put("route", "service");
+            if (mode.equals("draftRepair") && flow.node.equals("intake")
+                    && calls.stream().filter(s -> s.startsWith("intake:")).count() == 1)
+                ((ObjectNode)report.path("requirements").get(0)).putArray("acceptance_items");
+            if (mode.equals("serviceRepair") && flow.node.equals("service")
+                    && calls.stream().filter(s -> s.startsWith("service:")).count() == 1)
+                ((ObjectNode)report.path("checks").get(1)).put("exit_code", 1);
+            if (mode.startsWith("service") && flow.node.equals("service_triage")) ((ObjectNode)report).put("route", "service");
             if (node.gate() == TeamDefinition.Gate.TEST_PLAN && mode.equals("inspect")) {
                 ((ObjectNode) report.path("scenarios").get(0)).putArray("operation_ids").add(OperationContract.INSPECT_CONTENT);
             } else if (node.gate() == TeamDefinition.Gate.TEST_PLAN
@@ -1092,9 +1114,42 @@ class FlowEngineTest {
                 ((ObjectNode)report).withArray("uncertainties").add("SMTP 無法核實");
             if (mode.equals("blockedDecision") && flow.node.equals("triage"))
                 ((ObjectNode)report).set("human_decision", mapper.readTree("{\"headline\":\"驗收發現既有限制\",\"question\":\"smtps 這次要一起支援嗎？\",\"options\":[{\"label\":\"另開任務處理\",\"consequence\":\"照現況完成\"},{\"label\":\"這次一起支援\",\"consequence\":\"重跑實作與驗收\"}],\"recommendation\":\"建議另開任務\",\"also_needed\":[]}"));
+            if (mode.startsWith("dispatch") && flow.node.equals("plan"))
+                ((ObjectNode) report).putObject("handoff").put("role", mode.equals("dispatchInvalid") ? "security_auditor" : "infrastructure")
+                        .put("reason", "環境建置需要此專業").put("instruction", "完成 Compose 與驗證");
+            if (mode.equals("dispatchDirty") && flow.node.equals("implementation")) workspaceClean = false;
+            if (mode.equals("dispatchQuota") && flow.node.equals("implementation")) {
+                store.saveCheckpoint(new Checkpoint("42", flow.node, "codex", "sonnet", "dispatch-session", "context", "head1", "quota"));
+                throw new QuotaExceeded("usage_limit_reached");
+            }
             JsonNode denials = deniedAt != null && deniedAt.equals(flow.node)
                     ? mapper.readTree("[{\"tool_name\":\"Bash\",\"tool_use_id\":\"t1\",\"tool_input\":{\"command\":\"git show --stat 814c9b1\"}}]")
                     : null;
+            if (denials != null && mode.equals("commandFailure")) denials = mapper.readTree("""
+                    [{"tool_name":"command_execution","failure_kind":"COMMAND_FAILURE",
+                      "tool_input":{"command":"git diff --check"},"reason":"exit_code=2; new blank line at EOF"}]
+                    """);
+            if (IssueTracker.enabled(flow)) {
+                ObjectNode tracked = (ObjectNode) report;
+                tracked.put("issue_revision", IssueTracker.revision(flow));
+                tracked.putArray("issue_updates"); tracked.putArray("issue_checks");
+                if (node.gate() == TeamDefinition.Gate.REQUIREMENTS) {
+                    tracked.put("work_intent", "WORK").put("intent_evidence", "檢查並修好全部問題");
+                    for (int i = 1; i <= 9; i++) tracked.withArray("issue_updates").addObject()
+                            .put("id", "I" + i).put("description", "problem " + i).put("scope", "REPAIR")
+                            .put("evidence", "file:" + i).put("reason", "使用者目標內")
+                            .putArray("requirement_ids").add("R1");
+                    if (mode.equals("issueQuestion") && calls.stream().filter(s -> s.startsWith("intake:")).count() == 1)
+                        tracked.put("route", "question");
+                }
+                if (Set.of(TeamDefinition.Gate.VERIFICATION, TeamDefinition.Gate.REVIEW, TeamDefinition.Gate.SERVICE).contains(node.gate())) {
+                    int count = mode.equals("issueMissing") && flow.node.equals("verification")
+                            && calls.stream().filter(s -> s.startsWith("verification:")).count() == 1 ? 1 : 9;
+                    for (int i = 1; i <= count; i++) tracked.withArray("issue_checks").addObject()
+                            .put("id", "I" + i).put("status", "PASS").put("evidence", "獨立檢查 file:" + i);
+                }
+                if (flow.node.equals("triage") && mode.equals("issueMissing")) tracked.put("route", "implementation");
+            }
             return new AgentRuntime.RuntimeResult("session", "", report, 0.1, false, tmp.resolve("log"), "model", denials);
         });
         when(verifier.verify(any(), any())).thenAnswer(c -> {
@@ -1114,8 +1169,143 @@ class FlowEngineTest {
             case TEST_PLAN -> "\"status\":\"READY\",\"scenarios\":[{\"id\":\"s1\",\"requirement_ids\":[\"R1\"],\"acceptance_ids\":[\"R1-A1\"],\"operation_ids\":[\"test\"],\"counterexample\":\"只檢查返回值會漏掉未送達；測試檢查收件\",\"criterion\":\"c\",\"preconditions\":\"p\",\"test_data\":\"d\",\"method\":\"m\",\"steps\":\"s\",\"expected_result\":\"r\",\"environment\":\"e\"}]";
             case VERIFICATION -> "\"verdict\":\"PASS\",\"verify_passed\":true,\"scenario_results\":[{\"scenario_id\":\"s1\",\"status\":\"PASS\",\"actual_result\":\"ok\",\"evidence\":\"log\",\"command\":\"npm test\"}],\"findings\":[],\"uncertainties\":[]";
             case REVIEW -> "\"verification_status\":\"VERIFIED\",\"confidence\":\"HIGH\",\"verdict\":\"APPROVE\",\"blockers\":[],\"checked\":[\"diff\"],\"findings\":[]";
+            case SERVICE -> "\"summary\":\"服務已啟動\",\"target\":\"test-host\",\"service_status\":\"RUNNING\",\"product_code_changed\":false,\"uncertainties\":[],\"checks\":[{\"name\":\"start\",\"operation_id\":\"start\",\"status\":\"PASS\",\"exit_code\":0,\"evidence\":\"start log\",\"acceptance_ids\":[\"R1-A1\"]},{\"name\":\"health\",\"operation_id\":\"health\",\"status\":\"PASS\",\"exit_code\":0,\"evidence\":\"health log\",\"acceptance_ids\":[\"R1-A1\"]}]";
         };
         return mapper.readTree("{\"execution_status\":\"COMPLETED\",\"failure_report\":null," + fields + "}");
+    }
+
+    void enableIssueTracking() {
+        var flow = store.flow(task.id()).orElseThrow();
+        var assets = new java.util.LinkedHashMap<>(flow.snapshot.assets());
+        assets.put(IssueTracker.CONTRACT, IssueTracker.INSTRUCTIONS);
+        flow.snapshot = new TeamDefinition.Snapshot("tracked", flow.snapshot.definition(), flow.snapshot.repository(), assets);
+        store.saveFlow(task.id(), flow);
+    }
+    @Test void issueQuestionMisclassificationRepairsItselfWithoutHuman() {
+        enableIssueTracking(); mode = "issueQuestion";
+        engine.run(task);
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        assertThat(calls.stream().filter(s -> s.startsWith("intake:")).count()).isEqualTo(2);
+        assertThat(store.flow("42").orElseThrow().issueInventory).hasSize(9);
+    }
+    @Test void issueMissingChecksRouteBackToRepairUntilAllNineAreVerified() {
+        enableIssueTracking(); mode = "issueMissing";
+        engine.run(task);
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        assertThat(calls.stream().filter(s -> s.startsWith("verification:")).count()).isEqualTo(2);
+        var flow = store.flow("42").orElseThrow();
+        assertThat(flow.issueEvidence).hasSize(9);
+        assertThat(IssueTracker.completionReason(flow)).isNull();
+    }
+
+    void enableService(boolean target) throws Exception {
+        var f = store.flow(task.id()).orElseThrow();
+        ObjectNode d = mapper.valueToTree(f.snapshot.definition());
+        var nodes = (ObjectNode)d.path("nodes");
+        ((ObjectNode)nodes.path("intake").path("routes")).put("service", "service");
+        ObjectNode service = ((ObjectNode)nodes.path("verification")).deepCopy();
+        service.put("role", "builder").put("gate", "SERVICE").put("next", "end").put("blocked", "service_triage");
+        service.putNull("plan"); service.put("localTestNetwork", false); service.putArray("requires").add("intake");
+        service.putObject("routes"); service.remove("candidateRoles"); service.remove("protectedPathFallback");
+        nodes.set("service", service);
+        ObjectNode triage = ((ObjectNode)nodes.path("triage")).deepCopy();
+        triage.putArray("requires").add("intake"); triage.putObject("routes").put("service", "service").put("human", "human");
+        triage.put("next", "human"); nodes.set("service_triage", triage);
+        if (target) {
+            ((ObjectNode)d.path("project")).set("serviceTarget", mapper.readTree("{\"name\":\"test-host\",\"checks\":{\"start\":\"start\",\"health\":\"health\"}}"));
+            for (String id : List.of("start", "health"))
+                ((ObjectNode)d.path("project").path("operations")).set(id, mapper.readTree("{\"nodes\":[\"service\"],\"directory\":\".\",\"argv\":[\"git\",\"status\"],\"writes\":[]}"));
+        }
+        var definition = mapper.treeToValue(d, TeamDefinition.class); TeamCatalog.validate(definition);
+        f.snapshot = new TeamDefinition.Snapshot("service-version", definition, f.snapshot.repository(), f.snapshot.assets());
+        store.saveFlow(task.id(), f);
+    }
+    @Test void serviceBuildCompletesWithoutQaOrPublication() throws Exception {
+        enableService(true); mode = "serviceSuccess"; engine.run(task);
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.COMPLETED);
+        assertThat(calls).containsExactly("intake:coordinator", "service:builder");
+        verifyNoInteractions(verifier, publisher);
+    }
+    @Test void serviceFailureRoutesBackToBuilderAndRechecks() throws Exception {
+        enableService(true); mode = "serviceRepair"; engine.run(task);
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.COMPLETED);
+        assertThat(calls).containsExactly("intake:coordinator", "service:builder", "service_triage:coordinator", "service:builder");
+        verifyNoInteractions(verifier, publisher);
+    }
+    @Test void serviceWithoutTargetStopsBeforeExecution() throws Exception {
+        enableService(false); mode = "serviceMissing"; engine.run(task);
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        assertThat(calls).containsExactly("intake:coordinator");
+        verifyNoInteractions(verifier, publisher);
+    }
+    @Test void serviceCannotChangeProductFiles() throws Exception {
+        enableService(true); mode = "serviceSuccess";
+        when(workspace.auditPaths(eq("42"), anyString())).thenReturn(List.of("src/main/Product.java"));
+        engine.run(task);
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        assertThat(store.flow(task.id()).orElseThrow().receipts).doesNotContainKey("service");
+    }
+    @Test void invalidRequirementDraftIsAutomaticallyRepairedBeforeBaseline() throws Exception {
+        mode = "draftRepair"; engine.run(task);
+        assertThat(calls.stream().filter(s -> s.startsWith("intake:")).count()).isEqualTo(2);
+        assertThat(store.flow(task.id()).orElseThrow().receipts).containsKey("intake");
+        assertThat(calls).anyMatch(s -> s.startsWith("implementation:"));
+    }
+
+    void enableAgentDispatch() throws Exception {
+        FlowRun f = store.flow("42").orElseThrow();
+        ObjectNode d = mapper.valueToTree(f.snapshot.definition());
+        ObjectNode roles = (ObjectNode) d.path("roles");
+        ObjectNode infra = ((ObjectNode) roles.get("builder")).deepCopy();
+        infra.put("name", "Infrastructure Agent").put("capabilities", "環境建置").put("runtime", "codex");
+        infra.putNull("botTokenEnv"); infra.putNull("appTokenEnv");
+        roles.set("infrastructure", infra);
+        ((ObjectNode) roles.get("builder")).put("capabilities", "應用實作");
+        ((ObjectNode) d.path("nodes").path("implementation")).putArray("candidateRoles").add("builder").add("infrastructure");
+        var definition = mapper.treeToValue(d, TeamDefinition.class); TeamCatalog.validate(definition);
+        f.snapshot = new TeamDefinition.Snapshot("dispatch", definition, f.snapshot.repository(), f.snapshot.assets());
+        store.saveFlow("42", f);
+    }
+    @Test void agentDispatchUsesChosenRoleAndKeepsAllGates() throws Exception {
+        enableAgentDispatch(); mode = "dispatch";
+        engine.run(task);
+        assertThat(calls).contains("implementation:infrastructure", "verification:tester", "review:security_auditor")
+                .doesNotContain("implementation:builder");
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        assertThat(store.flow("42").orElseThrow().assignments.get("implementation").role()).isEqualTo("infrastructure");
+        verifyNoInteractions(publisher);
+    }
+    @Test void agentDispatchRejectsUnauthorizedRoleBeforeExecution() throws Exception {
+        enableAgentDispatch(); mode = "dispatchInvalid";
+        engine.run(task);
+        assertThat(calls).noneMatch(c -> c.startsWith("implementation:"));
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        assertThat(store.flow("42").orElseThrow().assignments).isEmpty();
+    }
+    @Test void agentDispatchPersistsChoiceAcrossQuotaResume() throws Exception {
+        enableAgentDispatch(); mode = "dispatchQuota";
+        engine.run(task);
+        assertThat(task.state()).isEqualTo(Task.State.WAITING_QUOTA);
+        assertThat(store.flow("42").orElseThrow().assignments.get("implementation").role()).isEqualTo("infrastructure");
+        mode = "dispatch"; calls.clear();
+        List<Runnable> jobs = new ArrayList<>(); engine.resume(task, "繼續", "u", jobs::add); jobs.getFirst().run();
+        assertThat(calls.getFirst()).isEqualTo("implementation:infrastructure");
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+    }
+    @Test void agentDispatchChecksOperationPermissionBeforeAssignment() throws Exception {
+        enableAgentDispatch(); mode = "dispatch";
+        doThrow(new IllegalArgumentException("缺少必要操作的工具權限")).when(executor).validateAssignment(any(), any());
+        engine.run(task);
+        assertThat(calls).noneMatch(c -> c.startsWith("implementation:"));
+        assertThat(store.flow("42").orElseThrow().assignments).isEmpty();
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
+    }
+    @Test void agentDispatchCommitsCodexChangesBeforeVerification() throws Exception {
+        enableAgentDispatch(); mode = "dispatchDirty";
+        engine.run(task);
+        verify(workspace).commitPaths(eq("42"), anyList(), contains("自主派工實作"));
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        assertThat(store.flow("42").orElseThrow().independentEvidence.head()).isEqualTo("head-qa-tests");
     }
     @Test void arbitraryFrontendAndReviewerExecuteFromConfiguration() throws Exception {
         engine.run(task);
@@ -1519,6 +1709,22 @@ class FlowEngineTest {
         assertThat(saved.blockedFindings).doesNotContainKey("verification");
         assertThat(saved.context).contains("MailTimeoutTest.boundsElapsed:142");
         verify(slack).post(any(), any(), any(), contains("已自動交回"));
+        verifyNoInteractions(publisher);
+    }
+    @Test void changedProtectedOldFileReturnsToImplementationWithoutChangingRequirementsOrBaseline() throws Exception {
+        doThrow(new IndependentVerifier.CheckFailed(List.of(FileComparison.OPERATION), 1, "/runs/files.json", "README.md 被誤改"))
+                .doAnswer(c -> {
+                    FlowRun f = c.getArgument(1);
+                    return new IndependentVerifier.Receipt(workspaceHead, f.baselineRevision, f.snapshot.revision(), "start", "end", List.of());
+                }).when(verifier).verify(any(), any());
+        engine.run(task);
+        assertThat(calls.stream().filter("implementation:builder"::equals)).hasSize(2);
+        assertThat(calls.stream().filter(s -> s.startsWith("intake:"))).hasSize(1);
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        FlowRun saved = store.flow(task.id()).orElseThrow();
+        assertThat(saved.comparisonBase).isNotBlank();
+        assertThat(saved.context).contains("README.md 被誤改", "系統比對指定舊檔");
+        assertThat(saved.baselineHistory).isEmpty();
         verifyNoInteractions(publisher);
     }
     @Test void interruptStopsOnlyThisRoundAndResumeContinuesTheSameSession() throws Exception {

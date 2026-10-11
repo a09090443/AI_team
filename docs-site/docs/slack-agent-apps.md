@@ -1,4 +1,4 @@
-# 建立 Slack App（主 App 與五個角色）
+# 建立 Slack App（主 App 與角色 App）
 
 系統需要一個主 App 與五個角色 App：
 
@@ -9,6 +9,9 @@
 
 角色 App 不做也能運作——角色會退回「主 App 換名字」的模式，差別是不會出現在成員清單，
 **交接訊息裡的 mention 會變成粗體文字而 tag 不到人**，也不能直接 @ 角色提問。
+
+上表是現行預設團隊，不是配置式模式的角色上限。要在 `orchestrator/teams/*.json` 新增第六個以上的角色，
+依下方「新增配置式角色」辦理；不要把新角色硬加進 legacy role switch。
 
 ---
 
@@ -111,3 +114,78 @@ done
 
 交接訊息中的 mention 是**通知**，不是**觸發**；實際執行順序由 orchestrator 驅動，
 理由見 [互動模型](interaction-model.md)。
+
+---
+
+## 新增配置式角色
+
+以下流程適用於 `AI_TEAM_DEFINITION` 啟用的配置式團隊，例如在 bestpartner 新增 Infrastructure Agent。
+角色能否執行，與是否有獨立 Slack App 是兩件事：沒有角色 App 時仍可執行節點，但由主 App 代發、無法直接 @ 該角色。
+
+**交付要求**：每次新增 Agent 的完成回報都必須附上本節實際套用後的 Slack 操作方式，包括 manifest 路徑、App 建立／安裝、
+兩個 token 的環境變數名稱、`/invite`、服務重啟，以及直接 `@` 與正式流程身分的驗證結果或待辦。不可只交付團隊 JSON；
+若決定不建立獨立角色 App，也必須明示主 App 代發與不能直接 `@` 的限制。
+
+### 1. 先定義角色與流程責任
+
+在目標團隊 JSON 的 `roles` 新增穩定且不重複的角色 ID，並設定 `name`、`runtime`、`model`、`prompt`、`tools`，以及兩個
+**環境變數名稱**（不是 token 值）：
+
+```json
+"infrastructure": {
+  "name": "Infrastructure Agent",
+  "runtime": "codex",
+  "model": "gpt-5.6-sol",
+  "reasoningEffort": "medium",
+  "prompt": "prompts/infrastructure.md",
+  "botTokenEnv": "SLACK_BOT_TOKEN_INFRASTRUCTURE",
+  "appTokenEnv": "SLACK_APP_TOKEN_INFRASTRUCTURE",
+  "tools": ["Read"]
+}
+```
+
+再新增或調整 `nodes`，讓節點的 `role` 指向新角色，或以 `candidateRoles` 納入自主派工候選（須提供 `capabilities`），
+並補齊 prompt、schema、轉移、前置契約與權限政策。上面的唯讀範例不足以承接實作；候選角色須另外具備相符工具。
+只增加 Slack App、不在團隊 JSON 加角色與節點，不會讓新角色進入正式流程。完整配置規則見
+[配置式專案、角色與工作流程](configurable-team.md)。
+
+### 2. 建立角色 manifest
+
+從 `deploy/agent-manifests/` 複製權限最接近的角色 manifest 為新檔，例如
+`deploy/agent-manifests/infrastructure.yaml`，至少改掉：
+
+- `display_information.name` 與 `bot_user.display_name`；名稱須符合 Slack 長度限制。
+- `display_information.description`／`long_description`，如實描述角色用途。
+- 保留 Socket Mode、`app_mention`、`chat:write`、`app_mentions:read`；角色 App 不加 interactivity。
+
+新增受版控檔案時，同步把檔名與用途加入 `docs-site/agent/project-tree.md`。若這是 repo 內正式支援的角色，也要把 manifest、
+token 變數占位與角色名稱加入 `deploy/bootstrap/check-source.sh` 的來源一致性檢查；否則 build 不會替你驗證新角色的資產是否齊全。
+
+依本頁第 1 節用 manifest 建立／安裝 App，取得該 App 自己的 `xoxb-` 與 `xapp-`；不同服務實例不可共用同一個
+App-Level Token。
+
+### 3. 在目標實例設定 token
+
+把團隊 JSON 引用的變數加入該實例的 `~/ai-team/env.sh`（權限 600）；token 不可放進 JSON、Git、聊天或 shell 歷史：
+
+```bash
+export SLACK_BOT_TOKEN_INFRASTRUCTURE=""
+export SLACK_APP_TOKEN_INFRASTRUCTURE=""
+```
+
+實際值由使用者本人以編輯器填入。若此角色是 repo 隨附的通用角色，`deploy/env.sh.template` 也要加入空白占位；
+只屬於單一部署實例的角色，可只放在該實例的 `env.sh`。`team.env` 原則上放非機密的團隊切換設定，不放 token。
+
+### 4. 邀請、靜態驗證、部署與重啟
+
+1. 在目標頻道執行 `/invite @Infrastructure Agent`。
+2. 以 `--validate-team` 驗證團隊 JSON、prompt、schema、節點引用與 repo；它不會驗證 Slack token 或 scope。
+3. 執行 `bash deploy/bootstrap/check-source.sh`；若新增了檔案，文件目錄樹與 catalog 也必須一致。
+4. 確認沒有執行中／排隊任務，部署 `teams/`、prompt/schema 與必要程式變更後重啟服務。配置修改只影響重啟後建立的新任務；舊任務沿用快照。
+
+### 5. 驗收
+
+- 啟動 log 顯示新角色使用獨立 Slack 帳號，而非共用主 token。
+- 在目標頻道直接 `@Infrastructure Agent`，確認唯讀角色對話由正確實例接收。
+- 建立隔離測試任務，確認流程真的進入新節點、以新角色身分貼出報告，受阻與續跑路由正常。
+- 不把「App 能被 @」當成部署、寫入或發布權限已正確；角色工具、沙箱、外部系統憑證與人工閘門仍須分別驗證。

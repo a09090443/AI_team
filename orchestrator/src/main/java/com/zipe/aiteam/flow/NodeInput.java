@@ -21,6 +21,8 @@ final class NodeInput {
                 .append(flow.baselineRevision == null ? "" : flow.baselineRevision).append('\n')
                 .append("supplements=").append(flow.supplements).append('\n')
                 .append(flow.lastBlockReason == null ? "" : flow.lastBlockReason);
+        if (flow.assignments.containsKey(flow.node)) raw.append("\nassignedRole=").append(node.role());
+        if (IssueTracker.enabled(flow)) raw.append("\nissues=").append(IssueTracker.revision(flow));
         if (node.requires() != null) for (String dependency : node.requires()) {
             raw.append('\n').append(dependency).append('=')
                .append(flow.receipts.get(dependency) == null ? "" : Traceability.digest(flow.receipts.get(dependency)));

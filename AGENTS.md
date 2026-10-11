@@ -22,6 +22,9 @@
 - QA 受阻與 PM 派工：[docs-site/docs/pm-triage.md](docs-site/docs/pm-triage.md)。
 - 直接對角色提問／派工：[docs-site/docs/direct-agent-requests.md](docs-site/docs/direct-agent-requests.md)。
 - 配置式團隊與舊任務相容：[docs-site/docs/configurable-team.md](docs-site/docs/configurable-team.md)；新角色／流程改 `orchestrator/teams/`，不要再擴充 legacy role switch。
+- **新增 Agent 的 Slack 交付要求**：每次新增角色時，完成回報必須一併提供如何把該角色加入 Slack，至少包含角色 manifest
+  路徑、建立／安裝 App、Bot Token 與 App-Level Token 對應的環境變數、邀請進目標頻道、服務重啟及直接 `@`／流程身分驗證；
+  詳見 [建立 Slack App](docs-site/docs/slack-agent-apps.md#新增配置式角色)。若刻意不建立獨立角色 App，也要明示會由主 App 代發且無法直接 `@`。
 - 跨專案操作、沙箱預檢、真人計畫核准與配置遷移：[docs-site/docs/cross-project-execution.md](docs-site/docs/cross-project-execution.md)；操作宣告不是自動擴權，舊快照不自動更新。
 - v2 需求追溯／返工／系統驗證／PR 狀態：[docs-site/docs/engineering-workflow.md](docs-site/docs/engineering-workflow.md)。
 - 資料表與欄位說明（含四張 JSON 快照表的結構）：[docs-site/docs/data-model.md](docs-site/docs/data-model.md)；

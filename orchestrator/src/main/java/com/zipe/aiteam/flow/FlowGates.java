@@ -10,8 +10,11 @@ public final class FlowGates {
     public static String blockingReason(Node node, JsonNode result, FlowRun flow) {
         String common = FailureReport.blockingReason("generic", result);
         if (common != null) return common;
+        String issues = IssueTracker.reportReason(node, result, flow);
+        if (issues != null) return issues;
         return switch (node.gate()) {
             case REPORT -> null;
+            case SERVICE -> ServiceDelivery.blockingReason(result, flow);
             case REQUIREMENTS -> java.util.Set.of("question", "human").contains(result.path("route").asText()) ? null : Traceability.requirementsReason(result);
             case IMPLEMENTATION -> FailureReport.implementationIncomplete(result) ? "實作品質契約未通過或有範圍衝突" : null;
             case TEST_PLAN -> flow.snapshot.definition().version() >= 2 ? Traceability.planReason(result, flow) : QaGate.planReason(result);
@@ -31,6 +34,8 @@ public final class FlowGates {
     static String publicationReason(FlowRun flow, String head, java.util.Set<String> pending) {
         Node approval = flow.snapshot.definition().nodes().get(flow.node);
         if (flow.dialogue || approval == null || approval.kind() != Kind.APPROVAL) return "不是發布核准節點";
+        String issues = IssueTracker.completionReason(flow);
+        if (issues != null) return issues;
         if (flow.snapshot.definition().version() >= 2) {
             String invalid = Traceability.requirementsReason(Traceability.baseline(flow));
             if (invalid != null) return invalid;

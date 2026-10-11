@@ -222,7 +222,8 @@ class ConfiguredExecutorTest {
         assertThat(request.role()).isEqualTo("frontend"); assertThat(request.model()).isEqualTo("sonnet");
         assertThat(request.allowedTools()).contains("Bash(npm *)").doesNotContain("Bash(mvn *)");
         assertThat(request.prompt()).contains("Node Web", "TypeScript", "新增畫面");
-        assertThat(Files.readString(request.systemPromptFile())).isEqualTo(flow.snapshot.assets().get("prompts/implement.md"));
+        assertThat(Files.readString(request.systemPromptFile())).isEqualTo(flow.snapshot.assets().get("prompts/implement.md")
+                + "\n\n" + flow.snapshot.assets().get(IssueTracker.CONTRACT));
         verify(store).saveCheckpoint(argThat(cp -> cp.role().equals("frontend") && cp.runtime().equals("claude-code")));
     }
     @Test void limitedNodeCannotWriteProductOrWholeWorkspace() throws Exception {

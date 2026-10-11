@@ -16,12 +16,18 @@ import java.util.concurrent.TimeUnit;
 @Component
 public class IndependentVerifier {
     public record CommandResult(List<String> argv, int exitCode, String log, String sha256) {}
+    public record FileEvidence(String base, String head, String planDigest, List<WorkspaceManager.FileIdentity> files,
+                               String log, String sha256) {}
     /**
      * @param docOnlyChanges 非 null 表示系統依 git diff 判定為純文件變更、依配置略過建置測試；此時 commands 為空，
      *                       這裡列出判定所依據的變更檔案。null 為一般收據。
      */
     public record Receipt(String head, String baseline, String configuration, String startedAt, String completedAt,
-                          List<CommandResult> commands, List<String> docOnlyChanges) {
+                          List<CommandResult> commands, List<String> docOnlyChanges, FileEvidence fileComparison) {
+        public Receipt(String head, String baseline, String configuration, String startedAt, String completedAt,
+                       List<CommandResult> commands, List<String> docOnlyChanges) {
+            this(head, baseline, configuration, startedAt, completedAt, commands, docOnlyChanges, null);
+        }
         public Receipt(String head, String baseline, String configuration, String startedAt, String completedAt,
                        List<CommandResult> commands) {
             this(head, baseline, configuration, startedAt, completedAt, commands, null);
@@ -86,6 +92,7 @@ public class IndependentVerifier {
         if (!head.matches("[0-9a-f]{40,64}") || !workspaces.clean(task.id())) throw new IllegalStateException("獨立驗證需要已提交且乾淨的最終版本");
         var spec = flow.snapshot.definition().project().verification();
         if (spec == null) throw new IllegalStateException("缺少管理者配置的驗證指令");
+        FileEvidence fileEvidence = compareFiles(task, flow, head);
         // 純文件變更：由系統查得的變更檔案判定，不採信 agent 自陳；判定不了（查不到基準等）就照常全跑。
         if (spec.docOnlyPaths() != null) {
             List<String> changed;
@@ -94,7 +101,7 @@ public class IndependentVerifier {
             if (DocOnlyChanges.qualifies(spec.docOnlyPaths(), changed)) {
                 String now = Instant.now().toString();
                 if (!head.equals(workspaces.headSha(task.id())) || !workspaces.clean(task.id())) throw new IllegalStateException("驗證期間來源工作區變更，收據作廢");
-                return new Receipt(head, flow.baselineRevision, flow.snapshot.revision(), now, now, List.of(), List.copyOf(changed));
+                return new Receipt(head, flow.baselineRevision, flow.snapshot.revision(), now, now, List.of(), List.copyOf(changed), fileEvidence);
             }
         }
         Path root = props.homePath().resolve("verification-runs").resolve(task.id()).toAbsolutePath().normalize();
@@ -126,7 +133,20 @@ public class IndependentVerifier {
             results.add(new CommandResult(List.copyOf(argv), 0, log.toString(), hash(log)));
         }
         if (!head.equals(workspaces.headSha(task.id())) || !workspaces.clean(task.id())) throw new IllegalStateException("驗證期間來源工作區變更，收據作廢");
-        return new Receipt(head, flow.baselineRevision, flow.snapshot.revision(), started.toString(), Instant.now().toString(), List.copyOf(results));
+        return new Receipt(head, flow.baselineRevision, flow.snapshot.revision(), started.toString(), Instant.now().toString(), List.copyOf(results), null, fileEvidence);
+    }
+    FileEvidence compareFiles(Task task, FlowRun flow, String head) throws Exception {
+        List<String> paths = FileComparison.paths(flow);
+        if (paths.isEmpty()) return null;
+        List<WorkspaceManager.FileIdentity> files = workspaces.compareFiles(task.id(), flow.comparisonBase, head, paths);
+        Path root = props.homePath().resolve("verification-runs").resolve(task.id());
+        Files.createDirectories(root);
+        Path log = Files.createTempFile(root, "file-comparison-", ".json");
+        Files.writeString(log, new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(files));
+        List<String> changed = files.stream().filter(f -> !f.unchanged()).map(WorkspaceManager.FileIdentity::path).toList();
+        if (!changed.isEmpty()) throw new CheckFailed(List.of(FileComparison.OPERATION), 1, log.toString(),
+                "指定舊檔與實作前版本不同，請恢復原檔後重驗，不要刪除驗收條件：" + changed);
+        return new FileEvidence(flow.comparisonBase, head, FileComparison.planDigest(flow), files, log.toString(), hash(log));
     }
     public String blockingReason(FlowRun flow, String head) {
         Receipt receipt = flow.independentEvidence;
@@ -134,6 +154,8 @@ public class IndependentVerifier {
         if (receipt == null || spec == null) return "缺少系統獨立驗證收據";
         if (!Objects.equals(head, receipt.head()) || !Objects.equals(flow.baselineRevision, receipt.baseline())
                 || !Objects.equals(flow.snapshot.revision(), receipt.configuration())) return "獨立驗證的 commit／需求／配置版本已失效";
+        String fileBlock = fileComparisonReason(flow, receipt, head);
+        if (fileBlock != null) return fileBlock;
         if (receipt.docOnly())
             return receipt.commands() != null && receipt.commands().isEmpty()
                     && DocOnlyChanges.qualifies(spec.docOnlyPaths(), receipt.docOnlyChanges())
@@ -149,6 +171,23 @@ public class IndependentVerifier {
             }
         } catch (Exception e) { return "無法核實獨立驗證紀錄：" + e.getClass().getSimpleName(); }
         return null;
+    }
+    String fileComparisonReason(FlowRun flow, Receipt receipt, String head) {
+        try {
+            List<String> paths = FileComparison.paths(flow);
+            if (paths.isEmpty()) return null;
+            FileEvidence e = receipt.fileComparison();
+            if (e == null || !Objects.equals(e.base(), flow.comparisonBase) || !Objects.equals(e.head(), head)
+                    || !Objects.equals(e.planDigest(), FileComparison.planDigest(flow))) return "缺少有效的指定檔案比對收據";
+            if (e.files() == null || !paths.equals(e.files().stream().map(WorkspaceManager.FileIdentity::path).toList())
+                    || e.files().stream().anyMatch(f -> f.before().isEmpty() || !f.unchanged())) return "指定檔案比對未通過或未完整覆蓋";
+            Path log = Path.of(e.log());
+            if (!log.toRealPath().startsWith(props.homePath().resolve("verification-runs").toRealPath())
+                    || !hash(log).equals(e.sha256())
+                    || !new com.fasterxml.jackson.databind.ObjectMapper().readTree(Files.readString(log))
+                        .equals(new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(e.files()))) return "指定檔案比對紀錄遺失或內容不符";
+            return null;
+        } catch (Exception e) { return "無法核實指定檔案比對：" + e.getClass().getSimpleName(); }
     }
     void execute(List<String> argv, Path cwd, Path home, SandboxPolicy policy, Path log, long deadline) throws Exception {
         execute(null, argv, cwd, home, policy, log, deadline);

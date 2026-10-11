@@ -14,7 +14,7 @@ public final class TeamMigration {
             throw new IllegalArgumentException("repository 或提示／schema 資產已變更，不能原地遷移；請另建任務");
         ObjectNode left = MAPPER.valueToTree(before.definition()), right = MAPPER.valueToTree(after.definition());
         List<String> changes = new ArrayList<>();
-        for (String field : List.of("requiredTools", "cachePaths", "buildInstructions", "testInstructions", "operations")) {
+        for (String field : List.of("requiredTools", "cachePaths", "buildInstructions", "testInstructions", "operations", "serviceTarget")) {
             compareRemove((ObjectNode)left.get("project"), (ObjectNode)right.get("project"), field, "project.", changes);
         }
         if (!before.definition().roles().keySet().equals(after.definition().roles().keySet()))

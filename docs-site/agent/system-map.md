@@ -18,8 +18,17 @@ description: 分層責任、任務生命週期、流程節點、任務狀態與�
 
 安全隔離刻意放在 runtime 外層：若依賴各 CLI 自己的權限旗標，系統安全性就等於最弱的那個 runtime。
 主 App 負責排程、按鈕與流程控制；角色 App 只用來以角色身分發言與接收 @提問，不能自己觸發或中止任務。
+啟用 `candidateRoles` 的階段由上游 agent 依能力選擇負責角色，`AgentDispatch` 驗證並保存交接；
+執行仍經中央排程與原階段的權限／驗收契約，詳見 [自主派工](/docs/configurable-team#agent-自主派工)。
 
 ## 兩種執行模式
+
+新 v2 快照共用 `IssueTracker`：各階段登錄問題，`FlowRun.issueInventory` 完整保存、承接不遺漏；
+需求映射與逐項驗收缺漏會被 `FlowGates` 擋下，沿既有責任路由修正。角色與專案名稱不參與判斷；
+舊快照維持舊契約，詳見[跨專案問題完整性](/docs/engineering-workflow#跨專案問題完整性2026-10-11)。
+
+指定舊檔保持不變時，`FileComparison` 處理測試計畫的路徑契約，`WorkspaceManager` 比較固定 Git 版本的檔案物件，
+`IndependentVerifier` 保存比對收據並於發布前查核；差異沿既有驗證失敗路線交回實作。這項能力不需要擴充 agent 的 shell 權限。
 
 | 模式 | 啟用方式 | 狀態 |
 |---|---|---|
@@ -28,6 +37,10 @@ description: 分層責任、任務生命週期、流程節點、任務狀態與�
 
 每個服務實例只載入一份團隊配置。每個任務建立時保存完整配置快照（`flow_run`），
 之後修改配置**不影響**既有任務；要讓舊任務套用新規則，需走受控配置遷移或「改用新任務繼續」。
+
+bestpartner 另提供 `intake → service → end`：由 Infrastructure 建置既有服務並檢查啟動結果，
+失敗經 `service_triage` 派回修正。服務路線不進 QA 計畫、開發獨立驗證或 PR 發布；目標主機未配置則等待補齊。
+詳見 [服務建置](/docs/service-delivery)。
 
 ## 任務生命週期（以 `spring-starters.json` 為例）
 
@@ -44,7 +57,8 @@ Slack @主機器人 需求
   → approval      [真人核准 PR] → 推分支、開 PR → 狀態 PR_CREATED
 ```
 
-任一節點受阻（`blocked`）時交給 **triage**（PM 分流），分流只能回傳配置中既有的 route：
+bestpartner 的 design、plan、implementation、verification、review 節點受阻（`blocked`）時交給 **triage**（PM 分流）；
+intake 與 triage 受阻則交真人。實際依任務保存的配置快照，舊快照的 design 可能直接交真人。分流只能回傳配置中既有的 route：
 `implementation`、`verification`、`plan`、`design`、`requirements`（回到 intake 改需求）或 `human`。
 agent 不能自行指定角色或跳到任意節點。
 
@@ -117,3 +131,8 @@ agent 不能自行指定角色或跳到任意節點。
 | 任務工作區 | `AI_TEAM_WORKSPACES` 下的 `task-<id>` 獨立 clone |
 | 階段 log | `AI_TEAM_LOGS/<id>/`，例如 `verification.codex.jsonl`、`*.stderr.log` |
 | 服務 log | `~/ai-team/orchestrator.log` |
+
+
+## 服務執行工具（2026-10-10）
+
+服務建置另有 `orchestrator/teams/skills/service-build/`：工作區 client → 主機 broker → SSH 或 VirtualBox 配置的目標。broker 讀即時任務授權，執行四個固定操作，結果存宿主機並交回工作區；不透過 Slack 傳遞憑證。詳見 [服務建置](/docs/service-delivery)。

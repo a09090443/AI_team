@@ -81,6 +81,8 @@ checkpoint 保存的是節點 ID，不再靠 PM／QA 等角色名稱判斷續跑
 相關檢查：`preflight.sh` 偵測到其他安裝目錄的服務在跑、而本實例 `AI_TEAM_INSTANCE` 留空時直接失敗（不檢查兩個實例是否同名，需管理者自行確保）；
 `service.sh status` 只列本實例 PID 的 443 連線；`deploy/deploy-jar-safe.sh` 的第三個參數是安裝目錄，
 「有 unit 在跑就拒絕部署」只看本實例的 unit。
+完整部署腳本 `deploy-orchestrator.sh` 也支援只安裝 JAR 的目錄：一律備份與更新 JAR／teams，
+`src/main` 只有原安裝包含來源時才備份、更新與回復，不因缺少來源目錄中止。
 
 **現行做法（2026-10-03 起，workspace 已升級 Pro，App 數量不限）**：每個實例各自一組主 App＋角色 App，Bot Token 與
 App-Level Token 都填自己的。bestpartner 使用 bp-ai-team 與 5 個「BP」角色 App，`#bestpartner` 只留這 6 個 App
@@ -102,6 +104,14 @@ App-Level Token 留空**：發言與交接 tag 使用同一個角色身分，不
 
 `orchestrator/teams/bestpartner.json`（2026-10-03）是第一個 Gradle 專案配置，供 bestpartner 實例
 （Kotlin/Quarkus＋Gradle 後端、Vue/Vite 前端、Docusaurus 文件，基準分支 `dev`）使用。
+2026-10-09 已先加入 `infrastructure` 角色與獨立 Slack token 引用，供直接 @ 的唯讀環境對話；Slack App
+`BP Infrastructure Agent`（App ID `A0C7WUJN0JF`）已安裝到 `AI-team` 並加入 `#bestpartner`。App-Level Token 已建立，
+2026-10-09 已把配置與 prompt 部署到 bestpartner 實例並以既有 JAR 通過靜態驗證；使用者已把兩個 token 寫入
+bestpartner 實例的 `env.sh`，服務啟動後 Spring、沙箱自檢與 6 個角色 Socket Mode 連線皆通過、log 無 ERROR。
+直接 `@BP Infrastructure Agent` 的事件送達與模型回覆仍待真人在 Slack 實測。
+角色 runtime 採 Codex，模型為 `gpt-5.6-sol`、`reasoningEffort: "medium"`。
+自主派工配置讓此角色可承接環境設計與工作區內的 Compose／初始化腳本／文件實作。
+Preview 部署節點、外部 VM 權限與部署收據尚未實作，所以此角色目前不會自行部署、停止或刪除環境。
 2026-10-04 起基準分支由 `master` 改為 `dev`：任務分支從 `origin/dev` 開，PR 合併到 `dev`。
 遠端必須先有 `dev` 分支，否則建工作區時 `git fetch … refs/remotes/origin/dev` 失敗、任務停止；
 改設定前建立的任務沿用快照裡的 `master`，不受影響。
@@ -179,7 +189,8 @@ GitHub 是目前唯一發布 adapter；更換 Git hosting 或加入全新驗證�
 ## 成功、受阻、人工與重試
 
 AGENT 節點指定 `next`、`blocked`，可選填 `routes`。
-agent 只回傳 `route` 的鍵，不能自行指定角色或跳至任意節點；未知 route 明確停止。
+agent 以 `route` 選擇流程分支；未知 route 明確停止。節點可另外以 `candidateRoles` 開放上游 agent
+依角色的 `capabilities` 自主選擇負責人（見下節），不能任意跳過階段或建立權限。
 `human` 與 `end` 是保留目標，分別代表等待人工與結束（不發布）。
 範例將驗收受阻交給分流節點，能回到實作、驗收或詢問人類，仍受重試上限約束。
 節點 `maxVisits` 最多 3；整輪 `maxTransitions` 最多 64。用量續跑不重建工作區，也不另算一次新節點。
@@ -215,11 +226,41 @@ LIMITED 驗收節點若只在其核准的測試路徑留下未提交變更，系
 原討論串 `@主機器人／角色 補充 #編號 答案` 會續跑原快照節點。
 同一工作討論串不會因一般 @主機器人訊息再建第二個平行工作任務（原任務已結束也一樣）；新需求請開新討論串。
 回覆內容依原任務狀態區分（`TaskOrchestrator.threadTakenMessage`），只有 `AWAIT_HUMAN`／`WAITING_QUOTA` 才建議「補充」，細節見 `docs-site/agent/operations.md` 的「建立任務」。
+文件維護請求查到有明確依據的文件錯誤時，intake 提示要求使用 `implementation` 合併派修，
+不因 intake 唯讀而把修正當成範圍外；明確只檢查不修改或詢問運作方式才維持純詢問。
+這是 2026-10-11 的提示修正，已部署 bestpartner（配置 5263f682…），啟動與資料完整性檢查通過；模型分類尚待新任務實測，不是關鍵字硬編碼閘門，既有任務快照不變。
 純詢問（route=`question` → `end`）的回答若列了 `out_of_scope`，結束時會附「開成新需求」按鈕（`SpinoffButtons`、`FlowEngine.spinoff`），
 按鈕名稱取自同一份報告的 `out_of_scope_titles`（`schemas/requirements.json` 必填、與 `out_of_scope` 等長；不等長時全部退回序號），
 在新討論串開立任務，原討論串仍是一串一任務。
 用量暫停走既有繼續按鈕；新模式不使用舊版「重新開始」按鈕，以免誤封存工作區或套錯流程。
 配置角色的一般對話使用獨立子請求，不會覆蓋原驗收；新加入、但不在原快照裡的角色不能接手舊任務對話。
+
+## Agent 自主派工
+
+新 v2 配置的共用問題清單契約由 TeamCatalog 固定到 snapshot.assets，ConfiguredExecutor 擴充輸出 schema 並注入完整清單，
+IssueTracker 驗證穩定 ID、需求對應及逐項證據；FlowEngine 保存新發現、續跑與承接時保留，FlowGates 在驗收／審查／完成／發布時檢查。
+所有專案與角色共用同一套機制，沒有依專案名稱或特定任務編號分支；詳細欄位與限制見[工程流程](engineering-workflow.md#跨專案問題完整性2026-10-11)。
+
+節點 `candidateRoles` 是管理者核准可承接此階段的角色集合，不是需求關鍵字路由。
+上游 agent 會收到下一階段的候選角色、能力描述、runtime、工具與階段權限，自行回傳：
+
+```json
+{"handoff":{"role":"infrastructure","reason":"需求是 SIT 容器環境設計","instruction":"設計 PostgreSQL 與服務的 Compose，交付初始化與健康檢查方案"}}
+```
+
+- 模型仍先以 `route` 決定工作分支，再以 `handoff` 指派該分支下一階段的角色；原 `role` 是未啟用自主派工時的執行角色。
+  目標有候選清單卻沒填有效派工時，回報受阻，不默默使用預設角色。固定角色的 AGENT 目標可填 null；若模型明確交接，僅接受完全相同的既定角色並保留交接紀錄，不開放改派。human／end 等非 AGENT 目標仍須 null。
+- 目前 bestpartner 設計候選為 Architecture／Infrastructure，實作候選為 Backend／Infrastructure。
+  因此 PM 可將環境設計交給 Infrastructure，測試計畫 agent 再選實作負責人；受阻後由分流 agent 重新選擇。
+  第一版每次交接一位角色、中央佇列依序執行，不支援一份報告建立多個平行子工作。
+- 系統檢查候選資格、必要操作的工具權限，啟動時沿用沙箱預檢；階段的 scope、schema、requires、QA／Review／核准條件不變。
+  實作候選與審查候選不得重疊。沒有適任角色時須說明缺少能力並受阻，不得自動擴權。
+- Slack 顯示實際負責角色、派工理由與交接工作；`assignments` 保存目前選擇，`assignmentHistory` 保存歷史。
+  額度與中斷續跑沿用原選擇；改派後開新階段 session。歷史最多 256 筆，既有節點／整輪／自動交接上限仍有效。
+- Codex 自主派工實作完成後，系統核對實際變更，不允許工具行為／版控禁止路徑，再代為 commit；後續仍跑獨立驗證與審查。
+  Infrastructure 可在任務工作區產出環境檔案，遠端 VM 部署、停止與清理仍未開放。一般直接 @ 對話仍唯讀。
+- 舊配置缺少 `candidateRoles` 時沿原角色執行。新欄位會寫入快照，舊 JAR 不能讀取新版快照，回滾須搭配部署前 DB 備份。
+  角色集合／流程派工政策變更不允許原地配置遷移；#1030 等舊任務需由負責人使用「改用新任務繼續」。
 
 ## 快照與相容策略
 
@@ -287,3 +328,16 @@ CLI session 仍存在原 runtime 狀態目錄，checkpoint 保存其 ID；環境
   （同一角色常兼任計畫與驗收，會看到驗收要引用 plan_revision 的規則）。
 - **操作契約與測試規範要一致**：`testInstructions` 要求的每一步都必須有對應的 `operations`，
   否則計畫節點無法綁定 `operation_ids` 而受阻。`argv` 不支援管線，需要多步驟時拆成多個操作。
+
+
+## 服務建置分支
+
+bestpartner 的 intake 可選 service，由 Infrastructure 在 LIMITED 設定／手冊範圍建置並驗證服務，受阻交 service_triage。
+這是 Gate.SERVICE 契約，不更動產品開發的 IMPLEMENTATION 前置測試計畫，也不能用來直接發布 PR。
+未設定 serviceTarget 時明確停止等待主機與操作資訊；詳見 [服務建置](service-delivery.md)。
+
+
+## 配置式 skills
+
+AGENT 節點可設定 `skills`，最多八份不重複的 SKILL.md／references 相對路徑。TeamCatalog 在 teams 內讀取並防止路徑越界，內容寫入快照、參與 revision；ConfiguredExecutor 每次非對話派工注入相同內容，改派角色也保留。
+目前 bestpartner 的 service 與 service_triage 使用 `service-build`；helpers 隨 teams 部署，操作與主機授權仍由既有契約及 broker 核對。參考 [服務建置](service-delivery.md)。

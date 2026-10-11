@@ -32,6 +32,8 @@ public class FlowRun {
     public String origin;
     public String branch;
     public String beforeHead;
+    /** 本任務工作區建立／承接當下的 commit；不隨返工改寫，也不是需求版本雜湊。 */
+    public String comparisonBase;
     public String activeNode;
     public boolean dialogue;
     public String dialogueRole;
@@ -49,6 +51,9 @@ public class FlowRun {
      * 只保留給已經這樣決定的舊任務沿用；新決定改走 {@link #delegatedParts} 的分段改派。
      */
     public Map<String,String> roleOverrides = new LinkedHashMap<>();
+    /** 上游 agent 選擇的負責角色；同一輪續跑沿用，不借用 legacy fallback 欄位。 */
+    public Map<String,AgentDispatch.Assignment> assignments = new LinkedHashMap<>();
+    public List<AgentDispatch.Assignment> assignmentHistory = new ArrayList<>();
     /**
      * 受保護路徑分段改派：節點 → 本輪改派段的結果。改派角色只改允許的受保護路徑，系統核對後代為提交，
      * 其餘工作接著由原角色完成。startHead 等於本輪起始 commit 時代表同一輪已完成，續跑時略過改派段。
@@ -91,6 +96,13 @@ public class FlowRun {
      * 這份紀錄是唯一保證送達下游節點的開放缺陷來源，該節點自己通過後才移除。
      */
     public Map<String,JsonNode> blockedFindings = new LinkedHashMap<>();
+    /** Complete discovered-issue inventory; never evicted with rolling conversation context. */
+    public Map<String,JsonNode> issueInventory = new LinkedHashMap<>();
+    /** Historical per-issue evidence, preserved across continuation but never treated as fresh approval. */
+    public Map<String,JsonNode> issueEvidence = new LinkedHashMap<>();
+    public String issueContext = "";
+    /** One approved requirements-change cycle; agents cannot grant this themselves. */
+    public boolean issueScopeChangeAuthorized;
     public Map<String,String> heads = new LinkedHashMap<>();
     /** 各 workspace 節點最近一次真正開始執行時的 HEAD，供人工修復重驗比對。 */
     public Map<String,String> attemptHeads = new LinkedHashMap<>();

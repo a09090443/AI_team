@@ -41,11 +41,18 @@ public final class ToolTrust {
         Set<String> tools = new LinkedHashSet<>();
         if (denials == null || !denials.isArray()) return tools;
         for (JsonNode denial : denials) {
+            // Codex 的非零結束碼只是操作失敗，不能用事件名稱推論工具授權。
+            if (isCommandFailure(denial)) continue;
             String tool = denial.path("tool_name").asText("");
             if (tool.isBlank()) tool = "（未提供工具名）";
             if (granted(role, tool) == wantGranted) tools.add(tool);
         }
         return tools;
+    }
+
+    public static boolean isCommandFailure(JsonNode event) {
+        return "COMMAND_FAILURE".equals(event.path("failure_kind").asText())
+                && "command_execution".equals(event.path("tool_name").asText());
     }
 
     /** 白名單可能寫成 "Bash" 或 "Bash(git show *)"；兩者都算這個角色具備該工具。 */

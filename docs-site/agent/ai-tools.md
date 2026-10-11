@@ -59,6 +59,7 @@ skill 是執行步驟，規則本文仍只寫在 `AGENTS.md`；兩者衝突時�
 
 | 名稱 | 用途 |
 |---|---|
+| `service-build` | Slack agent 可重用的環境準備、建置、啟動、檢查與修復流程，主機連線獨立配置 |
 | `docs-sync` | 依「文件優先」規則開工前找文件、發現缺漏或落差時修正、功能異動後核對文件並驗證 |
 
 ## 新增 MCP server
@@ -84,3 +85,10 @@ skill 是執行步驟，規則本文仍只寫在 `AGENTS.md`；兩者衝突時�
 
 先查證該工具的官方文件（規則、skills、MCP 各自讀哪裡、格式為何），擴充 `.agents/sync-agent-config.mjs`
 與本頁表格，並標明「文件記載」；未實測不可標成已使用。
+
+
+## Slack agent 使用 skills
+
+`service-build` 是可攜式系統建置 skill，單一來源 `.agents/skills/service-build/`；同步脚本同時產生 `.claude/skills/service-build/` 與 `orchestrator/teams/skills/service-build/`，不得手改產生檔。
+`node.skills` 指定要載入的 SKILL.md／references 相對路徑，TeamCatalog 固定內容到 snapshot.assets，ConfiguredExecutor 在非對話派工時注入提示。
+這不依賴 CLI 自動發現 skill，也不擴張工具與主機權限。換機只改獨立主機設定及必要的團隊目標，不重寫共用流程。

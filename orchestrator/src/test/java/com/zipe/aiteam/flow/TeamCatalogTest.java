@@ -8,6 +8,47 @@ import java.nio.file.*;
 import static org.assertj.core.api.Assertions.*;
 
 class TeamCatalogTest {
+    @Test void skillsAreFrozenDeliveredAndPreservedOnRoleChange() throws Exception {
+        Files.createDirectories(tmp.resolve("repo/.git"));
+        Path teams = tmp.resolve("teams");
+        try (var paths = Files.walk(Path.of("teams"))) {
+            for (Path path : paths.toList()) {
+                Path destination = teams.resolve(Path.of("teams").relativize(path));
+                if (Files.isDirectory(path)) Files.createDirectories(destination);
+                else Files.copy(path, destination);
+            }
+        }
+        var before = TeamCatalog.load(teams.resolve("bestpartner.json"), key -> tmp.resolve("repo").toString());
+        var node = before.definition().nodes().get("service");
+        String original = ConfiguredExecutor.skillInstructions(before, node);
+        assertThat(original).contains("name: service-build", "本次須");
+        assertThat(node.withRole("coordinator").skills()).isEqualTo(node.skills());
+        Files.writeString(teams.resolve("skills/service-build/SKILL.md"), "changed skill content");
+        var after = TeamCatalog.load(teams.resolve("bestpartner.json"), key -> tmp.resolve("repo").toString());
+        assertThat(after.revision()).isNotEqualTo(before.revision());
+        assertThat(ConfiguredExecutor.skillInstructions(before, node)).isEqualTo(original);
+        assertThat(ConfiguredExecutor.skillInstructions(after, node)).contains("changed skill content");
+        assertThatThrownBy(() -> TeamMigration.preview(before, after)).hasMessageContaining("不能原地遷移");
+    }
+
+    @Test void skillsDoNotExpandPathsAndOldNodesStillWork() throws Exception {
+        var json = config();
+        var node = (ObjectNode) json.path("nodes").path("implementation");
+        assertThat(mapper.treeToValue(json, TeamDefinition.class).nodes().get("implementation").skills()).isNull();
+        node.putArray("skills").add("../outside/SKILL.md");
+        assertThatThrownBy(() -> validate(json)).hasMessageContaining("skill");
+        node.putArray("skills").add("skills/build/SKILL.md").add("skills/build/SKILL.md");
+        assertThatThrownBy(() -> validate(json)).hasMessageContaining("不得重複");
+    }
+
+    @Test void bestpartnerDesignBlockCanBeTriagedWithoutBypassingPrerequisites() throws Exception {
+        var definition = mapper.readValue(Files.readString(Path.of("teams/bestpartner.json")), TeamDefinition.class);
+        TeamCatalog.validate(definition);
+        assertThat(definition.nodes().get("design").blocked()).isEqualTo("triage");
+        assertThat(definition.nodes().get("design").routes()).containsEntry("human", "human");
+        assertThat(definition.nodes().get("triage").routes()).containsEntry("design", "design").containsEntry("plan", "plan");
+        assertThat(definition.nodes().get("implementation").requires()).contains("plan");
+    }
     @Test void springBuilderCanBuildDocsWithoutBroadNpmOrPmWriteAccess() throws Exception {
         var definition = mapper.readValue(Files.readString(Path.of("teams/spring-starters.json")), TeamDefinition.class);
         TeamCatalog.validate(definition);

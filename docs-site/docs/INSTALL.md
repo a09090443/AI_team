@@ -422,3 +422,8 @@ Slack 相關問題見 [建立 Slack App](slack-agent-apps.md#疑難排解)。
 本入口與 rebuild-verification 為現況；功能契約見 QA／quota／failure／review 專章。
 跨發行版能力與支援狀態以 linux-support 為準，ARM64 與非 systemd 配置目前不放行。
 舊版安裝手冊已移除（需要時查 git 歷史），不要混搭舊指令。
+
+
+## 服務執行工具（2026-10-10）
+
+安裝程式也放置 `teams/skills/service-build/scripts/client.py`。若啟用 bestpartner 自動 SIT 建置，另依 [服務建置](/docs/service-delivery) 設定 Windows VirtualBox 宿主機 broker；一般 Linux orchestrator 安裝不會自行取得 dev VM 的登入權限。

@@ -139,9 +139,12 @@ class HumanOptionsTest {
     // ---- 恢復與繼續 ----
 
     private com.fasterxml.jackson.databind.JsonNode successfulImplementation() throws Exception {
-        return new com.fasterxml.jackson.databind.ObjectMapper().readTree("{\"execution_status\":\"COMPLETED\","
+        var report = (com.fasterxml.jackson.databind.node.ObjectNode) new com.fasterxml.jackson.databind.ObjectMapper().readTree("{\"execution_status\":\"COMPLETED\","
                 + "\"failure_report\":null,\"status\":\"SUCCESS\",\"summary\":\"ok\","
                 + "\"quality_gate\":{\"verify_passed\":true},\"boundary_conflict\":null}");
+        report.put("issue_revision", IssueTracker.revision(flow));
+        report.putArray("issue_updates"); report.putArray("issue_checks");
+        return report;
     }
 
     @Test void offersRestoreButtonForAWronglyRejectedImplementation() throws Exception {

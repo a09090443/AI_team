@@ -1,5 +1,7 @@
 # QA 情境導向流程
 
+本文件描述產品開發流程；部署既有服務可走 [服務建置](service-delivery.md)，由 Infrastructure 建置後檢查，不先進 QA 計畫。
+
 流程：PM →（需要時 Architecture）→ QA 測試規劃 → Backend → QA 驗收 → Code Reviewer → 人工 PR 核准。
 沿用 PM 的 QA 路由判斷；無 Backend 的分析／詢問任務不進實作流程。
 
@@ -17,7 +19,24 @@ QA 規劃在 Backend 與工作區建立之前，以需求和既有契約設計�
 `inspect-content：<檔案>:<行或範圍>`、`evidence` 引用讀到的內容；系統同時在驗收上下文附上「本次已提交的變更檔案」
 （`WorkspaceManager.changedPathsSinceBase`，系統查得）。配置不能自行宣告同名操作（`OperationContract.INSPECT_CONTENT`）。
 起因：bestpartner #1010／#1011 只改一行文件，任何配置都寫不出「讀某檔某行」的固定指令，任務永遠卡在測試計畫。
-intake 也規定：未配置成操作的專案腳本（例如 `bash scripts/*.sh`）不得寫成驗收項目，因為系統不允許以 shell 執行。
+
+**系統內建 `compare-unchanged-files`**（2026-10-10 實作，部署狀態見交接紀錄）：驗證指定既有檔案未被修改。
+計畫在情境的 `operation_ids` 引用此 ID，`unchanged_paths` 填 1–100 個明確的 repo 相對檔案路徑；
+不使用它的情境填空陣列。計畫 schema 由執行期擴充，舊計畫沒有此欄位仍可讀取。不得填目錄、萬用字元、
+絕對路徑、`..`、`.git` 或控制字元；中文與空白檔名可用。不是 agent 的 shell 指令，不增加角色權限。
+
+系統在工作區建立／承接時將當下 Git commit 保存為 `comparisonBase`，返工不更換。
+獨立驗證在建置前以 Git 物件比較指定檔案的內容與模式，包含純文件略過建置的情況；
+修改、刪除、改名或檔案型別變更會失敗，沿既有受控流程交回實作修正。
+基準缺失、基準不存在的檔案、基準為目錄／symlink／子模組，則明確停止，不以目前 HEAD 補造基準，也不假裝通過。
+比對針對兩個已提交版本，不代表中途從未改過或還原過，也不比較建置產物或被忽略的檔案。
+
+QA 使用系統收據 `fileComparison` 的逐檔結果、版本與紀錄路徑作為證據，不需要自行跑 Git。
+發布前檢查收據綁定目前 HEAD、需求、配置、完整計畫、比較基準與路徑清單，並核對比對紀錄雜湊及內容。
+`baseline_revision` 是**需求內容雜湊**，不是 Git commit，不能拿來做程式差異比對。
+這項能力不會自動新增或刪除需求，也不保證模型列出的路徑完整；計畫覆蓋與程式審查仍須核對使用者要求。
+已配置且釘選 SHA256 的固定 bash 腳本可引用操作 ID；bestpartner 的 `harness-drift-scan` 已提供實作與驗收使用。
+未配置的腳本仍不可自行發明操作，見 [跨專案契約](cross-project-execution.md)。需求來源與驗收文字矛盾時先核對，不以刪除檢查掩蓋缺口。
 缺少必要需求決策時向 PM／提出者回報並停止。READY 只代表計畫就緒，不代表環境已驗證。
 
 `qa_plan` 與 `qa` 各自持久化 stage_result、session、診斷 log 與費用。

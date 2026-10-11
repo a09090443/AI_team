@@ -7,6 +7,29 @@
 
 ## 需求基準與責任
 
+### 跨專案問題完整性（2026-10-11）
+
+新版 `TeamCatalog` 對所有新 v2 團隊快照加入 `contracts/issue-tracking-v1` 共用契約，與角色名稱、語言、專案名稱無關。
+既有快照沒有此標記則維持舊契約。2026-10-11 已部署 bestpartner 與 spring-starters 的共用引擎；
+Linux 完整測試 619 項、0 失敗、0 錯誤、11 略過，兩實例啟動與沙箱檢查通過。尚未執行新契約的真實模型端對端驗收。
+部署版本與備份見 [部署紀錄](deploy-2026-09-06-v2.md#2026-10-11-跨專案問題完整性升級)；不能把程式測試當成模型端對端成功。
+
+- 每階段回傳 `issue_updates`（新發現／更新）、`issue_revision`（輸入清單版本）、`issue_checks`（逐項檢查）。
+  需求階段另有 `work_intent=WORK|READ_ONLY` 與 `intent_evidence`。共用提示要求目標內查核問題自動派修；明確只讀或知識問答維持唯讀。
+- 每項有穩定 `id`、`description`、`evidence`、`scope`、`reason`、`requirement_ids`。範圍為 `REPAIR`、`DECISION`、`EXCLUDED`、`OBSERVATION`。
+  系統加上來源任務與節點；需求必須重列完整已知清單，REPAIR 必須對應需求（service 路線例外）。WORK 不可把問題只列為 OBSERVATION 或以 question 結束。
+- 完整清單另存 `FlowRun.issueInventory`，不隨對話摘要截斷；空更新不刪既有問題。ID 重複、改寫既有描述、未授權降為排除、過期清單均被拒絕。
+  需求草稿的結構／分類錯誤先交回原節點自修，沿用有界重試；後續問題依原配置 blocked 路由交責任角色，無路線或預算用盡才停下。
+- verification／review／service 必須針對全部 REPAIR／DECISION 回 `issue_checks`，每项有 id、PASS／OPEN 與非空證據。
+  DECISION 不能靠 PASS 自行放行，須收到新的真人回覆後由需求階段確認；明確核准需求變更才可將待處理問題排除。
+  新增或更動清單會使舊的逐項驗證版本失效。缺對應、漏驗、待決／OPEN 都不能完成或發布，既有需求→情境→驗收檢查照常。
+- 承接完整複製清單與 `issueEvidence` 歷史證據，不複製有效驗收／核准；新任務先核實已有成果，再補未完成項。
+  明確從唯讀問答挑選單項建立的子任務仍是局部範圍，顯示來源總數與未涵蓋項數，不假稱整體完成，也不擅自擴張授權。
+- 最多 100 個問題、清單 96000 字元；提示中的清單與歷史證據最多 128000 字元。超限明示停止，不截斷後宣稱全部處理。
+
+機械檢查保證已登錄問題的結構、連續性與覆蓋，不保證模型找出所有問題、判斷範圍正確或證據文字真實；仍須 QA、Review、獨立操作收據與真實任務驗證。
+未登錄只寫在自然語言摘要的發現，系統不能可靠地自行解析，不能宣稱「任何漏項都不可能發生」。
+
 - 入口使用工作契約 `REQUIREMENTS`，不綁定角色名稱。
 - 每項需求保存 `id`、`kind`（FUNCTIONAL／NON_FUNCTIONAL）、描述、可觀察的 `acceptance` 與 `source`。
 - 新任務另將驗收拆成 `acceptance_items`；每項有全域唯一 ID、`criterion` 與 `dimension`。
@@ -55,6 +78,10 @@ QA 測試計畫必須引用 `baseline_revision`，每個情境的 `requirement_i
 重試上限不因重新規劃而歸零；用完仍需人工檢查／另建任務。
 
 ## 系統獨立驗證
+
+計畫引用 `compare-unchanged-files` 時，系統先比較本任務實作前版本與最終 commit 的指定檔案，
+通過才執行建置或依純文件規則略過建置。差異交回實作修正，查不到基準則停止；
+比對收據綁定完整計畫與固定 Git 基準，發布前重驗紀錄。詳見 [QA 情境流程](qa-scenario-workflow.md)。
 
 在 Code Review **之前**，系統從工作區的最終 commit 建立另一個全新 clone，不重用 QA 的產物／node_modules。
 管理者在 `project.verification` 固定 argv 與整輪期限，例如：

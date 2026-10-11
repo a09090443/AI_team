@@ -59,4 +59,24 @@ class ToolTrustTest {
         assertThat(ToolTrust.blockingReason(role(List.of("Read")), denials("[{\"tool_input\":{\"command\":\"ls\"}}]")))
                 .contains("報告卻回報未受阻");
     }
+
+    @Test void commandFailureIsNeitherMissingPermissionNorWhitelistMismatch() throws Exception {
+        var failed = denials("""
+                [{"tool_name":"command_execution","failure_kind":"COMMAND_FAILURE",
+                  "reason":"exit_code=2; new blank line at EOF"}]
+                """);
+        assertThat(ToolTrust.blockingReason(role(List.of("Read")), failed)).isNull();
+        assertThat(ToolTrust.caveat(role(List.of("command_execution")), failed)).isNull();
+    }
+
+    @Test void commandFailureDoesNotHideAnActualDenial() throws Exception {
+        var mixed = denials("""
+                [{"tool_name":"command_execution","failure_kind":"COMMAND_FAILURE"},
+                 {"tool_name":"Bash","failure_kind":"PERMISSION_DENIED"}]
+                """);
+        assertThat(ToolTrust.blockingReason(role(List.of("Read")), mixed)).contains("Bash");
+        assertThat(ToolTrust.blockingReason(role(List.of("Read")), denials("""
+                [{"tool_name":"command_execution","failure_kind":"PERMISSION_DENIED"}]
+                """))).contains("完全沒有這些工具");
+    }
 }

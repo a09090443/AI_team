@@ -61,7 +61,7 @@ workspace_snapshot() {
 
 backup=$(mktemp -d "$root/orchestrator-backup.XXXXXX")
 cp -p "$root/orchestrator/target/$jar" "$backup/$jar"
-cp -a "$root/orchestrator/src/main" "$backup/orchestrator-main"
+if [ -d "$root/orchestrator/src/main" ]; then cp -a "$root/orchestrator/src/main" "$backup/orchestrator-main"; fi
 cp -a "$root/teams" "$backup/teams"
 cp -p "$root/orchestrator.log" "$backup/orchestrator.log"
 sqlite3 "$root/ai-team.db" ".backup '$backup/ai-team.db'"
@@ -75,7 +75,7 @@ rollback() {
   echo "部署檢查未通過；已啟動回復。備份：$backup"
   bash "$root/service.sh" stop || true
   cp -p "$backup/$jar" "$root/orchestrator/target/$jar"
-  cp -a "$backup/orchestrator-main/." "$root/orchestrator/src/main/"
+  if [ -d "$backup/orchestrator-main" ]; then cp -a "$backup/orchestrator-main/." "$root/orchestrator/src/main/"; fi
   cp -a "$backup/teams/." "$root/teams/"
   bash "$root/service.sh" start 8>&- || true
 }
@@ -84,7 +84,8 @@ trap rollback ERR
 bash "$root/service.sh" stop
 cp -p "$build/target/$jar" "$root/orchestrator/target/$jar.next"
 mv "$root/orchestrator/target/$jar.next" "$root/orchestrator/target/$jar"
-cp -a "$build/src/main/." "$root/orchestrator/src/main/"
+# JAR-only 安裝沒有來源目錄；來源不是執行必要資產，不另外建立。
+if [ -d "$root/orchestrator/src/main" ]; then cp -a "$build/src/main/." "$root/orchestrator/src/main/"; fi
 # 角色工具白名單在 teams 配置裡，不在 JAR 裡，必須一起更新。
 cp -a "$build/teams/." "$root/teams/"
 bash "$root/service.sh" start 8>&-

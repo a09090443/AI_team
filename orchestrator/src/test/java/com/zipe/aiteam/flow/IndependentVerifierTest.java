@@ -47,6 +47,57 @@ class IndependentVerifierTest {
         };
     }
     void verifyNow() throws Exception { flow.independentEvidence = verifier.verify(new Task("42", "c", "t", "u", "mail"), flow); }
+    void comparisonPlan() throws Exception {
+        String planId = flow.snapshot.definition().nodes().entrySet().stream()
+                .filter(e -> e.getValue().gate() == TeamDefinition.Gate.TEST_PLAN).findFirst().orElseThrow().getKey();
+        flow.receipts.put(planId, new com.fasterxml.jackson.databind.ObjectMapper().readTree(
+                "{\"scenarios\":[{\"operation_ids\":[\"compare-unchanged-files\"],\"unchanged_paths\":[\"README.md\"]}]}"));
+        flow.comparisonBase = "b".repeat(40);
+        when(workspace.compareFiles("42", flow.comparisonBase, head, List.of("README.md")))
+                .thenReturn(List.of(new WorkspaceManager.FileIdentity("README.md", "100644 blob abc", "100644 blob abc")));
+    }
+    @Test void comparisonIsSystemEvidenceBoundToPlanBaseAndPersistedLog() throws Exception {
+        comparisonPlan(); verifyNow();
+        assertThat(verifier.blockingReason(flow, head)).isNull();
+        assertThat(flow.independentEvidence.fileComparison().files()).hasSize(1);
+        flow.comparisonBase = "c".repeat(40);
+        assertThat(verifier.blockingReason(flow, head)).contains("檔案比對收據");
+        flow.comparisonBase = "b".repeat(40);
+        Files.writeString(Path.of(flow.independentEvidence.fileComparison().log()), "[]");
+        assertThat(verifier.blockingReason(flow, head)).contains("紀錄遺失或內容不符");
+    }
+    @Test void changedOldFileFailsBeforeBuildAndCannotUseOldReceipt() throws Exception {
+        verifyNow(); comparisonPlan();
+        assertThat(verifier.blockingReason(flow, head)).contains("檔案比對收據");
+        calls.clear();
+        when(workspace.compareFiles("42", flow.comparisonBase, head, List.of("README.md")))
+                .thenReturn(List.of(new WorkspaceManager.FileIdentity("README.md", "100644 blob abc", "")));
+        assertThatThrownBy(this::verifyNow).isInstanceOf(IndependentVerifier.CheckFailed.class);
+        assertThat(calls).isEmpty();
+    }
+    @Test void comparisonReceiptCannotSurviveChangedPlanAndRoundTripsWithOldReceipts() throws Exception {
+        comparisonPlan(); verifyNow();
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var receipt = flow.independentEvidence;
+        assertThat(mapper.readValue(mapper.writeValueAsString(receipt), IndependentVerifier.Receipt.class)).isEqualTo(receipt);
+        var old = mapper.valueToTree(receipt);
+        ((com.fasterxml.jackson.databind.node.ObjectNode) old).remove("fileComparison");
+        assertThat(mapper.treeToValue(old, IndependentVerifier.Receipt.class).fileComparison()).isNull();
+        flow.receipts.values().forEach(p -> ((com.fasterxml.jackson.databind.node.ObjectNode)p).put("summary", "changed plan"));
+        assertThat(verifier.blockingReason(flow, head)).contains("檔案比對收據");
+    }
+    @Test void documentOnlyShortcutStillRequiresSystemFileComparison() throws Exception {
+        enableDocOnly("*.md"); comparisonPlan();
+        when(workspace.changedPathsSinceBase("42")).thenReturn(List.of("other.md"));
+        verifyNow();
+        assertThat(flow.independentEvidence.docOnly()).isTrue();
+        assertThat(flow.independentEvidence.fileComparison()).isNotNull();
+        assertThat(verifier.blockingReason(flow, head)).isNull();
+        assertThat(calls).isEmpty();
+        when(workspace.compareFiles("42", flow.comparisonBase, head, List.of("README.md")))
+                .thenReturn(List.of(new WorkspaceManager.FileIdentity("README.md", "100644 blob abc", "100644 blob def")));
+        assertThatThrownBy(this::verifyNow).isInstanceOf(IndependentVerifier.CheckFailed.class);
+    }
     @Test void usesFreshCloneAndConfiguredCommandsNotModelCommands() throws Exception {
         verifyNow();
         assertThat(calls).hasSize(5);

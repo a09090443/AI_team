@@ -362,6 +362,75 @@
           "bestpartner-ui/node_modules",
           "bestpartner-ui/dist"
         ]
+      },
+      "harness-drift-scan": {
+        "nodes": [
+          "implementation",
+          "verification"
+        ],
+        "directory": ".",
+        "argv": [
+          "bash",
+          "scripts/harness-drift-scan.sh"
+        ],
+        "writes": [],
+        "scriptSha256": "a5525e4a908aa197d9ba4bcaa14bb99cf963fdddd0397fd46b3785e389bfbc7c"
+      },
+      "service-prepare": {
+        "nodes": [
+          "service"
+        ],
+        "directory": ".",
+        "argv": [
+          "python3",
+          "/home/agent/ai-team-bestpartner/teams/skills/service-build/scripts/client.py",
+          "prepare"
+        ],
+        "writes": [
+          "docs/docker/sit/.agent-service"
+        ]
+      },
+      "service-start": {
+        "nodes": [
+          "service"
+        ],
+        "directory": ".",
+        "argv": [
+          "python3",
+          "/home/agent/ai-team-bestpartner/teams/skills/service-build/scripts/client.py",
+          "start"
+        ],
+        "writes": [
+          "docs/docker/sit/.agent-service"
+        ]
+      },
+      "service-health": {
+        "nodes": [
+          "service"
+        ],
+        "directory": ".",
+        "argv": [
+          "python3",
+          "/home/agent/ai-team-bestpartner/teams/skills/service-build/scripts/client.py",
+          "health"
+        ],
+        "writes": [
+          "docs/docker/sit/.agent-service"
+        ]
+      },
+      "service-diagnose": {
+        "nodes": [
+          "service"
+        ],
+        "directory": ".",
+        "argv": [
+          "python3",
+          "/home/agent/ai-team-bestpartner/teams/skills/service-build/scripts/client.py",
+          "diagnose"
+        ],
+        "writes": [
+          "docs/docker/sit/.agent-service"
+        ]
       }
     },
     "requiredTools": [
@@ -371,7 +440,9 @@
       "npm",
       "git",
       "tar",
-      "mkdir"
+      "mkdir",
+      "bash",
+      "python3"
     ],
     "name": "bestpartner",
     "repositoryEnv": "AI_TEAM_REPO",
@@ -482,6 +553,14 @@
         "docs-site/docs/**",
         "docs-site/blog/**"
       ]
+    },
+    "serviceTarget": {
+      "name": "bestpartner-dev",
+      "checks": {
+        "prepare": "service-prepare",
+        "start": "service-start",
+        "health": "service-health"
+      }
     }
   },
   "roles": {
@@ -523,7 +602,8 @@
         "Read",
         "Grep",
         "Glob"
-      ]
+      ],
+      "capabilities": "應用架構、API、資料模型、相依方向與相容性設計；唯讀分析。"
     },
     "builder": {
       "name": "Backend Agent",
@@ -546,7 +626,8 @@
         "Bash(bash scripts/harness-drift-scan.sh)",
         "Bash(git *)",
         "Bash(ls *)"
-      ]
+      ],
+      "capabilities": "應用程式、前後端功能與測試實作；可在工作區修改程式與設定，依契約建置測試；Claude 受保護路徑另走分段改派。"
     },
     "tester": {
       "name": "QA Agent",
@@ -568,6 +649,31 @@
         "Bash(git *)",
         "Bash(ls *)"
       ]
+    },
+    "infrastructure": {
+      "name": "Infrastructure Agent",
+      "runtime": "codex",
+      "model": "gpt-5.6-sol",
+      "reasoningEffort": "medium",
+      "prompt": "prompts/infrastructure.md",
+      "botTokenEnv": "SLACK_BOT_TOKEN_INFRASTRUCTURE",
+      "appTokenEnv": "SLACK_APP_TOKEN_INFRASTRUCTURE",
+      "tools": [
+        "Read",
+        "Write",
+        "Edit",
+        "Grep",
+        "Glob",
+        "Bash(gradle *)",
+        "Bash(npm --prefix bestpartner-ui *)",
+        "Bash(git status *)",
+        "Bash(git diff *)",
+        "Bash(git log *)",
+        "Bash(git show *)",
+        "Bash(ls *)",
+        "Bash(python3 /home/agent/ai-team-bestpartner/teams/skills/service-build/scripts/client.py *)"
+      ],
+      "capabilities": "測試／SIT 環境、容器、資料庫初始化、部署設定與可用性檢查；服務建置依管理者核准目標與操作執行，開發階段依既有工作區契約實作；未設定主機與操作時不得宣稱已部署。 已提供宿主機建置工具 service-prepare/start/health/diagnose，缺 SSH 或 Docker 由 prepare 初始化；僅一次性主機登入憑證與 broker 登錄需維護者設定。"
     },
     "inspector": {
       "name": "Code Reviewer",
@@ -627,7 +733,8 @@
       "routes": {
         "question": "end",
         "implementation": "design",
-        "human": "human"
+        "human": "human",
+        "service": "service"
       },
       "requires": [],
       "maxVisits": 3,
@@ -644,7 +751,7 @@
       "writablePaths": [],
       "plan": null,
       "next": "plan",
-      "blocked": "human",
+      "blocked": "triage",
       "routes": {
         "ready": "plan",
         "human": "human"
@@ -654,7 +761,12 @@
       ],
       "maxVisits": 3,
       "timeoutSeconds": 900,
-      "maxTurns": 40
+      "maxTurns": 40,
+      "candidateRoles": [
+        "architect",
+        "infrastructure"
+      ],
+      "instructions": "prompts/design.md"
     },
     "plan": {
       "instructions": "prompts/plan.md",
@@ -700,7 +812,12 @@
           ".claude/rules/**",
           ".claude/skills/**"
         ]
-      }
+      },
+      "candidateRoles": [
+        "builder",
+        "infrastructure"
+      ],
+      "instructions": "prompts/implement.md"
     },
     "verification": {
       "kind": "AGENT",
@@ -784,6 +901,60 @@
         "verification",
         "review",
         "design"
+      ]
+    },
+    "service": {
+      "kind": "AGENT",
+      "role": "infrastructure",
+      "schema": "schemas/service.json",
+      "scope": "LIMITED",
+      "gate": "SERVICE",
+      "workspace": true,
+      "writablePaths": [
+        "docs/docker/sit/**",
+        "docs-site/docs/getting-started/**"
+      ],
+      "plan": null,
+      "next": "end",
+      "blocked": "service_triage",
+      "routes": {},
+      "requires": [
+        "intake"
+      ],
+      "maxVisits": 3,
+      "timeoutSeconds": 1800,
+      "maxTurns": 60,
+      "instructions": "prompts/service.md",
+      "skills": [
+        "skills/service-build/SKILL.md",
+        "skills/service-build/references/bestpartner.md"
+      ]
+    },
+    "service_triage": {
+      "kind": "AGENT",
+      "role": "coordinator",
+      "schema": "schemas/analysis.json",
+      "scope": "READ_ONLY",
+      "gate": "REPORT",
+      "workspace": false,
+      "writablePaths": [],
+      "plan": null,
+      "next": "human",
+      "blocked": "human",
+      "routes": {
+        "service": "service",
+        "human": "human"
+      },
+      "requires": [
+        "intake"
+      ],
+      "maxVisits": 3,
+      "timeoutSeconds": 900,
+      "maxTurns": 40,
+      "instructions": "prompts/service-triage.md",
+      "skills": [
+        "skills/service-build/SKILL.md",
+        "skills/service-build/references/bestpartner.md"
       ]
     }
   }

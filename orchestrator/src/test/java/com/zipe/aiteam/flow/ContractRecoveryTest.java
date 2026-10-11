@@ -23,8 +23,11 @@ class ContractRecoveryTest {
     }
 
     private JsonNode successfulImplementation() throws Exception {
-        return mapper.readTree("{\"execution_status\":\"COMPLETED\",\"failure_report\":null,\"status\":\"SUCCESS\","
+        var report = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree("{\"execution_status\":\"COMPLETED\",\"failure_report\":null,\"status\":\"SUCCESS\","
                 + "\"summary\":\"已修正 TLS\",\"quality_gate\":{\"verify_passed\":true},\"boundary_conflict\":null}");
+        report.put("issue_revision", IssueTracker.revision(flow));
+        report.putArray("issue_updates"); report.putArray("issue_checks");
+        return report;
     }
 
     @Test void restoresAWronglyRejectedSuccessfulImplementation() throws Exception {

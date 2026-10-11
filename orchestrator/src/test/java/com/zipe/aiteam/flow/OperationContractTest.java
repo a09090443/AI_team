@@ -13,6 +13,25 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class OperationContractTest {
+    @Test void pinnedScriptRejectsShellExpressionsTraversalAndExtraArguments() {
+        String sha = "a".repeat(64);
+        for (var argv : List.of(List.of("bash", "-c", "id"), List.of("bash", "../scripts/check.sh"),
+                List.of("bash", "scripts/check.sh", "extra"), List.of("sh", "scripts/check.sh")))
+            assertThat(OperationContract.pinnedScript(new TeamDefinition.Operation(List.of("verification"), ".", argv, List.of(), sha))).isFalse();
+        assertThat(OperationContract.pinnedScript(new TeamDefinition.Operation(List.of("verification"), ".",
+                List.of("bash", "scripts/check.sh"), List.of(), sha))).isTrue();
+    }
+    @Test void pinnedScriptMustMatchReviewedContent() throws Exception {
+        var config = config("bestpartner");
+        Path script = tmp.resolve("scripts/harness-drift-scan.sh"); Files.createDirectories(script.getParent());
+        Files.writeString(script, "#!/bin/bash\nexit 0\n");
+        ((ObjectNode)config.path("project").path("operations").path("harness-drift-scan"))
+                .put("scriptSha256", IndependentVerifier.hash(script));
+        var definition = mapper.treeToValue(config, TeamDefinition.class); TeamCatalog.validate(definition);
+        assertThat(OperationContract.scriptPins(definition, "verification", tmp)).containsExactly(script.toRealPath());
+        Files.writeString(script, "#!/bin/bash\nexit 1\n");
+        assertThatThrownBy(() -> OperationContract.scriptPins(definition, "verification", tmp)).hasMessageContaining("核准版本不符");
+    }
     @TempDir Path tmp;
     ObjectMapper mapper = new ObjectMapper();
     ObjectNode config(String name) throws Exception { return (ObjectNode)mapper.readTree(Files.readString(Path.of("teams/" + name + ".json"))); }

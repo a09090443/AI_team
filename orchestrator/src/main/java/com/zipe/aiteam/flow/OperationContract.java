@@ -28,11 +28,14 @@ public final class OperationContract {
         operations.forEach((id, op) -> {
             TeamCatalog.require(id.matches("[a-z][a-z0-9_-]*") && op != null, "無效操作 ID");
             TeamCatalog.require(!INSPECT_CONTENT.equals(id), "操作 ID " + INSPECT_CONTENT + " 為系統保留的內容檢視，不能宣告成指令");
+            TeamCatalog.require(!FileComparison.OPERATION.equals(id), "操作 ID " + FileComparison.OPERATION + " 為系統保留的檔案比對");
             relative(op.directory());
             TeamCatalog.require(op.argv() != null && !op.argv().isEmpty() && op.argv().size() <= 32
                     && op.argv().stream().allMatch(s -> s != null && s.matches("[A-Za-z0-9_./:=+@,-]{1,200}")), "操作 argv 僅允許明確參數，不支援 shell 表達式：" + id);
             TeamCatalog.require(definition.project().requiredTools().contains(op.argv().getFirst())
-                    && !Set.of("sh", "bash", "cmd", "powershell", "pwsh", "zsh").contains(op.argv().getFirst()), "操作執行檔未宣告或為 shell：" + id);
+                    && (!Set.of("sh", "bash", "cmd", "powershell", "pwsh", "zsh").contains(op.argv().getFirst())
+                        || pinnedScript(op)), "操作執行檔未宣告或為未釘選的 shell：" + id);
+            TeamCatalog.require(op.scriptSha256() == null || pinnedScript(op), "scriptSha256 只支援固定的 bash 相對腳本：" + id);
             TeamCatalog.require(op.nodes() != null && !op.nodes().isEmpty() && op.writes() != null, "操作缺 nodes/writes：" + id);
             op.writes().forEach(OperationContract::relative);
             for (String nodeId : op.nodes()) {
@@ -45,6 +48,24 @@ public final class OperationContract {
                 }
             }
         });
+    }
+    static boolean pinnedScript(Operation op) {
+        return op.scriptSha256() != null && op.scriptSha256().matches("[0-9a-f]{64}")
+                && op.argv() != null && op.argv().size() == 2 && "bash".equals(op.argv().getFirst())
+                && op.argv().get(1).matches("[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)+\\.sh")
+                && Arrays.stream(op.argv().get(1).split("/")).noneMatch(s -> s.equals("..") || s.equals("."));
+    }
+    static List<Path> scriptPins(TeamDefinition definition, String node, Path cwd) throws Exception {
+        List<Path> pins = new ArrayList<>();
+        for (Operation op : forNode(definition, node).values()) if (op.scriptSha256() != null) {
+            if (!pinnedScript(op)) throw new IllegalStateException("未核准的腳本操作");
+            Path script = resolve(resolve(cwd, op.directory()), op.argv().get(1));
+            if (!Files.isRegularFile(script, LinkOption.NOFOLLOW_LINKS)
+                    || !IndependentVerifier.hash(script).equals(op.scriptSha256()))
+                throw new IllegalStateException("腳本內容與核准版本不符，禁止執行：" + script);
+            pins.add(script);
+        }
+        return pins;
     }
     static void relative(String value) {
         TeamCatalog.require(value != null && (value.equals(".") || value.matches("[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*"))

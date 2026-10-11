@@ -1,10 +1,15 @@
 ---
+
 sidebar_position: 5
 title: 設定參考
 description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限制。
 ---
 
 # 設定參考
+
+新 v2 配置載入時，系統將 `contracts/issue-tracking-v1` 共用問題追蹤契約納入快照與版本雜湊，
+不需逐專案新增欄位，也不以專案名稱分支；既有任務不因重啟自動啟用。
+此為系統生成的快照資產，不是要在 teams 下建立同名檔案。細節見[問題完整性](/docs/engineering-workflow#跨專案問題完整性2026-10-11)。
 
 設定分兩處：**`~/ai-team/env.sh`**（權限 600，含憑證，不進版控）與 **團隊配置 JSON**
 （`orchestrator/teams/*.json`，不含憑證，只引用環境變數名稱）。
@@ -79,6 +84,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 | `model` | 該 runtime 認得的模型名；三家格式不通用（opencode 為 `provider/model`） |
 | `reasoningEffort` | 選填，目前僅 Codex 支援 `low`／`medium`／`high`／`xhigh` |
 | `prompt` | 角色一般職責的提示檔 |
+| `capabilities` | 自主派工候選角色必填的能力與限制描述，最多 2000 字；提供模型判斷，不會授予權限 |
 | `botTokenEnv`、`appTokenEnv` | Slack token 的**環境變數名稱**（值不進 JSON、不進快照） |
 | `tools` | 工具白名單，例如 `Read`、`Bash(mvn *)`。要角色核實產物就必須給對應唯讀工具，否則被拒後報告作廢。Claude Code 以 `--permission-mode dontAsk` 執行，**沒列在這裡的工具一律拒絕**，包含 `WebSearch`、`WebFetch`：角色要查網路（例如查套件最新版）必須明列，可寫成 `WebFetch(domain:repo1.maven.org)` 限定網域。Codex runtime 目前未開啟網頁搜尋 |
 
@@ -88,6 +94,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 |---|---|
 | `kind` | `AGENT` 或 `APPROVAL` |
 | `role`、`schema`、`instructions` | 執行角色、輸出 schema、階段指示（優先於角色 prompt） |
+| `candidateRoles` | 選填 1～16 個不重複的合格角色 ID（須含原 role）；非入口 agent 節點可用。上游以 handoff 選擇下一階段負責人，缺漏或越權會受阻；未設定時維持原 role |
 | `scope` | 寫入權限，見下表 |
 | `gate` | 工作契約，見下表 |
 | `workspace` | 是否建立任務工作區；已有工作區的 READ_ONLY 節點仍唯讀查看該副本 |
@@ -124,3 +131,23 @@ bash deploy/bootstrap/check-source.sh
 配置在服務啟動時讀取；改完要重啟，且**只影響新任務**。舊任務沿用建立時的快照。
 
 完整說明見 [configurable-team](/docs/configurable-team) 與 [cross-project-execution](/docs/cross-project-execution)。
+
+
+## 服務建置與指定腳本
+
+`project.serviceTarget` 指定管理者核准的服務目標名稱及檢查操作 ID（至少 start、health）；null 時不能啟動 service runtime。
+`Gate.SERVICE` 限 LIMITED 工作區，成功直接 end，不套用開發 QA／PR 閘門；完整欄位與證據限制見 [服務建置](/docs/service-delivery)。
+`project.operations.*.scriptSha256` 僅可配固定的 bash 相對腳本，內容必須吻合且執行時唯讀；見 [跨專案契約](/docs/cross-project-execution)。
+
+
+## 服務執行工具（2026-10-10）
+
+bestpartner 配置四個 `service-*` 操作，目標 `bestpartner-dev`；Windows 宿主機 `host.example.json` 的 UUID／guest_user／password_file／source_manifest／state_directory 必須由管理者設定，`tasks=[]` 依即時 SERVICE 狀態自動挑選。詳見 [服務建置](/docs/service-delivery)。
+
+
+### 節點 skill
+
+`nodes.<id>.skills` 選填，最多 8 份不重複的 `skills/<name>/SKILL.md` 或 `skills/<name>/references/<name>.md` 相對路徑。檔案須位於 teams 目錄內，每份不超過 256 KB。
+舊配置缺欄位照舊；skill 與參考內容納入 revision／snapshot，角色改派保留 skills，唯讀對話不注入。變更 skill 須新任務承接，不能以能力遷移替換提示。
+
+Windows 可用 skill 的 `scripts/login.ps1 -Config <設定檔>` 初始化 password_file；其父目錄必須是專用私人目錄，腳本會限制 ACL 且不覆寫既有檔案。

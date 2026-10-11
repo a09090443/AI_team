@@ -370,6 +370,7 @@ public class CodexRuntime implements AgentRuntime {
                                 || item.path("exit_code").asInt(0) != 0)) {
                         var failed = toolFailures.addObject();
                         failed.put("tool_name", "command_execution");
+                        failed.put("failure_kind", "COMMAND_FAILURE");
                         failed.put("tool_use_id", item.path("id").asText("未提供"));
                         failed.putObject("tool_input").put("command", item.path("command").asText("未提供"));
                         failed.put("reason", "exit_code=" + item.path("exit_code") + "；"

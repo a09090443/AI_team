@@ -20,6 +20,7 @@ description: agent 在本 repo 修改程式、配置或文件時必須遵守的�
 | 要改的東西 | 位置 | 改完必做 |
 |---|---|---|
 | 新角色、流程節點、權限 | `orchestrator/teams/*.json` 與其 `prompts/`、`schemas/` | `--validate-team`、`check-source.sh`、Maven 測試 |
+| 新角色的 Slack 身分 | `deploy/agent-manifests/`、角色的 token 環境變數 | 完成回報附建立／安裝、token、邀請、重啟與 `@`／流程驗證方式；見 [建立 Slack App](/docs/slack-agent-apps#新增配置式角色) |
 | 引擎行為 | `orchestrator/src/main/java/com/zipe/aiteam/flow/` | Maven 測試 |
 | 資料表 | `orchestrator/src/main/resources/schema.sql` | 同步更新 [data-model](/docs/data-model)；**沒有遷移機制**，要自己補 `ALTER TABLE` |
 | `FlowRun`、`Checkpoint` 等序列化型別 | 對應 Java 類別 | 同步更新 data-model；舊資料解析失敗會直接拋錯 |
@@ -47,6 +48,7 @@ description: agent 在本 repo 修改程式、配置或文件時必須遵守的�
 ## 其他注意事項
 
 - **不要再擴充 legacy role switch**；新角色與流程一律走 `orchestrator/teams/`。
+- 新增 Agent 時，完成回報必須包含加入 Slack 的操作方式；若不建獨立角色 App，要明示由主 App 代發且不能直接 `@`。
 - `deploy/deploy-orchestrator.sh`、`deploy/deploy-jar-safe.sh` 只用於升級既有 VM；新機一律走 `deploy/bootstrap/`。不要再新增一次性的 `deploy-<功能>-<日期>.sh`。
 
 ## 安全與證據

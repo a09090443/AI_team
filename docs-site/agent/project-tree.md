@@ -49,10 +49,38 @@ agent_team/
 │   └── skills/                       # 共用 skills 單一來源（Codex、Cursor、opencode 直接讀）
 │       └── docs-sync/
 │           └── SKILL.md              # 文件優先核對流程
+│       ├── service-build/            # 可攜式服務建置 skill（來源／同步鏡像）
+│       │   ├── SKILL.md              # 環境檢查、建置、啟動與有界修復流程
+│       │   ├── references/
+│       │   │   ├── bestpartner.md    # 產品部署契約與檢查限制
+│       │   │   └── host-setup.md     # SSH／VirtualBox 主機設定與換機
+│       │   ├── assets/
+│       │   │   └── host.example.json # 無憑證的主機設定範本
+│       │   └── scripts/
+│       │       ├── client.py         # Agent 固定操作入口與任務授權
+│       │       ├── broker.py         # 主機連線與固定操作執行
+│       │       ├── guest.py          # 目標環境安裝、建置、啟動與檢查
+│       │       ├── enroll.py         # 管理者固定來源雜湊
+│       │       ├── login.ps1         # Windows 遮蔽輸入與私人登入檔
+│       │       └── test_service_agent.py # 執行工具測試
 ├── .claude/
 │   └── skills/                       # 產生檔：.agents/skills 的鏡像（Claude Code 只讀這裡）
 │       └── docs-sync/
 │           └── SKILL.md
+│       ├── service-build/            # 可攜式服務建置 skill（來源／同步鏡像）
+│       │   ├── SKILL.md              # 環境檢查、建置、啟動與有界修復流程
+│       │   ├── references/
+│       │   │   ├── bestpartner.md    # 產品部署契約與檢查限制
+│       │   │   └── host-setup.md     # SSH／VirtualBox 主機設定與換機
+│       │   ├── assets/
+│       │   │   └── host.example.json # 無憑證的主機設定範本
+│       │   └── scripts/
+│       │       ├── client.py         # Agent 固定操作入口與任務授權
+│       │       ├── broker.py         # 主機連線與固定操作執行
+│       │       ├── guest.py          # 目標環境安裝、建置、啟動與檢查
+│       │       ├── enroll.py         # 管理者固定來源雜湊
+│       │       ├── login.ps1         # Windows 遮蔽輸入與私人登入檔
+│       │       └── test_service_agent.py # 執行工具測試
 ├── .cursor/
 │   └── mcp.json                      # 產生檔：Cursor MCP
 ├── .gemini/
@@ -78,6 +106,7 @@ agent_team/
 │   │   ├── flow/                     # 配置式（v2）流程引擎與工作契約
 │   │   │   ├── FlowEngine.java       # 流程引擎：節點轉移、受阻路由、停止、承接新任務
 │   │   │   ├── FlowRun.java          # 每任務的流程快照（存於 flow_run 表）
+│   │   │   ├── AgentDispatch.java    # Agent 選擇角色、派工契約驗證與歷史保存
 │   │   │   ├── FlowLimits.java       # 防循環上限的唯一判斷（引擎與按鈕共用）
 │   │   │   ├── FlowGates.java        # 依工作契約（gate）驗證節點報告
 │   │   │   ├── FlowContext.java      # 滾動的交接紀錄 flow.context
@@ -91,7 +120,10 @@ agent_team/
 │   │   │   ├── ProtectedPathFallback.java # 受保護路徑改派實作者：判定、禁止清單與事後核對
 │   │   │   ├── VerificationRecovery.java # 配置核准後授予一次驗收重跑
 │   │   │   ├── Traceability.java     # 需求基準、原子驗收項目與覆蓋對照
+│   │   │   ├── IssueTracker.java     # 跨專案問題清單、需求對應、逐項驗證與承接完整性
 │   │   │   ├── IndependentVerifier.java # 系統獨立驗證：全新 clone 執行固定指令並產生收據
+│   │   │   ├── FileComparison.java # 指定舊檔比對的計畫契約、路徑驗證與能力說明
+│   │   │   ├── ServiceDelivery.java # 服務建置目標、可用性檢查與完成契約
 │   │   │   ├── OperationContract.java # 專案操作契約（operations）
 │   │   │   ├── OperationPreflight.java # 各階段沙箱內的操作預檢
 │   │   │   ├── PathRules.java        # 專案相對路徑與 ** 比對
@@ -166,6 +198,21 @@ agent_team/
 │   │   ├── task/
 │   │   └── workspace/
 │   ├── teams/                        # 配置式團隊定義（現行模式），修改後重啟、只影響新任務
+│   │   ├── skills/                   # 由 .agents 同步的 Slack runtime skill 套件
+│   │   │   └── service-build/
+│   │   │       ├── SKILL.md          # 建置流程（不得手改產生檔）
+│   │   │       ├── references/
+│   │   │       │   ├── bestpartner.md
+│   │   │       │   └── host-setup.md
+│   │   │       ├── assets/
+│   │   │       │   └── host.example.json
+│   │   │       └── scripts/
+│   │   │           ├── client.py
+│   │   │           ├── broker.py
+│   │   │           ├── guest.py
+│   │   │           ├── enroll.py
+│   │   │           ├── login.ps1         # Windows 遮蔽輸入與私人登入檔
+│   │   │           └── test_service_agent.py
 │   │   ├── spring-starters.json      # 現行正式配置：zipe-spring-boot-starters
 │   │   ├── bestpartner.json          # bestpartner 實例（Kotlin/Quarkus＋Gradle、Vue）；不跑需資料庫的測試
 │   │   ├── node-web.json             # Node 專案範例配置
@@ -176,8 +223,12 @@ agent_team/
 │   │   │   ├── implement.md          # 實作（Backend）
 │   │   │   ├── verify.md             # 驗收（QA）
 │   │   │   ├── review.md             # 審查（Code Reviewer）
+│   │   │   ├── infrastructure.md     # Infrastructure Agent：環境設定與核准目標的服務建置
+│   │   │   ├── service.md            # 服務建置、啟動後檢查與自修
+│   │   │   ├── service-triage.md     # 服務受阻分流
 │   │   │   └── triage.md             # 受阻分流（PM）
 │   │   └── schemas/                  # 節點輸出 JSON schema
+│   │       ├── service.json          # 服務目標與逐項可用性證據
 │   │       ├── requirements.json
 │   │       ├── analysis.json
 │   │       ├── plan.json
@@ -206,12 +257,13 @@ agent_team/
 │   ├── README.md                     # deploy/ 目錄說明與 Slack 主 App 設定
 │   ├── env.sh.template               # 環境變數範本（複製為 ~/ai-team/env.sh，權限 600）
 │   ├── slack-app-manifest.yaml       # 主 App manifest
-│   ├── agent-manifests/              # 五個角色 App 的 manifest
+│   ├── agent-manifests/              # 五個既有角色與 bestpartner Infrastructure Agent 的 Slack App manifest
 │   │   ├── pm.yaml
 │   │   ├── architecture.yaml
 │   │   ├── backend.yaml
 │   │   ├── qa.yaml
-│   │   └── code-review.yaml
+│   │   ├── code-review.yaml
+│   │   └── infrastructure.yaml       # BP Infrastructure Agent：Preview 部署、健康檢查與清理身分
 │   ├── bootstrap/                    # 從零建置工具（新機只用這裡），安裝後位於 ~/ai-team/
 │   │   ├── provision.sh              # 以已核實 checksum 的官方封存檔安裝工具鏈
 │   │   ├── toolchain.tsv.example     # 工具鏈 URL／checksum 範本

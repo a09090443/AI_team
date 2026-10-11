@@ -91,7 +91,7 @@ export const docs = [
     title: '配置式專案、角色與工作流程',
     category: 'workflow',
     status: 'current',
-    summary: 'AI_TEAM_DEFINITION 團隊 JSON（project／roles／nodes）、scope 與 gate 政策、受阻路由、次數上限、快照相容、承接新任務，以及同一台 VM 多個服務實例（AI_TEAM_INSTANCE）。',
+    summary: 'AI_TEAM_DEFINITION 團隊 JSON（project／roles／nodes）、scope 與 gate 政策、Agent 依能力自主派工、受阻路由、次數上限、快照相容、承接新任務，以及同一台 VM 多個服務實例（AI_TEAM_INSTANCE）。',
     readWhen: '新增或修改角色、節點、流程，或解釋任務為何停住／能否繼續。',
     code: ['orchestrator/teams/', 'orchestrator/src/main/java/com/zipe/aiteam/flow/', 'orchestrator/src/main/java/com/zipe/aiteam/sandbox/TaskUnits.java'],
   },
@@ -102,7 +102,7 @@ export const docs = [
     status: 'current',
     summary: 'v2 需求基準與原子驗收項、返工與需求變更、系統獨立驗證收據、PR_CREATED 的意義。',
     readWhen: '處理需求 ID／驗收覆蓋、返工失效傳遞，或判斷 PR 狀態代表什麼。',
-    code: ['orchestrator/src/main/java/com/zipe/aiteam/flow/Traceability.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/IndependentVerifier.java'],
+    code: ['orchestrator/src/main/java/com/zipe/aiteam/flow/Traceability.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/IssueTracker.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/IndependentVerifier.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/FileComparison.java'],
   },
   {
     id: 'cross-project-execution',
@@ -112,6 +112,15 @@ export const docs = [
     summary: 'project.operations 操作契約、各階段沙箱預檢、真人計畫核准與自動測試分離、舊任務配置遷移。',
     readWhen: '讓新專案宣告建置／測試指令，或處理配置更新後的舊任務。',
     code: ['orchestrator/src/main/java/com/zipe/aiteam/flow/OperationContract.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/TeamMigration.java'],
+  },
+  {
+    id: 'service-delivery',
+    title: '服務建置與開發分流',
+    category: 'workflow',
+    status: 'current',
+    summary: 'Infrastructure 建置既有服務、啟動後檢查、自動修復與必要主機資訊；不先進 QA 計畫。',
+    readWhen: '建立測試環境、部署服務、設定 serviceTarget 或了解 SERVICE 完成條件。',
+    code: ['.agents/skills/service-build/', 'orchestrator/teams/skills/service-build/', 'orchestrator/src/main/java/com/zipe/aiteam/flow/ServiceDelivery.java', 'orchestrator/teams/prompts/service.md', 'orchestrator/teams/prompts/service-triage.md', 'orchestrator/teams/schemas/service.json'],
   },
   {
     id: 'qa-scenario-workflow',
@@ -153,11 +162,11 @@ export const docs = [
   },
   {
     id: 'slack-agent-apps',
-    title: '建立 Slack App（主 App 與五個角色）',
+    title: '建立 Slack App（主 App 與角色 App）',
     category: 'slack',
     status: 'current',
-    summary: '以 manifest 建立主 App 與五個角色 App、兩種 token 對應的環境變數、邀請進頻道、驗證與疑難排解。',
-    readWhen: '新機設定 Slack、設定角色的獨立身分或 App-Level Token，或 Slack 沒反應時排查。',
+    summary: '以 manifest 建立主 App 與角色 App、兩種 token 對應的環境變數、邀請進頻道、驗證，以及新增配置式角色的完整步驟。',
+    readWhen: '新機設定 Slack、新增角色 App、設定角色獨立身分或 App-Level Token，或 Slack 沒反應時排查。',
     code: ['deploy/slack-app-manifest.yaml', 'deploy/agent-manifests/'],
   },
   {

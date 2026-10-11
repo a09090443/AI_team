@@ -45,6 +45,11 @@ task (1) ──┬── (0..1) task_checkpoint     中斷現場
 
 ## task
 
+**2026-10-11 相容性注意**：新 JAR 可讀取沒有 issueInventory／issueEvidence／issueContext／issueScopeChangeAuthorized 的舊 FlowRun，預設為空／false，
+是否啟用問題追蹤仍依快照資產標記。新版將這些欄位寫入 JSON 後，舊 JAR 的嚴格反序列化無法讀取；
+回滾應成套還原部署前 JAR、teams 與備份 DB，且不得覆蓋部署後新增的任務／核准紀錄，須先評估並保留現場。
+沒有自動資料遷移，也不回溯把舊摘要當成已驗證的問題清單。
+
 任務主表，一則 Slack 需求一列。對應 `com.zipe.aiteam.task.Task`。
 
 | 欄位 | 型別 | 說明 |
@@ -207,6 +212,8 @@ data    TEXT NOT NULL
 
 v2 配置式流程的整份執行快照，對應 `com.zipe.aiteam.flow.FlowRun`。
 **每次狀態變更整份覆寫**。這是四張表裡欄位最多、也最需要小心的一張。
+自主派工新增 assignments／assignmentHistory，以及 snapshot.definition 中的 candidateRoles／capabilities；
+新版寫入後舊 JAR 不能直接解析，回滾需配合升級前的資料庫與配置備份。
 
 最關鍵的性質：`snapshot` 內含「任務開始時」的 teams 配置，
 磁碟上的配置改了不會影響進行中的任務。要換配置必須走 `TeamMigration`，
@@ -234,10 +241,15 @@ v2 配置式流程的整份執行快照，對應 `com.zipe.aiteam.flow.FlowRun`�
 | `baselineRevision` | String | 需求基準摘要。需求節點產出後建立；需求變更會清空並連帶清掉 `receipts`／`heads` |
 | `baselineHistory` | List | 歷次需求基準報告的深拷貝，不覆蓋 |
 | `receipts` | Map&lt;節點,報告&gt; | 各節點**通過**時的結構化報告；受阻報告不寫進來。例外：驗收負責人以「開 PR」放行的審查報告會寫進來，帶 `owner_waiver`（放行者、時間、原因），被放行的 finding 改列 `LOW` 並帶 `waived_from` 原等級（2026-10-06 起，見 [review-gate](review-gate.md#負責人命令開-pr-與放行提醒等級2026-10-06)）；放行未核實事項的驗收報告也會寫進來，`uncertainties` 清空、原項目移到 `waived_uncertainties`，帶 `owner_waiver`（2026-10-08 起） |
-| `blockedFindings` | Map&lt;節點,報告&gt; | 尚未解除的受阻發現，以來源節點為鍵。受阻時寫入，該節點自己通過時移除。**不受 `context` 長度上限影響**，必定注入下游節點提示；這是開放缺陷唯一保證送達的來源。需求變更不清除，採 fail closed |
+| `blockedFindings` | Map&lt;節點,報告&gt; | 尚未解除的受阻發現，以來源節點為鍵。受阻時寫入，該節點自己通過時移除。**不受 `context` 長度上限影響**，必定注入下游節點提示；節點受阻證據與 issueInventory 問題清單分別保存。需求變更不清除，採 fail closed |
 | `heads` | Map&lt;節點,commit&gt; | 各節點結束時的 HEAD |
+| `issueInventory` | Map&lt;問題 ID,JSON&gt; | 新 v2 共用契約的完整問題清單，含 description／evidence／scope／reason／requirement_ids、系統 source_task／source_node；DECISION 額外保存 decision_supplements，防止未收到新回覆就自行決定。空更新不清除，承接完整深拷貝 |
+| `issueEvidence` | Map&lt;問題 ID,JSON&gt; | 通過驗收／審查／服務階段的逐項 id／status／evidence／head／node；承接只作歷史證據，不能取代新任務驗收 |
+| `issueContext` | String | 單項衍生任務的來源總數與局部範圍說明，承接保留 |
+| `issueScopeChangeAuthorized` | boolean | 由原需求負責人明確核准需求變更時給予的一輪排除變更權；建立新基準後清除，不由模型授予、不沿用到承接任務 |
 | `origin` / `branch` | String | 工作區的 origin 與分支 |
 | `beforeHead` | String | 限寫階段的起始 commit。**缺這個就拒絕核實寫入範圍**（`SecurityException`） |
+| `comparisonBase` | String | 工作區建立／承接當下的 Git commit，返工不更換；內建指定檔案比對的基準。舊任務為 null，不允許以目前 HEAD 補造 |
 | `changeTarget` / `changeAuthorized` | String / boolean | 待核准的需求變更目標節點；核准後才允許回頭改需求 |
 | `pendingPlanRevision` | String | 待核准的測試計畫節點 |
 | `planApprovals` | Map&lt;節點,`PlanApproval`&gt; | 真人核准收據：`plan`、`planRevision`、`baseline`、`configuration`、`user`、`at`。**只由已授權真人指令建立**，不接受 agent 報告裡的 `approved` 欄位 |
@@ -251,12 +263,20 @@ v2 配置式流程的整份執行快照，對應 `com.zipe.aiteam.flow.FlowRun`�
 | `attemptHeads` | Map&lt;節點,commit&gt; | 各 workspace 節點最近一次真正開始執行時的 HEAD；人工修復重驗必須使用不同的新 commit |
 | `migrationHistory` | List&lt;Snapshot&gt; | 歷次配置遷移前的完整舊快照 |
 | `dialogue` / `dialogueRole` / `parentId` | boolean / String / String | 對話模式旗標與目標角色、母任務 |
+| `assignments` | Map&lt;節點,Assignment&gt; | 目前有效的自主派工或同一固定角色交接；Assignment 含 source、node、role、reason、instruction；續跑沿用，不修改配置原 role |
+| `assignmentHistory` | List&lt;Assignment&gt; | 依序保存每次自主派工決定，最多 256 筆；缺欄位的舊快照初始化為空 |
 | `successor` / `continuationOf` | String / String | 承接成的新任務／本任務承接自哪個任務 |
 | `spinoffs` | Map&lt;項目序號,任務編號&gt; | 純詢問結束後以「開成新需求」按鈕從最後報告的 `out_of_scope` 開立的任務（序號從 1 起，最多 5）。用來防止同一項重複開立（2026-10-03 新增） |
 | `spinoffOf` | String | 本任務由哪個任務的純詢問發現開立；不沿用該任務的核准、工作區或結論（2026-10-03 新增） |
 | `roleOverrides` | Map&lt;節點,角色&gt; | 整節點改派（舊行為）實際執行的角色；同一任務重跑沿用。分段改派上線後新任務不再寫入（2026-10-04 新增，回滾風險同上） |
 | `delegatedParts` | Map&lt;節點,DelegatedPart&gt; | 分段改派的改派段結果：`role`、`startHead`（本輪起始 commit）、`head`（系統代為提交後）、`files`、`summary`（摘要，最多 2000 字）。續跑同一輪時略過已完成的改派段；節點新的一輪開始時移除（2026-10-04 新增，回滾風險同上） |
 | `prUrl` / `publishedHead` | String | 發布結果 |
+
+2026-10-10 `IndependentVerifier.Receipt` 新增可為 null 的 `fileComparison`：
+`base`（固定 Git 基準）、`head`、`planDigest`（所有已保存測試計畫的雜湊）、`files[]`（`path`、`before`、`after`，後兩者為 Git mode／blob ID）、
+`log`（系統比較結果 JSON）及 `sha256`。未引用內建比對的舊計畫保持 null。
+計畫情境新增 `unchanged_paths` 字串陣列，配合 `operation_ids` 的 `compare-unchanged-files` 使用；舊計畫缺欄位仍可讀取。
+**新版保存 `comparisonBase`／`fileComparison` 後不可直接換回不認識欄位的舊 JAR**；回滾須配合升級前 DB 備份評估，不覆蓋升級後任務。
 
 **回滾風險**：`TaskStore` 以預設 ObjectMapper 讀 `flow_run.data`，未知欄位會拋錯。新版寫入的欄位
 （例如 `spinoffs`、`spinoffOf`）對舊資料相容（缺欄位取預設值），但**回滾到不認得這些欄位的舊 JAR 後，
@@ -340,3 +360,19 @@ sqlite3 ~/ai-team/ai-team.db "SELECT json_extract(data,'$.node'), json_extract(d
 
 服務執行中請只做唯讀查詢。直接改 `task.state` 或 `flow_run.data` 會繞過狀態機與閘門，
 記憶體中的任務也不會同步——要改狀態請用 Slack 指令。
+
+
+## 2026-10-10：服務建置與指定腳本快照
+
+TeamDefinition.Project 新增選填 serviceTarget：name（目標名稱）與 checks（檢查名稱 → operation_id）。Operation 新增選填 scriptSha256。
+舊快照缺欄位解析為 null，既有開發流程維持不變。新節點 Gate.SERVICE 與 schema service.json 保存在 snapshot.definition／assets，
+報告仍寫 stage_result 與 flow.receipts；沒有新增資料表或改寫舊需求。
+服務報告含 target、service_status、product_code_changed、checks（name、operation_id、acceptance_ids、status、exit_code、evidence）、uncertainties，
+共用 execution_status／failure_report／human_decision 仍由執行器補 schema。
+新版本可讀舊資料；舊 binary 不認 SERVICE 與新欄位。新快照寫入後不能只回滾 JAR，必須使用相容程式或在維護期間還原相符備份，且不得覆蓋其後新任務進度。
+
+
+## 2026-10-10 skill 快照欄位
+
+`flow_run.data.snapshot.definition.nodes.*.skills` 為選填字串陣列；相對路徑與對應的 Markdown 全文分別存於 definition 與 snapshot.assets，納入 revision。旧資料省略時為 null，不需改 DDL。
+新快照不能交給不認識 skills 欄位的舊 JAR。部署回滾仍須依既有流程處理 DB 相容性；不能擅自修改任務資料或刪除此欄位。

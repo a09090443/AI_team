@@ -18,7 +18,7 @@
 
 ## 操作契約
 
-`project.operations` 是選填物件；各操作包括 `nodes`、`directory`、`argv`、`writes`。
+`project.operations` 是選填物件；各操作包括 `nodes`、`directory`、`argv`、`writes`，以及選填 `scriptSha256`。
 目錄與寫入需求均相對於 repo 根目錄。以下只是配置片段，節點及工具須另有宣告：
 
 ```json
@@ -41,11 +41,18 @@ Java＋文件網站與 Node 範例均已加入契約。新專案仍需管理者�
 本版不會從 README 或模型輸出自動推導、安裝工具、開放權限。
 
 靜態檢查拒絕 shell 表達式、越界路徑、未知節點、唯讀寫入及未宣告工具。
+唯一腳本形式為 `["bash", "scripts/example.sh"]`，且必填小寫 64 位 `scriptSha256`、requiredTools 宣告 bash。
+不接受 `-c`、額外參數、絕對路徑或 `..`。派工前核對腳本實際 SHA256、禁止 symlink，並在可寫階段將檔案釘選唯讀。
+腳本內容更新必須重新審閱並更新配置雜湊；不自動信任新版本。仍由同一外層沙箱執行，不擴大權限。
+這不改變 project.verification.commands 禁止 shell 的獨立驗證政策。
 目前 argv 為簡單、無空白／shell 特殊字元的參數；複雜命令不自行降級成 shell。
 `writes` 是操作需求，不是新的權限來源，也不代表列出所有執行中副作用。
 
 操作 ID `inspect-content` 為系統保留：它是所有 v2 測試計畫／驗收可引用的內建「讀已提交檔案內容」驗收方式，
 不是指令、不進 `OperationPreflight`，配置宣告同名操作會被拒絕。語意與限制見 [qa-scenario-workflow](qa-scenario-workflow.md)。
+
+`compare-unchanged-files` 同樣為保留的 v2 內建操作，計畫以 `unchanged_paths` 宣告指定檔案，
+系統執行 Git 物件比對並產生收據，不授予模型新指令權限；語意與邊界見 [QA 情境流程](qa-scenario-workflow.md)。
 
 ## 各階段預檢與證據
 
@@ -82,7 +89,7 @@ Codex 沒有細粒度 CLI 工具白名單，不能把前置宣告當成命令限
 
 系統會提示實際節點與完整 digest，必須先審閱該計畫再送出。
 只有白名單內的原需求負責人能核准，而且任務必須停止等待人工。
-核准只存收據、不排工作；再以一般補充續跑。PR 核准維持另一道獨立閘門。
+核准保存收據並自動排入對應驗收節點，不需另行補充續跑（見 [計畫核准按鈕](plan-approval-buttons.md)）。PR 核准維持另一道獨立閘門。
 歷史快照缺少 flag 時維持 false；不能把啟用新服務視為核准舊任務。
 
 ## 舊任務配置更新
@@ -96,7 +103,7 @@ Codex 沒有細粒度 CLI 工具白名單，不能把前置宣告當成命令限
 ```
 
 預覽比較任務快照與目前服務載入的配置，token 綁定來源、目標與完整目標內容。
-只允許工具、快取、建置／測試指引、operations 的能力設定差異，以及同一 runtime 內的角色模型
+只允許工具、快取、建置／測試指引、operations 與 serviceTarget 的能力設定差異，以及同一 runtime 內的角色模型
 （2026-09-25 起，例如 `roles.builder.model："sonnet" → "opus"`）；
 角色集合、runtime、路由、基準分支、repo、提示／schema、保護路徑與核准政策若改變，
 拒絕原地遷移，需另建任務或另行設計受控遷移。大於 5000 字元的差異不截斷求核准。
@@ -122,3 +129,8 @@ Codex 沒有細粒度 CLI 工具白名單，不能把前置宣告當成命令限
 VM 上以 opt-in `AI_TEAM_PREFLIGHT_SMOKE=true` 實測工具存在、缺工具及唯讀 pin 拒絕；
 測試目錄位於隔離建置的 `target/preflight-smoke`，避免 `/tmp` 被 PrivateTmp 隱藏。
 這不等於真實 Slack 多專案端到端驗收。
+
+
+## 服務執行工具（2026-10-10）
+
+bestpartner 的 service 操作採固定 Python client，工作區只寫 `.agent-service` 佇列；管理者宿主機 broker 另行驗證即時 SERVICE 狀態、VM UUID 與來源 manifest。operation 宣告本身仍不授予遠端 root。詳見 [服務建置](/docs/service-delivery)。

@@ -18,6 +18,11 @@ public class OperationPreflight {
                           SandboxPolicy policy, AgentRuntime runtime) throws Exception {
         Map<String, TeamDefinition.Operation> operations = flow.dialogue ? Map.of() : OperationContract.forNode(flow.snapshot.definition(), flow.node);
         var role = flow.snapshot.definition().roles().get(node.role());
+        for (Path script : OperationContract.scriptPins(flow.snapshot.definition(), flow.node, cwd)) {
+            if (policy.readOnlyPins().stream().noneMatch(pin -> script.startsWith(pin.toAbsolutePath().normalize()))
+                    && policy.writablePaths().stream().anyMatch(write -> script.startsWith(write.toAbsolutePath().normalize())))
+                throw new IllegalStateException("核准腳本未釘選唯讀：" + script);
+        }
         List<String> args = new ArrayList<>();
         for (var entry : operations.entrySet()) {
             var operation = entry.getValue();

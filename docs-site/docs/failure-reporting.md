@@ -12,6 +12,11 @@ cause、next_action、owner。cause_status 為 CONFIRMED 或 UNKNOWN。
 只知道「Read-only file system」不能宣稱已確認哪個設定導致錯誤。
 agent 自陳與 runtime 實際事件分開標示，不強迫模型杜撰未知根因。
 
+共用回報提示要求 summary 先以 2–4 句說明進度、具體原因、對使用者目標的影響與下一步處理者，
+再提供路徑、需求編號、節點與證據等技術補充。明確區分檔案產出、測試通過與環境啟動，不能混稱完成。
+待決事項以使用者可理解的結果與限制表達；細節見 [真人決定說明](plan-approval-buttons.md#由-agent-本人說明需要你決定的事)。
+這是模型提示要求，不代表程式已能機械驗證回覆是否易懂。
+
 共用驗證會攔下 BLOCKED、缺漏的失敗回報，以及宣稱 COMPLETED 卻仍有
 FAILED/PARTIAL/FAIL/LOW、建置未過、越界或 reviewer 阻擋的矛盾結果。
 先保留 stage_result，再停止下游、保留現場並向 PM／需求提出者回報。
@@ -23,8 +28,20 @@ stdout 即時落檔，逾時仍可追查部分輸出；stderr 分開保存。
 
 Claude 工具拒絕與 Codex command_execution 失敗附操作、呼叫 ID、
 原始錯誤摘要及 session/log 位置。runtime 未提供拒絕理由時明說未知，
-不把一般指令非零結束碼當成權限拒絕。工具可透過替代操作恢復，
+runtime 本身不把一般指令非零結束碼當成權限拒絕。工具可透過替代操作恢復，
 因此單一工具失敗先回報；角色無法完成時才須 BLOCKED。
+
+**一般指令失敗分類（2026-10-10 修正，已部署 bestpartner）**：CodexRuntime 在共用 `permissionDenials` 中，
+為 `command_execution` 失敗加上 `failure_kind=COMMAND_FAILURE`。ToolTrust 不拿這類事件名稱比對工具白名單；
+FlowEngine 以 RUNTIME_CALL 稽核記錄，並把失敗證據帶入後續角色的 context，讓角色查核、修正與重驗。
+真正的權限拒絕仍保留原判定；一般指令失敗也不代表測試通過，未解除的驗收阻礙仍須 BLOCKED。
+歷史案例 #1033：`git diff --check` 因 SQL 檔尾多空白行 exit 2，舊版誤判成「完全沒有工具權限」而停止。
+本修正不會改寫該任務既有報告或自動解除等待狀態。
+
+共用提示要求角色先處理既定範圍、既有權限內的程式／設定／格式／測試問題，再重跑失敗檢查。
+唯讀角色依配置回報受阻、由分流派工，不自行寫檔，也不請使用者代為轉述。
+未知根因先查核或交合格角色定位，不能只因原因未知就要求真人；新權限、產品取捨與無可用路線仍需真人。
+這是角色執行契約，不保證模型一定能修好；既有獨立驗證、交接預算與發布閘門不變。
 
 對外診斷遮蔽已知環境憑證與常見 token／密碼格式；原始事件與報告留在
 VM 供授權查核。格式檢查保證欄位存在，不保證 agent 自陳內容正確，
@@ -65,3 +82,10 @@ VM 供授權查核。格式檢查保證欄位存在，不保證 agent 自陳內�
   見 [operations 按鈕語意](/agent/operations#按鈕語意)。
 舊版管線（`StageRunner`、remediation）目前未啟用，未接上此機制。
 設定：`AI_TEAM_EXPLAINER_MODEL`（預設 haiku）、`AI_TEAM_EXPLAINER_ENABLED`（預設 true）。
+
+
+## 服務建置的失敗
+
+Gate.SERVICE 不能以設定檔產出宣稱完成；啟動或健康檢查失敗時由 service_triage 交回原角色修正並重驗。
+缺少目標主機時在模型執行前明確說明，不把權限／環境缺口說成使用者未選擇驗收降級。
+機械驗證的欄位與 agent 自陳證據的限制見 [服務建置](service-delivery.md)。

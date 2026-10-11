@@ -110,12 +110,21 @@ for (const skill of sourceSkills) {
   else if (front.match(/^name:\s*(.+)$/m)?.[1].trim() !== skill) problems.push(`.agents/skills/${skill}/SKILL.md 的 name 必須等於目錄名稱`);
   else if (!/^description:\s*\S/m.test(front)) problems.push(`.agents/skills/${skill}/SKILL.md 缺少 description`);
 }
-for (const file of listFiles(skillSource)) {
+for (const file of listFiles(skillSource).filter(f => !f.includes('__pycache__') && !f.endsWith('.pyc'))) {
   output(path.join(skillMirror, file), read(path.join(skillSource, file)));
 }
 for (const file of listFiles(skillMirror)) {
   if (!fs.existsSync(path.join(skillSource, file))) {
     problems.push(`.claude/skills/${file} 不在單一來源；skill 請放在 .agents/skills/ 再同步（本腳本不會自動刪除）`);
+  }
+}
+
+// Slack runtime bundles only explicitly maintained execution skills.
+const runtimeSkills = ['service-build'];
+for (const skill of runtimeSkills) {
+  for (const file of listFiles(path.join(skillSource, skill))) {
+    if (file.includes('__pycache__') || file.endsWith('.pyc')) continue;
+    output(path.join(repo, 'orchestrator/teams/skills', skill, file), read(path.join(skillSource, skill, file)));
   }
 }
 
