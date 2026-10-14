@@ -127,7 +127,7 @@ Preview 部署節點、外部 VM 權限與部署收據尚未實作，所以此�
 | `.claude/` 文件修改 | Claude Code 實作角色寫不了 `.claude/`；實作節點設 `protectedPathFallback`，`.claude/rules/**`、`.claude/skills/**` 改派 `builder_codex`（Codex、gpt-5.6-sol，報告仍以 Backend Agent 身分貼出）。settings／hooks 等仍須真人處理（2026-10-04 起，#1014）。2026-10-04 改為分段改派：`builder_codex` 只改這兩個目錄的檔案，其餘（含 `.agents/`、程式、建置測試）由 `builder` 接著完成，見 [多 runtime](multi-runtime.md)。第一個分段改派任務 #1021（2026-10-04）改派段沒改任何檔案：派工說明誤把 Claude 的「`.claude/` 一律拒寫、不要嘗試」也給了 Codex，2026-10-05 修正為依實際執行角色判斷（commit 242d49f）；#1022 實測：`builder_codex` 改好 2 個 `.claude/` 檔由系統提交（1621998），`builder` 接著改 `.agents/`（60b8ca5），獨立驗證與 QA 通過 |
 | 漂移掃描 | `scripts/harness-drift-scan.sh` 是 bash 腳本，不能當 operation 或系統驗證指令；寫在建置指示，由實作 agent 以 `bash scripts/harness-drift-scan.sh` 自行執行。**不能列為驗收項目**：測試計畫只能引用操作或內建 `inspect-content`，#1010／#1011 曾因 PM 把它寫成驗收項目而無法驗收；改由審查檢查 |
 | 前端 | `npm --prefix bestpartner-ui ci`／`run build`（vue-tsc）／`run test`（vitest）；驗收用 `--offline` |
-| 系統獨立驗證 | 後端 A、B 兩組＋前端 ci／build／test，共 5 條；在全新 clone 與私有 HOME 執行，會重新下載相依（第一次較慢）。`docOnlyPaths`＝`*.md`、`docs/**`、`.claude/**`、`.agents/**`、`docs-site/docs/**`、`docs-site/blog/**`：變更全部在其中時略過（2026-10-03 起；已查證程式只在註解提到 `.claude/rules/`）。原本以「`docs-site/` 會被建置」為由不列入，但這 5 條指令都不建置 docs-site，#1018 只改一行 `docs-site/docs/` 卻要跑完後端與前端；2026-10-04 起加入兩個純 Markdown 目錄，docs-site 的設定檔、`src/`、`package.json` 照樣全跑 |
+| 系統獨立驗證 | 後端 A、B 兩組與 CodeExecutorTest＋前端 ci／build／test，共 6 條；在全新 clone 與私有 HOME 執行，會重新下載相依（第一次較慢）。`docOnlyPaths`＝`*.md`、`docs/**`、`.claude/**`、`.agents/**`、`docs-site/docs/**`、`docs-site/blog/**`：變更全部在其中且通過文字副檔名及強制全跑檢查時略過（2026-10-03 起；已查證程式只在註解提到 `.claude/rules/`）。原本以「`docs-site/` 會被建置」為由不列入，但這 5 條指令都不建置 docs-site，#1018 只改一行 `docs-site/docs/` 卻要跑完後端與前端；2026-10-04 起加入兩個純 Markdown 目錄，docs-site 的設定檔、`src/`、`package.json` 照樣全跑 |
 | Codex 節點跑 Gradle（2026-10-04 查證；已處理，真實任務尚未實測） | 沒開 `localTestNetwork` 的 Codex 節點啟動不了 Gradle。處理方式：`verification`（QA）開 `localTestNetwork`；`builder_codex` 改為分段改派的改派段，只改 `.claude/` 檔案、不跑建置（實作節點不能開 `localTestNetwork`）。以下為查證紀錄。原因在 Codex 內層沙箱，不在外層 systemd：① `-s workspace-write` 只開放工作區與 `/tmp` 可寫，`~/.cache/gradle` 寫不進去，出現「Failed to load native library 'libnative-platform.so'」；② 沒有網路 namespace 介面，Gradle 開始 build 就出現「Could not determine a usable wildcard IP」（`network_access=true` 也一樣）。VM 上以 codex-cli 0.156.1 `codex sandbox` 對照實測：快取可寫但沒有網路仍失敗；改用 `localTestNetwork` 同款 profile（快取可寫＋隔離 namespace 網路、domain 清單為空）則 `BUILD SUCCESSFUL`。上一列的「VM 實測」只模擬了外層沙箱。#1018 的改派實作因此受阻；系統獨立驗證不經 Codex，不受影響。2026-10-04 起實作節點會收到「純文件變更不編譯」的說明（見 [工程流程](engineering-workflow.md)），避開純文件任務的這個問題；QA 的 `qa-backend-*` 由 `localTestNetwork` 處理（設定屬新快照，舊任務需走配置遷移才會取得） |
 | 改派後 `.agents/**` 寫不進去（2026-10-04 查證；已由分段改派處理，真實任務尚未實測） | 整節點改派時是整個實作節點交給 `builder_codex`，但 Codex 內層沙箱把工作區的 `.agents` 掛成唯讀（[雙層沙箱](codex-nested-sandbox.md) 為它建立的掛載點），`.claude/**` 與一般檔案則可寫（VM 上以 codex-cli 0.156.1 `codex sandbox` 實測）。bestpartner 的 skill 同時存在 `.claude/skills/` 與 `.agents/skills/`，改 skill 的需求一改派就一定寫不了 `.agents/**`。#1020 同時要改 `build.gradle.kts`、`.claude/**` 與 `.agents/**`：第一次的 patch 一起被拒（`writing outside of the project`，推測是同一個 patch 含 `.agents` 檔），後端測試又因上一列的 Gradle 問題跑不了，停在 AWAIT_HUMAN。Claude Code 的 `builder` 寫得了 `.agents/**` 也跑得了 Gradle，只是寫不了 `.claude/**`，所以改成分段改派：受保護檔案交給 Codex，`.agents/**` 與其餘工作由 `builder` 完成。已整節點改派的舊任務（#1020）沿用舊行為 |
 | repo hooks | repo 的 `.claude/settings.json` 掛了 pwsh hooks；VM 沒有 pwsh，實測只產生非阻擋的錯誤訊息，工具呼叫照常完成 |
@@ -262,6 +262,30 @@ IssueTracker 驗證穩定 ID、需求對應及逐項證據；FlowEngine 保存�
 - 舊配置缺少 `candidateRoles` 時沿原角色執行。新欄位會寫入快照，舊 JAR 不能讀取新版快照，回滾須搭配部署前 DB 備份。
   角色集合／流程派工政策變更不允許原地配置遷移；#1030 等舊任務需由負責人使用「改用新任務繼續」。
 
+### 文件任務的派工限制與已知問題（2026-10-12 查核）
+
+2026-10-12 已在來源修正提示、操作配置與改派範圍判斷；尚未部署及驗收真實模型端對端。
+文件任務採輕量**工作內容**，並未移除流程節點：bestpartner／spring-starters 仍經 design、plan、implementation、verification、review；
+plan 與 verification 固定由 tester 負責。node-web 範例仍經 builder／frontend。`candidateRoles` 只選執行者，不改 `requires`。
+
+- PM 區分純文字、文件網站／生成產物、程式／SQL／設定與服務建置，盤點使用者與 agent 文件，不自行縮小需求。
+- 設計只做與工作相關的來源、範圍及同步分析；純文字不添加 API 架構設計或無關回歸。
+- 實作由具文件能力的角色承接；QA 用 `inspect-content` 合併驗證內容、新舊值及一致性，審查不追加無關情境。
+- bestpartner 新增 verification 的 qa-docs-dir → qa-docs-clean → qa-docs-snapshot → qa-docs-extract → qa-docs-install → qa-docs-build：
+  先清除上輪 docs-site 副本，再從最終 HEAD 匯出 docs-site 至 target/qa-docs，離線安裝並建置，原文件唯讀。實作先執行 docs-install／docs-build 準備 npm 快取。
+  spring-starters 沿用既有隔離文件驗證。其他專案須提供自身操作；提示不會產生不存在的工具能力。
+- 三份範例配置均提供 `docOnlyPaths`，實際變更仍由 Git 判斷。SQL、腳本、JSON、網站程式等非文字副檔名不能因位於 docs/** 就免驗；
+  純文字限 .md／.mdx／.txt／.rst／.adoc，仍受原建置檔與 src 等強制全跑名單限制。QA 必要文件站建置不因系統略過產品建置而取消。
+
+#1040 曾因缺少 QA 文件站建置操作受阻；#1041 的文件 7 情境通過，但系統額外提交 8 個上游禁止修改的 .claude 檔案而被 QA 攔截。
+新的 plan schema 要求 `protected_path_changes` 明列需跨 runtime 改派的檔案（無則 []），不再從任意報告文字提取路徑。
+計畫拒絕不安全、重複、禁止路徑及與 `unchanged_paths` 的衝突；改派只讀本實作節點 `requires` 中 TEST_PLAN 的清單，
+實際變更必須同時符合該清單及配置目錄白名單，否則禁止代提交及下游執行。提及或參考檔案不再觸發改派。
+
+舊快照不會自動獲得新 schema／提示／操作；舊計畫沒有清單時不再猜測分段改派，若確需修改受保護檔案須更新配置與計畫，
+或承接成使用新配置的任務。已保存的整節點改派與已完成分段收據仍保留，沒有自動還原或改寫既有成果。
+提示與清單無法證明模型完全理解使用者意圖，QA／Review 仍須核對原需求；任務只是修改手冊時，不可宣稱已實際安裝成功。
+
 ## 快照與相容策略
 
 `flow_run` 是 additive 資料表，保存每個新模式任務的完整配置、prompt/schema 內容、版本雜湊、
@@ -271,6 +295,10 @@ CLI session 仍存在原 runtime 狀態目錄，checkpoint 保存其 ID；環境
 修改／移除目前配置的角色不影響舊任務快照；舊快照需要的 runtime、工具、token 引用與工作區仍須保留。
 如果它們被移除，任務會明確受阻，不會自動換引擎、使用新 repo 或重建現場。
 重啟時執行中、排隊或發布中的新模式任務都停下並要求人工確認，不自動重播可能已完成的外部動作。
+
+2026-10-12 起來源的中央佇列通知涵蓋新任務、承接、續跑、角色對話與發布。FlowEngine 以帶任務身分的
+Runnable 交給 TaskOrchestrator，由真正的執行中工作與 FIFO 排隊清單產生通知，不以資料庫狀態推測順序。
+排入時列出執行中／前方任務，開始時另行通知；排隊通知為當下快照。現有流程、核准政策與執行順序不變。
 
 沒有 `flow_run` 的歷史任務沒有足夠資料可自動建立可信快照。新模式會拒絕續跑／發布這些任務，**不猜測遷移**。
 要處理它們，須以原專案環境停用 `AI_TEAM_DEFINITION`，走原 TaskOrchestrator 的 legacy 相容路徑，或另行做明確遷移。

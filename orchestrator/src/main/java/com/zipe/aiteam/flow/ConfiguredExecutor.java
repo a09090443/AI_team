@@ -93,7 +93,10 @@ public class ConfiguredExecutor {
             var fb = defined.protectedPathFallback();
             String primaryName = flow.snapshot.definition().roles().get(defined.role()).name();
             if (!defined.role().equals(node.role()))
-                context.append(flow.roleOverrides.containsKey(flow.node) ? ProtectedPathFallback.notice(fb) : ProtectedPathFallback.partNotice(fb, primaryName));
+                context.append(flow.roleOverrides.containsKey(flow.node) ? ProtectedPathFallback.notice(fb) :
+                        ProtectedPathFallback.partNotice(fb, primaryName) + "\n本次只准修改的明確檔案清單："
+                                + ProtectedPathFallback.plannedPaths(flow, defined)
+                                + "。目錄白名單不代表可以修改清單以外的檔案；參考、禁止修改與 unchanged_paths 均不是修改授權。");
             else {
                 var part = flow.delegatedParts.get(flow.node);
                 if (part != null && Objects.equals(part.startHead(), flow.beforeHead))
@@ -322,7 +325,7 @@ public class ConfiguredExecutor {
         if (flow.independentEvidence != null && flow.independentEvidence.docOnly())
             return "純文件變更：系統依 git diff 判定這次只改了 " + String.join("、", flow.independentEvidence.docOnlyChanges())
                     + "，依專案配置（verification.docOnlyPaths）未執行建置與測試指令。這是配置的設計，不是查無建置證據；"
-                    + "請以讀檔（inspect-content）逐項驗收內容。收據：" + flow.independentEvidence;
+                    + "請以讀檔（inspect-content）逐項驗收內容；計畫要求的文件站建置、連結與生成結果仍須另行驗證，不能用此收據代替。收據：" + flow.independentEvidence;
         if (flow.independentEvidence != null) return flow.independentEvidence.toString();
         if (node.gate() == Gate.VERIFICATION || node.gate() == Gate.REVIEW)
             return "（尚未產生；系統會在本階段執行後補上）";

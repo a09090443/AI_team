@@ -106,7 +106,7 @@ Node 範例依序 `npm ci`、`npm test`、`npm run build`；需依實際 repo �
 **純文件變更略過建置測試（2026-10-03 起，逐專案啟用）**：`project.verification.docOnlyPaths` 有設定時，系統以
 `git diff --name-only --no-renames <工作區基準>..HEAD`（`WorkspaceManager.changedPathsSinceBase`）自行列出變更，**不採信 agent 自陳**。
 以下全部成立才略過（`DocOnlyChanges.qualifies`），否則照常全跑：
-- 變更清單非空，且每個檔都符合 `docOnlyPaths`；
+- 變更清單非空，且每個檔都符合 `docOnlyPaths`；2026-10-12 起來源另外只接受 .md、.mdx、.txt、.rst、.adoc，SQL／腳本／設定／網站程式等即使在 docs 目錄也全跑；
 - 沒有任何檔落在程式強制的全跑名單（配置無法覆蓋）：路徑任一段是 `src`；`pom.xml`、`build.gradle(.kts)`、`settings.gradle(.kts)`、
   `gradle.properties`、`gradlew(.bat)`、`mvnw(.cmd)`、`package.json`、`package-lock.json`、`yarn.lock`、`pnpm-lock.yaml`、`Dockerfile*`；
   或位於 `gradle/`、`.mvn/`、`.github/` 之下。
@@ -115,7 +115,7 @@ Node 範例依序 `npm ci`、`npm test`、`npm run build`；需依實際 repo �
 略過時不 clone、不跑指令，收據 `commands=[]`、`docOnlyChanges` 列出檔案，仍綁定 HEAD、需求與配置版本；`blockingReason` 會重驗清單仍符合配置。
 Slack 會說明「只改了文件，依專案設定略過建置與測試」，QA／審查收到的收據說明這是配置設計而非查無證據，PR 說明列出檔案。
 **QA 逐項驗收（`inspect-content`）、程式審查與 PR 真人核准照常。** `docOnlyPaths` 不可為 `*`、`**`、`**/*`、絕對路徑或含 `..`、`.git`。
-目前只有 bestpartner 啟用；設定屬新快照，啟用前建立的任務仍全跑。
+來源三份範例配置均啟用文字路徑（spring-starters／node-web 為 2026-10-12 新增，尚未部署）；設定屬新快照，既有任務不自動更新。
 實作節點（`IMPLEMENTATION` 閘門）在專案有 `docOnlyPaths` 時，系統會在脈絡加一段「純文件變更規則」（`DocOnlyChanges.implementationNotice`）：
 變更全部符合上述條件時不執行後端／前端編譯與測試操作，也不因缺建置證據回報 BLOCKED；有任一檔不符合就照建置規範完整執行
 （2026-10-04 起；#1018 只改一行 Markdown，改派的 Codex 角色仍自行跑 Gradle 而受阻）。這是給角色的指示，略過與否仍以系統 git diff 判定為準。

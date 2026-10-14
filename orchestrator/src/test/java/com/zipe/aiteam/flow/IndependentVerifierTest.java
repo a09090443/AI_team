@@ -158,7 +158,7 @@ class IndependentVerifierTest {
 
     @Test void documentationOnlyChangeSkipsBuildCommandsWithAVerifiableReceipt() throws Exception {
         enableDocOnly("*.md", "docs/**", ".agents/**");
-        when(workspace.changedPathsSinceBase("42")).thenReturn(List.of(".agents/skills/test-confirmation/SKILL.md", "docs/rag/General rule.pdf"));
+        when(workspace.changedPathsSinceBase("42")).thenReturn(List.of(".agents/skills/test-confirmation/SKILL.md", "docs/rag/General rule.md"));
         verifyNow();
         assertThat(calls).isEmpty();
         assertThat(flow.independentEvidence.docOnly()).isTrue();
@@ -173,6 +173,8 @@ class IndependentVerifierTest {
         for (var changed : List.of(
                 List.of("README.md", "src/main/java/App.java"),          // 混有程式檔
                 List.of("docs/guide.md", "pom.xml"),                       // 建置檔
+                List.of("docs/init.sql"),                                 // docs 路徑不是純文字證明
+                List.of("docs/install.sh"),
                 List.of("service/src/main/resources/prompt.md"),           // 符合 **/*.md 但在 src 底下：強制全跑
                 List.of("docs/App.java", "src/main/java/App.java"),        // 程式檔改名搬進 docs（--no-renames 列出兩端）
                 List.of(".github/workflows/ci.md"),                        // CI 目錄
@@ -186,6 +188,7 @@ class IndependentVerifierTest {
     }
 
     @Test void withoutDocOnlyPathsEveryChangeRunsEverything() throws Exception {
+        enableDocOnly();
         when(workspace.changedPathsSinceBase("42")).thenReturn(List.of("README.md"));
         verifyNow();
         assertThat(flow.independentEvidence.docOnly()).isFalse();

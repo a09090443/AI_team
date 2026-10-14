@@ -49,7 +49,8 @@
           "verify"
         ]
       ],
-      "timeoutSeconds": 1800
+      "timeoutSeconds": 1800,
+      "docOnlyPaths": ["*.md", "docs/**/*.md", "doc-site/docs/**/*.md", "doc-site/docs/**/*.mdx", "llms.txt", "llms-full.txt"]
     }
   },
   "roles": {

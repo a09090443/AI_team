@@ -21,6 +21,9 @@ public final class DocOnlyChanges {
     public static boolean forcesFullRun(String path) {
         String[] segments = path.split("/");
         String name = segments[segments.length - 1];
+        // 目錄名稱不是內容種類；SQL、腳本、設定與文件站程式不能因 docs/** 而免驗。
+        if (!(name.endsWith(".md") || name.endsWith(".mdx") || name.endsWith(".txt") || name.endsWith(".rst")
+                || name.endsWith(".adoc"))) return true;
         for (int i = 0; i < segments.length; i++) {
             if (segments[i].equals("src")) return true;
             if (i < segments.length - 1 && BUILD_DIRS.contains(segments[i])) return true;
@@ -35,10 +38,11 @@ public final class DocOnlyChanges {
     public static String implementationNotice(List<String> docOnlyPaths) {
         if (docOnlyPaths == null || docOnlyPaths.isEmpty()) return "";
         return "\n純文件變更規則：本次變更若全部落在 " + String.join("、", docOnlyPaths)
+                + "，且副檔名全部為 .md、.mdx、.txt、.rst 或 .adoc（SQL、腳本、設定與網站程式不算純文字）"
                 + "，而且沒有碰到建置檔（pom.xml、build.gradle(.kts)、settings.gradle(.kts)、gradle.properties、gradlew、mvnw、"
                 + "package.json、各種 lockfile、Dockerfile）、任何 src 目錄，或 gradle／.mvn／.github 目錄，"
                 + "就不要執行後端／前端的編譯與測試操作，也不要因為沒有建置或測試證據而回報 BLOCKED；"
-                + "系統獨立驗證會依 git diff 判定為純文件並同樣略過，QA 以讀檔驗收。文件本身的檢查（例如連結、表格格式）照常做。"
+                + "系統獨立驗證會依 git diff 判定為純文件並同樣略過；QA 核對內容，必要的文件站建置、連結與生成結果仍依計畫驗證。"
                 + "只要有一個檔案不符合，就照建置規範完整執行。";
     }
 

@@ -15,3 +15,5 @@ blockers 與 findings 的分界（blockers 會擋下發布，要慎用）：
   上一輪沒提、也不是這次變更造成的新發現，除非屬於產品行為錯誤或安全問題，一律列為 MEDIUM 或 LOW。
 - findings 的 severity 只能是 HIGH、MEDIUM、LOW 三種；有任何 HIGH 就不得發布。沒有要修的純提醒
   （例如負責人已接受的保留、環境限制說明）寫在 summary，或列為 LOW，不要自創 INFO、NOTE 等等級。
+
+純文件審查聚焦來源、修改範圍、連結／生成結果與需求覆蓋，不追加無關架構或前後端回歸。合法合併同等行為情境不構成缺陷，只有實際漏驗需求或反例無法攔截才阻擋。核對實際檔案與 protected_path_changes／unchanged_paths；目錄白名單不是需求授權。分開陳述文字查核、文件站建置與真實安裝證據。

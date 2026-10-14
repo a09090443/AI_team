@@ -52,6 +52,7 @@ public final class Traceability {
         if (invalid != null) return invalid;
         invalid = requirementsReason(baseline(flow));
         if (invalid == null) invalid = FileComparison.planReason(plan);
+        if (invalid == null) invalid = ProtectedPathFallback.planReason(plan);
         if (invalid != null) return invalid;
         if (flow.baselineRevision == null || !flow.baselineRevision.equals(plan.path("baseline_revision").asText()))
             return "測試計畫引用的需求基準版本不符";

@@ -57,13 +57,10 @@
   改寫在建置檔、`AGENTS.md` 或一般文件，受保護路徑只放穩定的規則並指向那些檔案。
 
 **受保護路徑改派（2026-10-04 起；整節點改派已在 #1018～#1020 實測；分段改派 2026-10-05 在 bestpartner #1022 實作段真實通過，見下）**：實作節點可設 `protectedPathFallback`
-（`{"role": ..., "paths": [...]}`）。`ProtectedPathFallback.needed` 從需求文字與已完成節點報告擷取原角色 runtime 寫不了的路徑，
-分成兩組：落在 `paths` 內（且不在禁止清單）的交給該角色改派（不同 runtime，例如 Codex）；範圍外的不交出去，
-原角色真的要改時會被 runtime 拒絕，照一般受阻流程停下問人。只要有一條在範圍內就會改派，範圍外的路徑寫進稽核與 Slack 說明。
-擷取的是「有提到」的路徑，不分要不要修改，所以不能因為範圍外的路徑被提到就整個不改派。
-2026-10-08 前的行為是「全部落在 `paths` 內才改派」，而且不改派時不留紀錄。bestpartner #1029 的需求寫了
-「`.claude/CLAUDE.md` 的 import 維持不變」，`.claude/rules/` 兩份檔案因此沒有改派；`builder` 寫入被拒，連續三輪受阻後停在 AWAIT_HUMAN，
-分流還誤以為改派管道「沒產生提交」。
+（`{"role": ..., "paths": [...]}`）。2026-10-12 來源改為只從本實作前置 TEST_PLAN 的 `protected_path_changes`
+取得明確修改路徑，交集配置允許目錄與原 runtime 受保護路徑後才分段改派；不再掃描需求或報告全文。
+唯讀參考、禁止修改與任意路徑提及不是授權。舊計畫沒有清單時不推測改派，需更新配置與計畫或承接新任務。
+這修正 #1041 因文字提及而額外修改 8 個 .claude 檔案的問題；尚未部署，先前真實實測不能視為本版驗收。
 `.claude/settings*`、`hooks`、`commands`、`agents`、`plugins`、`.git`、`.mcp.json`、`.vscode`、`.idea`、`.github` 等寫死禁止，配置無法覆蓋。
 
 **分段改派（2026-10-04 起，取代整節點改派）**：同一輪實作分兩段依序執行（`FlowEngine.runDelegatedPart`）：
@@ -71,7 +68,7 @@
    派工前的受保護路徑告知（`ConfiguredExecutor.protectedPathNotice`）依**實際執行的角色**的 runtime 判斷，改派給 Codex 時不會出現
    「`.claude/` 一律拒寫」的說明。2026-10-05 前它誤用節點原定角色（Claude），bestpartner #1021 的改派段因此收到互相矛盾的指示，
    只做唯讀查核就回報 BLOCKED（受保護文件一個也沒改，稽核顯示「改派段未完成」）。
-   系統以 `auditPaths` 核對，變更必須**全部**落在 `paths` 內（`partViolations`，連 `.agents/`、一般檔案也不行），越界即 `SecurityException`；
+   系統以 `auditPaths` 核對，變更必須**全部**落在 `paths` 內且逐檔列於 `protected_path_changes`（`partViolations`，連 `.agents/`、一般檔案也不行），越界即 `SecurityException`；
    通過後系統代為提交，結果記在 `FlowRun.delegatedParts`（起始 commit、提交後 commit、檔案、摘要）。
    改派段回報未完成（`status` 不是 SUCCESS、有 `boundary_conflict` 或 `execution_status` 受阻）時，以它的報告當本節點結果，照一般受阻流程處理，不執行第二段。
 2. 主實作段：原角色收到「受保護檔案已在 commit X 完成、不要修改」的說明（`primaryNotice`），完成其餘變更與建置測試；節點報告以這一段為準。

@@ -46,6 +46,71 @@ class DirectRequestTest {
         ((Thread)ReflectionTestUtils.getField(app, "worker")).join(2000);
     }
     @AfterEach void close() { app.shutdown(); }
+
+    @SuppressWarnings("unchecked")
+    TaskOrchestrator.QueuedTask nextQueued() {
+        return (TaskOrchestrator.QueuedTask) ((java.util.concurrent.LinkedBlockingQueue<Runnable>)
+                ReflectionTestUtils.getField(app, "work")).remove();
+    }
+
+    @Test void queueNoticeUsesActualOrderAndNamesTheRunningTask() throws Exception {
+        var entered = new java.util.concurrent.CountDownLatch(1);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        Task first = new Task("90", "c", "t90", "u", "先執行"); store.save(first);
+        Task second = new Task("12", "c", "t12", "u", "較舊任務續跑"); store.save(second);
+        Task third = new Task("91", "c", "t91", "u", "承接任務"); store.save(third);
+        Task waiting = new Task("11", "c", "t11", "u", "等人"); waiting.state(Task.State.AWAIT_HUMAN); store.save(waiting);
+        app.enqueue(new TaskOrchestrator.QueuedTask(first, () -> {
+            entered.countDown();
+            try { release.await(5, java.util.concurrent.TimeUnit.SECONDS); }
+            catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        }));
+        var firstJob = nextQueued();
+        Thread execution = new Thread(() -> app.executeQueued(firstJob)); execution.start();
+        try {
+            assertThat(entered.await(2, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            app.enqueue(new TaskOrchestrator.QueuedTask(second, () -> {}));
+            app.enqueue(new TaskOrchestrator.QueuedTask(third, () -> {}));
+            verify(slack).post(eq(Identity.SYSTEM), eq("c"), eq("t91"), argThat((String s) ->
+                    s.contains("目前執行中：#90") && s.contains("前方排隊任務（依順序）：#12")
+                            && !s.contains("#11") && s.contains("不需要重複送出")));
+        } finally { release.countDown(); execution.join(2000); }
+        app.executeQueued(nextQueued());
+        app.executeQueued(nextQueued());
+        var ordered = inOrder(slack);
+        ordered.verify(slack).post(eq(Identity.SYSTEM), eq("c"), eq("t12"), contains("輪到任務 #12"));
+        ordered.verify(slack).post(eq(Identity.SYSTEM), eq("c"), eq("t91"), contains("輪到任務 #91"));
+    }
+
+    @Test void cancelledQueueEntryIsNotReportedAsAheadOrStarted() {
+        Task cancelled = new Task("50", "c", "t50", "u", "取消"); store.save(cancelled);
+        Runnable action = mock(Runnable.class);
+        app.enqueue(new TaskOrchestrator.QueuedTask(cancelled, action));
+        cancelled.state(Task.State.ABORTED); store.save(cancelled);
+        Task next = new Task("51", "c", "t51", "u", "下一個"); store.save(next);
+        app.enqueue(new TaskOrchestrator.QueuedTask(next, () -> {}));
+        verify(slack).post(eq(Identity.SYSTEM), eq("c"), eq("t51"), contains("目前前方沒有其他工作"));
+        app.executeQueued(nextQueued());
+        verifyNoInteractions(action);
+        verify(slack, never()).post(eq(Identity.SYSTEM), eq("c"), eq("t50"), contains("輪到任務"));
+    }
+
+    @Test void failedQueueNoticeDoesNotDropTheJob() {
+        when(slack.post(eq(Identity.SYSTEM), eq("c"), eq("t52"), anyString())).thenThrow(new RuntimeException("offline"));
+        Task task = new Task("52", "c", "t52", "u", "通知失敗"); store.save(task);
+        Runnable action = mock(Runnable.class);
+        app.enqueue(new TaskOrchestrator.QueuedTask(task, action));
+        app.executeQueued(nextQueued());
+        verify(action).run();
+    }
+
+    @Test void newTaskGetsQueueNoticeBeforeAnyAgentRuns() {
+        Task first = app.createAndSubmit("c", "first", "u", "第一項");
+        Task second = app.createAndSubmit("c", "second", "u", "第二項");
+        verify(slack).post(eq(Identity.SYSTEM), eq("c"), eq("second"), argThat((String s) ->
+                s.contains("任務 #" + second.id()) && s.contains("前方排隊任務（依順序）：#" + first.id())));
+        verifyNoInteractions(runner);
+    }
     Task ask() {
         app.requestRole(Identity.QA, "c", "t", "u", "哪些情境尚未核實？");
         return store.inThread("c", "t").stream().filter(t -> store.direct(t.id()).isPresent()).reduce((a,b) -> b).orElseThrow();

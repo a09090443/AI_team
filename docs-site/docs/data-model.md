@@ -376,3 +376,10 @@ TeamDefinition.Project 新增選填 serviceTarget：name（目標名稱）與 ch
 
 `flow_run.data.snapshot.definition.nodes.*.skills` 為選填字串陣列；相對路徑與對應的 Markdown 全文分別存於 definition 與 snapshot.assets，納入 revision。旧資料省略時為 null，不需改 DDL。
 新快照不能交給不認識 skills 欄位的舊 JAR。部署回滾仍須依既有流程處理 DB 相容性；不能擅自修改任務資料或刪除此欄位。
+
+## 2026-10-12 計畫報告欄位
+
+新 plan schema 的 `protected_path_changes` 是最多 100 個明確相對檔案的陣列，無改派則 []。
+保存於 `receipts` 的 TEST_PLAN JSON，納入既有計畫雜湊／核准版本，沒有新增資料表或 FlowRun 欄位。
+僅供實作前置計畫宣告需跨 runtime 改派的修改範圍，不包括唯讀與禁止修改檔案；實際變更需同時符合清單與配置白名單。
+舊報告缺此欄位仍可解析，但不從文字自動推測新的分段改派；舊快照需更新 schema／計畫或承接新任務。

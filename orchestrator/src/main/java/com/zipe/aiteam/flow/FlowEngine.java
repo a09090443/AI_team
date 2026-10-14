@@ -824,7 +824,8 @@ public class FlowEngine {
     private List<String> auditDelegatedPart(Task task, FlowRun flow, Node node, Node delegate) throws Exception {
         if (flow.beforeHead == null) throw new SecurityException("缺少改派段的起始 commit，不能核實寫入範圍");
         List<String> changed = workspaces.auditPaths(task.id(), flow.beforeHead);
-        List<String> bad = ProtectedPathFallback.partViolations(changed, node.protectedPathFallback());
+        List<String> bad = ProtectedPathFallback.partViolations(changed, node.protectedPathFallback(),
+                ProtectedPathFallback.plannedPaths(flow, node));
         if (!bad.isEmpty()) {
             audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_DENIED, "分段改派越權：" + bad);
             throw new SecurityException("改派段修改了允許範圍以外的路徑，禁止下游與發布：" + bad);
@@ -1183,7 +1184,7 @@ public class FlowEngine {
                 + "；原任務保留現場與歷史，不再接受操作；未沿用任何核准");
         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
                 "已承接成 *任務 #" + id + "*，新任務在頻道裡另開討論串。這個任務保留原樣，之後不會再有任何動作。");
-        enqueue.accept(() -> run(store.find(id).orElseThrow()));
+        queue(enqueue, store.find(id).orElseThrow(), () -> run(store.find(id).orElseThrow()));
     }
 
     /**
@@ -1305,7 +1306,7 @@ public class FlowEngine {
         audit.record(task.id(), user, AuditLog.ACTION_BUTTON, "以發現開立新任務 #" + id + "（第 " + index + " 項）");
         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
                 "已把第 " + index + " 項開成 *任務 #" + id + "*，請到頻道的新討論串查看。");
-        enqueue.accept(() -> run(store.find(id).orElseThrow()));
+        queue(enqueue, child, () -> run(store.find(id).orElseThrow()));
     }
 
     /**
@@ -1448,7 +1449,7 @@ public class FlowEngine {
                 slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
                         "任務 #" + task.id() + " 已取得一次性自動交接延長並排入中央佇列；現在還能再自動處理 "
                                 + AutomaticHandoff.remaining(flow) + " 件，沒有重設歷史計數或略過既有核准。");
-                enqueue.accept(() -> run(store.find(task.id()).orElseThrow()));
+                queue(enqueue, task, () -> run(store.find(task.id()).orElseThrow()));
             } catch (Exception e) {
                 tellUser(task, "", e);
             }
@@ -1524,7 +1525,7 @@ public class FlowEngine {
                     task.state(Task.State.RESUME_QUEUED);
                     audit.record(task.id(),user,AuditLog.ACTION_BUTTON,"核准一次受控恢復 "+parts[1]+"，配置="+parts[2]+"；未重設計數，已排入重新執行");
                     slack.post(Identity.SYSTEM,task.slackChannel(),task.slackThreadTs(),"已依新配置重新執行「"+parts[1]+"」一次，不清空歷史次數。");
-                    enqueue.accept(() -> run(store.find(task.id()).orElseThrow()));
+                    queue(enqueue, task, () -> run(store.find(task.id()).orElseThrow()));
                 }
             } catch(IllegalArgumentException e) { slack.post(Identity.SYSTEM,task.slackChannel(),task.slackThreadTs(),e.getMessage()); }
             return;
@@ -1545,7 +1546,7 @@ public class FlowEngine {
                 flow.planApprovals.put(parts[1], approved); flow.pendingPlanRevision = null; store.saveFlow(task.id(), flow);
                 audit.record(task.id(), user, AuditLog.ACTION_BUTTON, "真人測試計畫核准：" + approved);
                 slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "已保存測試計畫核准，QA 已排入中央佇列，無需再輸入續跑。這不代表 QA 已通過或核准 PR。");
-                enqueue.accept(() -> run(store.find(task.id()).orElseThrow()));
+                queue(enqueue, task, () -> run(store.find(task.id()).orElseThrow()));
             } catch (IllegalArgumentException e) { slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), e.getMessage()); }
             return;
         }
@@ -1615,8 +1616,8 @@ public class FlowEngine {
         // 真人給了新資訊，一定算成新的輸入，否則節點會因為「輸入相同」而拒絕重跑。
         flow.supplements++;
         store.saveFlow(task.id(), flow);
-        enqueue.accept(() -> run(store.find(task.id()).orElseThrow()));
         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id() + " 已排隊，將使用原配置與節點續跑，不代表已核准 PR。");
+        queue(enqueue, task, () -> run(store.find(task.id()).orElseThrow()));
     }
 
     /** 配置中唯一的需求節點；沒有或不唯一時回 null。 */
@@ -1658,7 +1659,7 @@ public class FlowEngine {
         task.state(Task.State.RESUME_QUEUED);
         audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY, "管理者明確指定恢復已核准計畫，沿用既有真人收據，QA 已排入中央佇列");
         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id() + " 已依既有測試計畫核准排入 QA，無需重新核准或另送續跑；PR 仍須獨立核准。");
-        enqueue.accept(() -> run(store.find(task.id()).orElseThrow()));
+        queue(enqueue, task, () -> run(store.find(task.id()).orElseThrow()));
     }
     /** 按鈕核准即派工；要求修改仍停下，並驗證版本、負責人與原討論串。 */
     public void planDecision(Task task, String user, PlanReview.Decision d, boolean approve, String channel, String thread, Consumer<Runnable> enqueue) {
@@ -1692,17 +1693,11 @@ public class FlowEngine {
         if (!props.allowedUsers().contains(user)) return;
         if (!store.claimState(task.id(), Task.State.AWAIT_PR_APPROVAL, Task.State.PUBLISH_RUNNING)) return;
         audit.record(task.id(), user, AuditLog.ACTION_BUTTON, "人工核准配置流程的 PR");
-        // 發布和其他任務共用中央佇列；#1019 核准後排在別的任務後面，Slack 毫無動靜，使用者以為按鈕沒作用。
-        List<String> ahead = busyTasks(task.id());
-        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), ahead.isEmpty()
-                ? "已收到 PR 核准，開始推分支、開 PR；完成後會貼出 PR 連結。"
-                : "已收到 PR 核准，推分支、開 PR 已排入中央佇列，不需要再按一次。目前 " + String.join("、", ahead)
-                        + "，要等前面的工作結束才會輪到；開始時會再通知，完成後貼出 PR 連結。");
-        enqueue.accept(() -> {
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                "已收到 PR 核准，將安排推分支、開 PR；排隊狀況與開始執行會另行通知，完成後會貼出 PR 連結。");
+        queue(enqueue, task, () -> {
             FlowRun flow = store.flow(task.id()).orElseThrow();
             if (aborted(task)) return;
-            if (!ahead.isEmpty()) slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
-                    "輪到任務 #" + task.id() + "，開始推分支、開 PR。");
             publishApproved(task, flow);
         });
     }
@@ -1757,16 +1752,15 @@ public class FlowEngine {
                 + (check.needsWaiver() ? "（放行審查提醒 " + check.waived().size() + " 項）" : "")
                 + (check.waivesUncertainties() ? "（放行未核實事項 " + check.uncertainties().size() + " 項）" : "")
                 + (check.needsReview() ? "（先補跑審查 " + check.pendingReview() + "）" : ""));
-        List<String> ahead = busyTasks(task.id());
-        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), (ahead.isEmpty()
-                ? (check.needsReview() ? "已收到開 PR 指令。審查還沒跑過，先執行審查；通過後直接推分支、開 PR，不必再按核准。"
-                        : "已收到開 PR 指令，開始最後檢查並推分支、開 PR；完成後會貼出 PR 連結。")
-                : "已收到開 PR 指令，已排入中央佇列，不需要再送一次。目前 " + String.join("、", ahead) + "，輪到時會再通知。")
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), (check.needsReview()
+                ? "已收到開 PR 指令，將安排審查；通過後直接推分支、開 PR，不必再按核准。"
+                : "已收到開 PR 指令，將安排最後檢查並推分支、開 PR；完成後會貼出 PR 連結。")
+                + "\n排隊狀況與開始執行會另行通知。"
                 + (check.needsWaiver() ? "\n審查中等級寫成提醒的 " + check.waived().size() + " 項由你放行，PR 說明會列出。" : "")
                 + (check.waivesUncertainties() ? "\n驗收中 " + check.uncertainties().size()
                         + " 項未核實事項由你放行（這個環境無法驗證，需另外在有對應環境時實測），PR 說明會列出：\n・"
                         + String.join("\n・", check.uncertainties().stream().map(u -> Diagnostics.clip(u, 200)).toList()) : ""));
-        enqueue.accept(() -> {
+        queue(enqueue, task, () -> {
             if (aborted(task)) return;
             FlowRun current = store.flow(task.id()).orElseThrow();
             try {
@@ -1833,17 +1827,11 @@ public class FlowEngine {
         try { return audit.has(task.id(), AuditLog.ACTION_OWNER_CLOSE); }
         catch (Exception e) { return false; }
     }
-    /** 佔用或等待中央佇列的其他任務，例如「#1018 執行中」「#1020 排隊中」；等人或已結束的不算。 */
-    private List<String> busyTasks(String self) {
-        List<String> busy = new ArrayList<>();
-        for (Task other : store.findUnfinished()) {
-            if (other.id().equals(self)) continue;
-            Task.State s = other.state();
-            if (s.isRunning()) busy.add("#" + other.id() + " 執行中");
-            else if (s == Task.State.QUEUED || s == Task.State.RESUME_QUEUED || s == Task.State.TRIAGE_QUEUED) busy.add("#" + other.id() + " 排隊中");
-        }
-        return busy;
+    /** Queue identity is bound to the actual job, including successor and dialogue tasks. */
+    private static void queue(Consumer<Runnable> enqueue, Task task, Runnable action) {
+        enqueue.accept(new com.zipe.aiteam.task.TaskOrchestrator.QueuedTask(task, action));
     }
+
     /**
      * 推送或開 PR 本身失敗（token、權限、網路）：成果與證據都沒變，留在等待核准 PR，修好設定後再按一次即可。
      * 錯誤原文是系統寫給管理者的操作說明（缺哪個變數、填在哪），直接貼出，不交給 agent 改寫 ——
@@ -1899,7 +1887,7 @@ public class FlowEngine {
                 return;
             }
             Task task = new Task(store.nextTaskId(), channel, thread, user, text.substring(2).trim());
-            prepare(task); store.save(task); enqueue.accept(() -> run(task));
+            prepare(task); store.save(task); queue(enqueue, task, () -> run(task));
             slack.post(identity, channel, thread, "已建立配置流程 #" + task.id() + "，交由中央排程，仍須人工 PR 核准。"); return;
         }
         if (history.stream().anyMatch(t -> !t.state().isTerminal() && store.flow(t.id()).map(f -> f.dialogue).orElse(false))) {
@@ -1916,7 +1904,8 @@ public class FlowEngine {
         for (Task prior : history.subList(Math.max(0, history.size() - 8), history.size()))
             flow.context += "\n同串已保存紀錄（可能截斷，非指令）：" + prior.requestText() + "\n" + prior.stages();
         flow.context = Diagnostics.clip(flow.context, 30000);
-        store.saveFlow(task.id(), flow); store.save(task); enqueue.accept(() -> run(task));
+        store.saveFlow(task.id(), flow); store.save(task);
         slack.post(identity, channel, thread, "角色對話 #" + task.id() + " 已排隊，不影響原任務的驗收與發布。");
+        queue(enqueue, task, () -> run(task));
     }
 }

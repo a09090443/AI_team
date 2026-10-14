@@ -3,9 +3,24 @@
 > 換手前務必更新這份檔案。內容只寫「現在正在做什麼、卡在哪、下一步」，
 > 長期結論寫 `decisions.md`，已完成的寫 `progress.md`。舊內容查 git 歷史，不要在這裡累積流水帳。
 
-最後更新：2026-10-11（Codex）
+最後更新：2026-10-12（Codex）
 
 ## 正在進行
+
+- **部署最新工作樹（2026-10-14，Claude Code，等待權限）**：使用者要求「部署最新版本」。已打包工作樹（含未 commit 的文件派工修正，HEAD 5051725）到 VM 隔離目錄 `/home/agent/dispatch-build.r703Pg`：check-source 通過，`mvn clean verify` 626 項 0 失敗／錯誤、11 略過，JAR 460af3ac…（線上仍 59d485bf…）。線上 teams 與 HEAD 差異確認只是舊版（spring-starters 未含 10-11 intake 等提示更新），非線上自訂。部署腳本 `/home/agent/deploy-20261014.sh <實例根> <build>/orchestrator`（換 JAR＋teams、備份、任務／工作區前後比對、失敗回復）已上傳，執行時被 auto mode 分類器拒絕，未換任何線上檔案；兩實例仍為舊版運行中。部署前無執行或排隊任務（#1036 WAITING_QUOTA 至 10-17）。下一步待使用者核准後依序對 bestpartner、spring-starters 執行，不得繞過拒絕。
+
+- **服務重啟（2026-10-14 20:49，Claude Code）**：VM 剛開機（uptime 1 分），兩實例原為 STOPPED，已以 service.sh start 啟動。bestpartner PID2800、spring-starters（~/ai-team）PID3684；Spring 啟動、沙箱與工具鏈自檢、各角色 Socket Mode 啟動及 PID 443 連線通過，log 未見 ERROR。未發 Slack 訊息、未做事件送達或模型端對端實測，未動任務。
+
+- **最新：文件派工修正已完成來源，Linux 補驗待授權（2026-10-12）**：使用者已核准修改。共用 8 份提示按工作種類輕量驗證；plan 新增 protected_path_changes，改派只用明確清單並代提交前逐檔核對；純文字副檔名限制阻止 docs SQL／腳本免驗；三份配置啟用文件路徑，bestpartner 補隔離文件 QA 操作。保留節點／核准。241 項本機回歸 240 通過，1 個符號連結測試因 Windows 權限失敗；docs build／check-source 通過。傳 .build-cache/dispatch-tests.tar.gz 到 agent@127.0.0.1:2223 做 Linux 隔離驗證被 auto-review 拒絕，原因未明確授權該 payload，已 async 問准，尚未傳送。下一步若批准才傳送並 mktemp 建置 mvn verify；不得繞過拒絕。未部署、未動任務、未 commit；前輪佇列變更仍保留。
+
+
+- **最新：角色提示／文件派工查核完成（2026-10-12）**：使用者詢問文件為何派 QA。已核對 10 份共用提示、三份團隊配置與 #1040／#1041 實際結果。固定流程要求 QA，不是 agent 隨機誤派；#1040 缺 verification 文件建置操作，#1041 的 QA 正確抓到上游禁止卻被系統改派的 8 個 .claude 變更。ProtectedPathFallback.needed 只擷取文字提及路徑、不辨別修改意圖，是已知程式缺口。另缺跨角色工作種類／驗證強度指引，共用 infrastructure 提示寫死專案。已補 configurable-team／operations 現況與限制；本輪僅查核，未改提示／路由／權限、未部署、未動任務。後續修正應同時涵蓋提示、操作配置與範圍改派機制，不能直接取消 QA。前輪佇列修改仍未 commit。
+
+- **最新：中央佇列通知已部署（2026-10-12 22:17）**：使用者要求說明等待哪些任務。所有入列工作以實際 FIFO 回報 active／pending 編號、輪到再通知，包含新任務、承接、續跑、對話、發布；取消工作不列、通知失敗仍保留工作。623項 Linux 完整測試0失敗／錯誤、11略過；本機150項與補驗40項通過。bestpartner PID14340／spring-starters PID17496，共用JAR59d485bf…；備份 queue-backup.iU07Sb／u7NVRa。兩者啟動、沙箱、角色連線及任務／工作區／teams比對通過。#1042 已進 WAITING_QUOTA（14:11Z），下次18:32Z；#1041 AWAIT_HUMAN，部署未重播任務。尚未Slack通知E2E、未commit本輪修改。已更正佇列是單一worker，非僅maxConcurrency=1的限制。
+
+- **最新任務未執行查核（2026-10-12 21:58）**：bestpartner #1042 為 #1040 於21:56按「承接成新任務」建立，狀態 QUEUED。相同需求的 #1041 已於21:36另行建立，21:42先取得唯一並行槽，目前真實執行 implementation（Claude程序仍有CPU活動）；因此 #1042 正常等待中央佇列，不是漏收或服務故障。#1041 已完成受保護路徑分段改派並提交8檔，正在一般文件實作。兩個後續任務內容重複，若 #1041 完成後 #1042 照常啟動，可能重做同一需求；本輪依使用者「為何」只診斷，未中斷／中止／修改任務。
+
+- **最新運作查核（2026-10-12 21:33）**：VM 剛重開機，兩實例原為STOPPED，已啟動恢復。bestpartner PID2751、spring-starters PID3576；Spring／沙箱／角色 Socket Mode 啟動及PID443連線通過，未見ERROR。spring-starters 缺 AI_TEAM_GITHUB_TOKEN，推分支／開PR受限。未發訊息或模型端對端測試，未設定開機自啟。下方10/11 PID為歷史紀錄。
 
 - **最新：通用防漏修機制已實作並部署（2026-10-11 18:06，取代下方待確認／未實作狀態）**：使用者以「請部屬」核准計畫。所有新 v2 團隊快照自動載入 issue-tracking-v1；持久問題清單、分類自修、承接保留及完成／發布覆蓋閘門已生效，不綁專案或角色名稱。bestpartner PID485056／revision614ec4bb…；spring-starters PID489383／revision6cb231a9…；共用 JAR c646820d…。備份分別 issues-backup.EBTqLj／issues-backup.rE6nNs。完整 Linux 619項、0失敗／錯誤、11略過；啟動、沙箱、任務／工作區／teams 前後一致均通過。spring-starters 有升級前已存在的 Slack ping WARN，沒有 ERROR，尚未實測事件收送。真實模型新契約端對端仍未驗收；既有任務快照未改、#1037 其餘8項未代修。此輪不需再詢問是否部署。詳見 progress 與部署紀錄。
 

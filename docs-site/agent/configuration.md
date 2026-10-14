@@ -35,7 +35,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 | `AI_TEAM_GITHUB_TOKEN` | 推分支與開 PR；留空時管線能跑完但核准後推不出去 |
 | `AI_TEAM_BASE_BRANCH`、`AI_TEAM_BRANCH_PREFIX` | 基準分支（留空自動偏好 `develop`）與任務分支前綴 |
 | `AI_TEAM_GIT_USER_NAME`、`AI_TEAM_GIT_USER_EMAIL` | agent commit 署名，寫在工作區 local config |
-| `AI_TEAM_MAX_CONCURRENCY` | 全域並行上限；訂閱帳號建議 1 |
+| `AI_TEAM_MAX_CONCURRENCY` | 實例內 legacy 階段的並行槽上限；中央工作迴圈仍依序執行，單獨調高不會讓 v2 任務平行；訂閱帳號建議 1 |
 | `AI_TEAM_TASK_TIMEOUT_SECONDS`、`AI_TEAM_GIT_TIMEOUT_SECONDS` | 全域逾時覆寫（0＝用各階段設定）與 git 逾時 |
 | `AI_TEAM_PROGRESS_INTERVAL_SECONDS` | 進度卡更新秒數，預設 300、最小 30；**不能設成空字串** |
 | `AI_TEAM_REPORT_DETAIL` | `brief`（預設）或 `full`；完整報告可用 `補充 #<id> 檢視完整報告 [節點]` 叫出 |
@@ -151,3 +151,9 @@ bestpartner 配置四個 `service-*` 操作，目標 `bestpartner-dev`；Windows
 舊配置缺欄位照舊；skill 與參考內容納入 revision／snapshot，角色改派保留 skills，唯讀對話不注入。變更 skill 須新任務承接，不能以能力遷移替換提示。
 
 Windows 可用 skill 的 `scripts/login.ps1 -Config <設定檔>` 初始化 password_file；其父目錄必須是專用私人目錄，腳本會限制 ACL 且不覆寫既有檔案。
+
+## 文件驗收配置（2026-10-12 來源更新）
+
+`project.verification.docOnlyPaths` 配合系統 Git 差異與文字副檔名限制略過不相關產品建置，三份範例配置均已提供；SQL／腳本／設定不適用。
+必要文件站建置另由 verification 操作處理。bestpartner 新增 qa-docs-dir／clean／snapshot／extract／install／build，僅寫 target/qa-docs，原 docs-site 唯讀，安裝離線使用實作準備的 npm 快取。
+plan 的 protected_path_changes 明列需跨 runtime 改派的檔案；不新增權限，仍須符合節點 protectedPathFallback.paths。詳見[配置流程](/docs/configurable-team)。尚未部署。

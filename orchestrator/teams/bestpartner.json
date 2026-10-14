@@ -431,6 +431,102 @@
         "writes": [
           "docs/docker/sit/.agent-service"
         ]
+      },
+      "qa-docs-dir": {
+        "nodes": [
+          "verification"
+        ],
+        "directory": ".",
+        "argv": [
+          "mkdir",
+          "-p",
+          "target/qa-docs"
+        ],
+        "writes": [
+          "target/qa-docs"
+        ]
+      },
+      "qa-docs-snapshot": {
+        "nodes": [
+          "verification"
+        ],
+        "directory": ".",
+        "argv": [
+          "git",
+          "archive",
+          "--output=target/qa-docs/snapshot.tar",
+          "HEAD",
+          "docs-site"
+        ],
+        "writes": [
+          "target/qa-docs"
+        ]
+      },
+      "qa-docs-extract": {
+        "nodes": [
+          "verification"
+        ],
+        "directory": ".",
+        "argv": [
+          "tar",
+          "-x",
+          "-f",
+          "target/qa-docs/snapshot.tar",
+          "-C",
+          "target/qa-docs"
+        ],
+        "writes": [
+          "target/qa-docs"
+        ]
+      },
+      "qa-docs-install": {
+        "nodes": [
+          "verification"
+        ],
+        "directory": ".",
+        "argv": [
+          "npm",
+          "--prefix",
+          "target/qa-docs/docs-site",
+          "ci",
+          "--offline",
+          "--ignore-scripts",
+          "--no-audit",
+          "--no-fund"
+        ],
+        "writes": [
+          "target/qa-docs"
+        ]
+      },
+      "qa-docs-build": {
+        "nodes": [
+          "verification"
+        ],
+        "directory": ".",
+        "argv": [
+          "npm",
+          "--prefix",
+          "target/qa-docs/docs-site",
+          "run",
+          "build"
+        ],
+        "writes": [
+          "target/qa-docs"
+        ]
+      },
+      "qa-docs-clean": {
+        "nodes": [
+          "verification"
+        ],
+        "directory": ".",
+        "argv": [
+          "rm",
+          "-rf",
+          "target/qa-docs/docs-site"
+        ],
+        "writes": [
+          "target/qa-docs"
+        ]
       }
     },
     "requiredTools": [
@@ -442,13 +538,14 @@
       "tar",
       "mkdir",
       "bash",
-      "python3"
+      "python3",
+      "rm"
     ],
     "name": "bestpartner",
     "repositoryEnv": "AI_TEAM_REPO",
     "baseBranch": "dev",
     "buildInstructions": "依 repo 的 AGENTS.md 與 .claude/rules/（單一事實來源）；套件名是 tw.zipe.bastpartner。後端用 PATH 上的 gradle（與 gradlew 同為 8.14.5），一律 -p bestpartner-service --no-daemon，使用已宣告的 backend-* 操作；前端以 npm --prefix bestpartner-ui ci／run build／run test；文件以 npm --prefix docs-site ci／run build。改動 Kotlin、命名、i18n 或版本設定後，以 bash scripts/harness-drift-scan.sh 確認「新漂移 0 項」。不使用 pwsh、npx 或絕對路徑替代。VM 沒有 PostgreSQL 與 Docker：@QuarkusTest 類測試在此環境一定連不上資料庫，不得以修改設定或關閉測試來讓它通過。",
-    "testInstructions": "先制定情境測試計畫，再驗收；不得只看單元測試數量。後端只執行 qa-backend-test-a、qa-backend-test-b 與 qa-backend-test-code-executor（共 23 個不需資料庫的測試類別，含 ArchitectureTest；CodeExecutorTest 的無窮迴圈逾時測試在負載下不穩定，所以單獨執行，單獨仍逾時才算失敗）；需要 PostgreSQL、外部 API 金鑰或 Google 憑證的情境一律標為「無法核實」並說明原因，不得宣稱通過，也不得改寫成 mock 後宣稱等同。前端依序 qa-ui-install、qa-ui-build（vue-tsc 型別檢查＋建置）、qa-ui-test（vitest）。另以 bash scripts/harness-drift-scan.sh 確認「新漂移 0 項」（只讀）。實作階段可以連網下載依賴（含升級套件版本），backend-*、ui-install 等實作操作會把套件寫進共用快取（Gradle 為 GRADLE_USER_HOME，npm 為 ~/.npm）。QA 的 localTestNetwork 沙箱不連外，所以 qa-* 操作以 --offline 使用同一份快取；QA 遇到快取缺件時，判定為實作階段尚未執行對應建置（例如 backend-compile、ui-install），退回實作補跑，不是維運問題，也不得繞過沙箱。",
+    "testInstructions": "先制定情境測試計畫，再驗收；不得只看單元測試數量。後端只執行 qa-backend-test-a、qa-backend-test-b 與 qa-backend-test-code-executor（共 23 個不需資料庫的測試類別，含 ArchitectureTest；CodeExecutorTest 的無窮迴圈逾時測試在負載下不穩定，所以單獨執行，單獨仍逾時才算失敗）；需要 PostgreSQL、外部 API 金鑰或 Google 憑證的情境一律標為「無法核實」並說明原因，不得宣稱通過，也不得改寫成 mock 後宣稱等同。前端依序 qa-ui-install、qa-ui-build（vue-tsc 型別檢查＋建置）、qa-ui-test（vitest）。另以 bash scripts/harness-drift-scan.sh 確認「新漂移 0 項」（只讀）。實作階段可以連網下載依賴（含升級套件版本），backend-*、ui-install 等實作操作會把套件寫進共用快取（Gradle 為 GRADLE_USER_HOME，npm 為 ~/.npm）。QA 的 localTestNetwork 沙箱不連外，所以 qa-* 操作以 --offline 使用同一份快取；QA 遇到快取缺件時，判定為實作階段尚未執行對應建置（例如 backend-compile、ui-install），退回實作補跑，不是維運問題，也不得繞過沙箱。 純文字變更只核對內容及必要一致性，不無條件執行後端／前端回歸。文件站依序 qa-docs-dir、qa-docs-clean、qa-docs-snapshot、qa-docs-extract、qa-docs-install、qa-docs-build，在 target/qa-docs 副本驗證最終 HEAD；實作先執行 docs-install／docs-build 準備快取。原 docs-site 唯讀，快取缺件交回實作，不略過必要檢查。",
     "protectedPaths": [
       "bestpartner-service/src/main/**",
       "**/build.gradle.kts",
@@ -603,7 +700,7 @@
         "Grep",
         "Glob"
       ],
-      "capabilities": "應用架構、API、資料模型、相依方向與相容性設計；唯讀分析。"
+      "capabilities": "應用架構、API、資料模型、相依方向與相容性設計；唯讀分析。 純文字文件僅確認來源、修改範圍及同步關係。"
     },
     "builder": {
       "name": "Backend Agent",
@@ -627,7 +724,7 @@
         "Bash(git *)",
         "Bash(ls *)"
       ],
-      "capabilities": "應用程式、前後端功能與測試實作；可在工作區修改程式與設定，依契約建置測試；Claude 受保護路徑另走分段改派。"
+      "capabilities": "應用程式、前後端功能與測試實作；可在工作區修改程式與設定，依契約建置測試；Claude 受保護路徑另走分段改派。 文件內容維護、使用者與 agent 文件同步、文件網站建置；純文件修正優先由此角色承接。"
     },
     "tester": {
       "name": "QA Agent",
@@ -647,7 +744,12 @@
         "Bash(npm --prefix bestpartner-ui *)",
         "Bash(bash scripts/harness-drift-scan.sh)",
         "Bash(git *)",
-        "Bash(ls *)"
+        "Bash(ls *)",
+        "Bash(mkdir -p target/qa-docs)",
+        "Bash(git archive *)",
+        "Bash(tar -x -f target/qa-docs/snapshot.tar -C target/qa-docs)",
+        "Bash(npm --prefix target/qa-docs/docs-site *)",
+        "Bash(rm -rf target/qa-docs/docs-site)"
       ]
     },
     "infrastructure": {
@@ -833,7 +935,8 @@
         "bestpartner-service/.gradle/**",
         "bestpartner-service/.kotlin/**",
         "bestpartner-ui/node_modules/**",
-        "bestpartner-ui/dist/**"
+        "bestpartner-ui/dist/**",
+        "target/qa-docs/**"
       ],
       "localTestNetwork": true,
       "plan": "plan",

@@ -60,22 +60,52 @@ public final class ProtectedPathFallback {
     /** 提到的受保護路徑分成兩組：允許改派的（交給 fallback 角色）與允許範圍外的（不改派，留給原流程）。 */
     public record Need(List<String> delegated, List<String> outside) {}
 
-    /**
-     * 需求、需求基準與已完成節點報告中提到、而原角色 runtime 必定寫不了的路徑。
-     * 擷取的是「有提到」而不是「要修改」：#1029 的需求只要求 `.claude/CLAUDE.md`「維持不變」，舊版只要有一條在允許範圍外
-     * 就整個不改派，`.claude/rules/` 兩份檔案因此沒人改得了。現在允許範圍內的照樣改派；範圍外的（例如 settings）不交出去，
-     * 原角色真的要改時會被 runtime 拒絕，照原流程停下來問人。沒有允許範圍內的路徑時回傳 empty。
-     */
+    /** 僅採用本實作前置計畫中的明確修改清單；自然語言提及（含禁止修改）不是改派授權。 */
     public static Optional<Need> needed(FlowRun flow, Node node, String requestText, AgentRuntime primary) {
         Fallback fb = node.protectedPathFallback();
         if (fb == null || primary == null) return Optional.empty();
-        StringBuilder text = new StringBuilder(requestText == null ? "" : requestText);
-        for (JsonNode receipt : flow.receipts.values()) text.append('\n').append(receipt);
-        List<String> protectedPaths = mentionedPaths(text.toString()).stream().filter(primary::isProtectedWrite).toList();
+        List<String> protectedPaths = plannedPaths(flow, node).stream().filter(primary::isProtectedWrite).toList();
         List<String> delegated = new ArrayList<>(), outside = new ArrayList<>();
         for (String p : protectedPaths)
             (!denied(p) && PathRules.allows(fb.paths(), p.endsWith("/") ? p + "x" : p) ? delegated : outside).add(p);
         return delegated.isEmpty() ? Optional.empty() : Optional.of(new Need(List.copyOf(delegated), List.copyOf(outside)));
+    }
+
+    static Set<String> plannedPaths(FlowRun flow, Node node) {
+        Set<String> paths = new LinkedHashSet<>();
+        for (String id : node.requires() == null ? List.<String>of() : node.requires()) {
+            Node prerequisite = flow.snapshot.definition().nodes().get(id);
+            JsonNode plan = flow.receipts.get(id);
+            if (prerequisite == null || prerequisite.gate() != Gate.TEST_PLAN || plan == null) continue;
+            String invalid = planReason(plan);
+            if (invalid != null) throw new IllegalArgumentException(invalid);
+            plan.path("protected_path_changes").forEach(p -> paths.add(p.asText()));
+        }
+        return paths;
+    }
+
+    static String planReason(JsonNode plan) {
+        // 舊快照没有此欄位：仍可讀取，但不再從任意文字推測改派範圍。
+        if (!plan.has("protected_path_changes")) return null;
+        JsonNode paths = plan.path("protected_path_changes");
+        if (!paths.isArray() || paths.size() > 100) return "protected_path_changes 必須是至多 100 個明確檔案路徑";
+        Set<String> seen = new HashSet<>();
+        for (JsonNode item : paths) {
+            String p = item.asText();
+            if (!item.isTextual() || p.isBlank() || !p.equals(p.trim()) || p.startsWith("/") || p.endsWith("/")
+                    || p.contains("\\") || p.contains(":") || p.contains("*") || p.contains("?")
+                    || Arrays.stream(p.split("/", -1)).anyMatch(s -> s.isEmpty() || s.equals(".") || s.equals(".."))
+                    || p.chars().anyMatch(Character::isISOControl) || denied(p) || !seen.add(p))
+                return "protected_path_changes 含不安全、禁止或重複路徑：" + p;
+            for (JsonNode scenario : plan.path("scenarios"))
+                for (JsonNode unchanged : scenario.path("unchanged_paths"))
+                    if (p.equals(unchanged.asText())) return "修改清單與不得修改的檔案衝突：" + p;
+        }
+        return null;
+    }
+
+    static List<String> partViolations(List<String> changed, Fallback fb, Set<String> planned) {
+        return changed.stream().filter(path -> denied(path) || !PathRules.allows(fb.paths(), path) || !planned.contains(path)).toList();
     }
 
     /** 改派的實作實際變更中，原 runtime 會拒絕、又不在允許範圍內的路徑（含禁止清單）；非空就必須停止。 */

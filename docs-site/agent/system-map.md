@@ -16,6 +16,10 @@ description: 分層責任、任務生命週期、流程節點、任務狀態與�
 | Agent 執行 | runtime CLI（Claude Code／Codex／opencode） | 角色提示、工具白名單、回合上限、結構化輸出 |
 | 產物 | Git／GitHub | 每任務獨立 clone、分支、commit、PR |
 
+中央佇列由 `TaskOrchestrator` 的單一工作迴圈依序執行；`QueuedTask` 保留任務身分，
+排入時以實際 active／pending 工作回報前方任務，開始時通知原討論串。
+FlowEngine 的新任務承接、續跑、發布及角色請求均保留這個身分；不能用資料庫任務編號排序代表續跑的 FIFO 順序。
+
 安全隔離刻意放在 runtime 外層：若依賴各 CLI 自己的權限旗標，系統安全性就等於最弱的那個 runtime。
 主 App 負責排程、按鈕與流程控制；角色 App 只用來以角色身分發言與接收 @提問，不能自己觸發或中止任務。
 啟用 `candidateRoles` 的階段由上游 agent 依能力選擇負責角色，`AgentDispatch` 驗證並保存交接；
@@ -136,3 +140,9 @@ agent 不能自行指定角色或跳到任意節點。
 ## 服務執行工具（2026-10-10）
 
 服務建置另有 `orchestrator/teams/skills/service-build/`：工作區 client → 主機 broker → SSH 或 VirtualBox 配置的目標。broker 讀即時任務授權，執行四個固定操作，結果存宿主機並交回工作區；不透過 Slack 傳遞憑證。詳見 [服務建置](/docs/service-delivery)。
+
+### 文件任務驗證（2026-10-12 來源更新）
+
+工作分類由共用提示指導，純文字採合併內容查核、文件站採隔離副本建置、SQL／設定採行為驗證；不是新的節點或跳關。
+plan.protected_path_changes 由實作前置計畫提供，ProtectedPathFallback 取清單與允許目錄交集，FlowEngine 在代提交前逐檔核對。文字提及不再觸發改派。
+現有 requires、計畫核准、QA／Review 與 PR 閘門保持；舊快照不自動載入新提示／schema／操作，詳見[配置流程](/docs/configurable-team)。

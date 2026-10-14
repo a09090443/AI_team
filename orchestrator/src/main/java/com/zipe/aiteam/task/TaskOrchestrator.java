@@ -56,6 +56,51 @@ public class TaskOrchestrator {
     private com.zipe.aiteam.flow.ErrorExplainer explainer;
 
     private final LinkedBlockingQueue<Runnable> work = new LinkedBlockingQueue<>();
+    private final Object queueLock = new Object();
+    private final java.util.ArrayList<QueuedTask> pending = new java.util.ArrayList<>();
+    private QueuedTask active;
+    /** Preserve task identity through FlowEngine callbacks without changing their Runnable contract. */
+    public record QueuedTask(Task task, Runnable action) implements Runnable {
+        @Override public void run() { action.run(); }
+    }
+
+    void enqueue(Runnable job) {
+        if (!(job instanceof QueuedTask item)) throw new IllegalArgumentException("佇列工作缺少任務身分");
+        synchronized (queueLock) {
+            var ahead = pending.stream().filter(p -> !cancelled(p.task()))
+                    .map(p -> "#" + p.task().id()).toList();
+            String current = active == null ? "" : "#" + active.task().id();
+            String message = "任務 #" + item.task().id() + " 已排入中央佇列。";
+            if (current.isEmpty() && ahead.isEmpty()) message += "目前前方沒有其他工作，將開始執行。";
+            else message += "\n目前執行中：" + (current.isEmpty() ? "無" : current)
+                    + "\n前方排隊任務（依順序）：" + (ahead.isEmpty() ? "無" : String.join(" → ", ahead))
+                    + "\n等待前方工作依序釋放執行名額後開始；前方任務完成這一輪、暫停等人或等額度，都會釋放名額。";
+            queueNotice(item.task(), message + "\n不需要重複送出；輪到時會再通知。此為本次排入時的狀態。");
+            pending.add(item);
+            work.offer(item);
+        }
+    }
+
+    private boolean cancelled(Task task) {
+        return store.find(task.id()).map(t -> t.state() == Task.State.ABORTED).orElse(false);
+    }
+
+    private void queueNotice(Task task, String message) {
+        try { slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), message); }
+        catch (Exception e) { log.warn("任務 #{} 佇列通知失敗，仍保留排程", task.id(), e); }
+    }
+
+    void executeQueued(QueuedTask item) {
+        synchronized (queueLock) { pending.remove(item); active = item; }
+        try {
+            if (!cancelled(item.task())) {
+                queueNotice(item.task(), "輪到任務 #" + item.task().id() + "，開始執行這一輪工作。");
+                item.run();
+            }
+        } finally {
+            synchronized (queueLock) { active = null; }
+        }
+    }
     private final Semaphore slots;
     private final Thread worker;
     private volatile boolean running = true;
@@ -92,7 +137,7 @@ public class TaskOrchestrator {
         if (role == Identity.SYSTEM || !props.allowedUsers().contains(user) || slack.isAgentUser(user)) return;
         if (props.channelId() != null && !props.channelId().isBlank() && !props.channelId().equals(channel)) return;
         if (flowEngine != null && flowEngine.enabled()) {
-            flowEngine.requestRole(role, channel, thread, user, text, job -> work.offer(job));
+            flowEngine.requestRole(role, channel, thread, user, text, this::enqueue);
             return;
         }
         List<Task> history = store.inThread(channel, thread);
@@ -141,7 +186,7 @@ public class TaskOrchestrator {
         audit.record(dialogue.id(), user, AuditLog.ACTION_STATE, "指定 " + role + " 唯讀對話；原任務=" + direct.parentId());
         dialogue.statusMessageTs(slack.post(Identity.SYSTEM, channel, thread, "角色對話 #" + dialogue.id() + " 已排隊；" + role + " 尚未開始，不會修改程式或核准 PR。"));
         store.save(dialogue);
-        work.offer(() -> runDirect(dialogue, direct));
+        enqueue(new QueuedTask(dialogue, () -> runDirect(dialogue, direct)));
     }
 
     private void runDirect(Task task, DirectRequest direct) {
@@ -224,7 +269,7 @@ public class TaskOrchestrator {
                 log.warn("{} 上次執行到一半被中斷，已標記 FAILED", t);
             } else if (t.state() == Task.State.QUEUED) {
                 audit.record(t.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY, "重新排入佇列");
-                work.offer(() -> runPipeline(t));
+                enqueue(new QueuedTask(t, () -> runPipeline(t)));
                 log.info("{} 重新排入佇列", t);
             } else {
                 audit.record(t.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY,
@@ -308,7 +353,7 @@ public class TaskOrchestrator {
         store.save(task);
         audit.record(task.id(), userId, AuditLog.ACTION_RECEIVED, text);
         log.info("{} 已排入佇列，來自 {}", task, userId);
-        work.offer(() -> runPipeline(task));
+        enqueue(new QueuedTask(task, () -> runPipeline(task)));
         return task;
     }
 
@@ -359,7 +404,7 @@ public class TaskOrchestrator {
      * 因此這裡只記錄與回覆，真正的工作丟給工作執行緒。
      */
     public void approvePr(Task task, String byUser) {
-        if (flowEngine != null && flowEngine.owns(task.id())) { flowEngine.approve(task, byUser, job -> work.offer(job)); return; }
+        if (flowEngine != null && flowEngine.owns(task.id())) { flowEngine.approve(task, byUser, this::enqueue); return; }
         if (legacyBlockedByNewConfiguration(task)) return;
         if (store.direct(task.id()).isPresent()) {
             slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "角色對話不能提交 PR，請操作原工作任務。");
@@ -370,9 +415,9 @@ public class TaskOrchestrator {
         if (blockUnverifiedReview(task)) return;
         audit.record(task.id(), byUser, AuditLog.ACTION_BUTTON, "核准推送分支與開 PR");
         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
-                "✅ 任務 #" + task.id() + " 已由 <@" + byUser + "> 核准，正在推送分支並開 PR…");
+                "✅ 任務 #" + task.id() + " 已由 <@" + byUser + "> 核准，將安排推送分支並開 PR。");
         Task approved = task;
-        work.offer(() -> publish(approved, byUser));
+        enqueue(new QueuedTask(approved, () -> publish(approved, byUser)));
     }
 
     /**
@@ -533,16 +578,18 @@ public class TaskOrchestrator {
         store.clearRemediation(task.id());
         task.continuation(null);
         task.qaBaseline(null);
-        work.offer(() -> runPipeline(task));
+        enqueue(new QueuedTask(task, () -> runPipeline(task)));
     }
 
     public void continueTask(Task task, String byUser) {
-        if (flowEngine != null && flowEngine.owns(task.id())) { flowEngine.resume(task, null, byUser, job -> work.offer(job)); return; }
+        if (flowEngine != null && flowEngine.owns(task.id())) { flowEngine.resume(task, null, byUser, this::enqueue); return; }
         if (legacyBlockedByNewConfiguration(task)) return;
         if (store.checkpoint(task.id()).isEmpty()) return;
         if (!store.claimContinuation(task.id())) return;
         audit.record(task.id(), byUser, AuditLog.ACTION_BUTTON, "繼續額度中斷任務，保留原工作區");
-        work.offer(() -> {
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                "已收到續跑請求；原工作區保留。若額度仍不足，會再次暫停。");
+        enqueue(new QueuedTask(task, () -> {
             Task current = store.find(task.id()).orElseThrow();
             if (current.state() != Task.State.RESUME_QUEUED) return;
             current.continuation(store.checkpoint(task.id()).orElseThrow());
@@ -551,9 +598,7 @@ public class TaskOrchestrator {
             Remediation repair = store.remediation(current.id()).orElse(null);
             if (repair != null && repair.active()) runRemediation(current, repair);
             else runPipeline(current);
-        });
-        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
-                "已排入續跑佇列；原工作區保留。若額度仍不足，會再次暫停。");
+        }));
     }
 
     private boolean pauseForQuota(Task task, Throwable failure) {
@@ -585,7 +630,7 @@ public class TaskOrchestrator {
         while (running) {
             try {
                 Runnable job = work.poll(1, TimeUnit.SECONDS);
-                if (job != null) job.run();
+                if (job instanceof QueuedTask item) executeQueued(item);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;
@@ -606,7 +651,7 @@ public class TaskOrchestrator {
         if (legacyBlockedByNewConfiguration(task)) return;
         String progressTs = slack.post(Identity.SYSTEM,
                 task.slackChannel(), task.slackThreadTs(),
-                "🗒️ 任務 #" + task.id() + " 已排入佇列…");
+                "🗒️ 任務 #" + task.id() + " 開始處理…");
         task.statusMessageTs(progressTs);
 
         try {
@@ -1134,7 +1179,7 @@ public class TaskOrchestrator {
     /** 舊的 AWAIT_HUMAN 任務可明確要求 PM 接手，補充內容不另建任務。 */
     public void planDecision(Task task, String user, com.zipe.aiteam.slack.PlanReview.Decision decision,
                              boolean approve, String channel, String thread) {
-        if (flowEngine != null && flowEngine.owns(task.id())) flowEngine.planDecision(task, user, decision, approve, channel, thread, job -> work.offer(job));
+        if (flowEngine != null && flowEngine.owns(task.id())) flowEngine.planDecision(task, user, decision, approve, channel, thread, this::enqueue);
     }
     /** 「修好了，請它重驗」視窗要帶入的「驗收節點 commit」；不適用時為 empty。 */
     public Optional<String> remediationTarget(Task task) {
@@ -1142,15 +1187,15 @@ public class TaskOrchestrator {
     }
     /** 純詢問結束後的「開成新需求」按鈕；新任務走同一個中央佇列。 */
     public void spinoff(Task task, int index, String user) {
-        if (flowEngine != null && flowEngine.owns(task.id())) flowEngine.spinoff(task, index, user, job -> work.offer(job));
+        if (flowEngine != null && flowEngine.owns(task.id())) flowEngine.spinoff(task, index, user, this::enqueue);
     }
     public void resumeApprovedPlanTask(String id) {
         Task task = store.find(id).orElseThrow(() -> new IllegalArgumentException("指定任務不存在"));
         if (flowEngine == null || !flowEngine.owns(id)) throw new IllegalArgumentException("指定任務不是配置流程");
-        flowEngine.resumeApprovedPlan(task, job -> work.offer(job));
+        flowEngine.resumeApprovedPlan(task, this::enqueue);
     }
     public void requestTriage(Task task, String feedback, String byUser) {
-        if (flowEngine != null && flowEngine.owns(task.id())) { flowEngine.resume(task, feedback, byUser, job -> work.offer(job)); return; }
+        if (flowEngine != null && flowEngine.owns(task.id())) { flowEngine.resume(task, feedback, byUser, this::enqueue); return; }
         if (com.zipe.aiteam.flow.HumanOptions.PUBLISH_COMMAND.equals(feedback)) {
             slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
                     "任務 #" + task.id() + " 是舊版管線任務，不支援「開 PR」指令；請用核准卡上的按鈕。");
@@ -1171,12 +1216,12 @@ public class TaskOrchestrator {
         Remediation repair = new Remediation(task.id(), "pm_triage", previous == null ? 0 : previous.repairs(), context);
         store.saveRemediation(repair);
         audit.record(task.id(), byUser, AuditLog.ACTION_BUTTON, "要求 PM 實際處理，已排入佇列");
-        work.offer(() -> {
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "已收到 PM 問題處理請求，將排入佇列；不會重新 clone 或發布 PR。");
+        enqueue(new QueuedTask(task, () -> {
             Task current = store.find(task.id()).orElseThrow();
             if (current.state() != Task.State.TRIAGE_QUEUED) return;
             runRemediation(current, repair);
-        });
-        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "PM 問題處理已排入佇列，尚未開始；不會重新 clone 或發布 PR。");
+        }));
     }
 
     private void beginRemediation(Task task, String reason) {

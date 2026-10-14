@@ -42,7 +42,8 @@
           "build"
         ]
       ],
-      "timeoutSeconds": 1800
+      "timeoutSeconds": 1800,
+      "docOnlyPaths": ["*.md", "docs/**/*.md", "docs/**/*.mdx"]
     }
   },
   "roles": {

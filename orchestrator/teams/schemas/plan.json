@@ -5,9 +5,17 @@
     "status",
     "summary",
     "scenarios",
-    "baseline_revision"
+    "baseline_revision",
+    "protected_path_changes"
   ],
   "properties": {
+    "protected_path_changes": {
+      "description": "需求確實要修改、需跨 runtime 改派的明確相對檔案路徑；唯讀參考與禁止修改檔案不得列入。沒有則為空陣列。",
+      "type": "array",
+      "maxItems": 100,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
     "status": {
       "type": "string",
       "enum": [

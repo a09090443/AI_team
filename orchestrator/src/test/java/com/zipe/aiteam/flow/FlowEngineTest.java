@@ -205,6 +205,9 @@ class FlowEngineTest {
         var childTask = store.find(childId).orElseThrow();
         var child = store.flow(childId).orElseThrow();
         assertThat(childTask.slackThreadTs()).isEqualTo("new-thread");
+        var queuedChild = (com.zipe.aiteam.task.TaskOrchestrator.QueuedTask) jobs.getFirst();
+        assertThat(queuedChild.task().id()).isEqualTo(childTask.id());
+        assertThat(queuedChild.task().slackThreadTs()).isEqualTo("new-thread");
         assertThat(childTask.requestText()).isEqualTo("修正文件計數：68 改為 69");
         assertThat(childTask.requesterUserId()).isEqualTo("u");
         assertThat(child.acceptanceOwner).isEqualTo("u");
@@ -852,6 +855,16 @@ class FlowEngineTest {
         verify(audit).record(eq("42"), any(), eq(AuditLog.ACTION_DENIED), contains(".agents/skills/x/SKILL.md"));
     }
 
+    @Test void delegatedPartCannotEditAnotherFileInTheSameAllowedDirectory() throws Exception {
+        mode = "protectedRule";
+        enableProtectedPathFallback();
+        when(workspace.auditPaths(eq("42"), anyString())).thenReturn(List.of(".claude/rules/not-requested.md"));
+        engine.run(task);
+        assertThat(calls).contains("implementation:builder_codex").doesNotContain("implementation:builder")
+                .noneMatch(c -> c.startsWith("verification:"));
+        verify(workspace, never()).commitPaths(eq("42"), anyList(), contains("改派"));
+    }
+
     @Test void reassignedImplementerTouchingSettingsStopsBeforeAnyDownstreamStep() throws Exception {
         mode = "protectedRule";
         enableProtectedPathFallback();
@@ -1094,6 +1107,8 @@ class FlowEngineTest {
             if (node.gate() == TeamDefinition.Gate.VERIFICATION)
                 ((ObjectNode) report).put("plan_revision", Traceability.digest(flow.receipts.get(node.plan())));
             if (flow.node.equals("design")) ((ObjectNode)report).put("route", "ready");
+            if (mode.startsWith("protectedRule") && node.gate() == TeamDefinition.Gate.TEST_PLAN)
+                ((ObjectNode)report).putArray("protected_path_changes").add(".claude/rules/api-endpoints.md");
             if (mode.startsWith("protectedRule") && flow.node.equals("intake"))
                 ((ObjectNode)report).put("summary", "把 `.claude/rules/api-endpoints.md` 第 49 行的 all 改成 admin");
             if (mode.startsWith("question") && flow.node.equals("intake")) {
@@ -1581,7 +1596,7 @@ class FlowEngineTest {
         assertThat(flow.receipts.get("verification").path("owner_waiver").path("by").asText()).isEqualTo("u");
         assertThat(flow.receipts.get("verification").path("uncertainties")).isEmpty();
         verify(audit).record(eq("42"), eq("u"), eq(AuditLog.ACTION_RECOVERY), contains("未核實事項"));
-        verify(slack).post(any(), eq("c"), eq("t"), contains("審查還沒跑過，先執行審查"));
+        verify(slack).post(any(), eq("c"), eq("t"), contains("將安排審查"));
     }
 
     @Test void pendingReviewWithOnlyAnInformationalFindingIsWaivedByTheSameCommand() throws Exception {
@@ -1642,7 +1657,7 @@ class FlowEngineTest {
         List<Runnable> jobs = new ArrayList<>(); engine.approve(task, "u", jobs::add); jobs.get(0).run();
         verifyNoInteractions(publisher); assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
     }
-    @Test void approvalTellsWhetherPublishingStartsNowOrWaitsInQueue() throws Exception {
+    @Test void approvalCarriesTaskIdentityForActualQueueNotifications() throws Exception {
         // #1019：核准後排在 #1018 後面，Slack 沒有任何訊息，使用者以為按鈕沒作用。
         engine.run(task);
         var busy = new Task("7", "c", "t7", "u", "別的任務"); busy.state(Task.State.STAGE_RUNNING); store.save(busy);
@@ -1650,16 +1665,16 @@ class FlowEngineTest {
         var waiting = new Task("9", "c", "t9", "u", "等人任務"); waiting.state(Task.State.AWAIT_HUMAN); store.save(waiting);
         when(publisher.publish(eq("42"), any(), any(), eq("feature/task42"))).thenReturn(new PullRequestPublisher.Result("feature/task42", "https://example.test/pr/1", 1));
         List<Runnable> jobs = new ArrayList<>(); engine.approve(task, "u", jobs::add);
-        verify(slack).post(any(), eq("c"), eq("t"), argThat((String t) -> t.contains("已排入中央佇列")
-                && t.contains("#7 執行中") && t.contains("#8 排隊中") && !t.contains("#9") && !t.contains("#42")));
+        verify(slack).post(any(), eq("c"), eq("t"), contains("排隊狀況與開始執行會另行通知"));
+        assertThat(jobs.getFirst()).isInstanceOf(com.zipe.aiteam.task.TaskOrchestrator.QueuedTask.class);
+        assertThat(((com.zipe.aiteam.task.TaskOrchestrator.QueuedTask) jobs.getFirst()).task().id()).isEqualTo("42");
         jobs.get(0).run();
-        verify(slack).post(any(), eq("c"), eq("t"), eq("輪到任務 #42，開始推分支、開 PR。"));
         assertThat(task.state()).isEqualTo(Task.State.PR_CREATED);
     }
-    @Test void approvalWithIdleQueueSaysPublishingStartsNow() throws Exception {
+    @Test void approvalDoesNotClaimExecutionBeforeQueueDispatch() throws Exception {
         engine.run(task);
         List<Runnable> jobs = new ArrayList<>(); engine.approve(task, "u", jobs::add);
-        verify(slack).post(any(), eq("c"), eq("t"), eq("已收到 PR 核准，開始推分支、開 PR；完成後會貼出 PR 連結。"));
+        verify(slack).post(any(), eq("c"), eq("t"), contains("將安排推分支、開 PR"));
         verify(slack, never()).post(any(), any(), any(), argThat((String t) -> t.startsWith("輪到任務")));
     }
     @Test void onlyWhitelistedHumanCanPublishAndDoubleClickIsAtomic() throws Exception {

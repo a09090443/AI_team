@@ -1,5 +1,47 @@
 # 工作進度（Codex 與 Claude Code 共用）
 
+## 2026-10-12 文件派工與角色提示修正（本機來源）
+
+- 使用者核准依查核建議修改。已調整 8 份共用角色提示：工作種類、相稱設計／驗收、文件作者與 QA 職責、同目標漏項自行回補、原需求範圍一致性、Infrastructure 去除專案名稱。service／service-triage 維持已核對的既有服務專用路線。
+- plan schema 新增 protected_path_changes；ProtectedPathFallback 只從實作前置 TEST_PLAN 取明確清單，Traceability 拒絕路徑不安全／重複／unchanged_paths 衝突，FlowEngine 提交前核對清單及目錄白名單。舊計畫缺欄位不再猜測改派，需新配置計畫／承接；既有完成與整節點改派保留。
+- 純文件略過增加文字副檔名限制，docs 下 SQL／腳本／設定不再免驗；三份範例配置提供 docOnlyPaths。bestpartner 補 6 個文件站 QA 操作（dir／clean／snapshot／extract／install／build），離線在 target/qa-docs 副本建置；原文件唯讀。保留既有流程節點與核准，不宣稱已實作可跳關的短流程。
+- 回歸 241 項中 240 通過、1 項 OperationContractTest 符號連結因 Windows 特殊權限不足而無法執行；沒有斷言失敗。先前純文件測試含 PDF，依新文字政策改 Markdown fixture，另加入 SQL／腳本不得略過、提及不改派、同目錄額外檔禁止提交及範圍衝突測試。
+- check-source 通過 20 工具測試與 16 平台 fixture 斷言；docs build／目錄／工具同步／斷鏈檢查與 diff check 通過。Linux 完整隔離測試傳送被 auto-review 拒絕（未明確授權此原始碼 payload 到 VM），已詢問僅供測試的授權，尚未传送／部署。測試包在 .build-cache/dispatch-tests.tar.gz，不含 env／憑證。
+- 文件缺漏／落差：舊改派說明以提及判斷、純文件不限副檔名、QA 建置缺口與上次查核待修狀態。已修正 configurable-team、multi-runtime、engineering-workflow、qa-scenario-workflow、data-model、operations、configuration、system-map；核對 catalog／project-tree／cross-project-execution 無需修改。沒有新增檔案或 FlowRun 欄位。前輪佇列變更保留，尚未 commit／部署本輪。
+
+
+## 2026-10-12 角色提示詞與文件派工查核
+
+- 已查全部 10 份 teams/prompts、三份團隊配置、ConfiguredExecutor 提示疊加、ProtectedPathFallback 改派與工程流程。bestpartner／spring 的 plan、verification 固定 tester；node-web 也固定經過 builder／frontend，沒有依工作種類縮短流程。QA 是驗收者，文件作者仍是實作角色。
+- 唯讀查核 VM #1040／#1041 stage_attempt：#1040 因 verification 無 docs-site 建置操作而 plan 受阻；#1041 文件 7 情境通過，QA 因系統額外提交 8 個被上游禁止修改的 .claude 檔案而阻擋。根因之一為 ProtectedPathFallback.needed 只按文字提及路徑改派，不識別禁止修改／唯讀意圖；未改DB、未重派或重播任務。
+- 提示詞待改善：跨角色統一工作種類與驗證強度、上游範圍一致性、證據責任、文件維護能力描述；infrastructure 共用提示寫死 bestpartner。工具缺口與改派程式問題不能只靠提示修正，更不應取消 QA 掩蓋越界。本輪為查核，未改 runtime 提示／配置／程式，未部署。
+- 發現文件缺漏：未明示純文件仍走固定 QA 流程及上述派工限制。已修正 configurable-team、operations；已核對無需修改 engineering-workflow、qa-scenario-workflow、system-map、configuration、catalog、project-tree。未新增檔案，目錄樹不變。
+- 驗證：docs-site build 通過（文件目錄、274 項目錄樹、AI 工具同步與斷鏈檢查），git diff --check 通過。本輪僅文件紀錄，未執行 Maven 或模型端對端測試。
+
+## 2026-10-12 22:17 中央佇列等待通知實作與部署
+
+- 發現缺漏：新任務／承接只入列、沒有告知前方工作；原PR訊息從DB狀態推測順序，不能代表真正入列順序且漏角色對話。另核實中央單一worker依序執行，先前只歸因maxConcurrency=1不夠精確，已修正設定與流程文件。
+- 共用 QueuedTask 保存工作身分，TaskOrchestrator 統一列出執行中與前方FIFO任務編號，開始時再通知，涵蓋legacy／v2所有入列入口；承接綁新任務討論串。取消工作跳過、Slack通知失敗仍排程，沒有改並行數、持久格式或核准規則。訊息為排入當下快照，非即時更新看板。
+- 測試：本機相關150項通過；最後legacy文案调整後40項再次通過。Linux完整verify623項、0失敗、0錯誤、11略過；check-source含20工具測試與16平台檢查、docs build及diff check通過。初次測試有1個舊文案斷言失敗，更新為新的「將安排」文案後通過，未放寬行為檢查。
+- 已部署兩實例：JAR59d485bf91ec35cc0b4d9d2a793695bf953277e656ed545a28ecd23289d207de；bestpartner PID14340、spring-starters PID17496；備份queue-backup.iU07Sb／u7NVRa。隔離來源與日誌在/home/agent/queue-build.iOs3dl/orchestrator。兩者靜態配置、Spring／沙箱／角色Socket Mode與任務資料、工作區、teams前後一致檢查通過，無ERROR。配置revision未變。
+- 更新前確認空閒：#1041已AWAIT_HUMAN，#1042已WAITING_QUOTA，下次2026-10-12T18:32Z，不在部署時段；未手改DB、未代發測試訊息。Slack新通知端對端尚未實測，未自動commit／push。
+- 已核對並修正：operations、configuration、system-map、configurable-team、catalog、deploy-2026-09-06-v2；已核對無需改：data-model、pm-triage、quota-continuation、project-tree。更新context／decisions，保留本輪之前的查核紀錄。
+
+## 2026-10-12 21:58 最新任務排隊原因查核
+
+- bestpartner 最新 #1042 狀態 QUEUED，來源是 #1040 於21:56按「承接成新任務」；#1040 已記 successor=1042、#1042 continuationOf=1040，服務確實收到事件。
+- 同內容 #1041 早在21:36獨立建立，21:42取得 AI_TEAM_MAX_CONCURRENCY=1 的唯一執行槽，現在位於 implementation。實際 systemd/Claude 程序持續運作且有CPU活動；此前 intake、design、plan 均已有 stage_attempt，非殘留假狀態。
+- #1041 的受保護路徑分段改派已提交8檔，主 implementation 正在執行。#1042 會等中央佇列輪到；兩者是重複需求，後續可能重做，但本輪只依「為何沒執行」做唯讀診斷，未中斷、中止、改DB或代發Slack訊息。
+- 已核對 operations、data-model、pm-triage、failure-reporting、quota-continuation 與 FlowRun/schema；現行文件已說明共用中央佇列與等待狀態，無需修正。補寫 context/progress 保存查核證據。
+
+## 2026-10-12 21:33 服務運作查核與恢復
+
+- 使用者要求確認系統是否運作。VM uptime 約7分鐘，兩實例初查均 STOPPED，符合 operations 所述未設定開機自啟；已執行各自 service.sh start 恢復既有服務。
+- bestpartner PID2751、spring-starters PID3576；兩者 Spring 啟動、沙箱隔離／工具鏈自檢通過，各角色 Socket Mode 已啟動且存在所屬 PID 的443連線，啟動日誌未見 ERROR。主機磁碟使用39%、可用記憶體約6.7GB。
+- bestpartner 啟動辨識18個未完成任務、保留16個工作區且刪除0個；spring-starters 無未完成任務。未代送 Slack 訊息、未手改任務資料、未驗收模型端對端。
+- spring-starters 啟動警告未設定 AI_TEAM_GITHUB_TOKEN，推分支／開PR仍受限；未讀出或更改憑證。未設定開機自啟，未來VM重開機仍需啟動服務。
+- 已核對 operations、部署紀錄、catalog、project-tree，未發現文件與本次行為落差，現行文件無需修正；補寫 progress／context 保存查核證據。
+
 ## 2026-10-11 依使用者要求提交已部署版本
 
 - 本次 commit 涵蓋尚未提交的自主派工、服務建置、驗證修正與通用防漏修機制，以及相應測試、同步 skill 與文件；保留已通過完整 Linux 測試的整合版本。
