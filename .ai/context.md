@@ -3,11 +3,13 @@
 > 換手前務必更新這份檔案。內容只寫「現在正在做什麼、卡在哪、下一步」，
 > 長期結論寫 `decisions.md`，已完成的寫 `progress.md`。舊內容查 git 歷史，不要在這裡累積流水帳。
 
-最後更新：2026-10-12（Codex）
+最後更新：2026-10-14（Claude Code）
 
 ## 正在進行
 
-- **部署最新工作樹（2026-10-14，Claude Code，等待權限）**：使用者要求「部署最新版本」。已打包工作樹（含未 commit 的文件派工修正，HEAD 5051725）到 VM 隔離目錄 `/home/agent/dispatch-build.r703Pg`：check-source 通過，`mvn clean verify` 626 項 0 失敗／錯誤、11 略過，JAR 460af3ac…（線上仍 59d485bf…）。線上 teams 與 HEAD 差異確認只是舊版（spring-starters 未含 10-11 intake 等提示更新），非線上自訂。部署腳本 `/home/agent/deploy-20261014.sh <實例根> <build>/orchestrator`（換 JAR＋teams、備份、任務／工作區前後比對、失敗回復）已上傳，執行時被 auto mode 分類器拒絕，未換任何線上檔案；兩實例仍為舊版運行中。部署前無執行或排隊任務（#1036 WAITING_QUOTA 至 10-17）。下一步待使用者核准後依序對 bestpartner、spring-starters 執行，不得繞過拒絕。
+- **帳號／登入被拒的固定中文說明（2026-10-14，本機來源完成，未部署）**：新增 ProviderAccessDenied，FlowEngine 還原次數停給人、ErrorExplainer 不呼叫說明 agent。本機相關測試與 Linux 完整驗證（636 項 0 失敗，/home/agent/access-build.SLpSPx，JAR f11c033e…）通過，文件已補。下一步：commit，經使用者同意後部署。**VM 上 Claude Code 帳號目前被組織停用訂閱存取（#1042 實測），所有 Claude 角色會失敗，需使用者本人處理；修好前不要續跑 Claude 任務。** 注意：本機 `python` 是 Store 空殼，改檔用 Edit 或 node。
+
+- **部署最新工作樹完成（2026-10-14，Claude Code）**：兩實例共用 JAR 460af3ac…（commit 1e159a4 已 push）。bestpartner PID11212／revision 06f27f78…；spring-starters PID14032／revision 1400fae7…。啟動、沙箱、Socket Mode、任務資料／工作區前後比對皆通過。
 
 - **服務重啟（2026-10-14 20:49，Claude Code）**：VM 剛開機（uptime 1 分），兩實例原為 STOPPED，已以 service.sh start 啟動。bestpartner PID2800、spring-starters（~/ai-team）PID3684；Spring 啟動、沙箱與工具鏈自檢、各角色 Socket Mode 啟動及 PID 443 連線通過，log 未見 ERROR。未發 Slack 訊息、未做事件送達或模型端對端實測，未動任務。
 

@@ -1066,6 +1066,9 @@ class FlowEngineTest {
                 store.saveCheckpoint(new Checkpoint("42", flow.node, "claude-code", "sonnet", "builder-session", "context", "head1", "quota"));
                 throw new QuotaExceeded("usage_limit_reached");
             }
+            if (mode.equals("accessDenied") && flow.node.equals("verification"))
+                throw new com.zipe.aiteam.runtime.ProviderAccessDenied(com.zipe.aiteam.runtime.ProviderAccessDenied.Kind.ORGANIZATION,
+                        "claude-code", "供應商拒絕存取：status=403 code=oauth_not_allowed_for_organization");
             if (mode.equals("quota") && flow.node.equals("verification")) {
                 store.saveCheckpoint(new Checkpoint("42", flow.node, "claude-code", "sonnet", "saved-session", "context", "head1", "quota"));
                 throw new QuotaExceeded("usage_limit_reached");
@@ -1428,6 +1431,20 @@ class FlowEngineTest {
         List<Runnable> jobs = new ArrayList<>(); engine.resume(task, "已提供 SMTP 環境", "u", jobs::add); jobs.get(0).run();
         assertThat(calls).containsExactly("triage:coordinator", "verification:tester", "review:security_auditor");
         assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+    }
+    /** #1042：帳號被供應商拒絕時模型沒有做任何工作，次數要還原、停給人、不排額度續跑也不自動重試。 */
+    @Test void providerAccessDeniedRestoresCountsAndWaitsForHumanWithoutRetry() throws Exception {
+        mode = "accessDenied"; engine.run(task);
+
+        var saved = store.flow("42").orElseThrow();
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        assertThat(saved.node).isEqualTo("verification");
+        assertThat(saved.visits.getOrDefault("verification", 0)).isZero();
+        assertThat(saved.activeNode).isNull();
+        assertThat(calls.stream().filter(c -> c.startsWith("verification:")).count()).isEqualTo(1);
+        verify(explainer).explain(eq(task), any(), any(com.zipe.aiteam.runtime.ProviderAccessDenied.class), any());
+        verify(slack).post(any(), any(), any(), contains("已還原，這次不算一次失敗"), any());
+        verifyNoInteractions(publisher);
     }
     @Test void quotaKeepsSnapshotNodeSessionAndOriginalWorkspace() throws Exception {
         mode = "quota"; engine.run(task);

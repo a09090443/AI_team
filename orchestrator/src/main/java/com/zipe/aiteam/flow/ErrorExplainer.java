@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.zipe.aiteam.config.AiTeamProperties;
 import com.zipe.aiteam.runtime.AgentRuntime;
 import com.zipe.aiteam.runtime.Diagnostics;
+import com.zipe.aiteam.runtime.ProviderAccessDenied;
 import com.zipe.aiteam.runtime.RuntimeRegistry;
 import com.zipe.aiteam.sandbox.SandboxPolicy;
 import com.zipe.aiteam.store.AuditLog;
@@ -60,6 +61,9 @@ public class ErrorExplainer {
     public String explain(Task task, String situation, Throwable error, List<String> options) {
         String technical = Diagnostics.safe(Diagnostics.describe(error));
         audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_ERROR, situation + "：" + technical);
+        // 帳號／登入被拒時不呼叫說明 agent：它用同一個帳號，只會同因失敗（#1042）。改用固定說明。
+        ProviderAccessDenied denied = ProviderAccessDenied.find(error);
+        if (denied != null) return denied.forUser(situation);
         if (!props.explainerEnabled()) return fallback(error);
         try {
             AgentRuntime runtime = runtimes.require("claude-code");
@@ -84,7 +88,7 @@ public class ErrorExplainer {
         } catch (Exception e) {
             audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE,
                     "白話說明無法產生，改用後備文字：" + Diagnostics.describe(e));
-            return fallback(error);
+            return ProviderAccessDenied.find(e) != null ? explainerAccountFallback() : fallback(error);
         }
     }
 
@@ -102,6 +106,12 @@ public class ErrorExplainer {
     private static String text(JsonNode out, String field) {
         String value = out.path(field).asText("").strip();
         return value.isEmpty() ? null : Diagnostics.clip(value, 1200);
+    }
+
+    /** 原本的錯誤不是帳號問題，但說明 agent 自己的帳號被拒：說清楚這兩件事，不貼英文原文。 */
+    static String explainerAccountFallback() {
+        return "這一步因系統錯誤停下。自動白話說明無法產生，因為產生說明用的 AI 服務帳號目前無法使用（需要系統管理者處理登入或權限）。"
+                + "\n原本的錯誤原因已完整記錄在稽核紀錄，請通知管理者查看。";
     }
 
     /** 說明產生不了時的固定文字；與操作被拒時的白話同一標準，不出現例外類別名。 */

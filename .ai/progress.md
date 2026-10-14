@@ -1,5 +1,22 @@
 # 工作進度（Codex 與 Claude Code 共用）
 
+## 2026-10-14 帳號／登入被拒的固定中文說明（本機來源，未部署）
+
+- 使用者核准計畫。新增 runtime/ProviderAccessDenied：只看供應商錯誤欄位；Claude Code 2.1.282 依 api_error_code（組織停用等 6 碼）、token_expired／401 與 CLI 內建登入句判定，Codex 0.156.1 依 refresh token 失效句判定（皆實查執行檔字串）；泛用 401 Unauthorized 與無代碼 403 不判定。
+- FlowEngine 遇到時還原本輪次數／受控恢復授權／自動處理額度，停原節點等人，不自動續跑或重試；ErrorExplainer 不呼叫說明 agent，改固定中文說明；說明 agent 自身帳號被拒時後備文字不再貼英文原文。
+- 本機 Maven 130 項（ProviderAccessDenied、ErrorExplainer、FlowEngine、QuotaExceeded）僅 1 項既有 /bin/sh 測試因 Windows 無法執行；新增測試全過。Linux 隔離建置 /home/agent/access-build.SLpSPx：check-source 通過，mvn clean verify 636 項 0 失敗／錯誤、11 略過，JAR f11c033e…。未 commit、未部署。本機 check-source 因 python 空殼無法執行。
+- 已核對／修正：failure-reporting（已知問題改為修正說明）、operations（帳號無法使用的處理）、system-map、project-tree、catalog code。
+- **更正**：本機 `python` 是 Microsoft Store 空殼，先前用 python 的文件修改全部未生效，且 commit 1e159a4 已 push 帶著錯誤狀態（spring-starters「尚未部署」、operations／configurable-team／engineering-workflow 仍寫未部署、progress／context 未更新）。本輪已以 Edit 補正上述內容。
+
+## 2026-10-14 #1042 停止訊息看不懂（查核）
+
+- #1042 驗證 FAIL（12 情境 11 過，兩份 .claude 文件仍 admin/admin）後進 triage，Claude Code 回「組織停用訂閱存取」（api_error_status 403、oauth_not_allowed_for_organization）；白話說明 agent 也用 claude-code 同因失敗，Slack 只收到含英文原文、結束碼、路徑的後備文字。帳號問題需使用者本人處理；未動任務。
+
+## 2026-10-14 文件派工修正部署（兩實例完成）
+
+- 使用者要求部署最新版本並核准部署腳本。工作樹（HEAD 5051725＋未 commit 修改）在 VM 隔離目錄 dispatch-build.r703Pg 建置：check-source 通過，Linux mvn clean verify 626 項 0 失敗／錯誤、11 略過。JAR 460af3ac…。
+- bestpartner：PID11212、revision 06f27f78…、備份 dispatch-backup.jKXLg8。spring-starters：首次被 auto mode 分類器拒絕，使用者核准後完成，PID14032、revision 1400fae7…、備份 dispatch-backup.FR4YK5。兩者啟動、沙箱、Socket Mode、任務資料／工作區前後比對通過，無 ERROR。真實模型端對端未實測。
+
 ## 2026-10-12 文件派工與角色提示修正（本機來源）
 
 - 使用者核准依查核建議修改。已調整 8 份共用角色提示：工作種類、相稱設計／驗收、文件作者與 QA 職責、同目標漏項自行回補、原需求範圍一致性、Infrastructure 去除專案名稱。service／service-triage 維持已核對的既有服務專用路線。

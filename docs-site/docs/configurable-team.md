@@ -264,7 +264,7 @@ IssueTracker 驗證穩定 ID、需求對應及逐項證據；FlowEngine 保存�
 
 ### 文件任務的派工限制與已知問題（2026-10-12 查核）
 
-2026-10-12 已在來源修正提示、操作配置與改派範圍判斷；尚未部署及驗收真實模型端對端。
+2026-10-12 已在來源修正提示、操作配置與改派範圍判斷；2026-10-14 已部署 bestpartner 與 spring-starters，尚未驗收真實模型端對端。
 文件任務採輕量**工作內容**，並未移除流程節點：bestpartner／spring-starters 仍經 design、plan、implementation、verification、review；
 plan 與 verification 固定由 tester 負責。node-web 範例仍經 builder／frontend。`candidateRoles` 只選執行者，不改 `requires`。
 

@@ -159,6 +159,7 @@ public class CodexRuntime implements AgentRuntime {
             String stdout = Files.readString(stdoutLog, StandardCharsets.UTF_8);
             int exit = process.exitValue();
             QuotaExceeded.check(id(), stdout, stdoutLog.toString());
+            ProviderAccessDenied.check(id(), stdout, stdoutLog.toString());
 
             if (exit != 0) {
                 String stderrText = Files.exists(stderrLog) ? Files.readString(stderrLog, StandardCharsets.UTF_8) : "";

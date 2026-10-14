@@ -198,6 +198,7 @@ public class ClaudeCodeRuntime implements AgentRuntime {
             String stdout = Files.readString(stdoutLog, StandardCharsets.UTF_8);
             int exit = process.exitValue();
             QuotaExceeded.check(id(), stdout, stdoutLog.toString());
+            ProviderAccessDenied.check(id(), stdout, stdoutLog.toString());
 
             if (exit != 0) {
                 if (missingResumeSession(req, stdout, stderrLog)) {

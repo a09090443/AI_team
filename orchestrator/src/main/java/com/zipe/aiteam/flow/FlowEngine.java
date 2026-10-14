@@ -705,6 +705,29 @@ public class FlowEngine {
                       + (usedAutomaticHandoff != null ? "及自動處理額度" : "")
                       + "已還原，用量與你的核准都不受影響。"
                       + "\n管理者修正並部署後直接續跑即可，不需重新核准。", e);
+            } else if (com.zipe.aiteam.runtime.ProviderAccessDenied.find(e) != null) {
+                // 帳號／登入被供應商拒絕，模型沒有做任何工作：還原本輪計數與一次性授權，
+                // 否則帳號恢復前每按一次繼續都會吃掉重跑次數（#1042）。不自動重試：帳號何時恢復系統無從得知。
+                if (countedNode != null) {
+                    flow.visits.merge(countedNode, -1, Integer::sum);
+                    flow.transitions = Math.max(0, flow.transitions - 1);
+                    flow.repeats.merge(countedNode, -1, Integer::sum);
+                    if (usedRecovery) {
+                        flow.recoveryGrants.put(countedNode, flow.snapshot.revision());
+                        if (usedRemediationHead == null) flow.recoveryRevisions.remove(flow.snapshot.revision());
+                        else {
+                            flow.remediationRecoveryGrants.put(countedNode, usedRemediationHead);
+                            flow.remediationRecoveryKeys.remove(VerificationRecovery.remediationKey(flow,countedNode,usedRemediationHead));
+                        }
+                    }
+                    AutomaticHandoff.restore(flow, usedAutomaticHandoff);
+                    flow.activeNode = null; task.continuation(null);
+                }
+                waitHumanForError(task, flow, countedNode == null ? ""
+                        : "這一步（" + countedNode + "）的重跑次數"
+                          + (usedRecovery ? "與一次性受控恢復授權" : "")
+                          + (usedAutomaticHandoff != null ? "及自動處理額度" : "")
+                          + "已還原，這次不算一次失敗。", e);
             } else if (countedNode != null && SystemFailure.transientFailure(e)
                     && flow.systemRetries.getOrDefault(countedNode, 0) < SystemFailure.RETRY_LIMIT) {
                 // 系統自己沒跑起來，不是工作有問題：還原本輪計數與一次性授權後自動再試一次，

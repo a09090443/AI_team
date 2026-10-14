@@ -58,6 +58,25 @@ VM 供授權查核。格式檢查保證欄位存在，不保證 agent 自陳內�
 3. 完整技術內容一律寫進 audit（ERROR）。
 
 說明失敗（逾時、額度、輸出不完整）時退回固定白話後備文字，不影響停止流程。
+後備文字會在固定句子後附上「錯誤摘要」（例外訊息前 300 字，已遮蔽憑證），內容可能是英文原文、結束碼與 VM 檔案路徑。
+
+### 帳號或登入被供應商拒絕（`ProviderAccessDenied`）
+
+2026-10-14 bestpartner #1042 的分析步驟遇到 Claude Code 回報「組織停用訂閱存取」，說明 agent 也用同一帳號而同因失敗，
+使用者只看到含英文原文、結束碼與路徑的後備文字。已修正（來源）：
+
+- `ClaudeCodeRuntime`、`CodexRuntime` 在額度判定後以 `ProviderAccessDenied.check` 檢查**供應商錯誤欄位**；工具輸出、agent 訊息與成功結果不採計。
+  - Claude Code（2.1.282 實查）：結果 JSON `is_error=true` 且 `api_error_code` 為 `oauth_not_allowed_for_organization`、`organization_disabled`、
+    `organization_on_hold`、`claude_code_key_creator_not_member`、`ip_not_in_allowed_range`、`oauth_scope_insufficient` → 帳號／組織權限；
+    `token_expired` 或 `api_error_status=401` → 登入；另比對 CLI 內建句（Not logged in、Please run /login、OAuth token revoked、Invalid API key 等）。
+  - Codex（0.156.1 實查）：refresh token 失效與要求重新 `codex login` 的錯誤句 → 登入。泛用的 `401 Unauthorized` 與沒有已知代碼的 403 不判定，照一般失敗處理。
+  - opencode 尚未接上（它連額度判定都還沒有）。
+- 流程節點遇到時：還原本輪重跑次數、一次性受控恢復授權與自動處理額度，停在原節點等人；**不排自動續跑、不自動重試**（帳號何時恢復系統無從得知）。
+- `ErrorExplainer` 看到這類錯誤時不呼叫說明 agent，直接回固定中文說明：「AI 服務帳號無法使用」、發生位置、原因（組織停用或登入失效）、
+  需要系統管理者處理、處理完再用原本的選項繼續。技術原文仍寫進 audit。角色對話、開 PR 等其他走 `ErrorExplainer` 的停止訊息一併適用。
+- 原本錯誤不是帳號問題、但說明 agent 自己的帳號被拒時，後備文字改說「產生說明用的 AI 服務帳號目前無法使用」，不再附英文錯誤摘要。
+
+Linux 完整測試 636 項通過（2026-10-14）；尚未部署，也沒有以真實停用帳號做端對端驗證。
 
 說明 agent 沒有任何工具，只看得到錯誤紀錄本身；紀錄沒寫出根因時，它只能照實寫「目前無法確定原因」。
 **系統層失敗的自動重試**（`SystemFailure.transientFailure`）：錯誤訊息符合已知的暫時性特徵

@@ -104,7 +104,7 @@ agent 不能自行指定角色或跳到任意節點。
 |---|---|---|
 | `task/` | 任務狀態機、佇列、legacy 管線與各種閘門 | `TaskOrchestrator`、`Task`、`ReviewGate`、`QaGate`、`TriageGate`、`QuotaAutoResume` |
 | `flow/` | 配置式流程引擎與 v2 契約 | `FlowEngine`、`TeamDefinition`、`TeamCatalog`、`FlowLimits`、`AutomaticHandoff`、`Traceability`、`IndependentVerifier`、`OperationContract`、`PlanApproval`、`ToolTrust` |
-| `runtime/` | 各 CLI adapter 與診斷 | `AgentRuntime`、`RuntimeRegistry`、`ClaudeCodeRuntime`、`CodexRuntime`、`OpenCodeRuntime`、`QuotaExceeded` |
+| `runtime/` | 各 CLI adapter 與診斷 | `AgentRuntime`、`RuntimeRegistry`、`ClaudeCodeRuntime`、`CodexRuntime`、`OpenCodeRuntime`、`QuotaExceeded`、`ProviderAccessDenied` |
 | `sandbox/` | systemd 執行沙箱與政策 | `ExecutionSandbox`、`SandboxPolicy`、`TaskUnits` |
 | `slack/` | Slack 進入點、發言身分、按鈕、進度卡 | `SlackListener`、`SlackNotifier`、`HumanGate`、`HumanInput`、`PlanReview`、`SpinoffButtons`、`StageProgress` |
 | `store/` | SQLite 存取與稽核 | `TaskStore`、`AuditLog` |

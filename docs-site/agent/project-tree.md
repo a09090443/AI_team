@@ -147,6 +147,7 @@ agent_team/
 │   │   │   ├── CodexSandboxPreparation.java # Codex 雙層沙箱掛載點準備
 │   │   │   ├── SessionCapture.java   # 從 JSONL 事件流取出 session id
 │   │   │   ├── QuotaExceeded.java    # 辨識供應商額度錯誤
+│   │   │   ├── ProviderAccessDenied.java # 辨識帳號／登入被供應商拒絕，產生固定中文說明
 │   │   │   ├── RuntimeUsageError.java # CLI 參數錯誤（未呼叫模型）
 │   │   │   └── Diagnostics.java      # 遮蔽後的診斷輸出與白話原因
 │   │   ├── sandbox/                  # 包在 runtime 外層的 systemd 執行沙箱

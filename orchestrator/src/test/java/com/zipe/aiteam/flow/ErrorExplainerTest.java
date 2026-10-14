@@ -70,6 +70,28 @@ class ErrorExplainerTest {
                 .contains("請通知管理者").doesNotContain("Exception").doesNotContain("private123");
     }
 
+    /** #1042：帳號被拒時說明 agent 用同一個帳號必定失敗，改用固定中文說明，不呼叫模型。 */
+    @Test void providerAccessDeniedUsesFixedPlainTextWithoutCallingAModel() throws Exception {
+        var denied = new com.zipe.aiteam.runtime.ProviderAccessDenied(com.zipe.aiteam.runtime.ProviderAccessDenied.Kind.ORGANIZATION,
+                "claude-code", "供應商拒絕存取：Your organization has disabled Claude subscription access");
+
+        String text = explainer.explain(task, "任務在「分析」這一步執行時", new RuntimeException("wrap", denied), List.of());
+
+        assertThat(text).startsWith("*AI 服務帳號無法使用*").contains("系統管理者").doesNotContain("Your organization");
+        verify(runtime, never()).execute(any(), any());
+        verify(audit).record(eq("1019"), eq(AuditLog.ACTOR_SYSTEM), eq(AuditLog.ACTION_ERROR), contains("Your organization"));
+    }
+
+    @Test void explainerOwnAccountFailureDoesNotPasteEnglishOriginal() throws Exception {
+        when(runtime.execute(any(), any())).thenThrow(new com.zipe.aiteam.runtime.ProviderAccessDenied(
+                com.zipe.aiteam.runtime.ProviderAccessDenied.Kind.LOGIN, "claude-code", "Not logged in · Please run /login"));
+
+        String text = explainer.explain(task, "情境", error, List.of());
+
+        assertThat(text).contains("產生說明用的 AI 服務帳號目前無法使用").contains("請通知管理者")
+                .doesNotContain("Not logged in").doesNotContain("error_max_turns");
+    }
+
     @Test void incompleteAnswerFallsBack() throws Exception {
         when(runtime.execute(any(), any())).thenReturn(answer("{\"what_happened\":\"只有一段\"}"));
 
