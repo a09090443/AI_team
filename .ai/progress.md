@@ -1,6 +1,8 @@
 # 工作進度（Codex 與 Claude Code 共用）
 
-## 2026-10-14 帳號／登入被拒的固定中文說明（本機來源，未部署）
+## 2026-10-14 帳號／登入被拒的固定中文說明（已部署）
+
+- commit db55152 後依使用者要求部署，JAR f11c033e…。bestpartner PID28214／備份 dispatch-backup.w2m4Vh。spring-starters 第一次因部署腳本 `status | head` 在 pipefail 下 SIGPIPE 觸發自動回復（任務資料未變），修腳本後重跑成功 PID36836／備份 dispatch-backup.39cCCb。檢查全過、無 ERROR。已更新 failure-reporting、operations、部署紀錄。
 
 - 使用者核准計畫。新增 runtime/ProviderAccessDenied：只看供應商錯誤欄位；Claude Code 2.1.282 依 api_error_code（組織停用等 6 碼）、token_expired／401 與 CLI 內建登入句判定，Codex 0.156.1 依 refresh token 失效句判定（皆實查執行檔字串）；泛用 401 Unauthorized 與無代碼 403 不判定。
 - FlowEngine 遇到時還原本輪次數／受控恢復授權／自動處理額度，停原節點等人，不自動續跑或重試；ErrorExplainer 不呼叫說明 agent，改固定中文說明；說明 agent 自身帳號被拒時後備文字不再貼英文原文。

@@ -111,7 +111,7 @@ description: Slack 上建立與操作任務的指令、按鈕語意，以及維�
 
 額度用盡（`WAITING_QUOTA`）會依供應商給的解禁時間自動續跑，不需按鈕，見 [quota-continuation](/docs/quota-continuation)。
 停止訊息標題為「AI 服務帳號無法使用」時，是 VM 上 Claude Code／Codex 的帳號被組織停用或登入失效，不是任務內容問題；
-由帳號擁有者在服務主機重新登入或請組織管理者開放權限後，再按原本的「繼續執行」。此情況不自動續跑，次數已還原（來源已修正，見 [失敗回報](/docs/failure-reporting#帳號或登入被供應商拒絕provideraccessdenied)）。
+由帳號擁有者在服務主機重新登入或請組織管理者開放權限後，再按原本的「繼續執行」。此情況不自動續跑，次數已還原（2026-10-14 已部署，見 [失敗回報](/docs/failure-reporting#帳號或登入被供應商拒絕provideraccessdenied)）。
 
 ## 直接對角色說話
 

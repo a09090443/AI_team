@@ -7,7 +7,7 @@
 
 ## 正在進行
 
-- **帳號／登入被拒的固定中文說明（2026-10-14，本機來源完成，未部署）**：新增 ProviderAccessDenied，FlowEngine 還原次數停給人、ErrorExplainer 不呼叫說明 agent。本機相關測試與 Linux 完整驗證（636 項 0 失敗，/home/agent/access-build.SLpSPx，JAR f11c033e…）通過，文件已補。下一步：commit，經使用者同意後部署。**VM 上 Claude Code 帳號目前被組織停用訂閱存取（#1042 實測），所有 Claude 角色會失敗，需使用者本人處理；修好前不要續跑 Claude 任務。** 注意：本機 `python` 是 Store 空殼，改檔用 Edit 或 node。
+- **帳號／登入被拒的固定中文說明（2026-10-14，已部署）**：commit db55152，JAR f11c033e…；bestpartner PID28214、spring-starters PID36836，檢查全過。尚未以真實停用帳號端對端驗證。**VM 上 Claude Code 帳號目前被組織停用訂閱存取（#1042 實測），所有 Claude 角色會失敗，需使用者本人處理；修好前不要續跑 Claude 任務。** 注意：本機 `python` 是 Store 空殼，改檔用 Edit 或 node。
 
 - **部署最新工作樹完成（2026-10-14，Claude Code）**：兩實例共用 JAR 460af3ac…（commit 1e159a4 已 push）。bestpartner PID11212／revision 06f27f78…；spring-starters PID14032／revision 1400fae7…。啟動、沙箱、Socket Mode、任務資料／工作區前後比對皆通過。
 
