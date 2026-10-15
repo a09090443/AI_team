@@ -7,7 +7,7 @@
 
 ## 正在進行
 
-- **公開站版型（2026-10-15，Codex）**：使用者確認依 zipe-spring-boot-starters/master/doc-site 製作。classic 首頁／三欄特色／文件側欄／公開關鍵字搜尋已完成，內部及公開 build、掃描、瀏覽器搜尋導向通過。README／project-tree 已更新；待 push 與遠端發布驗證。原介紹移至 /intro/，架構／流程沿用；不載入內部文件。
+- **公開站版型（2026-10-15，Codex）**：使用者確認依 zipe-spring-boot-starters/master/doc-site 製作。classic 首頁／三欄特色／文件側欄／公開關鍵字搜尋已完成，內部及公開 build、掃描、瀏覽器搜尋導向通過。README／project-tree 已更新；已 push be4e017；Actions 38761972715 build／deploy success，首頁新橫幅與 /intro/ HTTP200。原介紹移至 /intro/，架構／流程沿用；不載入內部文件。
 
 
 - **GitHub Pages（2026-10-15，Codex，完成）**：使用者在得知整個 repo／內部文件／交接紀錄／Git 歷史公開後明確確認，已改 public，Pages Source=GitHub Actions。run 38759864099 建置與部署成功；https://a09090443.github.io/AI_team/、architecture/、workflow/ 均 HTTP200，agent/ 與 llms.txt HTTP404。網站僅發布 build-public 三份審閱介紹；歷史 1,369 個 blob 版本已知金鑰樣式掃描無命中，不等於完整機密稽核。README 已修正公開範圍與啟用狀態，來源 commit 7068677。
