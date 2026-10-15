@@ -1,4 +1,11 @@
 # 工作進度（Codex 與 Claude Code 共用）
+
+## 2026-10-16 公開手冊提交推送（Codex）
+
+- 使用者要求 push；確認 origin/main 與本機皆為 038b996，提交文件網站變更 56070b4 並成功推送 main。
+- 已核對 docs-site/README 的發布流程，重新檢查公開產物、catalog／321 目錄項目、skills 同步與 diff 格式，均通過；沿用前輪完整／公開 build 成功證據。無新文件或程式落差。
+- Actions 38824989119 build／deploy 均 success；quickstart/、ai-guide/、llms.txt、manual/ai-guide.md 均 HTTP200 且內容核對通過。線上已是新版公開手冊。
+
 ## 2026-10-15 公開使用手冊與 AI 閱讀路線（Codex）
 
 - 使用者核准擴充公開範圍。公開站由三份概要擴充為十頁，新增第一個任務、操作與角色對話、故障排查、一般化安裝、Slack／團隊設定、開發維護與 AI 入口；重寫介紹、架構與流程，提供程式碼地圖與證據邊界。

@@ -7,7 +7,7 @@
 
 ## 正在進行
 
-- **公開手冊擴充（2026-10-15，Codex）**：使用者核准後已由三頁擴充為十頁，涵蓋使用、管理、架構與 AI 入口；公開 llms／manual 原文只讀公開清單，側欄與搜尋共用清單。內部／公開 build、十頁靜態導覽與三項發布閘門負向檢查通過。修正 direct-agent-requests 的 legacy／v2 限制落差。未 commit／push／發布，未做瀏覽器互動或 Slack E2E；線上仍是舊版。詳細檔案與證據見 progress 最新條目。
+- **公開手冊擴充（2026-10-15，Codex）**：使用者核准後已由三頁擴充為十頁，涵蓋使用、管理、架構與 AI 入口；公開 llms／manual 原文只讀公開清單，側欄與搜尋共用清單。內部／公開 build、十頁靜態導覽與三項發布閘門負向檢查通過。修正 direct-agent-requests 的 legacy／v2 限制落差。2026-10-16 依使用者要求已 commit／push 56070b4 至 main，Actions 38824989119 build／deploy 成功，quickstart/、ai-guide/、llms.txt、manual/ai-guide.md HTTP200 且內容核對通過。未做瀏覽器互動或 Slack E2E；詳細證據見 progress。
 
 - **公開站版型（2026-10-15，Codex）**：使用者確認依 zipe-spring-boot-starters/master/doc-site 製作。classic 首頁／三欄特色／文件側欄／公開關鍵字搜尋已完成，內部及公開 build、掃描、瀏覽器搜尋導向通過。README／project-tree 已更新；已 push be4e017；Actions 38761972715 build／deploy success，首頁新橫幅與 /intro/ HTTP200。原介紹移至 /intro/，架構／流程沿用；不載入內部文件。
 
