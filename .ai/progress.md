@@ -1,5 +1,12 @@
 # 工作進度（Codex 與 Claude Code 共用）
 
+## 2026-10-15 公開站經典版型（Codex）
+
+- 依使用者確認與指定參考 repo，核對 master 的 doc-site/docusaurus.config.js、src/pages/index.js、index.module.css 與 custom.css；採相同 classic 綠色橫幅、閱讀按鈕、三欄特色、GitHub 導覽、深淺色切換、左側分類與右側章節目錄。特色插圖與文案依 AI Team 製作。
+- 公開首頁改 public-pages，原介紹移至 /intro/；架構與流程維持網址。公開站 CSS／theme 獨立；搜尋僅三份公開文件的標題與關鍵字，未採參考站全文搜尋外掛。公開內容範圍未擴大，main push 自動部署維持。
+- 已核對 README、project-tree、catalog、operations、configuration；發現 README 缺新版入口／搜尋範圍，已修正 README 與 project-tree，其他無需修改。
+- 驗證：內部／公開 build、公開產物掃描通過；瀏覽器搜尋「交接」可點至工作流程，文件側欄與章節目錄正常。準備 commit／push 後驗證遠端部署。
+
 ## 2026-10-15 Pages 正式上線（Codex）
 
 - 使用者得知整個儲存庫、內部文件、交接紀錄與 Git 歷史都會公開後，明確確認改為 public；已完成 visibility 與 Pages Source=GitHub Actions 設定。

@@ -317,6 +317,14 @@ agent_team/
     │   ├── index.md                  # 公開專案介紹與能力邊界
     │   ├── architecture.md           # 不含私人環境的架構概要
     │   └── workflow.md               # 公開流程與交接概念
+    ├── public-pages/
+    │   └── index.js                  # 公開首頁橫幅與三欄特色插圖
+    ├── public-theme/
+    │   ├── index.js                  # 公開站專用佈景入口
+    │   └── theme/
+    │       └── SearchBar/
+    │           └── index.js          # 公開文件標題與關鍵字搜尋
+    ├── sidebars-public.js            # 公開文件分類導覽
     ├── sidebars.js                   # docs 側欄（由 catalog.mjs 產生）
     ├── sidebars-agent.js             # agent 側欄
     ├── catalog.mjs                   # 文件目錄：每份文件的分類、狀態、用途、相關程式
@@ -336,7 +344,8 @@ agent_team/
     │   └── check-catalog.mjs         # 檢查文件目錄與目錄樹是否與實際檔案一致
     └── src/
         ├── css/
-        │   └── custom.css            # 全站樣式
+        │   ├── custom.css            # 內部站樣式
+        │   └── public.css            # 公開站經典配色與響應式首頁
         └── pages/
             ├── index.js              # 首頁
             ├── index.css

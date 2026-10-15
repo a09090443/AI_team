@@ -1,6 +1,6 @@
 ---
 title: AI Team
-slug: /
+slug: /intro
 ---
 
 # AI Team

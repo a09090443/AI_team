@@ -7,18 +7,19 @@ export default {
   tagline: '以 Slack 協作的 AI 軟體團隊',
   staticDirectories: [],
   presets: [['classic', {
-    docs: { path: 'public-docs', routeBasePath: '/', sidebarPath: false },
-    pages: false,
+    docs: { path: 'public-docs', routeBasePath: '/', sidebarPath: './sidebars-public.js' },
+    pages: { path: 'public-pages' },
     blog: false,
-    theme: { customCss: './src/css/custom.css' },
+    theme: { customCss: './src/css/public.css' },
   }]],
   plugins: [],
+  themes: ['./public-theme'],
   themeConfig: {
     navbar: { title: 'AI Team', items: [
-      { to: '/', label: '介紹', position: 'right' },
-      { to: '/architecture/', label: '架構', position: 'right' },
-      { to: '/workflow/', label: '工作流程', position: 'right' },
+      { to: '/intro/', label: '文件', position: 'left' },
+      { href: 'https://github.com/a09090443/AI_team', label: 'GitHub', position: 'right' },
+      { type: 'search', position: 'right' },
     ] },
-    footer: { style: 'dark', copyright: `AI Team · ${new Date().getFullYear()}` },
+    footer: { style: 'dark', copyright: `Copyright © ${new Date().getFullYear()} AI Team. Built with Docusaurus.` },
   },
 };

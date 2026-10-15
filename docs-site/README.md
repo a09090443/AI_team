@@ -86,7 +86,7 @@ GitHub 儲存庫 Settings → Pages → Build and deployment → Source 須先�
 
 2026-10-15 審閱發現內部文件包含真實 VM 連線、登入帳號與部署紀錄，因此公開版改以獨立設定
 `docusaurus.public.config.js` 只載入 `public-docs/` 三份人工審閱的介紹文件。
-公開版停用內部 docs、agent、catalog、自訂頁面、static 目錄與 llms 全文外掛；
+公開版停用內部 docs、agent、catalog、內部自訂頁面、static 目錄與 llms 全文外掛；
 不修改或刪除內部原始證據。`npm run build` 仍建立完整內部站台，**不得將 build/ 上傳公開託管**。
 
 `npm run build:public` 建立獨立 build-public/ 並執行 `scripts/check-public-output.mjs`，
@@ -94,3 +94,12 @@ GitHub 儲存庫 Settings → Pages → Build and deployment → Source 須先�
 掃描只顯示檔案位置與規則名，不輸出疑似秘密。自動掃描不能保證找出所有機密，
 新增公開文件仍須人工審閱；不得把內部原文或部署紀錄直接搬入 public-docs。
 public-docs 是獨立公開介紹，不屬於內部 docs 文件目錄；其檔案列於 project-tree 並由既有檢查涵蓋。
+
+### 公開站版型
+
+公開站採 Docusaurus classic 首頁格式：綠色橫幅、閱讀按鈕與三欄特色插圖，
+入口在 `public-pages/index.js`，公開介紹位於 `/intro/`，架構與流程網址沿用原路徑。
+`sidebars-public.js` 提供左側文件分類，右側由標題產生章節目錄；頁尾與 GitHub 導覽由公開設定控制。
+`src/css/public.css` 僅影響公開站，內部站沿用 custom.css。
+`public-theme/theme/SearchBar/index.js` 僅搜尋三份公開文件的標題與人工設定關鍵字，無全文索引或外部搜尋服務。
+新增公開頁時須同步補搜尋項目並人工審閱。手機導覽沿用 classic 的收合選單。
