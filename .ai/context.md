@@ -7,7 +7,7 @@
 
 ## 正在進行
 
-- **任務目標行＋問題清單格式自動修正（2026-10-15，來源完成未部署）**：合併建置 /home/agent/fmt-build.78SlHE，Linux 642 項通過，JAR 6dc4bea4…。下一步：commit，經使用者同意部署（建議 #1042 沒在跑時）；部署後 #1042 直接按「繼續執行」。
+- **任務目標行＋問題清單格式自動修正（2026-10-15 已部署）**：commit e2797bf，JAR 6dc4bea4…；bestpartner PID18692、spring-starters PID21828，檢查全過。下一步：使用者在 #1042 按「繼續執行」，觀察目標行與格式自動修正的真實表現。
 
 - **#1042 代改 4 行（2026-10-15，使用者授權）**：舊快照計畫無 protected_path_changes，Claude 實作角色不能寫 .claude/，分段改派不觸發。依 agent 逐字內容在工作區分支 feature/ai-team-task-1042 修改 authentication-and-security.md:9 與 e2e-test-checklist.md:81/98/148，與 .agents 版逐字相同、.claude 無 admin/admin、drift scan 無新漂移，commit f9b1d0f（作者 AI Team，未 push）。下一步由使用者在 Slack 按「已手動改好，重新驗收」。文件網站建置仍未獨立核實（ISS-VERIFICATION-DOCS-BUILD）。
 

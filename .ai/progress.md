@@ -1,6 +1,8 @@
 # 工作進度（Codex 與 Claude Code 共用）
 
-## 2026-10-15 問題清單格式錯誤自動修正（本機來源，未部署）
+## 2026-10-15 問題清單格式錯誤自動修正與任務目標行（已部署）
+
+- commit e2797bf 後依使用者要求部署兩實例，JAR 6dc4bea4…：bestpartner PID18692／備份 dispatch-backup.k4aZV3，spring-starters PID21828／備份 dispatch-backup.hiPBqm；檢查全過、無 ERROR。部署紀錄與 operations／engineering-workflow 狀態已更新。
 
 - 使用者核准。#1040／#1042 的 triage 改寫既有 description 被 IssueTracker 退回後直接停給人。IssueTracker.formatCorrection 辨識格式類錯誤（改寫 description、清單版本過期、缺欄位）並附原文；FlowEngine 請同節點重送一次、還原本輪計數、不 begin 自動交接，以 systemRetries「節點#issue-format」防重複，通過問題清單檢查即清除。原則類錯誤不重送。新快照共用契約加「description 逐字沿用，進度與決定寫 evidence／reason」。
 - Linux 隔離建置 /home/agent/fmt-build.78SlHE（含任務目標行）：check-source 通過，mvn clean verify 642 項 0 失敗／錯誤、11 略過，JAR 6dc4bea4…。
