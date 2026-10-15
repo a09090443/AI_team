@@ -7,6 +7,12 @@
 
 ## 正在進行
 
+- **交接強制使用 context-compression（2026-10-15，Codex）**：最新要求已寫入 AGENTS.md，換 agent／工具／session／承接新任務均必須先整理交接摘要，接手先核對現場，短任務亦適用。ai-tools 已同步，docs build 通過；未改 Slack runtime／快照，真實交接待觀察。
+
+- **上下文整理自動觸發（2026-10-15，Codex）**：使用者要求 agent 自行判斷；已於 AGENTS.md 加入階段完成／交接／混淆／容量提示的使用規則與保留欄位，ai-tools 已同步，docs build 通過。這是提示層行為要求，尚未逐工具實測；未啟用 Slack runtime 注入或修改 session。
+
+- **共用 context-compression skill（2026-10-15，Codex）**：已依使用者要求安裝上游原版至 `.agents/skills/context-compression/` 並同步 Claude Code 鏡像，ai-tools／project-tree 已更新，docs build 與同步檢查通過。各工具沿用既有 skills 發現機制，尚未逐一實測觸發；未改 Slack 派工／session／舊快照。下次載入可要求「使用 context-compression 整理目前任務並建立交接摘要」。
+
 - **任務目標行＋問題清單格式自動修正（2026-10-15 已部署）**：commit e2797bf，JAR 6dc4bea4…；bestpartner PID18692、spring-starters PID21828，檢查全過。下一步：使用者在 #1042 按「繼續執行」，觀察目標行與格式自動修正的真實表現。
 
 - **#1042 代改 4 行（2026-10-15，使用者授權）**：舊快照計畫無 protected_path_changes，Claude 實作角色不能寫 .claude/，分段改派不觸發。依 agent 逐字內容在工作區分支 feature/ai-team-task-1042 修改 authentication-and-security.md:9 與 e2e-test-checklist.md:81/98/148，與 .agents 版逐字相同、.claude 無 admin/admin、drift scan 無新漂移，commit f9b1d0f（作者 AI Team，未 push）。下一步由使用者在 Slack 按「已手動改好，重新驗收」。文件網站建置仍未獨立核實（ISS-VERIFICATION-DOCS-BUILD）。

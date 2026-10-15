@@ -47,6 +47,15 @@ agent_team/
 │   ├── sync-agent-config.mjs         # 由單一來源產生各工具設定；--check 只檢查一致性
 │   ├── mcp.json                      # 共用 MCP server 單一來源
 │   └── skills/                       # 共用 skills 單一來源（Codex、Cursor、opencode 直接讀）
+│       ├── context-compression/      # 長任務上下文摘要與交接（上游原版）
+│       │   ├── SKILL.md              # 結構化壓縮策略與保留資訊
+│       │   ├── LICENSE               # 上游 MIT 授權與著作權聲明
+│       │   ├── references/
+│       │   │   └── evaluation-framework.md # 摘要品質評估參考
+│       │   ├── scripts/
+│       │   │   └── compression_evaluator.py # 摘要品質評估工具
+│       │   └── tests/
+│       │       └── test_compression_evaluator.py # 上游評估工具回歸測試
 │       └── docs-sync/
 │           └── SKILL.md              # 文件優先核對流程
 │       ├── service-build/            # 可攜式服務建置 skill（來源／同步鏡像）
@@ -65,6 +74,15 @@ agent_team/
 │       │       └── test_service_agent.py # 執行工具測試
 ├── .claude/
 │   └── skills/                       # 產生檔：.agents/skills 的鏡像（Claude Code 只讀這裡）
+│       ├── context-compression/      # 共用上下文整理 skill 的同步鏡像
+│       │   ├── SKILL.md              # 結構化壓縮策略與保留資訊
+│       │   ├── LICENSE               # 上游 MIT 授權與著作權聲明
+│       │   ├── references/
+│       │   │   └── evaluation-framework.md # 摘要品質評估參考
+│       │   ├── scripts/
+│       │   │   └── compression_evaluator.py # 摘要品質評估工具
+│       │   └── tests/
+│       │       └── test_compression_evaluator.py # 上游評估工具回歸測試
 │       └── docs-sync/
 │           └── SKILL.md
 │       ├── service-build/            # 可攜式服務建置 skill（來源／同步鏡像）

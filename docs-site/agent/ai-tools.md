@@ -61,6 +61,25 @@ skill 是執行步驟，規則本文仍只寫在 `AGENTS.md`；兩者衝突時�
 |---|---|
 | `service-build` | Slack agent 可重用的環境準備、建置、啟動、檢查與修復流程，主機連線獨立配置 |
 | `docs-sync` | 依「文件優先」規則開工前找文件、發現缺漏或落差時修正、功能異動後核對文件並驗證 |
+| `context-compression` | 長任務的結構化摘要與交接，保留目標、決策、檔案異動、風險及下一步；附評估參考與工具 |
+
+### 長任務的上下文整理
+
+2026-10-15 安裝社群專案 [Agent Skills for Context Engineering](https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering/tree/main/skills/context-compression)
+的 `context-compression` 原版（含 references、scripts、tests），單一來源為 `.agents/skills/context-compression/`，
+Claude Code 鏡像由同步腳本產生。其餘工具沿用上表的原生 skills 讀取方式；安裝與檔案一致性驗證不代表各工具已實際觸發 skill。
+可要求 agent「使用 context-compression 整理目前任務並建立交接摘要」。下次載入專案時可發現新 skill；未更新清單的工具請重新開啟工作階段。
+
+`AGENTS.md`「長任務自動整理上下文」要求 agent 自行判斷觸發：長任務階段完成且探索內容累積、
+交接／中斷前、重複查找或新舊結論混淆、工具明確提示容量不足時使用；短任務不反覆摘要。
+其中**任務交接為強制使用**，涵蓋換 agent、工具、session 與承接新任務；短任務也須提供簡短摘要。
+交出方先更新摘要與交接檔，接手方先讀取並核對現場；突發中斷未及整理時，由接手方先重建並核實摘要。
+這是共用提示規則，並非計時器或強制程式閘門；各工具是否遵循仍需實際觀察，無 token 遙測時不設定假定百分比。
+
+摘要須依 `AGENTS.md` 使用台灣繁體中文，沿用 `.ai/context.md`、`.ai/progress.md`、`.ai/decisions.md` 的交接分工，
+保留使用者限制、核准範圍、原始目標、目前版本、未解問題與證據位置，並區分程式測試與真實端對端驗證。
+詳細 log 按需讀取；不要把摘要再附上完整歷史而增加負擔。skill 提供整理方法，不會自行刪除 CLI 對話歷史、
+切換 session 或啟用 runtime 原生 compaction；也未自動注入 Slack agent 的 `node.skills` 或改動已保存的任務快照。
 
 ## 新增 MCP server
 

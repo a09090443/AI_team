@@ -1,5 +1,24 @@
 # 工作進度（Codex 與 Claude Code 共用）
 
+## 2026-10-15 任務交接強制整理（Codex）
+
+- 使用者指定交接任務時要使用；AGENTS.md 明定換 agent／工具／session／承接新任務必須使用 context-compression，交出方更新摘要、接手方核對現場，突發中斷則重建摘要。短任務仍須簡短交接。
+- 發現的落差：先前交接仍列在自行判斷條件中，未明定強制。已核對並修正 AGENTS.md 與 ai-tools；未修改 Slack runtime 或任務快照。
+- 驗證：docs-site npm run build 通過，含 catalog、目錄樹與 skills 同步一致性檢查；真實交接執行尚未實測。
+
+## 2026-10-15 context-compression 自動使用規則（Codex）
+
+- 使用者要求 agent 自動判斷時機；AGENTS.md 新增長任務階段完成、交接／中斷、重複查找或混淆、容量提示等觸發條件，要求增量摘要、完整保留限制與證據、沿用既有交接檔並繼續工作。短任務避免多餘摘要。
+- 發現的缺漏：原安裝只有手動使用說明，缺少共用自動觸發規則。已核對 AGENTS.md、ai-tools、context-compression；已修正 AGENTS.md 與 ai-tools。未更動上游 skill、CLI session、Slack 派工或任務快照；不宣稱自動移除歷史或已量測節省 token。
+- 驗證：docs-site npm run build 通過（含目錄樹、catalog 與 skills 同步一致性檢查）。各工具真實自動觸發尚待觀察。
+
+## 2026-10-15 安裝共用 context-compression skill（Codex）
+
+- 依使用者要求，使用 skill-installer 從 muratcankoylan/Agent-Skills-for-Context-Engineering 安裝 context-compression 原版至 `.agents/skills/context-compression/`，包含參考、評估工具、上游測試與 MIT 授權；既有同步腳本產生 `.claude/skills/context-compression/`。其餘工具沿用既有原生讀取位置，未宣稱全部工具已觸發實測。
+- 發現的缺漏：現有 skill 清單未涵蓋長任務上下文整理；已修正 ai-tools 與 project-tree，說明啟用方法、交接保留欄位及安裝不等於原生 compaction。未調整 Slack node.skills、已保存快照或 session 行為。
+- 已核對文件：agent/index、catalog、project-tree、ai-tools、quota-continuation；已修正文件：ai-tools、project-tree。catalog 無新增 docs 文件，無需修改。
+- 驗證：上游評估工具 2 項 unittest、同步一致性檢查、git diff --check 及 docs-site npm run build 通過。未部署、未 commit；各工具的真實觸發與節省 token 效果尚未實測。
+
 ## 2026-10-15 問題清單格式錯誤自動修正與任務目標行（已部署）
 
 - commit e2797bf 後依使用者要求部署兩實例，JAR 6dc4bea4…：bestpartner PID18692／備份 dispatch-backup.k4aZV3，spring-starters PID21828／備份 dispatch-backup.hiPBqm；檢查全過、無 ERROR。部署紀錄與 operations／engineering-workflow 狀態已更新。
