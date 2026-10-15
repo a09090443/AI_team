@@ -1,6 +1,6 @@
 # AI Team 文件網站
 
-給 AI agent 與維護者使用的 Docusaurus 文件網站。主要讀者是 AI agent：
+給使用者、管理者、開發者與 AI agent 使用的 Docusaurus 文件網站：
 入口頁提供專案全貌與依任務找文件的路由，build 時另產生機器可讀的 `llms.txt`。
 
 ## 內容來源
@@ -75,7 +75,7 @@ npm run serve   # 預覽 build 結果
 通過文件、目錄樹、skills 同步、斷鏈與公開產物掃描後，只上傳 `docs-site/build-public/`，由 deploy-pages 發布。
 GitHub 儲存庫 Settings → Pages → Build and deployment → Source 須先設為 GitHub Actions。
 原私有儲存庫的帳號方案不支援 Pages；使用者確認公開範圍後，已將整個儲存庫改為 public。
-公開網站只載入下述介紹文件；儲存庫本身的程式、內部文件、交接紀錄與 Git 歷史則均可公開讀取。
+公開網站只載入下述審閱過的一般手冊；儲存庫本身的程式、內部文件、交接紀錄與 Git 歷史則均可公開讀取。
 
 `docusaurus.config.js` 使用 url `https://a09090443.github.io`、baseUrl `/AI_team/` 及 trailingSlash，
 機器可讀索引與頁面資源均沿用此子路徑。本機 npm run start／serve 也使用 `/AI_team/`。
@@ -85,15 +85,15 @@ GitHub 儲存庫 Settings → Pages → Build and deployment → Source 須先�
 ### 公開範圍與機密檢查
 
 2026-10-15 審閱發現內部文件包含真實 VM 連線、登入帳號與部署紀錄，因此公開版改以獨立設定
-`docusaurus.public.config.js` 只載入 `public-docs/` 三份人工審閱的介紹文件。
-公開版停用內部 docs、agent、catalog、內部自訂頁面、static 目錄與 llms 全文外掛；
+`docusaurus.public.config.js` 只載入 `public-docs/` 人工審閱的一般手冊。2026-10-15 依使用者核准擴充為十頁，涵蓋使用、管理、架構與 AI 入口。
+公開版停用內部 docs、agent、catalog、內部自訂頁面、static 目錄與內部 llms 全文外掛；
 不修改或刪除內部原始證據。`npm run build` 仍建立完整內部站台，**不得將 build/ 上傳公開託管**。
 
 `npm run build:public` 建立獨立 build-public/ 並執行 `scripts/check-public-output.mjs`，
-阻擋內部路由、全文索引、私鑰檔與 source map，掃描已知憑證樣式、私人路徑及私網位址。
+阻擋內部路由、私鑰檔與 source map，並核對公開 AI 輸出只來自公開清單，掃描已知憑證樣式、私人路徑及私網位址。
 掃描只顯示檔案位置與規則名，不輸出疑似秘密。自動掃描不能保證找出所有機密，
 新增公開文件仍須人工審閱；不得把內部原文或部署紀錄直接搬入 public-docs。
-public-docs 是獨立公開介紹，不屬於內部 docs 文件目錄；其檔案列於 project-tree 並由既有檢查涵蓋。
+public-docs 是獨立公開手冊，不屬於內部 docs 文件目錄；其檔案列於 project-tree 並由既有檢查涵蓋。
 
 ### 公開站版型
 
@@ -101,5 +101,9 @@ public-docs 是獨立公開介紹，不屬於內部 docs 文件目錄；其檔�
 入口在 `public-pages/index.js`，公開介紹位於 `/intro/`，架構與流程網址沿用原路徑。
 `sidebars-public.js` 提供左側文件分類，右側由標題產生章節目錄；頁尾與 GitHub 導覽由公開設定控制。
 `src/css/public.css` 僅影響公開站，內部站沿用 custom.css。
-`public-theme/theme/SearchBar/index.js` 僅搜尋三份公開文件的標題與人工設定關鍵字，無全文索引或外部搜尋服務。
+`public-theme/theme/SearchBar/index.js` 搜尋公開清單中全部文件的標題與人工設定關鍵字，無全文索引或外部搜尋服務。
 新增公開頁時須同步補搜尋項目並人工審閱。手機導覽沿用 classic 的收合選單。
+
+## 公開 AI 輸出（2026-10-15）
+
+public-manual.mjs 是側欄、搜尋與 plugins/public-llms.mjs 共用清單。公開版產生 llms.txt、llms-full.txt 與 manual/<id>.md，僅取 public-docs 原文，不引用內部 catalog 或交接資料。檢查器核對清單完整性與輸出逐位元一致，保留機密樣式掃描。新增頁面需更新清單與目錄樹並人工審閱。先前 llms.txt HTTP404 為首次發布證據，新版發布後須另驗線上結果。

@@ -33,6 +33,7 @@ export default function Home() {
       <h1 className="hero__title">AI Team</h1>
       <p className="hero__subtitle">以 Slack 為介面，讓 AI agents 協作完成軟體開發任務</p>
       <Link className="button button--secondary button--lg" to="/intro/">開始閱讀文件 📚</Link>
+      <p><Link to="/quickstart/">使用者快速開始</Link> · <Link to="/ai-guide/">AI 閱讀入口</Link></p>
     </div></header>
     <main><section className="public-features" aria-label="專案特色"><div className="container"><div className="row">
       {features.map(f => <div className="col col--4" key={f.kind}><Illustration kind={f.kind}/><h2>{f.title}</h2><p>{f.description}</p></div>)}

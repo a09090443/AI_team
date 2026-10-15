@@ -1,4 +1,7 @@
+import {manual} from './public-manual.mjs';
 export default {
-  publicDocs: ['index', { type: 'category', label: '認識 AI Team', collapsed: false,
-    items: ['architecture', 'workflow'] }],
+  publicDocs: [...new Set(manual.map(p => p.group))].map(label => ({
+    type: 'category', label, collapsed: false,
+    items: manual.filter(p => p.group === label).map(p => p.id),
+  })),
 };

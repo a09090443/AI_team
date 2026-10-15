@@ -78,7 +78,7 @@ bash deploy/bootstrap/check-source.sh
 ## 文件網站
 
 Docusaurus 文件網站位於 [docs-site](docs-site/README.md)，所有文件都在 `docs-site/docs/`（repo 根目錄已無 `docs/`）。
-主要讀者是 AI agent：[AI Agent 入口](docs-site/agent/index.md) 提供專案全貌、操作指令與依任務找文件，
+公開手冊來源位於 `docs-site/public-docs/`，提供使用者快速開始、管理設定與 AI 閱讀入口；`npm run build:public` 產生僅含公開手冊的 AI 索引。完整站主要讀者是 AI agent：[AI Agent 入口](docs-site/agent/index.md) 提供專案全貌、操作指令與依任務找文件，
 [文件目錄](docs-site/catalog.mjs) 標記每份文件是現行、紀錄、決策或歷史；build 時另產生 `llms.txt`。
 新增或刪除 `docs-site/docs/` 文件時要同步更新 `docs-site/catalog.mjs`，否則網站 build 失敗。
 

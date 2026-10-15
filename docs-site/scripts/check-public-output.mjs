@@ -1,6 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {manual} from '../public-manual.mjs';
+import {publicOutputs} from '../plugins/public-llms.mjs';
+import config from '../docusaurus.public.config.js';
 
 const site = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const out = path.join(site, 'build-public');
@@ -11,7 +14,8 @@ const rules = [
   ['private-address', /\b(?:127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[01])\.\d+\.\d+)\b/],
   ['private-path', /(?:[CD]:[\\/](?:Users|agent_team)[\\/]|\/home\/agent\/|\/opt\/ai-team|\.ai\/(?:context|progress|decisions)\.md)/i],
 ];
-const forbidden = /(?:^|\/)(?:agent|docs|catalog|\.git|\.ai)(?:\/|$)|(?:^|\/)(?:llms(?:-full)?\.txt|env\.sh|.*\.(?:pem|key|map))$/;
+const forbidden = /(?:^|\/)(?:agent|docs|catalog|\.git|\.ai)(?:\/|$)|(?:^|\/)(?:env\.sh|.*\.(?:pem|key|map))$/;
+const expected = await publicOutputs(site, config);
 const failures = [];
 function scan(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -19,6 +23,7 @@ function scan(dir) {
     const rel = path.relative(out, file).split(path.sep).join('/');
     if (entry.isSymbolicLink()) { failures.push(`${rel}: symbolic-link`); continue; }
     if (forbidden.test(rel)) failures.push(`${rel}: internal-output`);
+    if ((rel.endsWith('.md') || rel.startsWith('manual/') || /^llms.*\.txt$/.test(rel)) && !Object.hasOwn(expected, rel)) failures.push(`${rel}: unlisted-public-source`);
     if (entry.isDirectory()) { scan(file); continue; }
     if (!/\.(?:html|js|css|json|txt|xml|md|svg)$/.test(rel)) continue;
     const text = fs.readFileSync(file, 'utf8');
@@ -27,6 +32,11 @@ function scan(dir) {
 }
 if (!fs.existsSync(path.join(out, 'index.html'))) throw new Error('Missing public build');
 scan(out);
+const sources = fs.readdirSync(path.join(site, 'public-docs')).filter(f => f.endsWith('.md')).sort();
+if (JSON.stringify(sources) !== JSON.stringify(manual.map(p => `${p.id}.md`).sort())) failures.push('public-docs: manual-list-mismatch');
+for (const [file, body] of Object.entries(expected)) {
+  if (!fs.existsSync(path.join(out, file)) || fs.readFileSync(path.join(out, file), 'utf8') !== body) failures.push(`${file}: public-source-mismatch`);
+}
 if (failures.length) {
   // 僅印路徑與規則名，避免掃描時將疑似秘密本身寫入 log。
   console.error(failures.join('\n'));

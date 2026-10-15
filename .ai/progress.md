@@ -1,4 +1,13 @@
 # 工作進度（Codex 與 Claude Code 共用）
+## 2026-10-15 公開使用手冊與 AI 閱讀路線（Codex）
+
+- 使用者核准擴充公開範圍。公開站由三份概要擴充為十頁，新增第一個任務、操作與角色對話、故障排查、一般化安裝、Slack／團隊設定、開發維護與 AI 入口；重寫介紹、架構與流程，提供程式碼地圖與證據邊界。
+- 核對程式：SlackListener、TaskOrchestrator.requestRole／中央佇列、FlowEngine.requestRole／resume／快照與承接、ExecutionSandbox、bootstrap install-app／preflight 與 node-web 配置；未修改 Java、服務、任務、權限或憑證。
+- 發現缺漏／落差：公開站缺操作路線與機器可讀內容；direct-agent-requests 將 legacy 的 QA 前置限制誤寫為通用規則。已修正該文件，明確區分 v2 resume 與 legacy triage；公開 usage 同步，並說明狀態查詢的可用狀態限制。
+- 已核對文件：agent/index、system-map、operations、configuration、contributing、project-tree、catalog、INSTALL、direct-agent-requests、slack-agent-apps、README、docs-site/README。已修正：上述公開十頁、兩份 README、agent/index、project-tree、direct-agent-requests；其餘無需修改，公開手冊不列入內部 catalog。
+- public-manual.mjs 共用側欄、標題／關鍵字搜尋與公開 AI 輸出。新增 public-llms 外掛，產生 llms.txt、llms-full.txt 與 manual/*.md，來源僅限公開手冊。發布檢查核對清單與輸出逐位元一致，保留既有掃描與內部路由封鎖。首頁與導覽加入使用者／AI 入口。
+- 驗證：完整站及公開站 build 通過（28 份內部文件、321 目錄項目、skills 同步與斷鏈）；10 頁標題／側欄連結與 AI 全文來源數檢查通過；篡改 AI 全文、未登錄 Markdown、禁止公開 env.sh 三個負向探針均被拒，探針已還原，最終掃描通過。未跑 Java 測試（無 Java 或 runtime 配置變更）；未做瀏覽器互動與真實 Slack E2E。
+- 本輪尚未 commit／push／發布，線上仍是先前版本；不得以本機 build 宣稱 Pages 已更新。
 
 ## 2026-10-15 公開站經典版型（Codex）
 

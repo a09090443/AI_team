@@ -12,11 +12,13 @@ export default {
     blog: false,
     theme: { customCss: './src/css/public.css' },
   }]],
-  plugins: [],
+  plugins: ['./plugins/public-llms.mjs'],
   themes: ['./public-theme'],
   themeConfig: {
     navbar: { title: 'AI Team', items: [
       { to: '/intro/', label: '文件', position: 'left' },
+      { to: '/quickstart/', label: '使用指南', position: 'left' },
+      { to: '/ai-guide/', label: 'AI 入口', position: 'left' },
       { href: 'https://github.com/a09090443/AI_team', label: 'GitHub', position: 'right' },
       { type: 'search', position: 'right' },
     ] },

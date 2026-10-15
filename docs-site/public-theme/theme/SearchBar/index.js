@@ -1,11 +1,8 @@
 import React, {useState} from 'react';
 import Link from '@docusaurus/Link';
+import {manual} from '../../../public-manual.mjs';
 
-const pages = [
-  {title: 'AI Team 介紹', url: '/intro/', keywords: 'Slack Java Spring Boot 角色 協作'},
-  {title: '架構概要', url: '/architecture/', keywords: 'orchestrator runtime CLI 配置 團隊'},
-  {title: '工作流程', url: '/workflow/', keywords: '需求 設計 測試 驗收 審查 交接 核准'},
-];
+const pages = manual.map(p => ({...p, url: `/${p.route}/`}));
 export default function SearchBar() {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);

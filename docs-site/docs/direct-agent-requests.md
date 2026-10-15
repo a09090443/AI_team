@@ -17,8 +17,9 @@
 
 - `@QA Agent 這次 SMTP failover 還需要哪些測試情境？`：由 QA 唯讀回答，不執行測試或修改程式。
 - `@Backend Agent 執行 新增 SMTP failover`：明確派工；無工作任務的新討論串交原本 PM 管線。
-- 原工作任務討論串中的 `@Backend Agent 執行 補齊測試`：交原任務 PM triage，不另建平行實作。
-  此入口目前仍要求原任務在 `AWAIT_HUMAN` 且有 QA 計畫與 QA 結果；不符合會明示拒絕。
+- 原工作任務討論串中的 `@Backend Agent 執行 補齊測試`：不另建平行實作。
+  配置式 v2 交 `FlowEngine.resume`，只在 `AWAIT_HUMAN`／`WAITING_QUOTA` 依原快照與節點續跑，仍受目前人工閘門限制，不要求先有 QA 計畫與結果。
+  legacy 才交 PM triage，要求原任務在 `AWAIT_HUMAN` 且有 QA 計畫與 QA 結果；不符合會明示拒絕。
 - `@PM Agent 處理 #1011` 或 `@PM Agent 補充 #1011 答案`：沿用原 PM triage 指令，須原頻道與原討論串。
 
 一般文字一律視為對話，包括「幫我改」；真正派工請用「執行 」前綴。

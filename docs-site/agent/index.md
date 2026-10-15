@@ -69,7 +69,9 @@ Orchestrator 不重寫 agent 框架，只做 CLI 不管的事：任務狀態機�
 
 ## 機器可讀索引
 
-網站 build 後會在根目錄產生：
+以下為完整內部站 `npm run build` 的輸出；公開站另以 `public-manual.mjs` 與 `public-docs/` 產生一般手冊索引，不包含本區與內部全文。
+
+完整站 build 後會在根目錄產生：
 
 - `/llms.txt`：依分類列出所有文件的標題、狀態、用途與 Markdown 原文連結（[llmstxt.org](https://llmstxt.org/) 格式）。
 - `/llms-full.txt`：本區入口頁加上所有「現行」文件的全文，適合一次載入當脈絡。

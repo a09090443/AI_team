@@ -9,6 +9,7 @@
 }
 [data-theme='dark'] { --ifm-color-primary: #25c2a0; --ifm-background-color: #1b1b1d; }
 .public-hero { padding: 4rem 0; text-align: center; }
+.public-hero p a { color: white; text-decoration: underline; }
 .public-features { padding: 2rem 0 3rem; text-align: center; }
 .feature-illustration { width: 240px; height: 200px; max-width: 100%; }
 .public-features h2 { font-size: 1.25rem; }

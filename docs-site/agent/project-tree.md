@@ -316,7 +316,14 @@ agent_team/
     ├── public-docs/
     │   ├── index.md                  # 公開專案介紹與能力邊界
     │   ├── architecture.md           # 不含私人環境的架構概要
-    │   └── workflow.md               # 公開流程與交接概念
+    │   ├── workflow.md               # 公開流程與交接概念
+    │   ├── quickstart.md             # 第一個 Slack 任務
+    │   ├── usage.md                  # 指令、按鈕與角色對話
+    │   ├── troubleshooting.md        # 任務排查
+    │   ├── installation.md           # 安裝與分層驗證
+    │   ├── configuration.md          # Slack 與團隊設定
+    │   ├── development.md            # 開發與文件維護
+    │   └── ai-guide.md               # 公開 AI 閱讀入口
     ├── public-pages/
     │   └── index.js                  # 公開首頁橫幅與三欄特色插圖
     ├── public-theme/
@@ -324,6 +331,7 @@ agent_team/
     │   └── theme/
     │       └── SearchBar/
     │           └── index.js          # 公開文件標題與關鍵字搜尋
+    ├── public-manual.mjs             # 公開側欄、搜尋與 AI 索引共用清單
     ├── sidebars-public.js            # 公開文件分類導覽
     ├── sidebars.js                   # docs 側欄（由 catalog.mjs 產生）
     ├── sidebars-agent.js             # agent 側欄
@@ -338,6 +346,7 @@ agent_team/
     │   └── ai-tools.md               # 各 AI 工具的規則、skills、MCP 設定與同步
     ├── docs/                         # 所有原始文件（/docs/），清單見文件目錄
     ├── plugins/
+    │   ├── public-llms.mjs            # 僅以公開來源產生 AI 索引與全文
     │   └── llms-txt.mjs              # build 後產生 llms.txt、llms-full.txt 與 .md 原文
     ├── scripts/
     │   ├── check-public-output.mjs   # 發布前掃描憑證樣式與內部產物
