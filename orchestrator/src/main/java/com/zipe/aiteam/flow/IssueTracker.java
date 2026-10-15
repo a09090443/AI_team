@@ -21,6 +21,8 @@ public final class IssueTracker {
             EXCLUDED（確實不在使用者目標內）、OBSERVATION（僅限唯讀請求）；reason 說明範圍依據。
             REPAIR 用 requirement_ids 連結既有需求（intake 可建立對應需求；service 路線可留空）。
             同一問題沿用 ID，不得換名掩蓋、遺漏、擅自降為範圍外或把難驗證當成排除理由。
+            更新既有問題時 description 必須逐字沿用系統清單的原文；處理進度與負責人的決定寫在 evidence／reason，
+            問題本身變了就開新 ID。
             沒有新發現時 issue_updates=[]，但既有清單由系統保存，不會因空陣列刪除。
             intake 回覆須重列完整既有清單及其需求對應，承接時保留 ID，已做成果先核實不重做。
             工作型請求有 REPAIR 時走修正流程，不得 route=question；真正需取捨才 route=human。
@@ -83,12 +85,40 @@ public final class IssueTracker {
     private static boolean text(JsonNode n, String key) { return n.path(key).isTextual() && !n.path(key).asText().isBlank(); }
     private static boolean actionable(JsonNode n) { return Set.of("REPAIR", "DECISION").contains(n.path("scope").asText()); }
 
+    static final String DESCRIPTION_CHANGED = "既有問題不可換 ID 語意或覆寫描述：";
+    static final String STALE_REVISION = "問題完整性：回報使用過期問題清單版本";
+    static final String MISSING_FIELDS = "問題完整性：缺少 issue_updates／issue_checks／issue_revision";
+    /** systemRetries 的鍵尾碼：每個節點連續只自動修正一次格式。 */
+    static final String FORMAT_RETRY = "#issue-format";
+
+    /**
+     * 只是記帳格式寫錯（改寫既有描述、清單版本過期、缺欄位）時，回給同一個 agent 的修正說明；
+     * 原則類錯誤（降級未解問題、未經真人改待決項、改需求對應）回 null，照原本停下。
+     * #1040／#1042 都是 triage 把負責人決定寫進既有 description 而整份被退回、直接停給人。
+     */
+    static String formatCorrection(FlowRun flow, String reason) {
+        if (reason == null) return null;
+        String rule = "\n規則：既有問題的 description 逐字照抄系統清單；進度與決定寫在 evidence／reason；"
+                + "issue_revision 原樣回傳系統提供的版本；其餘判斷與 route 照你原本的結論，不要因為這次格式修正改變。";
+        if (reason.startsWith(DESCRIPTION_CHANGED)) {
+            String id = reason.substring(DESCRIPTION_CHANGED.length()).strip();
+            JsonNode stored = flow.issueInventory.get(id);
+            if (stored == null) return null;
+            return "【系統格式修正，不計重跑次數】上一份回報改寫了既有問題 " + id + " 的 description，整份未被採用。"
+                    + "請重送完整回報，" + id + " 的 description 必須逐字為：\n" + stored.path("description").asText() + rule;
+        }
+        if (reason.equals(STALE_REVISION) || reason.equals(MISSING_FIELDS))
+            return "【系統格式修正，不計重跑次數】上一份回報的問題追蹤欄位不合格（" + reason + "），整份未被採用。"
+                    + "請重送完整回報，issue_revision=" + revision(flow) + rule;
+        return null;
+    }
+
     /** Validate transactionally. Invalid reports cannot erase or partially replace the ledger. */
     public static String ingest(FlowRun flow, Node node, JsonNode report, String taskId) {
         if (!enabled(flow)) return null;
         if (report == null || !report.path("issue_updates").isArray() || !report.path("issue_checks").isArray()
-                || !text(report, "issue_revision")) return "問題完整性：缺少 issue_updates／issue_checks／issue_revision";
-        if (!revision(flow).equals(report.path("issue_revision").asText())) return "問題完整性：回報使用過期問題清單版本";
+                || !text(report, "issue_revision")) return MISSING_FIELDS;
+        if (!revision(flow).equals(report.path("issue_revision").asText())) return STALE_REVISION;
         if (report.path("issue_updates").size() > 100) return "問題清單超過 100 項，不能截斷";
         Map<String, JsonNode> next = new LinkedHashMap<>(flow.issueInventory);
         Set<String> seen = new HashSet<>();
@@ -106,7 +136,7 @@ public final class IssueTracker {
                     return "問題需求 ID 無效或重複：" + id;
             JsonNode previous = next.get(id);
             if (previous != null && !previous.path("description").equals(item.path("description")))
-                return "既有問題不可換 ID 語意或覆寫描述：" + id;
+                return DESCRIPTION_CHANGED + id;
             boolean authorizedChange = node.gate() == Gate.REQUIREMENTS && flow.issueScopeChangeAuthorized;
             if (previous != null && actionable(previous) && !actionable(item) && !authorizedChange)
                 return "不可把未解問題降為排除／唯讀項目：" + id;

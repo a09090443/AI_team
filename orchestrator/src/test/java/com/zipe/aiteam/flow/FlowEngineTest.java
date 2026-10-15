@@ -1167,6 +1167,12 @@ class FlowEngineTest {
                             .put("id", "I" + i).put("status", "PASS").put("evidence", "獨立檢查 file:" + i);
                 }
                 if (flow.node.equals("triage") && mode.equals("issueMissing")) tracked.put("route", "implementation");
+                // verification 改寫既有 description：issueFormat 只錯一次，issueFormatTwice 兩次都錯。
+                long verifications = calls.stream().filter(s -> s.startsWith("verification:")).count();
+                if (flow.node.equals("verification") && (mode.equals("issueFormatTwice")
+                        || (mode.equals("issueFormat") && verifications == 1)))
+                    tracked.withArray("issue_updates").addObject().put("id", "I1").put("description", "problem 1；已決定接受")
+                            .put("scope", "REPAIR").put("evidence", "x").put("reason", "y").putArray("requirement_ids").add("R1");
             }
             return new AgentRuntime.RuntimeResult("session", "", report, 0.1, false, tmp.resolve("log"), "model", denials);
         });
@@ -1214,6 +1220,27 @@ class FlowEngineTest {
         var flow = store.flow("42").orElseThrow();
         assertThat(flow.issueEvidence).hasSize(9);
         assertThat(IssueTracker.completionReason(flow)).isNull();
+    }
+
+    @Test void issueFormatErrorIsCorrectedOnceWithoutCountingOrHuman() {
+        enableIssueTracking(); mode = "issueFormat";
+        engine.run(task);
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        var flow = store.flow("42").orElseThrow();
+        assertThat(calls.stream().filter(s -> s.startsWith("verification:")).count()).isEqualTo(2);
+        assertThat(flow.visits.get("verification")).isEqualTo(1);
+        assertThat(flow.issueInventory.get("I1").path("description").asText()).isEqualTo("problem 1");
+        assertThat(flow.systemRetries).doesNotContainKey("verification" + IssueTracker.FORMAT_RETRY);
+        verify(slack).post(any(), any(), any(), contains("系統已請它自動修正重送（不計次）"));
+    }
+    @Test void repeatedIssueFormatErrorStopsAfterOneCorrection() {
+        enableIssueTracking(); mode = "issueFormatTwice";
+        engine.run(task);
+        // 第二次仍錯就照原本受阻路線處理，不再自動重送。
+        verify(slack, times(1)).post(any(), any(), any(), contains("系統已請它自動修正重送（不計次）"));
+        assertThat(calls).contains("verification:tester", "triage:coordinator");
+        assertThat(store.flow("42").orElseThrow().issueInventory.get("I1").path("description").asText()).isEqualTo("problem 1");
+        verifyNoInteractions(publisher);
     }
 
     void enableService(boolean target) throws Exception {
@@ -1444,6 +1471,9 @@ class FlowEngineTest {
         assertThat(calls.stream().filter(c -> c.startsWith("verification:")).count()).isEqualTo(1);
         verify(explainer).explain(eq(task), any(), any(com.zipe.aiteam.runtime.ProviderAccessDenied.class), any());
         verify(slack).post(any(), any(), any(), contains("已還原，這次不算一次失敗"), any());
+        // 停止訊息與狀態卡開頭都是任務目標，對話再長也看得出原本要做什麼。
+        verify(slack).post(any(), any(), any(), startsWith("🎯 email failover\n"), any());
+        verify(slack, atLeastOnce()).update(any(), any(), any(), startsWith("🎯 email failover\n"), any());
         verifyNoInteractions(publisher);
     }
     @Test void quotaKeepsSnapshotNodeSessionAndOriginalWorkspace() throws Exception {

@@ -7,6 +7,12 @@
 
 ## 正在進行
 
+- **任務目標行＋問題清單格式自動修正（2026-10-15，來源完成未部署）**：合併建置 /home/agent/fmt-build.78SlHE，Linux 642 項通過，JAR 6dc4bea4…。下一步：commit，經使用者同意部署（建議 #1042 沒在跑時）；部署後 #1042 直接按「繼續執行」。
+
+- **#1042 代改 4 行（2026-10-15，使用者授權）**：舊快照計畫無 protected_path_changes，Claude 實作角色不能寫 .claude/，分段改派不觸發。依 agent 逐字內容在工作區分支 feature/ai-team-task-1042 修改 authentication-and-security.md:9 與 e2e-test-checklist.md:81/98/148，與 .agents 版逐字相同、.claude 無 admin/admin、drift scan 無新漂移，commit f9b1d0f（作者 AI Team，未 push）。下一步由使用者在 Slack 按「已手動改好，重新驗收」。文件網站建置仍未獨立核實（ISS-VERIFICATION-DOCS-BUILD）。
+
+- **服務重啟（2026-10-15 21:13，Claude Code）**：VM 剛開機，兩實例原 STOPPED，已 start。bestpartner PID2863、spring-starters PID3751，JAR 均 f11c033e…；Spring、沙箱與工具鏈自檢、Socket Mode（6／5 角色）、443 連線通過，無 ERROR。未動任務。同日實測：VM 上 `claude -p` 以 haiku 回 OK（is_error=false，帳號已恢復）、`codex login status` 為 ChatGPT 登入；log 只有既有兩則 WARN（共用 token 角色 tag、spring-starters 缺 GITHUB_TOKEN）。
+
 - **帳號／登入被拒的固定中文說明（2026-10-14，已部署）**：commit db55152，JAR f11c033e…；bestpartner PID28214、spring-starters PID36836，檢查全過。尚未以真實停用帳號端對端驗證。**VM 上 Claude Code 帳號目前被組織停用訂閱存取（#1042 實測），所有 Claude 角色會失敗，需使用者本人處理；修好前不要續跑 Claude 任務。** 注意：本機 `python` 是 Store 空殼，改檔用 Edit 或 node。
 
 - **部署最新工作樹完成（2026-10-14，Claude Code）**：兩實例共用 JAR 460af3ac…（commit 1e159a4 已 push）。bestpartner PID11212／revision 06f27f78…；spring-starters PID14032／revision 1400fae7…。啟動、沙箱、Socket Mode、任務資料／工作區前後比對皆通過。

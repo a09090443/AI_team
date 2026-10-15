@@ -227,6 +227,7 @@ v2 配置式流程的整份執行快照，對應 `com.zipe.aiteam.flow.FlowRun`�
 | `activeNode` | String | 已進入但尚未結束的節點。**非 null 代表現場還在**，續跑可直接恢復，不需重做配置遷移 |
 | `transitions` | int | 一般流程累計轉換次數；受控責任交接可越過 `definition.maxTransitions()`，歷史值不重設 |
 | `visits` | Map&lt;節點,次數&gt; | 各節點造訪次數，上限為節點自己的 `maxVisits()` |
+| `systemRetries` | Map&lt;鍵,次數&gt; | 系統層自動重試次數。鍵為節點 id 時是環境失敗重試（上限 `SystemFailure.RETRY_LIMIT`，該節點真的跑起來即清除）；鍵為 `<節點>#issue-format` 時表示已對該節點自動修正過一次問題清單格式，回報通過問題清單檢查即清除（2026-10-15 起，沿用既有欄位、無 schema 變更） |
 | `automaticHandoff` | String | 尚待使用的受阻證據鍵；含配置版本、來源／目標節點、HEAD 與報告摘要 |
 | `automaticHandoffs` | int | 已處理的獨立受阻事件數；基本上限 6；可辨識的舊制逐節點 key 會按證據合併重算 |
 | `automaticHandoffExtraBudget` | int | 真人針對目前現場增加的事件額度；每次 2、最多額外 6，不重設既有計數；配置遷移時歸零 |

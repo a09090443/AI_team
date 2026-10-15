@@ -52,6 +52,25 @@ class IssueTrackerTest {
         flow.receipts.put("verification", checks(9));
         assertThat(IssueTracker.completionReason(flow)).isNull();
     }
+    /** #1040／#1042：改寫既有 description 是格式錯誤，給出原文讓同一個 agent 修正；原則類錯誤不給。 */
+    @Test void formatErrorsGetCorrectionWithStoredTextButPolicyErrorsDoNot() {
+        discover(1);
+        ObjectNode changed = report(); changed.withArray("issue_updates").add(issue("I1", "REPAIR").put("description", "Problem I1；負責人已決定接受"));
+        String reason = IssueTracker.ingest(flow, node(Gate.VERIFICATION), changed, "42");
+        assertThat(reason).isEqualTo(IssueTracker.DESCRIPTION_CHANGED + "I1");
+        assertThat(IssueTracker.formatCorrection(flow, reason)).contains("不計重跑次數").contains("逐字為：\nProblem I1").contains("evidence／reason");
+
+        ObjectNode stale = report().put("issue_revision", "old");
+        String staleReason = IssueTracker.ingest(flow, node(Gate.VERIFICATION), stale, "42");
+        assertThat(IssueTracker.formatCorrection(flow, staleReason)).contains("issue_revision=" + IssueTracker.revision(flow));
+
+        ObjectNode downgrade = report(); downgrade.withArray("issue_updates").add(issue("I1", "EXCLUDED"));
+        String policy = IssueTracker.ingest(flow, node(Gate.VERIFICATION), downgrade, "42");
+        assertThat(policy).contains("降為");
+        assertThat(IssueTracker.formatCorrection(flow, policy)).isNull();
+        assertThat(IssueTracker.formatCorrection(flow, IssueTracker.DESCRIPTION_CHANGED + "UNKNOWN")).isNull();
+        assertThat(IssueTracker.formatCorrection(flow, null)).isNull();
+    }
     @Test void noSilentDeletionOrScopeDowngradeOrIdReuse() {
         discover(2);
         assertThat(IssueTracker.ingest(flow,node(Gate.REQUIREMENTS),report(),"42")).isNull();

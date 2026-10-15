@@ -131,7 +131,8 @@ public class FlowEngine {
         if (aborted(task)) return;
         Task.State before = task.state(); task.state(state); store.save(task);
         audit.stateChange(task, before, state, AuditLog.ACTOR_SYSTEM);
-        slack.update(Identity.SYSTEM, task.slackChannel(), task.statusMessageTs(), text, null);
+        slack.update(Identity.SYSTEM, task.slackChannel(), task.statusMessageTs(),
+                TaskGoal.line(task, store.flow(task.id()).orElse(null)) + "\n" + text, null);
     }
     private void waitHuman(Task task, FlowRun flow, String reason) {
         waitHuman(task, flow, reason, true);
@@ -155,6 +156,7 @@ public class FlowEngine {
         String token = extensionToken(task, flow);
         HumanOptions.Workspace workspace = workspaceState(task, flow);
         boolean configUpdate = configUpdateAvailable(flow);
+        lead = TaskGoal.line(task, flow) + "\n" + lead;
         String text = lead
                 + HumanOptions.render(task, flow, canSupplement, props.briefReports(), token, workspace, configUpdate, true);
         var options = HumanOptions.options(task, flow, canSupplement, props.briefReports(), token, workspace, configUpdate);
@@ -298,7 +300,7 @@ public class FlowEngine {
         AutomaticHandoff.Claim usedAutomaticHandoff = null;
         try {
             if (aborted(task)) return;
-            if (task.statusMessageTs() == null) { task.statusMessageTs(slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "配置流程 #" + task.id() + " 開始處理")); store.save(task); }
+            if (task.statusMessageTs() == null) { task.statusMessageTs(slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), TaskGoal.line(task, flow) + "\n配置流程 #" + task.id() + " 開始處理")); store.save(task); }
             while (!aborted(task)) {
                 // 中斷時 agent 剛好已經交出結果：照常處理結果，停在下一步開始前。
                 if (stopForInterrupt(task, flow)) return;
@@ -550,6 +552,7 @@ public class FlowEngine {
                     }
                 }
                 String issueBlock = IssueTracker.ingest(flow, node, report, task.id());
+                if (issueBlock == null) flow.systemRetries.remove(flow.node + IssueTracker.FORMAT_RETRY);
                 String block = issueBlock == null ? FlowGates.blockingReason(node, report, flow) : issueBlock;
                 AgentDispatch.Assignment assignment = null;
                 if (block == null) {
@@ -619,10 +622,36 @@ public class FlowEngine {
                             && (( !Set.of("question", "human").contains(report.path("route").asText())
                                   && Traceability.requirementsReason(report) != null)
                                 || (IssueTracker.enabled(flow) && (issueBlock != null || IssueTracker.reportReason(node, report, flow) != null)));
-                    next = repairDraft ? flow.node : node.blocked();
+                    // 只是問題清單記帳格式寫錯：附上系統原文請同一個 agent 重送一次，不計次、不交給人（#1040／#1042）。
+                    String correction = repairDraft ? null : IssueTracker.formatCorrection(flow, issueBlock);
+                    String formatKey = flow.node + IssueTracker.FORMAT_RETRY;
+                    boolean formatRetry = correction != null && !flow.systemRetries.containsKey(formatKey);
+                    if (formatRetry) {
+                        flow.systemRetries.put(formatKey, 1);
+                        if (countedNode != null) {
+                            flow.visits.merge(countedNode, -1, Integer::sum);
+                            flow.transitions = Math.max(0, flow.transitions - 1);
+                            flow.repeats.merge(countedNode, -1, Integer::sum);
+                            if (usedRecovery) {
+                                flow.recoveryGrants.put(countedNode, flow.snapshot.revision());
+                                if (usedRemediationHead == null) flow.recoveryRevisions.remove(flow.snapshot.revision());
+                                else {
+                                    flow.remediationRecoveryGrants.put(countedNode, usedRemediationHead);
+                                    flow.remediationRecoveryKeys.remove(VerificationRecovery.remediationKey(flow,countedNode,usedRemediationHead));
+                                }
+                            }
+                            AutomaticHandoff.restore(flow, usedAutomaticHandoff);
+                        }
+                        flow.context = FlowContext.append(flow.context, correction);
+                        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY,
+                                "問題清單格式不合格，請節點 " + flow.node + " 自動修正重送一次；已還原本輪計數：" + issueBlock);
+                        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                                "上一份回報的問題清單格式不對，系統已請它自動修正重送（不計次）。");
+                    }
+                    next = repairDraft || formatRetry ? flow.node : node.blocked();
                     if (repairDraft) flow.context = FlowContext.append(flow.context,
                             "需求草稿的結構不合格，尚未建立基準；請自行修正上方指出的 ID／欄位／對應錯誤，保留原使用者要求，不要請使用者核准你的編寫錯誤。");
-                    if (!"human".equals(next)) {
+                    if (!"human".equals(next) && !formatRetry) {
                         String head = flow.workspacePath == null ? "" : workspaces.headSha(task.id());
                         AutomaticHandoff.begin(flow, flow.node, report, head);
                     }
@@ -1160,7 +1189,7 @@ public class FlowEngine {
         }
 
         String id = store.nextTaskId();
-        String rootText = "*任務 #" + id + "｜承接任務 #" + task.id() + "*\n"
+        String rootText = "*任務 #" + id + "｜承接任務 #" + task.id() + "*\n" + TaskGoal.line(task, task.id()) + "\n"
                 + (exhausted ? "原任務已用完系統允許的自動處理次數，由 <@" + user + "> 決定承接。"
                              : "由 <@" + user + "> 決定改用新任務繼續，套用目前最新的團隊規則與配置。")
                 + (parentHead == null ? "" : "\n工作區從原任務的最新成果接著做（commit=" + parentHead + "）。")
