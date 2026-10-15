@@ -7,7 +7,7 @@
 
 ## 正在進行
 
-- **GitHub Pages（2026-10-15，Codex）**：使用者同意公開但排除機密；內部文件含 VM／登入／部署資料，改以 public-docs 三份人工審閱介紹建立公開版。workflow 僅上傳 build-public，掃描通過；內部 build／llms 不公開。目標 https://a09090443.github.io/AI_team/，repo 保持 private。下一步在 Settings → Pages 啟用 GitHub Actions／確認方案支援後驗證發布；connector 無 Pages／Actions 操作、本機無 gh／環境 token、瀏覽器設定頁不可用。詳見 progress。
+- **GitHub Pages（2026-10-15，Codex，完成）**：使用者在得知整個 repo／內部文件／交接紀錄／Git 歷史公開後明確確認，已改 public，Pages Source=GitHub Actions。run 38759864099 建置與部署成功；https://a09090443.github.io/AI_team/、architecture/、workflow/ 均 HTTP200，agent/ 與 llms.txt HTTP404。網站僅發布 build-public 三份審閱介紹；歷史 1,369 個 blob 版本已知金鑰樣式掃描無命中，不等於完整機密稽核。README 已修正公開範圍與啟用狀態，來源 commit 7068677。
 
 - **交接強制使用 context-compression（2026-10-15，Codex）**：最新要求已寫入 AGENTS.md，換 agent／工具／session／承接新任務均必須先整理交接摘要，接手先核對現場，短任務亦適用。ai-tools 已同步，docs build 通過；未改 Slack runtime／快照，真實交接待觀察。
 

@@ -1,5 +1,13 @@
 # 工作進度（Codex 與 Claude Code 共用）
 
+## 2026-10-15 Pages 正式上線（Codex）
+
+- 使用者得知整個儲存庫、內部文件、交接紀錄與 Git 歷史都會公開後，明確確認改為 public；已完成 visibility 與 Pages Source=GitHub Actions 設定。
+- 本機 Git 可達歷史 1,369 個 blob 檔案版本的已知私鑰／服務 token 樣式掃描無命中；此為有限規則掃描，不能宣稱完整機密稽核。網站另由 build-public 白名單與產物掃描限制公開內容。
+- 來源 7068677；Actions https://github.com/a09090443/AI_team/actions/runs/38759864099 的 build／deploy 均 success。首頁、architecture/、workflow/ HTTP200；agent/、llms.txt HTTP404。
+- 發現的落差：README 與 context 仍寫 repo private／遠端尚未啟用；已修正 README、context，並保留本檔先前紀錄。已核對 README、project-tree、catalog、operations、configuration；後四份無新契約或檔案異動需修正。
+- 驗證：docs-site npm run build 通過，含目錄／skills 同步／斷鏈檢查；git diff --check 通過。
+
 ## 2026-10-15 Pages 公開範圍與機密檢查（Codex）
 
 - 使用者同意公開但要求排除機密。審閱發現內部文件含真實 VM 轉送埠、登入帳號、部署與任務紀錄；未直接公開整站，也未改寫內部歷史證據。

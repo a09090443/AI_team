@@ -68,11 +68,14 @@ npm run serve   # 預覽 build 結果
 
 ## GitHub Pages
 
-發布設定已準備，目標網址為 <https://a09090443.github.io/AI_team/>；截至 2026-10-15 尚未確認遠端啟用或首次發布成功。
+網站網址為 <https://a09090443.github.io/AI_team/>。2026-10-15 已啟用 GitHub Actions 作為 Pages 來源。
+首次發布 [Actions run 38759864099](https://github.com/a09090443/AI_team/actions/runs/38759864099) 建置與部署成功；
+首頁、architecture/、workflow/ 實測 HTTP200，agent/、llms.txt 為 HTTP404。
 `.github/workflows/docs-pages.yml` 在 main push 或手動 workflow_dispatch 時執行 npm ci 與 npm run build:public，
 通過文件、目錄樹、skills 同步、斷鏈與公開產物掃描後，只上傳 `docs-site/build-public/`，由 deploy-pages 發布。
 GitHub 儲存庫 Settings → Pages → Build and deployment → Source 須先設為 GitHub Actions。
-私有儲存庫須確認帳號方案支援 Pages，並先確認文件網站的公開範圍；不需將儲存庫改成公開。
+原私有儲存庫的帳號方案不支援 Pages；使用者確認公開範圍後，已將整個儲存庫改為 public。
+公開網站只載入下述介紹文件；儲存庫本身的程式、內部文件、交接紀錄與 Git 歷史則均可公開讀取。
 
 `docusaurus.config.js` 使用 url `https://a09090443.github.io`、baseUrl `/AI_team/` 及 trailingSlash，
 機器可讀索引與頁面資源均沿用此子路徑。本機 npm run start／serve 也使用 `/AI_team/`。
