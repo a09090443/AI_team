@@ -4,8 +4,11 @@ const pathname = (p) => `pathname://${p}`;
 const config = {
   title: 'AI Team 文件',
   tagline: '給 AI agent 與維護者的系統、流程與維運手冊',
-  url: 'http://localhost',
-  baseUrl: '/',
+  url: 'https://a09090443.github.io',
+  baseUrl: '/AI_team/',
+  trailingSlash: true,
+  organizationName: 'a09090443',
+  projectName: 'AI_team',
   onBrokenLinks: 'throw',
   markdown: {
     format: 'md',

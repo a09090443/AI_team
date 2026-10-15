@@ -43,6 +43,9 @@ agent_team/
 ├── CLAUDE.md                         # 只有 @AGENTS.md 一行（Claude Code 入口）
 ├── README.md                         # 專案簡介與快速指令
 ├── .gitignore
+├── .github/
+│   └── workflows/
+│       └── docs-pages.yml            # 驗證文件後以 GitHub Actions 發布 Pages
 ├── .agents/                          # AI 工具共用設定的單一來源（見 AI 工具設定頁）
 │   ├── sync-agent-config.mjs         # 由單一來源產生各工具設定；--check 只檢查一致性
 │   ├── mcp.json                      # 共用 MCP server 單一來源
@@ -309,6 +312,11 @@ agent_team/
     ├── package.json                  # 指令：start、build（prebuild 跑文件檢查）、check:catalog
     ├── package-lock.json
     ├── docusaurus.config.js          # 網站設定：docs、agent 兩個文件區與 llms 外掛
+    ├── docusaurus.public.config.js   # 公開版只載入審閱過的 public-docs
+    ├── public-docs/
+    │   ├── index.md                  # 公開專案介紹與能力邊界
+    │   ├── architecture.md           # 不含私人環境的架構概要
+    │   └── workflow.md               # 公開流程與交接概念
     ├── sidebars.js                   # docs 側欄（由 catalog.mjs 產生）
     ├── sidebars-agent.js             # agent 側欄
     ├── catalog.mjs                   # 文件目錄：每份文件的分類、狀態、用途、相關程式
@@ -324,6 +332,7 @@ agent_team/
     ├── plugins/
     │   └── llms-txt.mjs              # build 後產生 llms.txt、llms-full.txt 與 .md 原文
     ├── scripts/
+    │   ├── check-public-output.mjs   # 發布前掃描憑證樣式與內部產物
     │   └── check-catalog.mjs         # 檢查文件目錄與目錄樹是否與實際檔案一致
     └── src/
         ├── css/
@@ -340,7 +349,7 @@ agent_team/
 | 路徑 | 內容 |
 |---|---|
 | `orchestrator/target/` | Maven 建置輸出；服務正在使用時不可在此 clean／build |
-| `docs-site/node_modules/`、`docs-site/build/`、`docs-site/.docusaurus/` | 網站依賴與建置輸出 |
+| `docs-site/node_modules/`、`docs-site/build/`、`docs-site/build-public/`、`docs-site/.docusaurus/` | 網站依賴與內部／公開版建置輸出 |
 | `.build-m2/` | 本機離線 Maven repository（可用 `-Dmaven.repo.local=.build-m2`） |
 | `.build-cache/` | 本機建置快取 |
 | `.codex/` | Codex 本機設定；同步腳本只改 `config.toml` 的 `agents-sync` 標記區塊 |

@@ -19,3 +19,4 @@ orchestrator/target/
 # Python skill helper caches
 **/__pycache__/
 *.pyc
+docs-site/build-public/

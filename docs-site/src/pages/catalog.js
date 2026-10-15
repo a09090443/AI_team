@@ -1,10 +1,12 @@
 import Link from '@docusaurus/Link';
+import useBaseUrl from '@docusaurus/useBaseUrl';
 import Layout from '@theme/Layout';
 import Heading from '@theme/Heading';
 import { categories, docs, statuses } from '../../catalog.mjs';
 import styles from './catalog.module.css';
 
 export default function Catalog() {
+  const llmsUrl = useBaseUrl('/llms.txt');
   return (
     <Layout title="文件目錄" description="docs-site/docs/ 所有文件的分類、狀態與用途">
       <main className={styles.catalog}>
@@ -12,7 +14,7 @@ export default function Catalog() {
         <Heading as="h1">文件目錄</Heading>
         <p className={styles.intro}>
           docs-site/docs/ 內每份文件的分類、狀態與一句話用途。資料來源是 <code>docs-site/catalog.mjs</code>，
-          機器可讀版本為 <a href="/llms.txt">/llms.txt</a>。第一次接觸專案請先讀{' '}
+          機器可讀版本為 <a href={llmsUrl}>llms.txt</a>。第一次接觸專案請先讀{' '}
           <Link to="/agent/">AI Agent 入口</Link>。
         </p>
         <dl className={styles.legend}>

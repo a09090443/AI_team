@@ -7,6 +7,8 @@
     "start": "docusaurus start",
     "prebuild": "node scripts/check-catalog.mjs && node ../.agents/sync-agent-config.mjs --check",
     "build": "docusaurus build",
+    "prebuild:public": "npm run prebuild",
+    "build:public": "docusaurus build --config docusaurus.public.config.js --out-dir build-public && node scripts/check-public-output.mjs",
     "serve": "docusaurus serve",
     "clear": "docusaurus clear",
     "check:catalog": "node scripts/check-catalog.mjs",

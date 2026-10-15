@@ -64,4 +64,30 @@ npm run build
 npm run serve   # 預覽 build 結果
 ```
 
-靜態輸出位於 `docs-site/build/`。部署目標尚未設定。
+靜態輸出位於 `docs-site/build/`。
+
+## GitHub Pages
+
+發布設定已準備，目標網址為 <https://a09090443.github.io/AI_team/>；截至 2026-10-15 尚未確認遠端啟用或首次發布成功。
+`.github/workflows/docs-pages.yml` 在 main push 或手動 workflow_dispatch 時執行 npm ci 與 npm run build:public，
+通過文件、目錄樹、skills 同步、斷鏈與公開產物掃描後，只上傳 `docs-site/build-public/`，由 deploy-pages 發布。
+GitHub 儲存庫 Settings → Pages → Build and deployment → Source 須先設為 GitHub Actions。
+私有儲存庫須確認帳號方案支援 Pages，並先確認文件網站的公開範圍；不需將儲存庫改成公開。
+
+`docusaurus.config.js` 使用 url `https://a09090443.github.io`、baseUrl `/AI_team/` 及 trailingSlash，
+機器可讀索引與頁面資源均沿用此子路徑。本機 npm run start／serve 也使用 `/AI_team/`。
+發布後檢查首頁、`architecture/` 與 `workflow/`，並確認 Actions 的 deploy 成功。
+部署權限只授予 deploy job 的 pages:write 與 id-token:write，不需另設 PAT。
+
+### 公開範圍與機密檢查
+
+2026-10-15 審閱發現內部文件包含真實 VM 連線、登入帳號與部署紀錄，因此公開版改以獨立設定
+`docusaurus.public.config.js` 只載入 `public-docs/` 三份人工審閱的介紹文件。
+公開版停用內部 docs、agent、catalog、自訂頁面、static 目錄與 llms 全文外掛；
+不修改或刪除內部原始證據。`npm run build` 仍建立完整內部站台，**不得將 build/ 上傳公開託管**。
+
+`npm run build:public` 建立獨立 build-public/ 並執行 `scripts/check-public-output.mjs`，
+阻擋內部路由、全文索引、私鑰檔與 source map，掃描已知憑證樣式、私人路徑及私網位址。
+掃描只顯示檔案位置與規則名，不輸出疑似秘密。自動掃描不能保證找出所有機密，
+新增公開文件仍須人工審閱；不得把內部原文或部署紀錄直接搬入 public-docs。
+public-docs 是獨立公開介紹，不屬於內部 docs 文件目錄；其檔案列於 project-tree 並由既有檢查涵蓋。

@@ -1,5 +1,20 @@
 # 工作進度（Codex 與 Claude Code 共用）
 
+## 2026-10-15 Pages 公開範圍與機密檢查（Codex）
+
+- 使用者同意公開但要求排除機密。審閱發現內部文件含真實 VM 轉送埠、登入帳號、部署與任務紀錄；未直接公開整站，也未改寫內部歷史證據。
+- 新增獨立公開設定與 public-docs 三份介紹（專案／架構／流程）；停用內部 docs、agent、catalog、自訂頁面、static 與 llms 外掛。workflow 只發布 build-public，完整 build 保留內部使用。新增產物掃描，檢查內部路由、全文索引、私鑰與 source map、已知憑證樣式、私網位址及私人路徑；只回報位置與規則，不輸出秘密。
+- 已核對 README、project-tree、configuration、operations、ai-tools、catalog；已修正 README 與 project-tree。public-docs 非內部 docs 目錄，無需 catalog 登錄，仍列入目錄樹檢查。
+- 公開建置與產物掃描通過；此為規則掃描及三份公開來源人工審閱，不能保證所有未知機密樣式。GitHub connector 無 Pages 設定／Actions 執行工具，本機無 gh／可用環境 token，瀏覽器無可用設定頁；遠端啟用及線上發布仍待確認。
+- 驗證：公開／內部 npm build、同步與 catalog／目錄樹檢查通過；假 token 與假 llms.txt 均被產物閘門拒絕，清除探針後掃描再次通過。已完成來源，準備提交推送；遠端部署成功不可由本機測試推定。
+
+## 2026-10-15 GitHub Pages 發布準備（Codex）
+
+- 使用者要求建立 Pages；已準備 docs-pages workflow（main push／手動觸發、Node22、建置檢查、僅上傳 docs-site/build、最小部署權限），設定 GitHub 子路徑與 trailingSlash。
+- 發現的缺漏／落差：未有發布目標與 workflow，catalog 的 llms.txt 使用根路徑，子路徑部署會失效；已修正設定、catalog 頁與 README。已核對 index／catalog／project-tree／configuration／operations／ai-tools；已修正 README、project-tree，configuration／operations／ai-tools 無新增 runtime 設定或操作契約需修改。
+- GitHub MCP 確認 a09090443/AI_team 為 private；公開文件範圍待確認，不自行改 repo visibility。內建瀏覽器未能開啟設定頁，本機無 gh；遠端 Pages 啟用與帳號方案尚未確認。尚未發布、commit 或 push。
+- 驗證：docs-site npm run build（含 catalog、目錄樹、skills 同步與斷鏈檢查）、workflow YAML 解析及 git diff --check 通過。真實 GitHub Actions／線上 Pages 尚未驗證。
+
 ## 2026-10-15 任務交接強制整理（Codex）
 
 - 使用者指定交接任務時要使用；AGENTS.md 明定換 agent／工具／session／承接新任務必須使用 context-compression，交出方更新摘要、接手方核對現場，突發中斷則重建摘要。短任務仍須簡短交接。
