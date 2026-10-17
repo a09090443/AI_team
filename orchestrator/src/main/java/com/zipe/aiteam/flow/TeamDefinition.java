@@ -47,8 +47,14 @@ public record TeamDefinition(int version, String id, Project project, Map<String
     /**
      * @param docOnlyPaths 選填。系統查得的變更檔案全部符合這些路徑（且不在 {@link DocOnlyChanges} 的強制全跑名單）時，
      *                     略過建置測試指令；未設定＝一律全跑。
+     * @param commandScopes 選填，與 commands 一一對應：每個指令負責的路徑。設定後只跑變更檔案落在範圍內的指令（見 {@link VerificationPlan}）。
+     * @param qaOnlyPaths   選填，需與 commandScopes 一起設定：系統沒有對應指令、由 QA 固定操作或內容檢視驗證的路徑。
      */
-    public record Verification(List<List<String>> commands, int timeoutSeconds, List<String> docOnlyPaths) {
+    public record Verification(List<List<String>> commands, int timeoutSeconds, List<String> docOnlyPaths,
+                               List<List<String>> commandScopes, List<String> qaOnlyPaths) {
+        public Verification(List<List<String>> commands, int timeoutSeconds, List<String> docOnlyPaths) {
+            this(commands, timeoutSeconds, docOnlyPaths, null, null);
+        }
         public Verification(List<List<String>> commands, int timeoutSeconds) { this(commands, timeoutSeconds, null); }
     }
     public record Role(String name, String runtime, String model, String prompt,

@@ -112,6 +112,19 @@ final class PrReport {
             if (receipt.docOnlyChanges().size() > 30) out.append("  - …等共 ").append(receipt.docOnlyChanges().size()).append(" 個\n");
             return out.toString();
         }
+        if (receipt.decisions() != null) {
+            out.append("- 指令決定（").append(VerificationPlan.summary(receipt.decisions())).append("，系統依變更檔案判定）：\n");
+            for (var d : receipt.decisions()) {
+                String argv = code(String.join(" ", d.argv()));
+                switch (d.action()) {
+                    case RUN -> out.append("  - ✅ 執行 ").append(argv).append("（exit 0）\n    - 紀錄雜湊：").append(code(d.sha256())).append('\n');
+                    case REUSE -> out.append("  - ♻️ 重用 ").append(argv).append("：相同輸入已於 ").append(code(d.sourceHead()))
+                            .append(" 通過\n    - 紀錄雜湊：").append(code(d.sha256())).append('\n');
+                    case SKIP -> out.append("  - ⏭️ 略過 ").append(argv).append("：").append(d.reason()).append('\n');
+                }
+            }
+            return out.toString();
+        }
         List<IndependentVerifier.CommandResult> commands = receipt.commands() == null ? List.of() : receipt.commands();
         out.append("- 指令（").append(commands.size()).append(" 項）：\n");
         for (var command : commands) {

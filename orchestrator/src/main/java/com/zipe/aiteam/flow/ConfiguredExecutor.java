@@ -326,6 +326,19 @@ public class ConfiguredExecutor {
             return "純文件變更：系統依 git diff 判定這次只改了 " + String.join("、", flow.independentEvidence.docOnlyChanges())
                     + "，依專案配置（verification.docOnlyPaths）未執行建置與測試指令。這是配置的設計，不是查無建置證據；"
                     + "請以讀檔（inspect-content）逐項驗收內容；計畫要求的文件站建置、連結與生成結果仍須另行驗證，不能用此收據代替。收據：" + flow.independentEvidence;
+        var decisions = flow.independentEvidence == null ? null : flow.independentEvidence.decisions();
+        if (decisions != null && decisions.stream().anyMatch(d -> d.action() != VerificationPlan.Action.RUN)) {
+            StringBuilder view = new StringBuilder("系統依 git diff 與配置（verification.commandScopes／qaOnlyPaths）判定每個驗證指令（")
+                    .append(VerificationPlan.summary(decisions)).append("）：");
+            for (var d : decisions) view.append("\n- ").append(switch (d.action()) {
+                case RUN -> "已執行並通過";
+                case REUSE -> "重用相同輸入在 commit " + d.sourceHead() + " 的通過結果";
+                case SKIP -> "略過（" + d.reason() + "）";
+            }).append("：").append(String.join(" ", d.argv()));
+            return view.append("\n略過與重用是系統依實際變更做的決定，不是查無建置證據，也不能拿來回報受阻；")
+                    .append("QA 專屬路徑與計畫要求的文件站建置、連結、內容核對，仍須依計畫用固定操作或讀檔逐項驗證。收據：")
+                    .append(flow.independentEvidence).toString();
+        }
         if (flow.independentEvidence != null) return flow.independentEvidence.toString();
         if (node.gate() == Gate.VERIFICATION || node.gate() == Gate.REVIEW)
             return "（尚未產生；系統會在本階段執行後補上）";

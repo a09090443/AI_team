@@ -135,8 +135,28 @@ Slack 會說明「只改了文件，依專案設定略過建置與測試」，QA
 實作節點（`IMPLEMENTATION` 閘門）在專案有 `docOnlyPaths` 時，系統會在脈絡加一段「純文件變更規則」（`DocOnlyChanges.implementationNotice`）：
 變更全部符合上述條件時不執行後端／前端編譯與測試操作，也不因缺建置證據回報 BLOCKED；有任一檔不符合就照建置規範完整執行
 （2026-10-04 起；#1018 只改一行 Markdown，改派的 Codex 角色仍自行跑 Gradle 而受阻）。這是給角色的指示，略過與否仍以系統 git diff 判定為準。
+
+**依變更檔案只跑相關指令、重用相同輸入的結果（2026-10-17 起）**：起因是 bestpartner #1044 只改文件、網站與設定範本，
+每輪仍跑 23～30 分鐘的後端與前端全套測試，回到驗收階段時同一個 commit 也重跑一次。規則在 `VerificationPlan`，不綁專案名稱：
+- 配置選填 `verification.commandScopes`（與 `commands` 一一對應，每個指令負責的路徑）與 `verification.qaOnlyPaths`
+  （系統沒有對應指令、由 QA 固定操作或內容檢視驗證的路徑，必須和 commandScopes 一起設定，而且不能與任何指令範圍重疊；重疊用固定前綴保守判斷）。
+- 變更清單同樣來自 `changedPathsSinceBase`。每個檔案歸成：純文件（沿用 docOnlyPaths 加純文字規則）／QA 專屬（qaOnlyPaths，**包含其中的建置檔**，
+  例如 `docs-site/package.json` 由 QA 的 qa-docs-* 安裝建置）／屬於某些指令範圍（範圍內的 package.json 等建置檔只觸發該範圍的指令）／都不屬於。
+  只要有一個「都不屬於」，或查不到變更清單、清單為空、沒設 commandScopes，就**全跑**。
+- 需要跑的指令，若同一任務、同一配置版本、同一 argv 以相同**輸入指紋**通過過，而且紀錄檔仍在、雜湊相符，就**重用**，不 clone、不重跑。
+  指紋取 HEAD 的 `git ls-tree -r`：有範圍時是「該指令範圍內的檔案＋共用檔（不屬於任何範圍、也不是純文件或 QA 專屬）」，共用檔一變所有重用失效；
+  沒設範圍時是整棵樹，所以 spring-starters／node-web 只有「同一份內容再驗一次」才會重用。歷史存在 `FlowRun.verificationHistory`（最多 20 筆），
+  每個指令通過就記下，後面的指令失敗時，修正後下一輪仍可重用輸入沒變的那幾個。
+- 收據新增 `decisions`（每個指令一筆 RUN／SKIP／REUSE、原因、命中檔案、指紋、紀錄路徑與雜湊、重用來源 commit）、`changedFiles`、`taskId`；
+  `commands` 只列本輪實際執行的結果。發布前 `IndependentVerifier.decisionReason` 會**重新從工作區**算變更與指紋：
+  略過的指令重算後必須仍不需要跑；執行與重用的指令指紋要相同、紀錄要在且雜湊相符，否則擋下並在續跑時重驗。
+- Slack 會貼「依變更檔案判定：執行 X、略過 Y、重用 Z」；QA／審查收到的收據說明略過與重用是系統依實際變更的決定，不是查無建置證據，
+  QA 專屬路徑仍須依計畫驗證；PR 說明分列執行、略過（原因）與重用（來源 commit）。QA 逐項驗收、程式審查與 PR 真人核准照常。
+- bestpartner 設定：兩個 Gradle 指令範圍 `bestpartner-service/**`，三個前端指令範圍 `bestpartner-ui/**`，
+  `qaOnlyPaths` 為 `docs-site/**`、`docs/sql/**`、`.env.example`（使用者 2026-10-17 決定）；`bestpartner-mcp-servers/**`、`scripts/**`、`skills/**` 不屬於任何範圍，改到時全跑。
+  設定屬新快照，既有任務仍用舊快照（但重用是程式行為，所有任務都適用）。
 - 指令使用空白環境加少量明確變數、獨立 HOME，不把 Slack/GitHub token 或 CLI session 透過環境傳入。
-- 不沿用共享依賴快取與個人 Maven/npm 設定；第一次建置可能很慢。私有依賴可能受阻，不可用複製整包憑證來解決。
+- 不讀個人 Maven/npm 設定；相依套件下載快取只用下方的獨立驗證專用快取，第一次建置仍可能很慢。私有依賴可能受阻，不可用複製整包憑證來解決。
 - 記錄系統觀察的結束碼、argv、起訖時間、commit、配置與需求版本；log 存在可寫目錄外，單指令輸出超過 8 MB 即停止。
 - 配置的檢查指令以非零結束碼結束（例如測試失敗、編譯錯誤），代表程式沒過，屬於實作責任：
   系統把失敗摘要（失敗的測試與編譯錯誤，或 log 最後 40 行）存成受阻發現，自動交回實作節點修正，

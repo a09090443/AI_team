@@ -143,6 +143,7 @@ agent_team/
 │   │   │   ├── Traceability.java     # 需求基準、原子驗收項目與覆蓋對照
 │   │   │   ├── IssueTracker.java     # 跨專案問題清單、需求對應、逐項驗證與承接完整性
 │   │   │   ├── IndependentVerifier.java # 系統獨立驗證：全新 clone 執行固定指令並產生收據
+│   │   │   ├── VerificationPlan.java # 依變更檔案決定獨立驗證指令要執行、略過或重用
 │   │   │   ├── FileComparison.java # 指定舊檔比對的計畫契約、路徑驗證與能力說明
 │   │   │   ├── ServiceDelivery.java # 服務建置目標、可用性檢查與完成契約
 │   │   │   ├── OperationContract.java # 專案操作契約（operations）

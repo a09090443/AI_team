@@ -152,7 +152,7 @@ class IndependentVerifierTest {
     }
     @Test void deletedLogIsNotTreatedAsEmptySuccessfulOutput() throws Exception {
         verifyNow(); Files.delete(Path.of(flow.independentEvidence.commands().getFirst().log()));
-        assertThat(verifier.blockingReason(flow, head)).contains("無法核實");
+        assertThat(verifier.blockingReason(flow, head)).contains("紀錄遺失");
     }
     @Test void staleCommitOrRequirementsInvalidatesReceipt() throws Exception {
         verifyNow(); assertThat(verifier.blockingReason(flow, "b".repeat(40))).contains("失效");
@@ -204,7 +204,7 @@ class IndependentVerifierTest {
                 List.of("docs/App.java", "src/main/java/App.java"),        // 程式檔改名搬進 docs（--no-renames 列出兩端）
                 List.of(".github/workflows/ci.md"),                        // CI 目錄
                 List.<String>of())) {                                      // 沒有變更
-            calls.clear();
+            calls.clear(); flow.verificationHistory.clear(); // 同一個 commit 會重用上一輪結果；這裡要驗的是「需要跑」的判定
             when(workspace.changedPathsSinceBase("42")).thenReturn(changed);
             verifyNow();
             assertThat(flow.independentEvidence.docOnly()).as(changed.toString()).isFalse();
@@ -231,6 +231,99 @@ class IndependentVerifierTest {
         flow.independentEvidence = new IndependentVerifier.Receipt(r.head(), r.baseline(), r.configuration(), r.startedAt(),
                 r.completedAt(), List.of(), List.of());
         assertThat(verifier.blockingReason(flow, head)).contains("純文件收據");
+    }
+
+    // ---- 依變更檔案只跑相關指令、重用相同輸入的結果（#1044：只改文件也每輪跑 23～30 分鐘） ----
+
+    /** node-web 的三個指令：npm ci、npm test 屬 web/**，npm run build 屬 api/**；site/**、.env.example 由 QA 驗證。 */
+    void enableScopes() throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var json = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.valueToTree(flow.snapshot.definition());
+        var v = (com.fasterxml.jackson.databind.node.ObjectNode) json.path("project").path("verification");
+        v.putArray("docOnlyPaths").add("*.md");
+        var scopes = v.putArray("commandScopes");
+        scopes.addArray().add("web/**"); scopes.addArray().add("web/**"); scopes.addArray().add("api/**");
+        v.putArray("qaOnlyPaths").add("site/**").add(".env.example");
+        var definition = mapper.treeToValue(json, TeamDefinition.class); TeamCatalog.validate(definition);
+        flow.snapshot = new TeamDefinition.Snapshot(flow.snapshot.revision(), definition, flow.snapshot.repository(), flow.snapshot.assets());
+        tree(List.of("100644 a1\tweb/src/a.ts", "100644 b1\tapi/App.java", "100644 c1\tsite/sidebars.ts", "100644 d1\tREADME.md"));
+    }
+    void tree(List<String> entries) throws Exception { when(workspace.treeEntries("42", head)).thenReturn(entries); }
+    long commandCalls() { return calls.stream().filter(c -> !c.contains("clone") && !c.contains("checkout")).count(); }
+
+    @Test void documentationSiteAndTemplateChangesSkipEveryCommandWithoutCloning() throws Exception {
+        enableScopes();
+        when(workspace.changedPathsSinceBase("42")).thenReturn(List.of(".env.example", "site/sidebars.ts", "site/package.json", "README.md"));
+        verifyNow();
+        assertThat(calls).isEmpty();
+        assertThat(flow.independentEvidence.decisions()).extracting(VerificationPlan.Decision::action)
+                .containsOnly(VerificationPlan.Action.SKIP);
+        assertThat(verifier.blockingReason(flow, head)).isNull();
+        assertThat(PrReport.independent(flow.independentEvidence)).contains("略過 3", "⏭️ 略過");
+        // 之後才出現 web 變更：略過的指令重算後需要跑，收據作廢。
+        when(workspace.changedPathsSinceBase("42")).thenReturn(List.of(".env.example", "web/src/a.ts"));
+        assertThat(verifier.blockingReason(flow, head)).contains("略過的指令重算後需要執行");
+    }
+    @Test void onlyCommandsWhoseScopeChangedRun() throws Exception {
+        enableScopes();
+        when(workspace.changedPathsSinceBase("42")).thenReturn(List.of("web/src/a.ts", "site/docs/x.md"));
+        verifyNow();
+        assertThat(commandCalls()).isEqualTo(2);
+        assertThat(flow.independentEvidence.decisions()).extracting(VerificationPlan.Decision::action)
+                .containsExactly(VerificationPlan.Action.RUN, VerificationPlan.Action.RUN, VerificationPlan.Action.SKIP);
+        assertThat(flow.independentEvidence.commands()).hasSize(2);
+        assertThat(verifier.blockingReason(flow, head)).isNull();
+        // 範圍內容改變（指紋不同）：收據失效。
+        tree(List.of("100644 a2\tweb/src/a.ts", "100644 b1\tapi/App.java", "100644 c1\tsite/sidebars.ts", "100644 d1\tREADME.md"));
+        assertThat(verifier.blockingReason(flow, head)).contains("輸入指紋已失效");
+    }
+    @Test void fileOutsideEveryScopeRunsEverything() throws Exception {
+        enableScopes();
+        for (var changed : List.of(List.of("scripts/deploy.sh"), List.of("package.json"), List.<String>of())) {
+            calls.clear(); flow.verificationHistory.clear();
+            when(workspace.changedPathsSinceBase("42")).thenReturn(changed);
+            verifyNow();
+            assertThat(commandCalls()).as(changed.toString()).isEqualTo(3);
+        }
+        calls.clear(); flow.verificationHistory.clear();
+        when(workspace.changedPathsSinceBase("42")).thenThrow(new WorkspaceManager.WorkspaceException("no base"));
+        verifyNow();
+        assertThat(commandCalls()).isEqualTo(3);
+        assertThat(flow.independentEvidence.decisions().getFirst().reason()).contains("查不到");
+    }
+    @Test void sameInputsReusePassedResultsUntilConfigurationOrLogsChange() throws Exception {
+        verifyNow();
+        assertThat(commandCalls()).isEqualTo(3);
+        calls.clear(); flow.independentEvidence = null;
+        verifyNow(); // 同一個 commit 再驗一次（例如回到驗收階段）：全部重用，不 clone。
+        assertThat(calls).isEmpty();
+        assertThat(flow.independentEvidence.decisions()).extracting(VerificationPlan.Decision::action)
+                .containsOnly(VerificationPlan.Action.REUSE);
+        assertThat(verifier.blockingReason(flow, head)).isNull();
+        assertThat(PrReport.independent(flow.independentEvidence)).contains("♻️ 重用");
+        Files.writeString(Path.of(flow.independentEvidence.decisions().getFirst().log()), "forged");
+        assertThat(verifier.blockingReason(flow, head)).contains("紀錄遺失或雜湊不符");
+        // 紀錄被改過或配置版本不同，都不能重用。
+        calls.clear(); verifyNow();
+        assertThat(flow.independentEvidence.decisions().getFirst().action()).isEqualTo(VerificationPlan.Action.RUN);
+        flow.snapshot = new TeamDefinition.Snapshot("other-revision", flow.snapshot.definition(), flow.snapshot.repository(), flow.snapshot.assets());
+        calls.clear(); verifyNow();
+        assertThat(commandCalls()).isEqualTo(3);
+        assertThat(flow.verificationHistory).hasSizeLessThanOrEqualTo(VerificationPlan.HISTORY_LIMIT);
+    }
+
+    @Test void decisionsAndHistorySurvivePersistenceAndOldFlowsStillParse() throws Exception {
+        enableScopes();
+        when(workspace.changedPathsSinceBase("42")).thenReturn(List.of("web/src/a.ts"));
+        verifyNow();
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        FlowRun restored = mapper.readValue(mapper.writeValueAsString(flow), FlowRun.class);
+        assertThat(restored.independentEvidence.decisions()).isEqualTo(flow.independentEvidence.decisions());
+        assertThat(restored.verificationHistory).hasSize(2);
+        assertThat(verifier.blockingReason(restored, head)).isNull();
+        var json = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(mapper.writeValueAsString(flow));
+        json.remove("verificationHistory");
+        assertThat(mapper.treeToValue(json, FlowRun.class).verificationHistory).isEmpty();
     }
 
     // ---- 程式失敗與環境失敗要分開：前者交回實作，後者才需要人 ----

@@ -192,6 +192,7 @@ public class TeamCatalog {
                         "verification.docOnlyPaths 若有設定須為 1～20 條");
                 verification.docOnlyPaths().forEach(DocOnlyChanges::validate);
             }
+            VerificationPlan.validate(verification);
         }
         Set<String> reached = new HashSet<>(); visit(d, d.entry(), reached);
         require(reached.size() == d.nodes().size(), "存在不可到達節點，請修正流程");

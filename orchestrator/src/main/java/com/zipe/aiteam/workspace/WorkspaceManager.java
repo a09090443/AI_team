@@ -391,6 +391,23 @@ public class WorkspaceManager {
                 .lines().filter(s -> !s.isBlank()).toList();
     }
 
+    /**
+     * 指定 commit 的完整檔案樹，每筆為「mode 物件雜湊<TAB>路徑」，依 git 排序；獨立驗證以此計算各指令的輸入指紋。
+     * 用已提交的物件而不是工作目錄檔案，未提交或被忽略的產物不影響指紋。
+     */
+    public List<String> treeEntries(String taskId, String commit) throws WorkspaceException {
+        if (commit == null || !commit.matches("[0-9a-f]{40,64}")) throw new WorkspaceException("無效 commit：" + commit);
+        List<String> entries = new ArrayList<>();
+        for (String raw : gitOutput(pathFor(taskId), "ls-tree", "-r", "-z", "--full-tree", commit).split("\u0000")) {
+            if (raw.isEmpty()) continue;
+            int tab = raw.indexOf('\t');
+            String[] meta = tab < 0 ? new String[0] : raw.substring(0, tab).split(" ");
+            if (meta.length != 3) throw new WorkspaceException("無法解析 git ls-tree 輸出");
+            entries.add(meta[0] + " " + meta[2] + raw.substring(tab));
+        }
+        return List.copyOf(entries);
+    }
+
     public record FileIdentity(String path, String before, String after) {
         public boolean unchanged() { return before.equals(after); }
     }
