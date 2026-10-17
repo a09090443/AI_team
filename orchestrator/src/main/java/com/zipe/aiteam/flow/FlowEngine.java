@@ -451,6 +451,7 @@ public class FlowEngine {
                             flow.origin = workspaces.origin(task.id()); flow.branch = workspaces.currentBranch(task.id());
                         }
                         if (!workspaces.exists(task.id())) throw new IllegalStateException("原工作區遺失，拒絕重新 clone");
+                        excludeOperationOutputs(task, flow);
                         flow.beforeHead = workspaces.headSha(task.id());
                         flow.attemptHeads.put(flow.node, flow.beforeHead);
                         // 新的一輪：上一輪的改派段結果不沿用（續跑同一輪時不會走到這裡）。
@@ -555,16 +556,28 @@ public class FlowEngine {
                 if (issueBlock == null) flow.systemRetries.remove(flow.node + IssueTracker.FORMAT_RETRY);
                 String block = issueBlock == null ? FlowGates.blockingReason(node, report, flow) : issueBlock;
                 AgentDispatch.Assignment assignment = null;
+                String handoffCorrection = null;
                 if (block == null) {
                     String route = report.path("route").asText("");
                     String destination = route.isBlank() ? node.next() : node.routes() == null ? null : node.routes().get(route);
                     if (destination != null) {
                         try {
                             assignment = AgentDispatch.choose(flow, node, destination, report);
-                            if (assignment != null) executor.validateAssignment(flow, assignment);
+                            if (assignment != null) {
+                                String written = report.path("handoff").path("role").asText("");
+                                if (!written.equals(assignment.role()))
+                                    audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY,
+                                            "節點 " + flow.node + " 的 handoff.role 填「" + Diagnostics.clip(written, 200)
+                                                    + "」，系統對應為唯一合格角色 " + assignment.role());
+                                executor.validateAssignment(flow, assignment);
+                            }
+                        } catch (AgentDispatch.HandoffFormat e) {
+                            block = "自主派工未通過：" + e.getMessage();
+                            handoffCorrection = AgentDispatch.correction(flow, destination, e.getMessage());
                         } catch (IllegalArgumentException e) { block = "自主派工未通過：" + e.getMessage(); }
                     }
                 }
+                if (block == null) flow.systemRetries.remove(flow.node + AgentDispatch.FORMAT_RETRY);
                 if (block == null) commitAssignedImplementation(task, flow, node);
                 if (block == null && node.gate() == Gate.SERVICE) {
                     // auditScope 已核對限寫路徑；不讓 runtime 自行提交或把未提交成果當成完成。
@@ -625,6 +638,11 @@ public class FlowEngine {
                     // 只是問題清單記帳格式寫錯：附上系統原文請同一個 agent 重送一次，不計次、不交給人（#1040／#1042）。
                     String correction = repairDraft ? null : IssueTracker.formatCorrection(flow, issueBlock);
                     String formatKey = flow.node + IssueTracker.FORMAT_RETRY;
+                    String formatLabel = "問題清單";
+                    // handoff 角色或欄位寫錯（#1044）同樣只是輸出格式：附上可填的角色 ID 請同節點重送一次。
+                    if (correction == null && !repairDraft && handoffCorrection != null) {
+                        correction = handoffCorrection; formatKey = flow.node + AgentDispatch.FORMAT_RETRY; formatLabel = "交接（handoff）";
+                    }
                     boolean formatRetry = correction != null && !flow.systemRetries.containsKey(formatKey);
                     if (formatRetry) {
                         flow.systemRetries.put(formatKey, 1);
@@ -644,9 +662,9 @@ public class FlowEngine {
                         }
                         flow.context = FlowContext.append(flow.context, correction);
                         audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY,
-                                "問題清單格式不合格，請節點 " + flow.node + " 自動修正重送一次；已還原本輪計數：" + issueBlock);
+                                formatLabel + "格式不合格，請節點 " + flow.node + " 自動修正重送一次；已還原本輪計數：" + block);
                         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
-                                "上一份回報的問題清單格式不對，系統已請它自動修正重送（不計次）。");
+                                "上一份回報的" + formatLabel + "格式不對，系統已請它自動修正重送（不計次）。");
                     }
                     next = repairDraft || formatRetry ? flow.node : node.blocked();
                     if (repairDraft) flow.context = FlowContext.append(flow.context,
@@ -910,6 +928,11 @@ public class FlowEngine {
             audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "改派實作核對通過，系統代為提交 "
                     + dirty.size() + " 個檔案：" + String.join(", ", dirty) + "；commit=" + head);
         }
+    }
+    /** 固定操作的輸出目錄不屬於產品變更：排除後不進寫入稽核、也不會被代為提交（見 WorkspaceManager.excludeOutputDirs）。 */
+    private void excludeOperationOutputs(Task task, FlowRun flow) throws Exception {
+        Set<String> dirs = OperationContract.outputDirs(flow.snapshot.definition());
+        if (!dirs.isEmpty()) workspaces.excludeOutputDirs(task.id(), dirs);
     }
     private void auditScope(Task task, FlowRun flow, Node node) throws Exception {
         if (AgentDispatch.enabled(node) && node.scope() == Scope.WORKSPACE && flow.beforeHead != null

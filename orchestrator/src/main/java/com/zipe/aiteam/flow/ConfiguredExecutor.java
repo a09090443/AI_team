@@ -430,7 +430,11 @@ public class ConfiguredExecutor {
         pins.addAll(OperationContract.scriptPins(flow.snapshot.definition(), flow.node, cwd));
         pins.add(cwd.resolve(".git/config")); pins.add(cwd.resolve(".git/hooks"));
         // 不讓可寫測試目錄包含管理者宣告的產品檔案。
-        if (node.scope() == Scope.LIMITED) pins.addAll(protectedPins(cwd, flow.snapshot.definition().project().protectedPaths()));
+        if (node.scope() == Scope.LIMITED) {
+            Set<String> outputs = OperationContract.outputDirs(flow.snapshot.definition());
+            pins.addAll(protectedPins(cwd, flow.snapshot.definition().project().protectedPaths(),
+                    outputs.isEmpty() ? Set.of() : Set.copyOf(workspaces.untrackedOutputDirs(cwd, outputs))));
+        }
         return new SandboxPolicy(List.copyOf(writable), List.copyOf(pins), 4096, 400, 512, node.localTestNetwork());
     }
     /** 安裝出來的相依套件目錄：不是產品檔案，驗收的 `npm ci` 還要整個刪掉重裝。 */
@@ -441,10 +445,19 @@ public class ConfiguredExecutor {
      * Codex 的 permissions 設定是單一參數，約 187 KB，超過 Linux 單一參數 128 KB 上限，QA 以 E2BIG 啟動失敗。
      */
     static List<Path> protectedPins(Path cwd, List<String> protectedPaths) throws java.io.IOException {
+        return protectedPins(cwd, protectedPaths, Set.of());
+    }
+    /**
+     * outputs：沒有 git 追蹤檔的操作輸出目錄（專案相對路徑），整個子樹不釘選。
+     * #1044：QA 把 docs-site 複製到 target/qa-docs，副本的 package.json 符合「任意層 package.json」保護樣式而被 bind mount 成唯讀，
+     * 下一輪 `find target/qa-docs -mindepth 1 -delete` 得到 Device or resource busy，清理永遠失敗。
+     */
+    static List<Path> protectedPins(Path cwd, List<String> protectedPaths, Set<String> outputs) throws java.io.IOException {
         List<Path> pins = new ArrayList<>();
         Files.walkFileTree(cwd, new SimpleFileVisitor<>() {
             @Override public FileVisitResult preVisitDirectory(Path dir, java.nio.file.attribute.BasicFileAttributes attrs) {
                 if (!dir.equals(cwd) && DEPENDENCY_DIRS.contains(dir.getFileName().toString())) return FileVisitResult.SKIP_SUBTREE;
+                if (!dir.equals(cwd) && outputs.contains(cwd.relativize(dir).toString().replace('\\', '/'))) return FileVisitResult.SKIP_SUBTREE;
                 add(dir); return FileVisitResult.CONTINUE;
             }
             @Override public FileVisitResult visitFile(Path file, java.nio.file.attribute.BasicFileAttributes attrs) { add(file); return FileVisitResult.CONTINUE; }

@@ -21,6 +21,13 @@ public final class OperationContract {
         });
         return selected;
     }
+    /** 所有固定操作宣告的輸出目錄（writes）；舊快照沒有操作時為空。 */
+    public static Set<String> outputDirs(TeamDefinition definition) {
+        Set<String> dirs = new TreeSet<>();
+        if (definition.project().operations() != null)
+            definition.project().operations().values().forEach(op -> { if (op.writes() != null) dirs.addAll(op.writes()); });
+        return dirs;
+    }
     public static void validate(TeamDefinition definition) {
         var operations = definition.project().operations();
         if (operations == null) return; // 舊快照不自動補權限。
@@ -32,6 +39,9 @@ public final class OperationContract {
             relative(op.directory());
             TeamCatalog.require(op.argv() != null && !op.argv().isEmpty() && op.argv().size() <= 32
                     && op.argv().stream().allMatch(s -> s != null && s.matches("[A-Za-z0-9_./:=+@,-]{1,200}")), "操作 argv 僅允許明確參數，不支援 shell 表達式：" + id);
+            // #1043：Codex CLI（0.156.1 實測）在啟動前拒絕 rm -f 類指令，任務跑到這步才失敗；載入配置時就擋。
+            TeamCatalog.require(!"rm".equals(op.argv().getFirst()),
+                    "操作不可使用 rm（Codex 會拒絕執行）：" + id + "；清空目錄請改用 find <目錄> -mindepth 1 -delete");
             TeamCatalog.require(definition.project().requiredTools().contains(op.argv().getFirst())
                     && (!Set.of("sh", "bash", "cmd", "powershell", "pwsh", "zsh").contains(op.argv().getFirst())
                         || pinnedScript(op)), "操作執行檔未宣告或為未釘選的 shell：" + id);

@@ -46,6 +46,24 @@ class AgentDispatchTest {
                 .hasMessageContaining("必須為 null");
         assertThat(flow.assignments).isEmpty();
     }
+    @Test void displayNamesMapToTheOnlyEligibleRoleAndAmbiguityIsAFormatError() {
+        // #1044：分流填「QA（verification）」，判斷正確卻因不是 ID「tester」停下來等人。
+        var triage = flow.snapshot.definition().nodes().get("triage");
+        for (String written : List.of("QA（verification）", "QA Agent", "tester（QA Agent）", " tester "))
+            assertThat(AgentDispatch.choose(flow, triage, "verification", report(written)).role()).as(written).isEqualTo("tester");
+        assertThat(AgentDispatch.choose(flow, triage, "implementation", report("Infrastructure Agent")).role()).isEqualTo("infrastructure");
+        assertThat(AgentDispatch.choose(flow, triage, "implementation", report("Backend（builder）")).role()).isEqualTo("builder");
+        // 兩個都符合、或根本不合格的角色都不猜，交由同節點重送。
+        for (String written : List.of("builder 或 infrastructure", "Code Reviewer", "inspector"))
+            assertThatThrownBy(() -> AgentDispatch.choose(flow, triage, "implementation", report(written)))
+                    .as(written).isInstanceOf(AgentDispatch.HandoffFormat.class).hasMessageContaining("資格");
+        // 有候選清單的下一階段缺 handoff 也是格式錯誤；沒有候選清單的（verification）不需要 handoff。
+        assertThatThrownBy(() -> AgentDispatch.choose(flow, triage, "implementation", mapper.createObjectNode()))
+                .isInstanceOf(AgentDispatch.HandoffFormat.class);
+        assertThat(AgentDispatch.choose(flow, triage, "verification", mapper.createObjectNode())).isNull();
+        assertThat(AgentDispatch.correction(flow, "implementation", "角色不具備下一階段派工資格：x"))
+                .contains("builder（Backend Agent）", "infrastructure（Infrastructure Agent）", "逐字填角色 ID", "照原本內容重送");
+    }
     @Test void cannotSmugglePermissionsInHandoff() {
         var report = report("infrastructure"); ((ObjectNode) report.get("handoff")).put("scope", "WORKSPACE");
         assertThatThrownBy(() -> AgentDispatch.choose(flow, flow.snapshot.definition().nodes().get("intake"), "design", report))

@@ -1,6 +1,7 @@
 package com.zipe.aiteam.flow;
 
 import com.fasterxml.jackson.databind.*;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.zipe.aiteam.config.AiTeamProperties;
 import com.zipe.aiteam.runtime.*;
@@ -46,6 +47,15 @@ class OperationContractTest {
     @Test void missingToolDeclarationRejected() throws Exception {
         var config = config("node-web"); ((ObjectNode)config.path("project")).putArray("requiredTools").add("git");
         assertThatThrownBy(() -> TeamCatalog.validate(mapper.treeToValue(config, TeamDefinition.class))).hasMessageContaining("操作執行檔未宣告");
+    }
+    @Test void rmOperationRejectedAtLoadEvenWhenDeclared() throws Exception {
+        // #1043：Codex 在啟動前拒絕 rm -rf，任務跑到驗收才停；配置載入就要擋，並指出替代寫法。
+        var config = config("node-web");
+        ((ArrayNode)config.path("project").path("requiredTools")).add("rm");
+        ((ObjectNode)config.path("project").path("operations")).set("clean", mapper.readTree(
+                "{\"nodes\":[\"verification\"],\"directory\":\".\",\"argv\":[\"rm\",\"-rf\",\"dist\"],\"writes\":[\"dist\"]}"));
+        assertThatThrownBy(() -> TeamCatalog.validate(mapper.treeToValue(config, TeamDefinition.class)))
+                .hasMessageContaining("不可使用 rm").hasMessageContaining("find <目錄> -mindepth 1 -delete");
     }
     @Test void builtInInspectionOnlyForVersionTwoConfigurations() throws Exception {
         var config = config("node-web");

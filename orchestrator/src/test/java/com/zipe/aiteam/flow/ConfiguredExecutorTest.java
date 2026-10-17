@@ -241,6 +241,28 @@ class ConfiguredExecutorTest {
         Files.writeString(ws.resolve("ui/node_modules/lodash/node_modules/x/package.json"), "{}");
         assertThat(ConfiguredExecutor.protectedPins(ws, List.of("**/package.json"))).containsExactly(ws.resolve("ui/package.json"));
     }
+    @Test void untrackedOperationOutputsAreNotPinned() throws Exception {
+        // #1044：QA 副本 target/qa-docs 裡的 package.json 被釘成唯讀，下一輪清理得到 Device or resource busy。
+        Path ws = tmp.resolve("ws-out");
+        Files.createDirectories(ws.resolve("target/qa-docs/docs-site"));
+        Files.createDirectories(ws.resolve("docs-site"));
+        Files.writeString(ws.resolve("docs-site/package.json"), "{}");
+        Files.writeString(ws.resolve("target/qa-docs/docs-site/package.json"), "{}");
+        assertThat(ConfiguredExecutor.protectedPins(ws, List.of("**/package.json"), Set.of("target/qa-docs")))
+                .containsExactly(ws.resolve("docs-site/package.json"));
+        // 只略過完全相同的輸出目錄，不擴及父目錄或名稱相近的目錄。
+        assertThat(ConfiguredExecutor.protectedPins(ws, List.of("**/package.json"), Set.of("target/qa")))
+                .contains(ws.resolve("target/qa-docs/docs-site/package.json"));
+    }
+    @Test void limitedPolicySkipsOnlyOutputsTheWorkspaceReportsAsUntracked() throws Exception {
+        var verification = flow.snapshot.definition().nodes().get("verification");
+        when(workspace.untrackedOutputDirs(eq(repo), anyCollection())).thenReturn(List.of("src"));
+        // 系統只略過工作區回報為「沒有追蹤檔」的目錄；這裡故意回報 src 以確認略過確實生效。
+        assertThat(executor.policy(flow, verification, runtime, repo).readOnlyPins()).doesNotContain(repo.resolve("src/main.ts"));
+        verify(workspace).untrackedOutputDirs(repo, Set.of("node_modules", "dist", "coverage"));
+        when(workspace.untrackedOutputDirs(eq(repo), anyCollection())).thenReturn(List.of());
+        assertThat(executor.policy(flow, verification, runtime, repo).readOnlyPins()).contains(repo.resolve("src/main.ts"));
+    }
     @Test void reviewerIsReadOnlyRegardlessOfRoleName() throws Exception {
         var policy = executor.policy(flow, flow.snapshot.definition().nodes().get("review"), runtime, repo);
         assertThat(policy.writablePaths()).containsExactly(tmp.resolve("state"));

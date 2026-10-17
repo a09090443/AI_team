@@ -7,6 +7,8 @@
 
 ## 正在進行
 
+- **#1043 文件站清理指令修正（2026-10-16，Claude Code，已部署 bestpartner）**：qa-docs-clean 從 `rm -rf`（Codex 會拒絕）改成 `find target/qa-docs -mindepth 1 -delete`。新配置 revision d6821d93…，PID37280，備份 clean-op-backup.wWMxrR，各項檢查通過。#1044 實測：清理到建置的六個步驟全部 exit 0，但 target/ 沒被忽略，副本的 package-lock.json 被判成限寫越權，任務停在 AWAIT_HUMAN。之後改成系統層方案（2026-10-17 已部署，JAR 1183a100…；bestpartner PID49119、spring-starters PID52345）：每個工作區階段會自動把操作的 writes 輸出目錄寫進 .git/info/exclude。ad5b510 已撤回，#1044 工作區已補上排除區塊、工作樹乾淨。2026-10-17 又上線兩項：沙箱不鎖輸出目錄（解決 find 遇到 Device busy），以及載入配置時擋 rm（JAR b9be907b…，bestpartner PID71506、spring-starters PID74387）。#1044 之後在 10:20 因獨立驗證超時再次停止。已部署專用依賴快取與超時辨識（JAR f922d222…，bestpartner PID80842、spring-starters PID83653）。快取預熱後實測獨立驗證 23 分鐘、QA 全過。12:08 分流因 handoff 角色名稱格式停下，已部署容錯與重送（JAR 91aa82e8…，bestpartner PID97347、spring-starters PID100186）。下一步：使用者在 #1044 按繼續執行；使用者決定第 2 項計畫（依變更檔案只跑相關的獨立驗證），以及 #1044 要繼續執行還是開新任務。QA 另外找到兩個內容問題（清除警告放在指令後面、四頁缺 title），會在新任務修。本機修改未 commit。
+
 - **公開手冊擴充（2026-10-15，Codex）**：使用者核准後已由三頁擴充為十頁，涵蓋使用、管理、架構與 AI 入口；公開 llms／manual 原文只讀公開清單，側欄與搜尋共用清單。內部／公開 build、十頁靜態導覽與三項發布閘門負向檢查通過。修正 direct-agent-requests 的 legacy／v2 限制落差。2026-10-16 依使用者要求已 commit／push 56070b4 至 main，Actions 38824989119 build／deploy 成功，quickstart/、ai-guide/、llms.txt、manual/ai-guide.md HTTP200 且內容核對通過。未做瀏覽器互動或 Slack E2E；詳細證據見 progress。
 
 - **公開站版型（2026-10-15，Codex）**：使用者確認依 zipe-spring-boot-starters/master/doc-site 製作。classic 首頁／三欄特色／文件側欄／公開關鍵字搜尋已完成，內部及公開 build、掃描、瀏覽器搜尋導向通過。README／project-tree 已更新；已 push be4e017；Actions 38761972715 build／deploy success，首頁新橫幅與 /intro/ HTTP200。原介紹移至 /intro/，架構／流程沿用；不載入內部文件。

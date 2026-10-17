@@ -115,6 +115,31 @@ class IndependentVerifierTest {
         assertThat(Path.of(flow.independentEvidence.commands().getFirst().log()).startsWith(root)).isFalse();
         assertThat(policy.writablePaths()).doesNotContain(tmp.resolve("source"));
     }
+    @Test void configuredCommandsShareTheDedicatedDependencyCacheButCloneDoesNot() throws Exception {
+        // #1044：空的 HOME 讓 Gradle 每輪重下載，四次驗證都貼著 1800 秒上限。
+        verifyNow();
+        Path cache = tmp.resolve("app/verification-cache").toAbsolutePath().normalize();
+        assertThat(cache).isDirectory();
+        assertThat(policies.get(0).writablePaths()).doesNotContain(cache);
+        assertThat(policies.subList(2, 5)).allMatch(p -> p.writablePaths().contains(cache));
+        assertThat(IndependentVerifier.cacheEnvironment(cache, policies.get(0))).isEmpty();
+        // 反斜線不進環境變數（Windows 路徑只出現在本機測試；驗證只在 Linux 執行）。
+        Assumptions.assumeFalse(cache.toString().contains("\\"));
+        assertThat(IndependentVerifier.cacheEnvironment(cache, policies.get(2)))
+                .containsExactly("GRADLE_USER_HOME=" + cache.resolve("gradle"), "npm_config_cache=" + cache.resolve("npm"),
+                        "MAVEN_OPTS=-Dmaven.repo.local=" + cache.resolve("m2/repository"));
+        assertThat(IndependentVerifier.cacheEnvironment(Path.of("/a b/cache"),
+                new SandboxPolicy(List.of(Path.of("/a b/cache")), List.of(), 1, 1, 1))).isEmpty();
+    }
+    @Test void exitAtTheDeadlineIsATimeoutNotATestFailure() {
+        long deadline = 100_000_000_000L;
+        assertThat(IndependentVerifier.timedOut(deadline, deadline - IndependentVerifier.TIMEOUT_MARGIN_NANOS + 1)).isTrue();
+        assertThat(IndependentVerifier.timedOut(deadline, deadline + 5)).isTrue();
+        assertThat(IndependentVerifier.timedOut(deadline, deadline - IndependentVerifier.TIMEOUT_MARGIN_NANOS - 1)).isFalse();
+        var timeout = new IndependentVerifier.VerificationTimeout(List.of("npm", "test"), tmp.resolve("check-4.log"));
+        assertThat(timeout).isNotInstanceOf(IndependentVerifier.CheckFailed.class);
+        assertThat(timeout.getMessage()).contains("時間上限", "不是測試失敗", "[npm, test]");
+    }
     @Test void failedCommandNeverCreatesSuccessReceipt() {
         fail = true;
         assertThatThrownBy(this::verifyNow).hasMessageContaining("exit=1");

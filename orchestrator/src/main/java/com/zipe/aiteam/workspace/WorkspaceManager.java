@@ -468,6 +468,57 @@ public class WorkspaceManager {
         return headSha(taskId);
     }
 
+    static final String EXCLUDE_BEGIN = "# >>> ai-team 操作輸出目錄（系統管理，勿手改）";
+    static final String EXCLUDE_END = "# <<< ai-team 操作輸出目錄";
+
+    /**
+     * 把固定操作宣告的輸出目錄寫進本工作區的 .git/info/exclude（只在本機，不會被 commit），回傳實際排除的目錄。
+     * #1044：QA 把 docs-site 複製到 target/qa-docs 建置，產品 repo 沒忽略 target/，寫入範圍稽核把副本的
+     * package-lock.json 當成修改受保護檔案；「保存並承接」也會把副本 commit 進去。不要求每個專案自己改 .gitignore。
+     * 目錄底下有任何被追蹤的檔案就不排除（fail closed），避免把真正的原始碼從稽核與提交裡藏起來。
+     * 每次呼叫重寫整個管理區塊，可重複執行；使用者自己在 exclude 寫的其他內容保留。
+     */
+    public List<String> excludeOutputDirs(String taskId, java.util.Collection<String> dirs) throws WorkspaceException {
+        Path ws = pathFor(taskId);
+        List<String> excluded = untrackedOutputDirs(ws, dirs);
+        try {
+            Path file = ws.resolve(".git/info/exclude");
+            Files.createDirectories(file.getParent());
+            List<String> kept = new ArrayList<>();
+            boolean inside = false;
+            for (String line : Files.exists(file) ? Files.readAllLines(file, StandardCharsets.UTF_8) : List.<String>of()) {
+                if (line.equals(EXCLUDE_BEGIN)) inside = true;
+                else if (line.equals(EXCLUDE_END)) inside = false;
+                else if (!inside) kept.add(line);
+            }
+            if (!excluded.isEmpty()) {
+                kept.add(EXCLUDE_BEGIN);
+                excluded.forEach(d -> kept.add("/" + d + "/"));
+                kept.add(EXCLUDE_END);
+            }
+            Files.write(file, kept, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new WorkspaceException("無法更新工作區的 .git/info/exclude", e);
+        }
+        return List.copyOf(excluded);
+    }
+
+    /**
+     * 宣告的操作輸出目錄中，底下沒有任何 git 追蹤檔的安全相對目錄（排序後回傳）。排除稽核與沙箱略過唯讀釘選共用這個判斷。
+     * 每次都重新問 git，不讀 .git/info/exclude：限寫節點可以寫 .git，不能讓 agent 改那個檔來解除保護。
+     */
+    public List<String> untrackedOutputDirs(Path ws, java.util.Collection<String> dirs) throws WorkspaceException {
+        List<String> result = new ArrayList<>();
+        for (String dir : new java.util.TreeSet<>(dirs)) {
+            if (dir == null || !dir.matches("[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*")
+                    || java.util.Arrays.stream(dir.split("/")).anyMatch(s -> s.equals(".") || s.equals(".."))
+                    || dir.startsWith(".git")) continue;
+            if (!gitOutput(ws, "ls-files", "-z", "--", dir).isEmpty()) continue;
+            result.add(dir);
+        }
+        return List.copyOf(result);
+    }
+
     /** 工作區是否存在且是 git repository。 */
     public boolean exists(String taskId) {
         return Files.isDirectory(pathFor(taskId).resolve(".git"));

@@ -1133,7 +1133,9 @@ class FlowEngineTest {
             if (mode.equals("blockedDecision") && flow.node.equals("triage"))
                 ((ObjectNode)report).set("human_decision", mapper.readTree("{\"headline\":\"驗收發現既有限制\",\"question\":\"smtps 這次要一起支援嗎？\",\"options\":[{\"label\":\"另開任務處理\",\"consequence\":\"照現況完成\"},{\"label\":\"這次一起支援\",\"consequence\":\"重跑實作與驗收\"}],\"recommendation\":\"建議另開任務\",\"also_needed\":[]}"));
             if (mode.startsWith("dispatch") && flow.node.equals("plan"))
-                ((ObjectNode) report).putObject("handoff").put("role", mode.equals("dispatchInvalid") ? "security_auditor" : "infrastructure")
+                ((ObjectNode) report).putObject("handoff").put("role", mode.equals("dispatchInvalid")
+                                || (mode.equals("dispatchFormatOnce") && calls.stream().filter(s -> s.startsWith("plan:")).count() == 1) ? "security_auditor"
+                                : mode.equals("dispatchDisplayName") ? "Infrastructure Agent（環境）" : "infrastructure")
                         .put("reason", "環境建置需要此專業").put("instruction", "完成 Compose 與驗證");
             if (mode.equals("dispatchDirty") && flow.node.equals("implementation")) workspaceClean = false;
             if (mode.equals("dispatchQuota") && flow.node.equals("implementation")) {
@@ -1327,6 +1329,33 @@ class FlowEngineTest {
         assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
         assertThat(store.flow("42").orElseThrow().assignments).isEmpty();
     }
+    @Test void handoffDisplayNameIsMappedToTheEligibleRoleId() throws Exception {
+        // #1044：判斷正確只是角色欄填了顯示名稱，不該停下來等人。
+        enableAgentDispatch(); mode = "dispatchDisplayName";
+        engine.run(task);
+        assertThat(calls).contains("implementation:infrastructure");
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        verify(audit).record(eq("42"), eq(AuditLog.ACTOR_SYSTEM), eq(AuditLog.ACTION_RECOVERY), contains("對應為唯一合格角色 infrastructure"));
+    }
+    @Test void unmappableHandoffRoleIsResentOnceWithoutCountingThenFollowsTheBlockedRoute() throws Exception {
+        enableAgentDispatch(); mode = "dispatchFormatOnce";
+        engine.run(task);
+        var flow = store.flow("42").orElseThrow();
+        assertThat(calls.stream().filter(s -> s.startsWith("plan:")).count()).isEqualTo(2);
+        assertThat(flow.visits.get("plan")).isEqualTo(1);
+        assertThat(flow.systemRetries).doesNotContainKey("plan" + AgentDispatch.FORMAT_RETRY);
+        assertThat(flow.assignments.get("implementation").role()).isEqualTo("infrastructure");
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        verify(slack).post(any(), any(), any(), contains("交接（handoff）格式不對，系統已請它自動修正重送（不計次）"));
+    }
+    @Test void persistentlyInvalidHandoffIsResentOnlyOnce() throws Exception {
+        // 一直填錯：只重送一次，之後照原受阻路線交給分流／真人。
+        enableAgentDispatch(); mode = "dispatchInvalid";
+        engine.run(task);
+        assertThat(calls.stream().filter(s -> s.startsWith("plan:")).count()).isEqualTo(2);
+        verify(slack, times(1)).post(any(), any(), any(), contains("交接（handoff）格式不對"));
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
+    }
     @Test void agentDispatchPersistsChoiceAcrossQuotaResume() throws Exception {
         enableAgentDispatch(); mode = "dispatchQuota";
         engine.run(task);
@@ -1487,6 +1516,11 @@ class FlowEngineTest {
         assertThat(store.flow("42").orElseThrow().snapshot.revision()).isEqualTo(revision);
         verify(workspace, times(1)).provision(any(), any(), any());
         assertThat(resumed).containsExactly("verification:saved-session");
+    }
+    @Test void workspaceStagesExcludeDeclaredOperationOutputsBeforeAudit() throws Exception {
+        engine.run(task);
+        // node-web 的固定操作宣告 node_modules、dist、coverage；每個工作區階段開始前都重新排除（#1044）。
+        verify(workspace, atLeastOnce()).excludeOutputDirs(eq("42"), eq(Set.of("node_modules", "dist", "coverage")));
     }
     // ---- 驗收負責人命令開 PR（#1022：審查 APPROVE 但寫了 INFO，閘門擋下、停在分流、收據已被清掉） ----
 

@@ -102,6 +102,15 @@ Node 範例依序 `npm ci`、`npm test`、`npm run build`；需依實際 repo �
 這不代表建置工具不會執行 repo 裡的腳本；它們仍是需要沙箱約束的不可信程式。
 
 - 必須通過既有沙箱自檢；使用受限 systemd user unit，2 核 CPU 配額、4 GB 記憶體與整輪最多 1800 秒。
+- **專用相依套件快取（2026-10-17 起）**：配置的檢查指令（不含 clone／checkout）共用 `<安裝目錄>/verification-cache`，
+  以 `GRADLE_USER_HOME`、`npm_config_cache`、`MAVEN_OPTS=-Dmaven.repo.local=…` 指過去（`IndependentVerifier.dependencyCache`／`cacheEnvironment`）。
+  HOME 仍是每輪全新的空目錄，原始碼仍釘成唯讀；只有下載快取跨任務沿用，agent 的沙箱碰不到這個目錄。
+  已知取捨：被驗證的專案程式在執行期間仍可寫入快取。路徑含空白、引號或反斜線時不設定（退回不用快取）。
+  起因是 #1044：每輪都從空的 HOME 開始，第一個 Gradle 指令就要 16～19 分鐘，四次驗證分別花 27～30 分鐘，貼著上限。
+  第一次使用要建立快取，仍然會慢；之後的效果要以 VM 實測為準。
+- **超時不算測試失敗（2026-10-17 起）**：超過期限時拋出 `IndependentVerifier.VerificationTimeout`，交給真人處理，不交回實作。
+  指令非零結束時，如果剩餘時間已不到 3 秒（systemd `RuntimeMaxSec` 以整秒向下取整，可能早約一秒砍掉），也一律算超時。
+  修正前，#1044 在 00:42 的 `npm test` 被 systemd 砍掉、log 是空的，卻被當成測試失敗，派回實作多跑了一輪。
 - 只開放獨立驗證目錄，釘住新 clone 的所有版控檔與 `.git`；不開放原任務工作區寫入。repo 含 symlink 暫時拒絕，需管理者評估。
   檔名含空白時，交給 systemd 的路徑整段加雙引號（`ExecutionSandbox.pathProperty`；VM 實測確實唯讀，`\x20` 跳脫實測仍可寫，不採用）；
   含雙引號、反斜線或控制字元的路徑直接拒絕。2026-10-03 前未加引號，bestpartner 的「General rule.pdf」讓獨立驗證以

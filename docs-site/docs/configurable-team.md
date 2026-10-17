@@ -161,6 +161,8 @@ Preview 部署節點、外部 VM 權限與部署收據尚未實作，所以此�
   單階段超過 100 個新增 commit 會停止要求查核。沒有可寫目錄時拒絕，不自動放寬。
   工作區內符合 `project.protectedPaths` 的檔案與目錄會逐一釘成唯讀（`ConfiguredExecutor.protectedPins`）；
   走訪時不進入 `node_modules`，因為裡面是安裝產物，不是產品檔案，驗收的 `npm ci` 還要整個刪掉重裝。
+  沒有 git 追蹤檔的操作輸出目錄（`writes`，判斷同下方「操作輸出目錄自動排除」，每次都重新問 git，不讀 `.git/info/exclude`）也整個不釘選。
+  2026-10-17 起才有這個規則：#1044 的 QA 副本 `target/qa-docs/docs-site/package.json` 被釘成唯讀，下一輪 `find -delete` 得到 `Device or resource busy`，清理一直失敗。
   2026-10-08 前會進入：bestpartner #1029 實作跑過 `npm ci` 後，`**/package.json` 釘了 1643 個 `node_modules` 內的檔案。
   Codex 的 permissions 設定是單一參數，約 187 KB，超過 Linux 單一參數 128 KB 上限，QA 以 `Argument list too long` 啟動失敗。
   系統把它當系統層失敗自動重試兩次，每次都重跑約 25 分鐘的獨立驗證。
@@ -250,6 +252,12 @@ IssueTracker 驗證穩定 ID、需求對應及逐項證據；FlowEngine 保存�
 
 - 模型仍先以 `route` 決定工作分支，再以 `handoff` 指派該分支下一階段的角色；原 `role` 是未啟用自主派工時的執行角色。
   目標有候選清單卻沒填有效派工時，回報受阻，不默默使用預設角色。固定角色的 AGENT 目標可填 null；若模型明確交接，僅接受完全相同的既定角色並保留交接紀錄，不開放改派。human／end 等非 AGENT 目標仍須 null。
+- **handoff 角色名稱容錯（2026-10-17 起）**：`handoff.role` 不是角色 ID 時，`AgentDispatch.resolveRole` 只在下一階段的合格角色之間比對：
+  顯示名稱、去掉括號或結尾 Agent 的名稱、文字中出現的完整 ID。剛好對應到一個角色才採用，並寫一筆稽核紀錄「對應為唯一合格角色」。
+  對應不到、有歧義，或 handoff 缺少或多出欄位，都算格式錯誤（`AgentDispatch.HandoffFormat`）：系統附上可填的角色 ID，
+  請同一節點只修正 handoff、其他判斷不變，重送一次，而且不計次（`systemRetries` 鍵尾 `#handoff-format`）。
+  同一步第二次還是錯，才照原本的受阻路線處理。角色能力或工具權限不符（`validateAssignment`）屬於實質問題，不自動重送。
+  起因是 #1044：分流判斷正確，只是把 role 填成「QA（verification）」，系統只接受 `tester`，任務因此停下來等人。
 - 目前 bestpartner 設計候選為 Architecture／Infrastructure，實作候選為 Backend／Infrastructure。
   因此 PM 可將環境設計交給 Infrastructure，測試計畫 agent 再選實作負責人；受阻後由分流 agent 重新選擇。
   第一版每次交接一位角色、中央佇列依序執行，不支援一份報告建立多個平行子工作。
@@ -273,6 +281,13 @@ plan 與 verification 固定由 tester 負責。node-web 範例仍經 builder／
 - 實作由具文件能力的角色承接；QA 用 `inspect-content` 合併驗證內容、新舊值及一致性，審查不追加無關情境。
 - bestpartner 新增 verification 的 qa-docs-dir → qa-docs-clean → qa-docs-snapshot → qa-docs-extract → qa-docs-install → qa-docs-build：
   先清除上輪 docs-site 副本，再從最終 HEAD 匯出 docs-site 至 target/qa-docs，離線安裝並建置，原文件唯讀。實作先執行 docs-install／docs-build 準備 npm 快取。
+  qa-docs-clean 為 `find target/qa-docs -mindepth 1 -delete`（清空 target/qa-docs 內容、保留目錄，須在 qa-docs-dir 之後）。
+  2026-10-16 起不用 `rm -rf`：Codex CLI 0.156.1 會在啟動程序前拒絕 rm -f 類指令，#1043 因此兩輪驗收卡在此步；`find -delete` 已在 VM 的 Codex 實測可執行。
+  固定操作 argv 不允許空白、引號等 shell 字元，所以不能改用 `node -e` 單行腳本。
+  2026-10-17 起所有團隊配置的操作都不可用 `rm` 當執行檔，`OperationContract.validate` 載入配置時就拒絕，錯誤訊息會提示改用 `find`。
+  2026-10-16 #1044：產品 repo 沒忽略 target/，驗收後的寫入範圍稽核用 `git ls-files --others --exclude-standard` 掃到副本的
+  `target/qa-docs/docs-site/package-lock.json`。它符合 protectedPaths 的 `**/package-lock.json`，所以被判成「限寫階段越權」。
+  現在改由系統統一處理，見下方「操作輸出目錄自動排除」，專案不需要自己改 `.gitignore`。
   spring-starters 沿用既有隔離文件驗證。其他專案須提供自身操作；提示不會產生不存在的工具能力。
 - 三份範例配置均提供 `docOnlyPaths`，實際變更仍由 Git 判斷。SQL、腳本、JSON、網站程式等非文字副檔名不能因位於 docs/** 就免驗；
   純文字限 .md／.mdx／.txt／.rst／.adoc，仍受原建置檔與 src 等強制全跑名單限制。QA 必要文件站建置不因系統略過產品建置而取消。
@@ -356,6 +371,12 @@ Runnable 交給 TaskOrchestrator，由真正的執行中工作與 FIFO 排隊清
   （同一角色常兼任計畫與驗收，會看到驗收要引用 plan_revision 的規則）。
 - **操作契約與測試規範要一致**：`testInstructions` 要求的每一步都必須有對應的 `operations`，
   否則計畫節點無法綁定 `operation_ids` 而受阻。`argv` 不支援管線，需要多步驟時拆成多個操作。
+- **操作輸出目錄自動排除**：每個工作區階段開始前，`FlowEngine.excludeOperationOutputs` 會收集配置中所有固定操作的 `writes` 目錄，
+  交給 `WorkspaceManager.excludeOutputDirs` 寫進該任務工作區的 `.git/info/exclude`（系統管理區塊，只在本機，不會被 commit）。
+  被排除的目錄不會出現在寫入範圍稽核（`auditPaths`）、未提交清單與「保存並承接」裡，所以建置產物和 QA 副本裡的
+  `package.json` 之類不會被誤判成修改受保護檔案，也不會被代為提交。目錄底下只要有任何 git 追蹤的檔案就**不排除**（fail closed），
+  所以 `writes` 不能拿來藏真正的原始碼。適用所有團隊與既有快照，專案不需要改 `.gitignore`。
+  同一批目錄在限寫節點的沙箱裡也不會被 protectedPaths 釘成唯讀（`ConfiguredExecutor.protectedPins`），QA 才能清理和重建自己的副本。
 
 
 ## 服務建置分支

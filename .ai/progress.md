@@ -1,5 +1,54 @@
 # 工作進度（Codex 與 Claude Code 共用）
 
+## 2026-10-17 handoff 角色名稱容錯與重送（Claude Code，已部署）
+
+- #1044 實測（預熱後）：獨立驗證 23 分鐘（Gradle A 6m19s，之前 18m41s）、5 個指令全部通過；QA 8 個情境 PASS。唯一卡發布的是 QA 把範圍外的 PostgreSQL／Docker 寫進 uncertainties。分流決定交回驗收重新分類（判斷正確），但 handoff.role 填成「QA（verification）」，被 AgentDispatch 以「不具備資格」擋下，停在 AWAIT_HUMAN（12:08）。
+- 修正：AgentDispatch.resolveRole 只在合格角色之間比對（ID、顯示名稱、去掉括號或 Agent 後的名稱、文字中的完整 ID），對應到唯一一個才採用並寫稽核紀錄。handoff 格式錯誤改拋 HandoffFormat；FlowEngine 比照問題清單格式重送的做法，附上可填的角色 ID 請同節點重送一次，不計次（鍵 `#handoff-format`），第二次還錯才照原受阻路線。validateAssignment 的能力或權限錯誤不重送。
+- 測試：AgentDispatchTest 新增 1 項；FlowEngineTest 新增 3 項（顯示名稱對應、重送一次後成功、一直錯只重送一次）。本機相關類別全部通過。Linux handoff-build.6vpRqa：check-source 通過、653 項 0 失敗／錯誤、11 略過，JAR 91aa82e8…。
+- 部署：bestpartner PID97347（備份 orchestrator-backup.mkkQes）、spring-starters PID100186（備份 orchestrator-backup.TeXbt5），ERROR 0 行，任務資料前後一致。
+- 文件：configurable-team.md（handoff 容錯）、agent/operations.md（Slack 訊息說明）。docs build 通過。
+- 尚未完成：#1044 仍停在 AWAIT_HUMAN。已停住的任務不會自動套用新邏輯，要由使用者在 Slack 讓它續跑（按繼續執行，分流會重跑並可被容錯）。本機修改未 commit。
+
+## 2026-10-17 獨立驗證專用快取與超時辨識（Claude Code，已部署）
+
+- 查核：#1044 在 10:20 停止，原因是獨立驗證超過 1800 秒（Gradle A 跑了 18m41s，前端 build 執行到一半被中止）。四次驗證分別 27～30 分，都貼著上限，因為每輪都從空的 HOME 開始。之前所謂「00:42 npm test 不穩」其實是 systemd RuntimeMaxSec 把它砍掉，卻被當成 CheckFailed 派回實作。
+- 修正：IndependentVerifier 新增 dependencyCache（`<安裝目錄>/verification-cache`）與 cacheEnvironment（GRADLE_USER_HOME、npm_config_cache、MAVEN_OPTS repo.local），只套用在配置的檢查指令，不含 clone／checkout。新增 VerificationTimeout（不是 CheckFailed）；非零結束時剩餘時間已不到 3 秒也算超時。已知取捨：被驗證的專案程式在執行期間可以寫入快取。
+- 測試：IndependentVerifierTest 新增 2 項；本機 23 項通過（Windows 略過反斜線路徑那一段）。Linux 隔離建置 vcache-build.3BYSXl：check-source 通過、649 項 0 失敗／錯誤、11 略過，JAR f922d222…。
+- 部署：bestpartner PID80842（備份 orchestrator-backup.llGh1T）、spring-starters PID83653（備份 orchestrator-backup.RRWXjg），ERROR 0 行，任務資料前後一致。
+- 文件：engineering-workflow.md（專用快取、超時規則）、agent/configuration.md 的 verification 欄位。docs build 通過。
+- 預熱（使用者要求，未動任務）：/home/agent/vcache-warm.o7M3yB 以 #1044 HEAD 681ac6f 的唯讀 clone 跑完 5 個驗證指令，全部 exit 0（888s／130s／145s／30s／33s）。快取 gradle 1.1G、npm 60M。用全新 clone 加已預熱的快取重跑 Gradle A：324s（原本沙箱內 18m41s；這次沒有 cgroup CPU 限制，沙箱內實際時間待下一輪確認）。
+- 尚未完成：沙箱內的實際時間要等下一輪真實驗證。第 2 項計畫（依變更檔案只跑相關檢查）待使用者決定。本機修改未 commit。
+
+## 2026-10-17 沙箱不鎖輸出目錄、載入配置時擋 rm（Claude Code，已部署）
+
+- 時間分析（#1044 約 10 小時）：等額度 3h20m、等人 4h40m。08:00 之後有 58 分鐘花在兩次全套獨立驗證（每次約 28 分）。分支裡有 .env.example、docs-site/sidebars.ts、docs/sql/bestpartner-ddl.sql，不符合純文件條件。00:42 前端 npm test 立即失敗、log 是空的，多了一輪（原因未查）。09:31 停止是使用者自己按了中斷。
+- 新問題：QA 副本 target/qa-docs/docs-site/package.json 符合 `**/package.json`，被 protectedPins bind mount 成唯讀，`find -delete` 得到 Device or resource busy。修正：WorkspaceManager.untrackedOutputDirs 抽成共用判斷（每次都問 git，不讀 .git/info/exclude，避免 agent 改 exclude 來解除保護），ConfiguredExecutor.protectedPins 略過這些目錄。OperationContract.outputDirs 統一收集 writes。
+- 使用者同意後追加：OperationContract.validate 拒絕以 rm 當執行檔，錯誤訊息提示改用 find。只有載入配置檔與遷移時會驗證，已存的舊快照不受影響。VM 上兩個實例實際載入的配置都沒有 rm（ai-team/teams/bestpartner.json 是沒在用的舊副本，仍有 rm）。
+- 測試：新增 ConfiguredExecutorTest 2 項、OperationContractTest 1 項。本機只剩已知的 Windows 失敗（符號連結、CRLF）。本機 check-source 因 python3 是 Store 空殼無法執行。Linux：pins-build.MmZscH 646 項通過；最終 rmguard-build.XzxGH1 check-source 通過、647 項 0 失敗／錯誤、11 略過，JAR b9be907b…。
+- 部署：bestpartner PID71506（備份 orchestrator-backup.pJk389），spring-starters PID74387（備份 orchestrator-backup.KIsIqp）。兩邊沙箱自檢通過，ERROR 0 行，任務資料前後一致。中間 bf701ed4 版也部署過一次。
+- 文件：configurable-team.md（唯讀釘選段落、輸出目錄段落、禁用 rm）、agent/configuration.md 的 operations 欄位。docs build 通過。
+- 尚未完成：真實任務驗證；第 2 項（依變更檔案只跑相關的獨立驗證）已提出計畫，等使用者確認。本機修改未 commit。
+
+## 2026-10-17 操作輸出目錄自動排除（Claude Code，已部署）
+
+- 使用者要求對所有專案統一處理，取代只改 bestpartner `.gitignore` 的方案 B。WorkspaceManager.excludeOutputDirs 把固定操作的 `writes` 目錄寫進工作區 `.git/info/exclude` 的系統管理區塊，只排除沒有 git 追蹤檔的目錄（fail closed），可重複執行，保留使用者原本的內容。FlowEngine.excludeOperationOutputs 在每個工作區階段、取 beforeHead 之前呼叫。
+- 測試：新增 WorkspaceManagerTest（排除、追蹤目錄不排除、冪等、清除）與 FlowEngineTest（node-web 傳入 node_modules／dist／coverage）。本機兩個類別 137 項只有 1 項既有 Windows CRLF 失敗。Linux 隔離建置 /home/agent/exclude-build.WsfI1p（git stash create 打包後轉成 LF）：check-source 通過，mvn clean verify 644 項 0 失敗／錯誤、11 略過，JAR 1183a100…。
+- 部署：使用 deploy-jar-safe。bestpartner PID49119，備份 orchestrator-backup.JXXORK；spring-starters PID52345，備份 orchestrator-backup.Q6RGRU。兩邊沙箱自檢與 Socket Mode 通過，ERROR 0 行，任務資料前後一致。
+- #1044：撤回 ad5b510（`git reset --keep 2608573`）。工作區的 .git/info/exclude 依新格式手動補上排除區塊（沒有刪任何檔案），工作樹乾淨。
+- 文件：configurable-team.md（新增「操作輸出目錄自動排除」，#1044 段落改成指向它）、agent/configuration.md 的 operations 欄位。已核對 system-map（不需修改）。docs build 通過。
+- 尚未完成：還沒用真實任務驗證排除效果；要等使用者在 #1044 按「改用新任務繼續」。本機修改未 commit。
+
+## 2026-10-16 #1043 文件站清理指令被 Codex 拒絕（Claude Code）
+
+- 查核：#1043 驗收 8 項過 7 項，兩輪都卡在 SC-08 qa-docs-clean。VM 的 verification.codex.stderr.log 顯示 Codex CLI 0.156.1 在啟動前拒絕 `rm -rf target/qa-docs/docs-site`（rm -f style commands are not permitted），triage route=human、AWAIT_HUMAN。問題在配置，不在產品文件。
+- 修正（使用者核准）：bestpartner.json 的 qa-docs-clean 改為 `find target/qa-docs -mindepth 1 -delete`，requiredTools 的 rm 換成 find，QA 的 Claude 工具白名單同步。argv 不允許空白與引號，所以不能用 node -e。VM 上已用 Codex 0.156.1 實測 find -delete（exit 0，只清內容並保留目錄）。
+- 驗證：check-source、docs build 通過；Maven 測試（TeamCatalog、ConfiguredExecutor、OperationContract、OperationPreflight、TeamMigration）79 項中 1 項錯誤，是已知的 Windows 符號連結權限問題。未跑 Linux 完整測試。
+- 已核對的文件：configurable-team.md（已補上清理指令與不用 rm 的原因）、operations／configuration 沒有提到這個指令。
+- 部署（使用者明確授權）：auto-review 先前拒絕過一次，之後使用者授權。備份在 `/home/agent/ai-team-bestpartner/clean-op-backup.wWMxrR`（teams、DB、啟動前 log、任務狀態）。teams/bestpartner.json SHA256 e5b4183e…，新配置 revision d6821d93…，PID37280。靜態配置、沙箱自檢、工具鏈自檢（含 find）、Socket Mode 都通過，沒有 ERROR，只有既有的共用 token WARN；部署前後任務狀態一致。部署前 VM 上的配置跟 HEAD 只差換行。未 commit。
+- 尚未完成：還沒跑真實端對端驗證。要等使用者在 #1043 按「配置修好後開新任務」，用新任務實際確認 QA 能從清理一路跑到建置。
+- #1044 真實執行結果：find 清理到 npm build 六步全部 exit 0，Codex 已確認可以獨立建置文件網站。但驗收結束後，FlowEngine.auditScope 判定越權：target/ 沒被忽略，副本的 package-lock.json 符合 `**/package-lock.json`。explainer 給的「保存修改並改用新任務」會把 48 個副本檔 commit 進去，已提醒使用者不要按。
+- 修正（使用者選 B）：在 task-1044 分支 commit ad5b510，`.gitignore` 加 `/target/`，check-ignore 確認生效。這個修正會隨任務 PR 進到 dev。configurable-team.md 已補上這項前置條件，以及 .gitignore 屬於 agent 禁改路徑的說明。
+
 ## 2026-10-16 公開手冊提交推送（Codex）
 
 - 使用者要求 push；確認 origin/main 與本機皆為 038b996，提交文件網站變更 56070b4 並成功推送 main。

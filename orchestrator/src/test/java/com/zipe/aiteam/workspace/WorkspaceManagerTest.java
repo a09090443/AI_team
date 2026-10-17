@@ -114,6 +114,35 @@ class WorkspaceManagerTest {
     }
 
     @Test
+    void 操作輸出目錄排除後不進稽核與提交_有追蹤檔的目錄不排除() throws Exception {
+        Path ws = manager.provision(task("1301"));
+        String before = manager.headSha("1301");
+        Files.writeString(ws.resolve(".git/info/exclude"), "# 使用者自己的設定\n*.local\n");
+        Files.createDirectories(ws.resolve("target/qa-docs/docs-site"));
+        Files.writeString(ws.resolve("target/qa-docs/docs-site/package-lock.json"), "{}\n");
+        Files.createDirectories(ws.resolve("docs"));
+        Files.writeString(ws.resolve("docs/guide.md"), "已追蹤\n");
+        run(ws, "git", "add", "docs/guide.md"); run(ws, "git", "commit", "-qm", "追蹤 docs");
+        Files.writeString(ws.resolve("docs/new.md"), "新增的文件\n");
+
+        assertThat(manager.excludeOutputDirs("1301", List.of("target/qa-docs", "docs", "../x", ".git", "missing")))
+                .containsExactly("missing", "target/qa-docs");
+        // 重複呼叫只保留一個管理區塊，使用者原有內容不動。
+        manager.excludeOutputDirs("1301", List.of("target/qa-docs"));
+        String exclude = Files.readString(ws.resolve(".git/info/exclude"));
+        assertThat(exclude).contains("*.local").contains("/target/qa-docs/").doesNotContain("/missing/");
+        assertThat(exclude.split(WorkspaceManager.EXCLUDE_BEGIN, -1)).hasSize(2);
+
+        assertThat(manager.auditPaths("1301", before)).contains("docs/new.md")
+                .noneMatch(p -> p.startsWith("target/"));
+        assertThat(manager.uncommittedPaths("1301")).containsExactly("docs/new.md");
+
+        manager.excludeOutputDirs("1301", List.of());
+        assertThat(Files.readString(ws.resolve(".git/info/exclude"))).contains("*.local").doesNotContain("ai-team");
+        assertThat(manager.uncommittedPaths("1301")).contains("target/qa-docs/docs-site/package-lock.json");
+    }
+
+    @Test
     void provision_應建立獨立的_clone_並切到任務分支() throws Exception {
         Path ws = manager.provision(task("1001"));
 

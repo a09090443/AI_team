@@ -52,6 +52,22 @@ public class IndependentVerifier {
         public String summary() { return summary; }
     }
 
+    /**
+     * 獨立驗證超過 verification.timeoutSeconds 被中止：不是測試失敗，不交回實作重做。
+     * #1044：每輪約 28 分鐘貼著 1800 秒上限，systemd 的 RuntimeMaxSec 先砍掉 npm test，非零結束被當成測試失敗，
+     * 派回實作多跑一整輪。
+     */
+    public static final class VerificationTimeout extends IllegalStateException {
+        VerificationTimeout(List<String> argv, Path log) {
+            super("獨立驗證超過時間上限（verification.timeoutSeconds），在指令 " + argv
+                    + " 執行中被中止；這不是測試失敗，系統不會交回實作。紀錄：" + log);
+        }
+    }
+
+    /** 非零結束時剩餘時間已不到這個值，就視為被時間上限砍掉；RuntimeMaxSec 以整秒向下取整，可能早約一秒。 */
+    static final long TIMEOUT_MARGIN_NANOS = TimeUnit.SECONDS.toNanos(3);
+    static boolean timedOut(long deadline, long now) { return now >= deadline - TIMEOUT_MARGIN_NANOS; }
+
     /** 出現這些字樣表示是環境缺件，交給實作也修不好。 */
     private static final List<String> ENVIRONMENT_SIGNATURES = List.of(
             "Could not resolve dependencies", "Non-resolvable", "Could not transfer artifact",
@@ -124,7 +140,7 @@ public class IndependentVerifier {
                 if (!path.startsWith(repo.resolve(".git")) && Files.isRegularFile(path)) pins.add(path);
             }
         }
-        var policy = new SandboxPolicy(List.of(writable), List.copyOf(pins), 4096, 200, 256);
+        var policy = new SandboxPolicy(List.of(writable, dependencyCache()), List.copyOf(pins), 4096, 200, 256);
         List<CommandResult> results = new ArrayList<>();
         for (List<String> argv : spec.commands()) {
             Path log = run.resolve("check-" + results.size() + ".log");
@@ -189,19 +205,37 @@ public class IndependentVerifier {
             return null;
         } catch (Exception e) { return "無法核實指定檔案比對：" + e.getClass().getSimpleName(); }
     }
+    /**
+     * 獨立驗證專用的相依套件下載快取（Gradle、npm、Maven），各實例一份，跨任務沿用。
+     * #1044：每次都用空的 HOME，Gradle 第一個指令就花 16～19 分鐘重新下載與準備相依套件。
+     * 只有系統驗證指令可寫；agent 的沙箱不含這個目錄。被驗證的專案程式在執行期間仍可寫入它，這是換取速度的已知取捨。
+     */
+    Path dependencyCache() throws java.io.IOException {
+        Path cache = props.homePath().resolve("verification-cache").toAbsolutePath().normalize();
+        Files.createDirectories(cache);
+        if (!cache.toRealPath().equals(cache)) throw new IllegalStateException("獨立驗證快取路徑含 symlink，拒絕使用：" + cache);
+        return cache;
+    }
+    /** 驗證指令的快取環境變數；只在政策確實把快取設為可寫時加入，clone／checkout 不使用。 */
+    static List<String> cacheEnvironment(Path cache, SandboxPolicy policy) {
+        if (cache == null || !policy.writablePaths().contains(cache) || cache.toString().matches(".*[\\s\"'\\\\].*")) return List.of();
+        return List.of("GRADLE_USER_HOME=" + cache.resolve("gradle"), "npm_config_cache=" + cache.resolve("npm"),
+                "MAVEN_OPTS=-Dmaven.repo.local=" + cache.resolve("m2/repository"));
+    }
     void execute(List<String> argv, Path cwd, Path home, SandboxPolicy policy, Path log, long deadline) throws Exception {
         execute(null, argv, cwd, home, policy, log, deadline);
     }
     /** unit 名帶任務編號，Slack 的「中斷這一輪」才能只停這個任務的驗證（見 TaskUnits）。 */
     void execute(String taskId, List<String> argv, Path cwd, Path home, SandboxPolicy policy, Path log, long deadline) throws Exception {
         long seconds = Math.max(1, TimeUnit.NANOSECONDS.toSeconds(deadline - System.nanoTime()));
-        if (System.nanoTime() >= deadline) throw new IllegalStateException("獨立驗證超時；紀錄：" + log.getParent());
+        if (System.nanoTime() >= deadline) throw new VerificationTimeout(argv, log.getParent());
         String unit = props.unitPrefix() + "check-" + (taskId == null ? "" : taskId + "-") + UUID.randomUUID();
         List<String> isolated = new ArrayList<>(List.of("env", "-i", "PATH=" + System.getenv("PATH"), "HOME=" + home,
                 "LANG=C.UTF-8", "CI=true", "MAKEFLAGS=-j1", "JOBS=1", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_TERMINAL_PROMPT=0"));
         // JVM 的 user.home 不會隨 HOME 改變；否則 Maven 仍讀寫真實帳號的 .m2。
         isolated.add("JAVA_TOOL_OPTIONS=-Duser.home=\"" + home.toString().replace("\\", "\\\\").replace("\"", "\\\"") + "\"");
         String java = System.getenv("JAVA_HOME"); if (java != null) isolated.add("JAVA_HOME=" + java);
+        isolated.addAll(cacheEnvironment(props.homePath().resolve("verification-cache").toAbsolutePath().normalize(), policy));
         isolated.addAll(argv);
         List<String> command = new ArrayList<>(sandbox.wrap(unit, policy, cwd, isolated));
         int delimiter = command.indexOf("--");
@@ -211,10 +245,14 @@ public class IndependentVerifier {
         Process process = com.zipe.aiteam.sandbox.ArgumentListTooLong.start(builder);
         try {
             while (!process.waitFor(200, TimeUnit.MILLISECONDS)) {
-                if (System.nanoTime() >= deadline || Files.size(log) > 8_000_000) throw new IllegalStateException("獨立驗證超時或輸出超過 8 MB；紀錄：" + log);
+                if (System.nanoTime() >= deadline) throw new VerificationTimeout(argv, log);
+                if (Files.size(log) > 8_000_000) throw new IllegalStateException("獨立驗證輸出超過 8 MB；紀錄：" + log);
             }
             if (Files.size(log) > 8_000_000) throw new IllegalStateException("獨立驗證輸出超過 8 MB；紀錄：" + log);
-            if (process.exitValue() != 0) throw new CommandExit(argv, process.exitValue(), log);
+            if (process.exitValue() != 0) {
+                if (timedOut(deadline, System.nanoTime())) throw new VerificationTimeout(argv, log);
+                throw new CommandExit(argv, process.exitValue(), log);
+            }
         } finally {
             // 停止整個 unit，不只結束 systemd-run 用戶端；RuntimeMaxSec 是第二道上限。
             ProcessBuilder stop = new ProcessBuilder("systemctl", "--user", "stop", unit).redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD);
