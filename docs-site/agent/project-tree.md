@@ -29,7 +29,7 @@ description: repo 每個目錄與檔案的用途，以及「我要找某樣東�
 | 沙箱怎麼包 systemd unit | `sandbox/ExecutionSandbox.java`、`sandbox/SandboxPolicy.java` |
 | 資料表 DDL | `orchestrator/src/main/resources/schema.sql` |
 | 環境變數如何讀取與驗證 | `config/AiTeamProperties.java`；範本 `deploy/env.sh.template` |
-| 目前使用的團隊配置與角色 prompt | `orchestrator/teams/spring-starters.json`（starters 實例）、`orchestrator/teams/bestpartner.json`（bestpartner 實例）、`orchestrator/teams/prompts/` |
+| 目前使用的團隊配置與角色 prompt | `orchestrator/teams/spring-starters.json`（starters 實例）、`orchestrator/teams/bestpartner.json`（bestpartner 實例）、`orchestrator/teams/dynamic-api.json`（dynamic-api 實例）、`orchestrator/teams/prompts/` |
 | 新機安裝與維運腳本 | `deploy/bootstrap/` |
 | 文件原文 | `docs-site/docs/`（索引見[文件目錄](/catalog)） |
 
@@ -239,6 +239,7 @@ agent_team/
 │   │   │           └── test_service_agent.py
 │   │   ├── spring-starters.json      # 現行正式配置：zipe-spring-boot-starters
 │   │   ├── bestpartner.json          # bestpartner 實例（Kotlin/Quarkus＋Gradle、Vue）；不跑需資料庫的測試
+│   │   ├── dynamic-api.json          # dynamic-api 實例（Spring Boot＋Gradle、Next.js）；未配置服務建置節點
 │   │   ├── node-web.json             # Node 專案範例配置
 │   │   ├── prompts/                  # 節點提示
 │   │   │   ├── intake.md             # 需求整理（PM）
@@ -281,13 +282,21 @@ agent_team/
 │   ├── README.md                     # deploy/ 目錄說明與 Slack 主 App 設定
 │   ├── env.sh.template               # 環境變數範本（複製為 ~/ai-team/env.sh，權限 600）
 │   ├── slack-app-manifest.yaml       # 主 App manifest
-│   ├── agent-manifests/              # 五個既有角色與 bestpartner Infrastructure Agent 的 Slack App manifest
+│   ├── agent-manifests/              # 五個既有角色與 bestpartner Infrastructure Agent 的 Slack App manifest；子目錄為其他實例的 App 組
 │   │   ├── pm.yaml
 │   │   ├── architecture.yaml
 │   │   ├── backend.yaml
 │   │   ├── qa.yaml
 │   │   ├── code-review.yaml
-│   │   └── infrastructure.yaml       # BP Infrastructure Agent：Preview 部署、健康檢查與清理身分
+│   │   ├── infrastructure.yaml       # BP Infrastructure Agent：Preview 部署、健康檢查與清理身分
+│   │   └── dynamic-api/              # dynamic-api 實例的主 App 與 6 個「DA」角色 App
+│   │       ├── main.yaml             # 主 App dynamic-api-ai-team（按鈕與流程控制）
+│   │       ├── pm.yaml
+│   │       ├── architecture.yaml
+│   │       ├── backend.yaml
+│   │       ├── qa.yaml
+│   │       ├── infrastructure.yaml
+│   │       └── code-review.yaml
 │   ├── bootstrap/                    # 從零建置工具（新機只用這裡），安裝後位於 ~/ai-team/
 │   │   ├── provision.sh              # 以已核實 checksum 的官方封存檔安裝工具鏈
 │   │   ├── toolchain.tsv.example     # 工具鏈 URL／checksum 範本

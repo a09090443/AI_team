@@ -132,6 +132,28 @@ Preview 部署節點、外部 VM 權限與部署收據尚未實作，所以此�
 | 改派後 `.agents/**` 寫不進去（2026-10-04 查證；已由分段改派處理，真實任務尚未實測） | 整節點改派時是整個實作節點交給 `builder_codex`，但 Codex 內層沙箱把工作區的 `.agents` 掛成唯讀（[雙層沙箱](codex-nested-sandbox.md) 為它建立的掛載點），`.claude/**` 與一般檔案則可寫（VM 上以 codex-cli 0.156.1 `codex sandbox` 實測）。bestpartner 的 skill 同時存在 `.claude/skills/` 與 `.agents/skills/`，改 skill 的需求一改派就一定寫不了 `.agents/**`。#1020 同時要改 `build.gradle.kts`、`.claude/**` 與 `.agents/**`：第一次的 patch 一起被拒（`writing outside of the project`，推測是同一個 patch 含 `.agents` 檔），後端測試又因上一列的 Gradle 問題跑不了，停在 AWAIT_HUMAN。Claude Code 的 `builder` 寫得了 `.agents/**` 也跑得了 Gradle，只是寫不了 `.claude/**`，所以改成分段改派：受保護檔案交給 Codex，`.agents/**` 與其餘工作由 `builder` 完成。已整節點改派的舊任務（#1020）沿用舊行為 |
 | repo hooks | repo 的 `.claude/settings.json` 掛了 pwsh hooks；VM 沒有 pwsh，實測只產生非阻擋的錯誤訊息，工具呼叫照常完成 |
 
+## dynamic-api 配置
+
+`orchestrator/teams/dynamic-api.json`（2026-10-17）供第三個實例使用，專案為
+[a09090443/dynamic-api](https://github.com/a09090443/dynamic-api)（Spring Boot 3.2.5／Java 17＋Gradle 後端、Next.js 15 管理介面、
+Docusaurus 文件，基準分支 `master`）。以 bestpartner 為範本，角色、模型與審查／分流節點相同；
+**未啟用**角色諮詢與共享看板（`collaboration`／`consultRoles`，在第一階段分支 feature/team-collaboration-phase1 開發中，尚未合併與部署）。其他差異如下：
+
+| 項目 | 內容與理由 |
+|---|---|
+| 工具 | 沿用 PATH 上的 `gradle`（VM 共用 8.14.5），repo 的 gradlew 是 8.7；operations 的執行檔只能是工具名稱。Spring Boot 3.2.5 外掛在 8.14.5 上能否建置**尚未在 VM 實測** |
+| 前端建置任務 | `backend/build.gradle` 的 `installNextjs`／`buildNextjs` 寫死 Windows 版 `tools/node-*-win-x64/npm.cmd`，Linux 上必定失敗；`processResources` 依賴它，所以 `test` 類操作一律帶 `-x buildFrontend`，`compileJava` 不經過 `processResources` 不需要。建置指示禁止 agent 改 `build.gradle`／`tools/` 繞過 |
+| 後端測試 | 只有 `ResponseRepositoryTest`、`DynamicControllerServiceTest`，以單一 `backend-test`／`qa-backend-test` 執行。預設設定含 `D:/tmp`、`C:/tmp`，Linux 是否通過**尚未實測**；失敗時 QA 標「無法核實」，不改設定 |
+| 前端 | `npm --prefix nextjs-dynamic-api-manager ci`／`run type-check`／`run lint`／`run build`；驗收用 `--offline` |
+| 動態載入 | 上傳 JAR、啟用服務、Mock 命中需要啟動服務並用範例 JAR 手動驗證；沙箱內無法完成時 QA 標「無法核實」 |
+| 服務建置 | **不配置** `service`／`service_triage` 節點與 `serviceTarget`（service-build skill 目前只實作 bestpartner）；intake 沒有 `service` 路線。`infrastructure` 角色只作為設計／實作候選 |
+| `.claude/` 文件 | 同 bestpartner，`.claude/rules/**`、`.claude/skills/**` 分段改派 `builder_codex` |
+| 系統獨立驗證 | 後端測試＋前端 ci／type-check／build 共 4 條；`docOnlyPaths` 同 bestpartner |
+
+Slack 使用自己的一組 App（`deploy/agent-manifests/dynamic-api/`，見 [建立 Slack App](slack-agent-apps.md#dynamic-api-實例的-app-組)），頻道 `#dynamic-api`（`C0CA5CXTUHJ`，2026-10-17 建立的公開頻道）。
+**目前狀態（2026-10-17）**：配置以現行原始碼建置的 JAR 通過 `--validate-team`；頻道與 7 個 Slack App 已建立並加入頻道，App-Level Token 尚未產生，VM 實例尚未安裝，
+沒有任何建置、測試或 Slack 端對端證據。
+
 ## 不改 Java 的增刪例子
 
 - `orchestrator/teams/spring-starters.json`：設計、測試計畫、實作、驗收、獨立審查、人工 PR 核准。

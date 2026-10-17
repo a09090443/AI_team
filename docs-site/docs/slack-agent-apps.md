@@ -89,6 +89,36 @@ done
 
 ---
 
+## dynamic-api 實例的 App 組
+
+每個服務實例都要有自己的一組 App（不可共用 App-Level Token，原因見
+[同一台 VM 多個服務實例](configurable-team.md#同一台-vm-多個服務實例)）。dynamic-api 實例（2026-10-17 新增，配置
+`orchestrator/teams/dynamic-api.json`）的 manifest 放在 `deploy/agent-manifests/dynamic-api/`，依第 1 節逐一建立：
+
+| manifest | App 名稱 | App ID | Bot Token | App-Level Token |
+|---|---|---|---|---|
+| `main.yaml` | dynamic-api-ai-team | `A0C9VFTUHK5` | `SLACK_BOT_TOKEN` | `SLACK_APP_TOKEN` |
+| `pm.yaml` | DA PM Agent | `A0C9LBNDEA3` | `SLACK_BOT_TOKEN_PM` | `SLACK_APP_TOKEN_PM` |
+| `architecture.yaml` | DA Architecture Agent | `A0C9LBRTFHV` | `SLACK_BOT_TOKEN_ARCHITECTURE` | `SLACK_APP_TOKEN_ARCHITECTURE` |
+| `backend.yaml` | DA Backend Agent | `A0C9ZQ5CZAS` | `SLACK_BOT_TOKEN_BACKEND` | `SLACK_APP_TOKEN_BACKEND` |
+| `qa.yaml` | DA QA Agent | `A0C9ZQ8UQJ2` | `SLACK_BOT_TOKEN_QA` | `SLACK_APP_TOKEN_QA` |
+| `infrastructure.yaml` | DA Infrastructure Agent | `A0CA1HNBR4J` | `SLACK_BOT_TOKEN_INFRASTRUCTURE` | `SLACK_APP_TOKEN_INFRASTRUCTURE` |
+| `code-review.yaml` | DA Code Reviewer | `A0CA5E836JY` | `SLACK_BOT_TOKEN_CODE_REVIEW` | `SLACK_APP_TOKEN_CODE_REVIEW` |
+
+App ID 可直接開 `https://api.slack.com/apps/<App ID>`：Bot Token 在 **OAuth & Permissions**，App-Level Token 在
+**Basic Information → App-Level Tokens**（尚未產生，需建立 `connections:write` token）。
+
+- 變數名稱與其他實例相同，但填進 **dynamic-api 實例自己的** `env.sh`（例如 `~/ai-team-dynamic-api/env.sh`），值是這組 App 的 token。
+- `builder_codex`（分段改派段）的 `SLACK_BOT_TOKEN_BUILDER_CODEX` 不另建 App，留空時由主 App 以「Backend Agent」名稱代發。
+- 7 個 App 都要 `/invite` 進 `#dynamic-api`，`AI_TEAM_CHANNEL_ID` 填 `C0CA5CXTUHJ`（2026-10-17 建立的公開頻道）；不要把其他實例的 App 留在這個頻道。
+- 狀態（2026-10-17）：7 個 App 已由 manifest 建立、安裝到 AI-team 並邀請進 `#dynamic-api`（建立時在 Review 頁確認主 App 4 個、
+  角色 2 個 scope）。App-Level Token 尚未產生、兩種 token 都未填入 env.sh，直接 @ 與流程身分皆未驗證。
+- 經驗：從瀏覽器自動化帶入 manifest 時，對 CodeMirror 呼叫 `setValue` 不會更新表單狀態，建立出來的是預設 Demo App
+  （Slack 會提示 app 沒有 scope）；要以貼上方式（`replaceSelection(..., 'paste')`）帶入，並在 Review 頁核對 scope 數。
+  `?new_app=1&manifest_yaml=` 預填網址在 2026-10-17 未開啟建立視窗。
+
+---
+
 ## 疑難排解
 
 | 症狀 | 原因與處理 |

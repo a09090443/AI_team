@@ -1,5 +1,16 @@
 # 工作進度（Codex 與 Claude Code 共用）
 
+## 2026-10-17 新增 dynamic-api 專案實例（Claude Code，來源完成、未部署、未 commit）
+
+- 使用者要求新增 https://github.com/a09090443/dynamic-api 並在 Slack 建頻道；選擇主 App＋角色 App、以 bestpartner 為範本、頻道 #dynamic-api。repo 已存在（master 3f638e3）。
+- 新增 orchestrator/teams/dynamic-api.json（Gradle -p backend；test 類操作帶 -x buildFrontend；Next.js ci／type-check／lint／build；文件站隔離 QA；無 service 節點、未啟用 collaboration）。以現行原始碼重建的本機 JAR --validate-team 通過（revision f62dac12…，clone 在 scratchpad）。
+- 新增 deploy/agent-manifests/dynamic-api/ 七份 manifest（主 App dynamic-api-ai-team＋6 個 DA 角色）；check-source.sh 加入存在檢查。
+- 驗證：check-source 通過（本機無 Python，service-build 的 Python 單元測試以 shim 略過，未執行）；flow 套件 Maven 410 項，1 項為已知 Windows symlink 權限錯誤；docs build 通過。
+- 已核對文件：configurable-team（新增 dynamic-api 配置段）、slack-agent-apps（新增 App 組段）、project-tree（新增檔案）、catalog（code 已涵蓋 teams/ 與 agent-manifests/，不需改）、INSTALL §5.1（流程適用，不需改）。發現的缺漏：無。
+- Slack 頻道：內建瀏覽器的登入狀態沒有生效，改用 Claude in Chrome（使用者已登入）在 AI-team 建立公開頻道 #dynamic-api，ID C0CA5CXTUHJ；未邀請任何成員或 App。
+- Slack App：使用者要求代建，以 Claude in Chrome 建立並安裝 7 個 App（dynamic-api-ai-team A0C9VFTUHK5、DA PM A0C9LBNDEA3、DA Architecture A0C9LBRTFHV、DA Backend A0C9ZQ5CZAS、DA QA A0C9ZQ8UQJ2、DA Infrastructure A0CA1HNBR4J、DA Code Reviewer A0CA5E836JY），Review 頁核對 scope 數正確，全部 /invite 進 #dynamic-api（頻道顯示 Gary 和其他 7 位已加入）。依 AGENTS「不讀出憑證」，未產生 App-Level Token、安裝後的 token 頁未截圖或讀取。第一次以 CodeMirror setValue 帶入 manifest 無效（Review 提示無 scope），已取消未建立，改用 paste 方式；經驗已寫入 slack-agent-apps。
+- 未完成：App-Level Token 產生與兩種 token 填入、VM 安裝 ~/ai-team-dynamic-api（AI_TEAM_INSTANCE=dynamicapi）、Gradle 8.14.5 對 Spring Boot 3.2.5 與後端測試在 Linux 是否通過皆未實測。工作樹位於 phase1 分支且混有其他 session 未 commit 的修改，本次檔案未 commit。
+
 ## 2026-10-17 handoff 角色名稱容錯與重送（Claude Code，已部署）
 
 - #1044 實測（預熱後）：獨立驗證 23 分鐘（Gradle A 6m19s，之前 18m41s）、5 個指令全部通過；QA 8 個情境 PASS。唯一卡發布的是 QA 把範圍外的 PostgreSQL／Docker 寫進 uncertainties。分流決定交回驗收重新分類（判斷正確），但 handoff.role 填成「QA（verification）」，被 AgentDispatch 以「不具備資格」擋下，停在 AWAIT_HUMAN（12:08）。

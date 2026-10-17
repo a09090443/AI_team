@@ -571,3 +571,10 @@ CRITICAL 等其他寫法不放行。放行寫成帶 `owner_waiver` 的 receipt�
 ## 2026-10-15 公開文件與 AI 輸出共用白名單
 
 使用者核准將公開三頁概要擴充為一般使用、管理、架構與 AI 手冊。公開站維持與完整內部站分離，以 public-manual.mjs 共用側欄、搜尋與公開 AI 輸出，避免直接發布內部 catalog／全文；產物檢查逐位元核對公開來源並保留敏感樣式掃描。私人環境與歷史部署證據留在原位置，不改寫或搬入公開手冊。
+
+## 2026-10-17 dynamic-api 實例的配置取捨
+
+- 依使用者選擇以 bestpartner 為範本、獨立一組主 App＋6 角色 App、頻道 #dynamic-api；沿用「每個專案一個服務實例」。
+- 後端用 VM 共用的 PATH gradle 8.14.5 而非 repo 的 gradlew 8.7：operations 只能用工具名稱，且共用工具鏈已在沙箱實測；相容性待實測，不行時再為此實例另裝 8.7。
+- build.gradle 的前端任務寫死 Windows npm.cmd，test 類操作一律 -x buildFrontend，並禁止 agent 改 build.gradle／tools/ 繞過；前端以 npm 操作單獨驗證。
+- 不配置 service 節點（service-build skill 只實作 bestpartner）；不啟用 collaboration（決策為先只在 bestpartner 啟用，且 phase1 未部署，舊 JAR 讀不了該欄位）。
