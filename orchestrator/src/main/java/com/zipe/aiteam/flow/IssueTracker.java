@@ -198,8 +198,25 @@ public final class IssueTracker {
     }
     private static Collection<JsonNode> iterable(JsonNode items) { List<JsonNode> r = new ArrayList<>(); items.forEach(r::add); return r; }
     private static Set<String> difference(Set<String> all, Set<String> some) { Set<String> r = new TreeSet<>(all); r.removeAll(some); return r; }
+    /**
+     * 驗收核對的清單版本是否仍然有效：版本完全相同；或驗收之後只在清單尾端新增了不需處理的項目
+     * （不是 REPAIR／DECISION），拿掉這些尾端項目後的版本正好等於驗收當時的版本。
+     * #1044：QA 全部 PASS 後，審查把 LOW 提醒記成 OBSERVATION，清單版本改變，發布閘門判定「仍有未驗證項目」，按續跑也一直擋。
+     * 需要處理的項目只要有新增、刪除或改動，前綴版本就對不上，照樣要求重驗。
+     */
+    static boolean checkedRevisionStillValid(FlowRun flow, String checked) {
+        if (checked == null || checked.isBlank()) return false;
+        if (revision(flow).equals(checked)) return true;
+        List<Map.Entry<String, JsonNode>> items = new ArrayList<>(flow.issueInventory.entrySet());
+        for (int end = items.size(); end > 0 && !actionable(items.get(end - 1).getValue()); end--) {
+            Map<String, JsonNode> prefix = new LinkedHashMap<>();
+            for (var item : items.subList(0, end - 1)) prefix.put(item.getKey(), item.getValue());
+            if (Traceability.digest(JSON.valueToTree(prefix)).equals(checked)) return true;
+        }
+        return false;
+    }
     public static String checksReason(JsonNode report, FlowRun flow) {
-        if (!revision(flow).equals(report.path("issue_revision").asText())) return "問題清單已變更，須重新逐項驗證";
+        if (!checkedRevisionStillValid(flow, report.path("issue_revision").asText())) return "問題清單已變更，須重新逐項驗證";
         Set<String> checked = new HashSet<>();
         for (JsonNode check : report.path("issue_checks")) {
             String id = check.path("id").asText();
@@ -249,7 +266,7 @@ public final class IssueTracker {
         flow.receipts.forEach((id, report) -> {
             Node n = flow.snapshot.definition().nodes().get(id);
             if (n != null && Set.of(Gate.VERIFICATION, Gate.SERVICE).contains(n.gate())
-                    && revision(flow).equals(report.path("issue_revision").asText()))
+                    && checkedRevisionStillValid(flow, report.path("issue_revision").asText()))
                 report.path("issue_checks").forEach(c -> { if ("PASS".equals(c.path("status").asText())) verified.add(c.path("id").asText()); });
         });
         Set<String> pending = new TreeSet<>();
