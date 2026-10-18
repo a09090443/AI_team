@@ -5,7 +5,8 @@
 - 依序部署 dynamic-api → spring-starters → bestpartner，JAR 28679cb5…，備份 0nLsxQ／QC7RCI／VrAEaX；部署腳本檢查全過、log 無 ERROR、等待中任務與工作區一致。spring-starters 第一次被部署腳本的 agent 程序檢查比對到自己的 ssh 指令字串而擋下，改用不含關鍵字的指令重跑。
 - 首次基準驗證：dynamic-api 後端 test 失敗（測試編譯錯誤）＋ build 逾時（冷快取合計 >1800 秒）；spring-starters 1/180 時間門檻測試失敗（MailServiceSmtpsScenariosTest）；bestpartner 5 條全過（29 分 10 秒）。
 - 已修正的文件：deploy-2026-09-06-v2（新段落）、baseline-verification（部署狀態與首次結果）、configurable-team（dynamic-api 狀態）。
-- 待辦：分支合併 main 與推送需使用者同意；dynamic-api timeoutSeconds 是否調整、spring-starters 時間門檻測試是否不穩定待決定；真實任務驗證新行為。
+- 合併：使用者要求後 main 快轉至 35be914 並推送 origin（f9074b5..35be914），Pages Actions 39139959848 success、首頁 HTTP200。phase1 分支（D:/agent_team）與 scoped-verification worktree 未受影響；phase1 之後需 rebase 到新 main。
+- 待辦：dynamic-api timeoutSeconds 是否調整、spring-starters 時間門檻測試是否不穩定待決定；真實任務驗證新行為。
 
 ## 2026-10-18 基準驗證（Claude Code，分支 feature/baseline-verification，未推送、未部署）
 

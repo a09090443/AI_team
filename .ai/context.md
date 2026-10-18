@@ -7,7 +7,7 @@
 
 ## 正在進行
 
-- **基準驗證與硬閘門修正已部署三實例（2026-10-18，Claude Code）**：JAR 28679cb5…，來源分支 feature/baseline-verification（85047ce，含 4b6d581），**未合併 main、未推送**。首次基準驗證：dynamic-api 失敗＋逾時、spring-starters 1 項時間門檻測試失敗、bestpartner 全過（貼近 1800 秒）。下一步：使用者決定合併推送、dynamic-api timeoutSeconds、spring-starters 測試處理；dynamic-api 第一個新任務修 ResponseRepositoryTest 並加測試專用設定。
+- **基準驗證與硬閘門修正已部署三實例（2026-10-18，Claude Code）**：JAR 28679cb5…，來源分支 feature/baseline-verification（85047ce，含 4b6d581），2026-10-18 已依使用者要求快轉合併 main 並推送（f9074b5..35be914，Pages run 39139959848 success）。首次基準驗證：dynamic-api 失敗＋逾時、spring-starters 1 項時間門檻測試失敗、bestpartner 全過（貼近 1800 秒）。下一步：使用者決定合併推送、dynamic-api timeoutSeconds、spring-starters 測試處理；dynamic-api 第一個新任務修 ResponseRepositoryTest 並加測試專用設定。
 
 - **dynamic-api 實例（2026-10-18，Claude Code，已啟動）**：~/ai-team-dynamic-api，PID141371，6 角色 Socket Mode 啟動、ERROR 0。下一步：使用者在 #dynamic-api @dynamic-api-ai-team 開第一個任務修 ResponseRepositoryTest（findByPrimaryKey 少傳 ServiceType），觀察完整流程；開 PR 時確認 GitHub token 有 Pull requests 權限。分支 feature/dynamic-api-instance 未推送、未合併 main。
 
