@@ -28,6 +28,7 @@ public class SlackListener {
 
     private static final Logger log = LoggerFactory.getLogger(SlackListener.class);
     private static final Pattern MENTION = Pattern.compile("<@[A-Z0-9]+>");
+    static final Pattern BASELINE = Pattern.compile("^基準驗證\\s*$");
     static String unwrapCommand(String text) {
         String value = text.trim();
         String candidate = value;
@@ -38,7 +39,7 @@ public class SlackListener {
             candidate = value.substring(1, value.length() - 1).trim();
         }
         // 只解開整則已知管理指令；不從一般問題或程式範例中擷取指令。
-        return candidate.matches("(?s)^(補充|處理|中斷|開\\s*PR)\\s+#\\d+(?:\\s+.*)?$") ? candidate : value;
+        return candidate.matches("(?s)^(補充|處理|中斷|開\\s*PR)\\s+#\\d+(?:\\s+.*)?$") || BASELINE.matcher(candidate).matches() ? candidate : value;
     }
 
     private final AiTeamProperties props;
@@ -212,6 +213,11 @@ public class SlackListener {
                 return;
             }
             orchestrator.requestTriage(existing, com.zipe.aiteam.flow.HumanOptions.PUBLISH_COMMAND, e.getUser());
+            return;
+        }
+        // 管理者確認配置的驗證指令在基準分支上能不能過；不建立任務，結果另開一則訊息。
+        if (BASELINE.matcher(text).matches() && role == SlackNotifier.Identity.SYSTEM) {
+            orchestrator.requestBaseline(e.getChannel(), e.getUser(), "由 <@" + e.getUser() + "> 手動要求");
             return;
         }
         var triage = Pattern.compile("^(處理|補充)\\s+#(\\d+)(?:\\s+([\\s\\S]+))?$").matcher(text);

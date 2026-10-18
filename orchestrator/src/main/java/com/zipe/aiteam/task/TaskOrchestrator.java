@@ -54,6 +54,8 @@ public class TaskOrchestrator {
     private com.zipe.aiteam.flow.FlowEngine flowEngine;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.zipe.aiteam.flow.ErrorExplainer explainer;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.zipe.aiteam.flow.BaselineVerifier baseline;
 
     private final LinkedBlockingQueue<Runnable> work = new LinkedBlockingQueue<>();
     private final Object queueLock = new Object();
@@ -64,13 +66,21 @@ public class TaskOrchestrator {
         @Override public void run() { action.run(); }
     }
 
+    /** 佇列通知裡的名稱；基準驗證不是任務，不顯示 #0。 */
+    static String queueLabel(Task task) {
+        return com.zipe.aiteam.flow.BaselineVerifier.ID.equals(task.id()) ? "基準驗證" : "任務 #" + task.id();
+    }
+    private static String shortLabel(Task task) {
+        return com.zipe.aiteam.flow.BaselineVerifier.ID.equals(task.id()) ? "基準驗證" : "#" + task.id();
+    }
+
     void enqueue(Runnable job) {
         if (!(job instanceof QueuedTask item)) throw new IllegalArgumentException("佇列工作缺少任務身分");
         synchronized (queueLock) {
             var ahead = pending.stream().filter(p -> !cancelled(p.task()))
-                    .map(p -> "#" + p.task().id()).toList();
-            String current = active == null ? "" : "#" + active.task().id();
-            String message = "任務 #" + item.task().id() + " 已排入中央佇列。";
+                    .map(p -> shortLabel(p.task())).toList();
+            String current = active == null ? "" : shortLabel(active.task());
+            String message = queueLabel(item.task()) + " 已排入中央佇列。";
             if (current.isEmpty() && ahead.isEmpty()) message += "目前前方沒有其他工作，將開始執行。";
             else message += "\n目前執行中：" + (current.isEmpty() ? "無" : current)
                     + "\n前方排隊任務（依順序）：" + (ahead.isEmpty() ? "無" : String.join(" → ", ahead))
@@ -94,7 +104,7 @@ public class TaskOrchestrator {
         synchronized (queueLock) { pending.remove(item); active = item; }
         try {
             if (!cancelled(item.task())) {
-                queueNotice(item.task(), "輪到任務 #" + item.task().id() + "，開始執行這一輪工作。");
+                queueNotice(item.task(), "輪到" + queueLabel(item.task()) + "，開始執行這一輪工作。");
                 item.run();
             }
         } finally {
@@ -219,6 +229,58 @@ public class TaskOrchestrator {
     public void recoverOnStartup() {
         recoverTasks();
         purgeWorkspaces();
+        scheduleBaselineOnStartup();
+    }
+
+    // ------------------------------------------------------------------ 基準驗證
+
+    /**
+     * 接入專案（第一次啟動）或部署新配置（重啟）後，若「目前配置版本＋基準分支最新 commit」還沒有基準驗證結果，就排一次。
+     * 只換 JAR、配置與基準都沒變時不重跑。失敗只記 log，不影響啟動。
+     */
+    void scheduleBaselineOnStartup() {
+        if (baseline == null || !baseline.enabled() || !props.baselineVerifyOnStart()) return;
+        String channel = props.channelId();
+        if (channel == null || channel.isBlank()) { log.info("未設定 AI_TEAM_CHANNEL_ID，略過啟動時的基準驗證"); return; }
+        try {
+            var base = baseline.currentBase();
+            if (baseline.alreadyVerified(base.sha())) {
+                log.info("基準驗證：配置與基準 {}@{} 已有結果，不重跑", base.branch(), base.sha());
+                return;
+            }
+            requestBaseline(channel, AuditLog.ACTOR_SYSTEM, "服務啟動後，目前配置與基準分支 " + base.branch() + " 的最新 commit 還沒有基準驗證結果");
+        } catch (Exception e) {
+            log.warn("啟動時無法排程基準驗證：{}", Diagnostics.describe(e));
+        }
+    }
+
+    /** 啟動觸發與 Slack「基準驗證」指令共用：在頻道開一則根訊息，結果貼在它的討論串。走中央佇列，不與任務同時執行。 */
+    public void requestBaseline(String channel, String user, String reason) {
+        if (baseline == null || !baseline.enabled()) {
+            slack.post(Identity.SYSTEM, channel, null, "基準驗證只支援配置式團隊（AI_TEAM_DEFINITION），目前未啟用。");
+            return;
+        }
+        String root = slack.post(Identity.SYSTEM, channel, null, "🔎 基準驗證：" + reason
+                + "。\n會在基準分支最新 commit 的全新 clone 執行配置的驗證指令，確認它們在還沒有任何修改時能不能通過；"
+                + "結果貼在這則訊息的討論串。不會修改任何程式，也不會阻擋任務。");
+        Task job = new Task(com.zipe.aiteam.flow.BaselineVerifier.ID, channel, root, user, "基準驗證");
+        audit.record(null, user, AuditLog.ACTION_STATE, "排入基準驗證：" + reason);
+        enqueue(new QueuedTask(job, () -> runBaseline(job)));
+    }
+
+    private void runBaseline(Task job) {
+        try {
+            var report = baseline.run();
+            String summary = com.zipe.aiteam.flow.BaselineVerifier.slackSummary(report);
+            slack.post(Identity.SYSTEM, job.slackChannel(), job.slackThreadTs(), summary);
+            audit.record(null, AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "基準驗證結果：" + Diagnostics.clip(summary, 1800));
+            if (report.passed()) log.info("基準驗證通過：{}@{}", report.branch(), report.sha());
+            else log.warn("基準驗證未通過：{}", Diagnostics.clip(summary, 1500));
+        } catch (Exception e) {
+            log.warn("基準驗證執行失敗：{}", Diagnostics.describe(e));
+            slack.post(Identity.SYSTEM, job.slackChannel(), job.slackThreadTs(),
+                    "⚠️ 基準驗證沒有完成：" + Diagnostics.forUser(e) + "\n可在修正後送「基準驗證」重新執行。");
+        }
     }
 
     private void recoverTasks() {

@@ -96,6 +96,15 @@ export const docs = [
     code: ['orchestrator/teams/', 'orchestrator/src/main/java/com/zipe/aiteam/flow/', 'orchestrator/src/main/java/com/zipe/aiteam/task/TaskOrchestrator.java', 'orchestrator/src/main/java/com/zipe/aiteam/sandbox/TaskUnits.java'],
   },
   {
+    id: 'baseline-verification',
+    title: '基準驗證：接入專案與部署配置時先確認驗證指令',
+    category: 'workflow',
+    status: 'current',
+    summary: '服務啟動或 Slack「基準驗證」指令時，在基準分支最新 commit 跑配置的驗證指令；失敗只警告不阻擋，並告訴之後的任務。',
+    readWhen: '接入新專案、部署新配置後確認驗證指令能否通過，或任務被告知已知基準失敗時。',
+    code: ['orchestrator/src/main/java/com/zipe/aiteam/flow/BaselineVerifier.java', 'orchestrator/src/main/java/com/zipe/aiteam/task/TaskOrchestrator.java', 'orchestrator/src/main/java/com/zipe/aiteam/workspace/WorkspaceManager.java'],
+  },
+  {
     id: 'engineering-workflow',
     title: '需求追溯、獨立驗證與交付邊界',
     category: 'workflow',

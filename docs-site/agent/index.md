@@ -53,6 +53,7 @@ Orchestrator 不重寫 agent 框架，只做 CLI 不管的事：任務狀態機�
 | 新增／修改角色、節點、流程 | [configurable-team](/docs/configurable-team) | `orchestrator/teams/`、`flow/TeamDefinition.java` |
 | 新增角色的 Slack App、token 與直接 @ 身分 | [slack-agent-apps](/docs/slack-agent-apps) | `deploy/agent-manifests/`、`slack/SlackNotifier.java` |
 | 新專案宣告建置／測試指令 | [cross-project-execution](/docs/cross-project-execution) | `flow/OperationContract.java` |
+| 接入專案／部署配置後確認驗證指令能過 | [baseline-verification](/docs/baseline-verification) | `flow/BaselineVerifier.java` |
 | 需求 ID、驗收覆蓋、返工失效、PR 狀態 | [engineering-workflow](/docs/engineering-workflow) | `flow/Traceability.java`、`flow/IndependentVerifier.java` |
 | 測試計畫與 QA 行為 | [qa-scenario-workflow](/docs/qa-scenario-workflow) | `orchestrator/teams/prompts/plan.md`、`verify.md` |
 | 任務停住、要在 Slack 下指令 | [pm-triage](/docs/pm-triage)、[plan-approval-buttons](/docs/plan-approval-buttons) | `slack/SlackListener.java`、`slack/HumanGate.java` |

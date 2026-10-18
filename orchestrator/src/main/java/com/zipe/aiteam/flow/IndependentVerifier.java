@@ -172,15 +172,7 @@ public class IndependentVerifier {
         execute(task.id(), List.of("git", "-c", "core.hooksPath=/dev/null", "clone", "--no-local", "--no-checkout", "--",
                 workspaces.pathFor(task.id()).toAbsolutePath().toString(), repo.toString()), writable, home, setupPolicy, run.resolve("clone.log"), deadline);
         execute(task.id(), List.of("git", "-c", "core.hooksPath=/dev/null", "checkout", "--detach", head), repo, home, setupPolicy, run.resolve("checkout.log"), deadline);
-        List<Path> pins = new ArrayList<>(); pins.add(repo.resolve(".git"));
-        // 全新 checkout 只有版控檔；釘住每個檔案，避免測試指令先改產品／測試再回報成功。
-        try (var files = Files.walk(repo)) {
-            for (Path path : files.toList()) {
-                if (Files.isSymbolicLink(path)) throw new IllegalStateException("獨立驗證不接受 symlink，需管理者評估：" + repo.relativize(path));
-                if (!path.startsWith(repo.resolve(".git")) && Files.isRegularFile(path)) pins.add(path);
-            }
-        }
-        var policy = new SandboxPolicy(List.of(writable, dependencyCache()), List.copyOf(pins), 4096, 200, 256);
+        var policy = new SandboxPolicy(List.of(writable, dependencyCache()), pinsFor(repo), 4096, 200, 256);
         List<CommandResult> results = new ArrayList<>();
         for (int i = 0; i < decisions.size(); i++) {
             VerificationPlan.Decision decision = decisions.get(i);
@@ -198,6 +190,17 @@ public class IndependentVerifier {
         if (!head.equals(workspaces.headSha(task.id())) || !workspaces.clean(task.id())) throw new IllegalStateException("驗證期間來源工作區變更，收據作廢");
         return new Receipt(head, flow.baselineRevision, flow.snapshot.revision(), started.toString(), Instant.now().toString(),
                 List.copyOf(results), null, fileEvidence, List.copyOf(decisions), changedFiles, task.id());
+    }
+    /** 全新 checkout 只有版控檔；釘住每個檔案與 .git，避免測試指令先改產品／測試再回報成功。 */
+    static List<Path> pinsFor(Path repo) throws java.io.IOException {
+        List<Path> pins = new ArrayList<>(); pins.add(repo.resolve(".git"));
+        try (var files = Files.walk(repo)) {
+            for (Path path : files.toList()) {
+                if (Files.isSymbolicLink(path)) throw new IllegalStateException("獨立驗證不接受 symlink，需管理者評估：" + repo.relativize(path));
+                if (!path.startsWith(repo.resolve(".git")) && Files.isRegularFile(path)) pins.add(path);
+            }
+        }
+        return List.copyOf(pins);
     }
     /** 同一配置版本、同一指令、相同輸入指紋、紀錄檔仍在且雜湊相符的歷史結果；找不到回 null。 */
     VerificationPlan.HistoryEntry reusable(FlowRun flow, List<String> argv, String fingerprint) {

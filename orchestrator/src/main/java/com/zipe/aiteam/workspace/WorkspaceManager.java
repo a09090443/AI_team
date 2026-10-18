@@ -256,6 +256,25 @@ public class WorkspaceManager {
         }
     }
 
+    /** 基準分支名稱與它在 origin 上的最新 commit。 */
+    public record BaseRef(String branch, String sha) {}
+
+    /**
+     * 取基準分支的最新 commit，供基準驗證使用；與開工作區相同：先 fetch（失敗只警告），讀 refs/remotes/origin。
+     * 不建立工作區、不碰主 repo 的本機分支與工作樹。
+     */
+    public BaseRef baseRef(Path repository, String configuredBase) throws WorkspaceException {
+        try {
+            git(repository, "fetch", "--quiet", "origin");
+        } catch (WorkspaceException e) {
+            log.warn("fetch 主 repo 失敗，基準驗證改用本機既有的 origin 基準：{}", e.getMessage());
+        }
+        String base = configuredBase == null || configuredBase.isBlank() ? detectBaseBranch(repository) : configuredBase;
+        String sha = gitOutput(repository, "rev-parse", "--verify", "refs/remotes/origin/" + base + "^{commit}");
+        if (!sha.matches("[0-9a-f]{40,64}")) throw new WorkspaceException("無法取得基準分支 " + base + " 的 commit");
+        return new BaseRef(base, sha);
+    }
+
     private boolean remoteBranchExists(Path repo, String branch) {
         try {
             gitOutput(repo, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/" + branch);

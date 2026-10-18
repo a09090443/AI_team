@@ -145,6 +145,7 @@ agent_team/
 │   │   │   ├── IndependentVerifier.java # 系統獨立驗證：全新 clone 執行固定指令並產生收據
 │   │   │   ├── VerificationPlan.java # 依變更檔案決定獨立驗證指令要執行、略過或重用
 │   │   │   ├── CommandEvidence.java # 實作自陳成功與 CLI 指令紀錄的結束碼交叉核對
+│   │   │   ├── BaselineVerifier.java # 基準分支上先跑驗證指令：接入／部署時警告管理者並告訴任務
 │   │   │   ├── FileComparison.java # 指定舊檔比對的計畫契約、路徑驗證與能力說明
 │   │   │   ├── ServiceDelivery.java # 服務建置目標、可用性檢查與完成契約
 │   │   │   ├── OperationContract.java # 專案操作契約（operations）

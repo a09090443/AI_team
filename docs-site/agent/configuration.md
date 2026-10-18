@@ -39,6 +39,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 | `AI_TEAM_TASK_TIMEOUT_SECONDS`、`AI_TEAM_GIT_TIMEOUT_SECONDS` | 全域逾時覆寫（0＝用各階段設定）與 git 逾時 |
 | `AI_TEAM_PROGRESS_INTERVAL_SECONDS` | 進度卡更新秒數，預設 300、最小 30；**不能設成空字串** |
 | `AI_TEAM_REPORT_DETAIL` | `brief`（預設）或 `full`；完整報告可用 `補充 #<id> 檢視完整報告 [節點]` 叫出 |
+| `AI_TEAM_BASELINE_VERIFY` | `on`（預設）或 `off`。on 時服務啟動會在「目前配置＋基準分支最新 commit」還沒有結果時自動跑一次[基準驗證](/docs/baseline-verification)；off 只關掉自動觸發，Slack「基準驗證」指令照樣可用 |
 | `AI_TEAM_EXPLAINER_MODEL`、`AI_TEAM_EXPLAINER_ENABLED` | 系統錯誤白話說明所用模型（預設 haiku）與開關；布林值不能設成空字串 |
 | `AI_TEAM_MODEL_<角色>`、`AI_TEAM_RUNTIME_<角色>`、`AI_TEAM_CODE_REVIEW` | **僅 legacy 模式**；配置式模式改在 JSON 的 `roles` 設定 |
 

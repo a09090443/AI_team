@@ -27,6 +27,17 @@ class TriageRoutingTest {
         else verify(app, never()).requestTriage(any(), any(), any());
         verify(app, never()).createAndSubmit(any(), any(), any(), any());
     }
+    @Test void baselineCommandQueuesBaselineInsteadOfCreatingTask() {
+        var props = mock(AiTeamProperties.class); when(props.allowedUsers()).thenReturn(Set.of("u")); when(props.channelId()).thenReturn("c");
+        var store = mock(TaskStore.class); when(store.markEventSeen("event")).thenReturn(true);
+        var app = mock(TaskOrchestrator.class);
+        var listener = new SlackListener(props, app, mock(SlackNotifier.class), store, mock(AuditLog.class));
+        var event = mock(AppMentionEvent.class); when(event.getChannel()).thenReturn("c"); when(event.getTs()).thenReturn("t");
+        when(event.getUser()).thenReturn("u"); when(event.getText()).thenReturn("<@BOT> `基準驗證`");
+        ReflectionTestUtils.invokeMethod(listener, "handleMention", "event", event);
+        verify(app).requestBaseline(eq("c"), eq("u"), contains("手動要求"));
+        verify(app, never()).createAndSubmit(any(), any(), any(), any());
+    }
     @Test void interruptCommandInOriginalThreadStopsOnlyThatRound() { interrupt("t", true); }
     @Test void interruptCommandFromAnotherThreadIsRejected() { interrupt("other", false); }
     void interrupt(String thread, boolean dispatch) {

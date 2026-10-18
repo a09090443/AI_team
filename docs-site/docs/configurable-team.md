@@ -78,6 +78,8 @@ checkpoint 保存的是節點 ID，不再靠 PM／QA 等角色名稱判斷續跑
 （舊名稱的固定字首）。不合法時服務啟動失敗。實例名以字母開頭、任務編號是純數字，所以新舊格式的 glob 互不配對。
 不用配置的 `id` 當實例名，是因為 `node-web.json` 這類配置可給多個 repo 共用，`id` 不保證唯一。
 
+接入新實例後，第一次啟動會自動跑[基準驗證](baseline-verification.md)，確認配置的驗證指令在基準分支上能通過（2026-10-18 起）。
+
 相關檢查：`preflight.sh` 偵測到其他安裝目錄的服務在跑、而本實例 `AI_TEAM_INSTANCE` 留空時直接失敗（不檢查兩個實例是否同名，需管理者自行確保）；
 `service.sh status` 只列本實例 PID 的 443 連線；`deploy/deploy-jar-safe.sh` 的第三個參數是安裝目錄，
 「有 unit 在跑就拒絕部署」只看本實例的 unit。

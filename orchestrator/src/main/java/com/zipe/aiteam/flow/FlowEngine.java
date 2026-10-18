@@ -41,7 +41,14 @@ public class FlowEngine {
         FlowRun flow = new FlowRun(catalog.snapshot()); flow.acceptanceOwner = task.requesterUserId();
         store.saveFlow(task.id(), flow);
         audit.record(task.id(), task.requesterUserId(), AuditLog.ACTION_STATE, "固定配置版本 " + catalog.snapshot().revision());
+        // 已知基準失敗要一開始就讓負責人知道，不必等到系統獨立驗證才發現（dynamic-api #1001）。
+        if (baseline != null) baseline.latest().filter(r -> !r.passed()).ifPresent(r -> slack.post(Identity.SYSTEM,
+                task.slackChannel(), task.slackThreadTs(), "⚠️ 提醒：目前配置最近一次基準驗證沒有通過，下列驗證指令在還沒有任何修改的基準分支上就失敗；"
+                        + "除非本任務處理它，系統獨立驗證會在同樣的地方失敗。這不會阻擋任務。\n"
+                        + BaselineVerifier.slackSummary(r)));
     }
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    BaselineVerifier baseline;
     /**
      * 使用者在 Slack 要求中斷的任務 → 要求者。只放在記憶體：服務重啟時執行中的那一輪本來就會中斷。
      * 與「中止任務」不同，中斷只停這一輪，任務回到 AWAIT_HUMAN，工作區、次數與 session 都保留。

@@ -78,6 +78,21 @@ class ConfiguredExecutorTest {
         assertThat(check).contains("硬閘門", "close", "successor", "also_needed", "接受無法核實");
     }
 
+    @Test void knownBaselineFailuresReachEveryNode() throws Exception {
+        Path taskRepo = tmp.resolve("task-repo"); Files.createDirectories(taskRepo.resolve(".git"));
+        when(workspace.pathFor("42")).thenReturn(taskRepo); when(workspace.exists("42")).thenReturn(true);
+        flow.workspacePath = taskRepo.toString(); flow.node = "triage";
+        var baseline = mock(BaselineVerifier.class);
+        when(baseline.notice(flow.snapshot.revision())).thenReturn("\n基準驗證結果（系統事實，非建議）：gradle test 程式或測試失敗");
+        executor.baseline = baseline;
+        AtomicReference<AgentRuntime.RuntimeRequest> captured = new AtomicReference<>();
+        when(runtime.execute(any(), any())).thenAnswer(c -> { captured.set(c.getArgument(0)); return null; });
+
+        executor.execute(new Task("42", "c", "t", "u", "查核"), flow, flow.snapshot.definition().nodes().get("triage"));
+
+        assertThat(captured.get().prompt()).contains("基準驗證結果（系統事實", "gradle test");
+    }
+
     @Test void reportStageExplainsWhyThereIsNoIndependentReceipt() {
         var triage = flow.snapshot.definition().nodes().get("triage");
         assertThat(ConfiguredExecutor.receiptView(flow, triage)).contains("本節點階段不產生系統獨立驗證收據");
