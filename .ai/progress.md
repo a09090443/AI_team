@@ -9,7 +9,8 @@
 - 已修正的文件：configurable-team（dynamic-api 段：實測結果、已知問題、狀態）。
 - 2026-10-18 文件缺漏：configuration.md 只寫 AI_TEAM_GITHUB_TOKEN 用途，未寫取得方式與所需權限；已依 PullRequestPublisher 實際用法補上 Fine-grained token 步驟（Contents、Pull requests 讀寫）。
 - token 狀態（2026-10-18）：使用者已填 14 個 Slack token；auth.test 顯示主 App Bot Token invalid_auth、Infrastructure 與 Code Reviewer 的 Bot Token 對調，已請使用者修正；GitHub token 未填。服務尚未啟動。
-- 未完成：使用者修正 token；啟動與 log 核對；Slack 端對端。
+- 啟動（2026-10-18）：使用者修正 token（主 App 重貼、Infrastructure／Code Reviewer 對調、CODE_REVIEW xapp 重貼），也複製了 bestpartner 的 GitHub token（push --dry-run 已確認可推送，開 PR 權限未驗）。preflight 通過後啟動 PID141371：Spring、沙箱、工具鏈自檢、6 角色 Socket Mode 通過，ERROR 0，WARN 僅 builder_codex 共用主 token；其他兩實例 PID 不變。已更新 deploy-2026-09-06-v2、configurable-team、slack-agent-apps。
+- 未完成：Slack 端對端（使用者在 #dynamic-api 開第一個任務修 ResponseRepositoryTest）。
 
 ## 2026-10-17 新增 dynamic-api 專案實例（Claude Code，來源完成、未部署、未 commit）
 

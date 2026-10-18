@@ -152,8 +152,8 @@ Docusaurus 文件，基準分支 `master`）。以 bestpartner 為範本，角�
 
 Slack 使用自己的一組 App（`deploy/agent-manifests/dynamic-api/`，見 [建立 Slack App](slack-agent-apps.md#dynamic-api-實例的-app-組)），頻道 `#dynamic-api`（`C0CA5CXTUHJ`，2026-10-17 建立的公開頻道）。
 **目前狀態（2026-10-18）**：VM 實例已安裝在 `~/ai-team-dynamic-api`（`AI_TEAM_INSTANCE=dynamicapi`），配置在 VM 通過 `--validate-team`，
-Gradle／npm 快取已在沙箱外預熱；頻道與 7 個 Slack App 已建立並加入頻道。App-Level Token 尚未產生、token 未填、服務未啟動，
-沒有 Slack 端對端證據。
+Gradle／npm 快取已在沙箱外預熱；頻道與 7 個 Slack App 已建立並加入頻道。token 已由使用者填入，2026-10-18 服務啟動（PID141371，6 個角色 Socket Mode 啟動、ERROR 0），
+尚未有 Slack 端對端證據。
 
 ## 不改 Java 的增刪例子
 
