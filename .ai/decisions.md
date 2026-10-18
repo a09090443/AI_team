@@ -578,3 +578,7 @@ CRITICAL 等其他寫法不放行。放行寫成帶 `owner_waiver` 的 receipt�
 - 後端用 VM 共用的 PATH gradle 8.14.5 而非 repo 的 gradlew 8.7：operations 只能用工具名稱，且共用工具鏈已在沙箱實測；相容性待實測，不行時再為此實例另裝 8.7。
 - build.gradle 的前端任務寫死 Windows npm.cmd，test 類操作一律 -x buildFrontend，並禁止 agent 改 build.gradle／tools/ 繞過；前端以 npm 操作單獨驗證。
 - 不配置 service 節點（service-build skill 只實作 bestpartner）；不啟用 collaboration（決策為先只在 bestpartner 啟用，且 phase1 未部署，舊 JAR 讀不了該欄位）。
+
+## 2026-10-18 dynamic-api 後端測試編譯錯誤的處理
+
+- 使用者決定：配置維持不變（後端測試仍在 QA 操作與系統獨立驗證內），服務啟動後的第一個任務就在 #dynamic-api 請 AI 團隊修 ResponseRepositoryTest（findByPrimaryKey 少傳 ServiceType）。理由：問題在 repo 本身，修好後驗證範圍不必再調整；不為了綠燈暫時移除測試。
