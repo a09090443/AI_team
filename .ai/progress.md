@@ -1,5 +1,12 @@
 # 工作進度（Codex 與 Claude Code 共用）
 
+## 2026-10-18 部署 85047ce 到三個實例（Claude Code，使用者授權，未推送）
+
+- 依序部署 dynamic-api → spring-starters → bestpartner，JAR 28679cb5…，備份 0nLsxQ／QC7RCI／VrAEaX；部署腳本檢查全過、log 無 ERROR、等待中任務與工作區一致。spring-starters 第一次被部署腳本的 agent 程序檢查比對到自己的 ssh 指令字串而擋下，改用不含關鍵字的指令重跑。
+- 首次基準驗證：dynamic-api 後端 test 失敗（測試編譯錯誤）＋ build 逾時（冷快取合計 >1800 秒）；spring-starters 1/180 時間門檻測試失敗（MailServiceSmtpsScenariosTest）；bestpartner 5 條全過（29 分 10 秒）。
+- 已修正的文件：deploy-2026-09-06-v2（新段落）、baseline-verification（部署狀態與首次結果）、configurable-team（dynamic-api 狀態）。
+- 待辦：分支合併 main 與推送需使用者同意；dynamic-api timeoutSeconds 是否調整、spring-starters 時間門檻測試是否不穩定待決定；真實任務驗證新行為。
+
 ## 2026-10-18 基準驗證（Claude Code，分支 feature/baseline-verification，未推送、未部署）
 
 - 使用者核准：接入專案或部署配置時先在基準分支跑獨立驗證，失敗只警告不阻擋；啟動自動跑＋Slack「基準驗證」手動指令。

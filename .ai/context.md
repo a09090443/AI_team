@@ -7,9 +7,7 @@
 
 ## 正在進行
 
-- **基準驗證（2026-10-18，Claude Code，分支 feature/baseline-verification，疊在 fix/unexecutable-options 之上，未推送、未部署）**：實作、測試、文件完成；Linux 隔離 mvn verify 683 項 0 失敗（見 progress）。下一步：部署（三實例無執行中任務、deploy-orchestrator）後各實例重啟會自動跑一次基準驗證，dynamic-api 預期顯示後端測試失敗（D:/tmp），核對 Slack 訊息、JSON 與任務提醒。
-
-- **硬閘門選項與實作自陳核對（2026-10-18，Claude Code，分支 fix/unexecutable-options，未推送、未部署）**：兩階段實作與文件完成並 commit（見 progress）。下一步：取得授權後在 VM 隔離 mvn verify；部署需三個實例都無執行中任務，以 deploy-orchestrator 換 JAR 與 teams，部署前另行徵求同意；之後以新任務實測（Claude 實作自陳成功但測試失敗時應直接受阻）。dynamic-api 的 D:/tmp 問題仍需另開任務授權測試專用設定。
+- **基準驗證與硬閘門修正已部署三實例（2026-10-18，Claude Code）**：JAR 28679cb5…，來源分支 feature/baseline-verification（85047ce，含 4b6d581），**未合併 main、未推送**。首次基準驗證：dynamic-api 失敗＋逾時、spring-starters 1 項時間門檻測試失敗、bestpartner 全過（貼近 1800 秒）。下一步：使用者決定合併推送、dynamic-api timeoutSeconds、spring-starters 測試處理；dynamic-api 第一個新任務修 ResponseRepositoryTest 並加測試專用設定。
 
 - **dynamic-api 實例（2026-10-18，Claude Code，已啟動）**：~/ai-team-dynamic-api，PID141371，6 角色 Socket Mode 啟動、ERROR 0。下一步：使用者在 #dynamic-api @dynamic-api-ai-team 開第一個任務修 ResponseRepositoryTest（findByPrimaryKey 少傳 ServiceType），觀察完整流程；開 PR 時確認 GitHub token 有 Pull requests 權限。分支 feature/dynamic-api-instance 未推送、未合併 main。
 

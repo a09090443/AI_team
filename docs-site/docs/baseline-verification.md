@@ -1,6 +1,6 @@
 # 基準驗證：接入專案與部署配置時先確認驗證指令能通過
 
-2026-10-18 起（分支 `feature/baseline-verification`，**尚未部署**）。
+2026-10-18 起（分支 `feature/baseline-verification`，2026-10-18 已部署三個實例，尚未合併 main；部署與首次結果見 [部署紀錄](deploy-2026-09-06-v2.md)）。
 
 ## 為什麼需要
 
@@ -62,5 +62,6 @@ systemd unit 名稱是 `<字首>check-0-<uuid>`：任務從 1001 起，`0` 不�
 - 第一次執行要下載相依套件，可能很慢；逾時照實回報，不算測試失敗。
 - 基準分支前進後不會自動重跑，需重啟服務或手動送指令；只看「目前配置版本」最新的一份結果，即使它對應的是較舊的基準 commit。
 - 只支援配置式團隊（`AI_TEAM_DEFINITION`）；沒有 `project.verification` 時記錄「沒有驗證指令」，不視為失敗警告以外的處置。
-- 程式測試與替身驗證過流程（`BaselineVerifierTest`、`BaselineScheduleTest`、`TriageRoutingTest`、`ConfiguredExecutorTest`），
-  **尚未在 VM 實跑**，也尚未有 Slack 端對端證據。
+- 2026-10-18 部署後三個實例各自動跑一次：dynamic-api 抓到後端測試編譯錯誤與冷快取下 build 逾時、spring-starters 抓到 1 個時間門檻測試失敗、bestpartner 全部通過（29 分 10 秒，貼近上限）。
+  頻道訊息、新任務提醒與 agent 脈絡注入的實際呈現尚未在真實任務核對。
+- 首次執行會讓相依快取從冷開始；dynamic-api 四條指令冷快取合計超過 1800 秒，需觀察快取預熱後是否仍逾時，必要時調整該專案的 `timeoutSeconds`。
