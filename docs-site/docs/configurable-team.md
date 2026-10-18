@@ -141,18 +141,19 @@ Docusaurus 文件，基準分支 `master`）。以 bestpartner 為範本，角�
 
 | 項目 | 內容與理由 |
 |---|---|
-| 工具 | 沿用 PATH 上的 `gradle`（VM 共用 8.14.5），repo 的 gradlew 是 8.7；operations 的執行檔只能是工具名稱。Spring Boot 3.2.5 外掛在 8.14.5 上能否建置**尚未在 VM 實測** |
-| 前端建置任務 | `backend/build.gradle` 的 `installNextjs`／`buildNextjs` 寫死 Windows 版 `tools/node-*-win-x64/npm.cmd`，Linux 上必定失敗；`processResources` 依賴它，所以 `test` 類操作一律帶 `-x buildFrontend`，`compileJava` 不經過 `processResources` 不需要。建置指示禁止 agent 改 `build.gradle`／`tools/` 繞過 |
-| 後端測試 | 只有 `ResponseRepositoryTest`、`DynamicControllerServiceTest`，以單一 `backend-test`／`qa-backend-test` 執行。預設設定含 `D:/tmp`、`C:/tmp`，Linux 是否通過**尚未實測**；失敗時 QA 標「無法核實」，不改設定 |
-| 前端 | `npm --prefix nextjs-dynamic-api-manager ci`／`run type-check`／`run lint`／`run build`；驗收用 `--offline` |
+| 工具 | 沿用 PATH 上的 `gradle`（VM 共用 8.14.5），repo 的 gradlew 是 8.7；operations 的執行檔只能是工具名稱。2026-10-18 VM 實測 8.14.5 可建置 Spring Boot 3.2.5 主程式（連線與 `--offline` 皆成功） |
+| 前端建置任務 | `backend/build.gradle` 的 `installNextjs`／`buildNextjs` 寫死 Windows 版 `tools/node-*-win-x64/npm.cmd`，Linux 上必定失敗；`processResources` 依賴它，所以會用到它的操作（含 `compileTestJava`、`test`）一律帶 `-x buildFrontend`。2026-10-18 實測：原本 `backend-compile` 沒帶，`compileTestJava` 觸發 `installNextjs` 而失敗，已補上。建置指示禁止 agent 改 `build.gradle`／`tools/` 繞過 |
+| 後端測試 | 只有 `ResponseRepositoryTest`、`DynamicControllerServiceTest`，以單一 `backend-test`／`qa-backend-test` 執行。**已知問題（2026-10-18 實測）**：repo `master`（3f638e3）的 `ResponseRepositoryTest.java:15` 呼叫 `MockResponseDao.findByPrimaryKey` 少了 `ServiceType` 參數，測試程式編譯失敗，所以 `backend-test`、`qa-backend-test` 與系統獨立驗證的後端測試目前必定失敗，要等 repo 修正。預設設定含 `D:/tmp`、`C:/tmp`，修正後 Linux 能否通過仍未實測 |
+| 前端 | `npm --prefix nextjs-dynamic-api-manager ci`／`run type-check`／`run lint`／`run build`；驗收用 `--offline`。2026-10-18 VM 實測四步皆成功（ci 約 9 分鐘、build 約 80 秒），文件站 `ci`／`build` 也成功 |
 | 動態載入 | 上傳 JAR、啟用服務、Mock 命中需要啟動服務並用範例 JAR 手動驗證；沙箱內無法完成時 QA 標「無法核實」 |
 | 服務建置 | **不配置** `service`／`service_triage` 節點與 `serviceTarget`（service-build skill 目前只實作 bestpartner）；intake 沒有 `service` 路線。`infrastructure` 角色只作為設計／實作候選 |
 | `.claude/` 文件 | 同 bestpartner，`.claude/rules/**`、`.claude/skills/**` 分段改派 `builder_codex` |
 | 系統獨立驗證 | 後端測試＋前端 ci／type-check／build 共 4 條；`docOnlyPaths` 同 bestpartner |
 
 Slack 使用自己的一組 App（`deploy/agent-manifests/dynamic-api/`，見 [建立 Slack App](slack-agent-apps.md#dynamic-api-實例的-app-組)），頻道 `#dynamic-api`（`C0CA5CXTUHJ`，2026-10-17 建立的公開頻道）。
-**目前狀態（2026-10-17）**：配置以現行原始碼建置的 JAR 通過 `--validate-team`；頻道與 7 個 Slack App 已建立並加入頻道，App-Level Token 尚未產生，VM 實例尚未安裝，
-沒有任何建置、測試或 Slack 端對端證據。
+**目前狀態（2026-10-18）**：VM 實例已安裝在 `~/ai-team-dynamic-api`（`AI_TEAM_INSTANCE=dynamicapi`），配置在 VM 通過 `--validate-team`，
+Gradle／npm 快取已在沙箱外預熱；頻道與 7 個 Slack App 已建立並加入頻道。App-Level Token 尚未產生、token 未填、服務未啟動，
+沒有 Slack 端對端證據。
 
 ## 不改 Java 的增刪例子
 
