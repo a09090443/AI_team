@@ -560,6 +560,16 @@ public class FlowEngine {
                 String issueBlock = IssueTracker.ingest(flow, node, report, task.id());
                 if (issueBlock == null) flow.systemRetries.remove(flow.node + IssueTracker.FORMAT_RETRY);
                 String block = issueBlock == null ? FlowGates.blockingReason(node, report, flow) : issueBlock;
+                // 自陳成功不夠：與 CLI 紀錄裡配置操作的實際結束碼對照，矛盾時不送去跑注定失敗的獨立驗證（#1001）。
+                if (block == null && node.gate() == Gate.IMPLEMENTATION) {
+                    String contradiction = CommandEvidence.contradiction(
+                            OperationContract.forNode(flow.snapshot.definition(), flow.node), executor.lastCommandRuns(task.id()), report);
+                    if (contradiction != null) {
+                        block = contradiction;
+                        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_REJECTED, "節點 " + flow.node + "：" + contradiction);
+                        flow.context = FlowContext.append(flow.context, "系統核對指令紀錄：" + contradiction);
+                    }
+                }
                 AgentDispatch.Assignment assignment = null;
                 String handoffCorrection = null;
                 if (block == null) {
@@ -1086,13 +1096,16 @@ public class FlowEngine {
         String head = workspaces.headSha(task.id());
         String reason = (failed.argv().equals(List.of(FileComparison.OPERATION))
                 ? "系統比對指定舊檔時發現修改（" : "系統在全新 clone 執行配置的驗證指令失敗（") + String.join(" ", failed.argv()) + "，exit=" + failed.exitCode()
-                + "，commit=" + head + "）。這代表程式或測試沒有通過，不是環境問題。"
-                + "\n請找出原因修正後提交，完成後會交回驗收重新驗證。不得刪除、停用、跳過失敗的測試或放寬斷言來讓它通過；"
+                + "，commit=" + head + "）。最常見的原因是程式或測試沒有通過，請先依失敗摘要找出根因。"
+                + "\n能在已核准範圍內修好就修正後提交，完成後會交回驗收重新驗證。不得刪除、停用、跳過失敗的測試或放寬斷言來讓它通過；"
                 + "若判定是測試本身不穩定（例如時間門檻過緊），要修成穩定且仍能驗到原需求，並在報告說明依據。"
+                + "\n若根因不在本次修改、也無法在已核准範圍內修好（例如配置的測試依賴此環境不存在的路徑或服務），"
+                + "status 填 BLOCKED（不是 SUCCESS）、quality_gate.verify_passed 填 false，並在失敗回報附上原始錯誤與根因；"
+                + "「記為無法核實」不會讓這道系統驗證通過。"
                 + "\n失敗摘要：\n" + failed.summary()
                 + "\n完整紀錄：" + failed.log();
         var finding = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode()
-                .put("source", "系統獨立驗證").put("commit", head).put("exit_code", failed.exitCode())
+                .put("source", IndependentVerifier.FINDING_SOURCE).put("commit", head).put("exit_code", failed.exitCode())
                 .put("failure_summary", failed.summary()).put("log", failed.log());
         flow.lastBlockReason = Diagnostics.clip(reason, 4500);
         flow.blockedFindings.put(flow.node, finding);

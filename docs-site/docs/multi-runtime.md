@@ -116,6 +116,11 @@ Codex 可寫 `.claude/rules/`、`.claude/skills/`，`.git` 與 `.git/hooks` 不�
 | `NATIVE_AGENTS_MAP` | — | ✔ | ✔ | legacy 模式由呼叫端把 `AGENTS.md` 附進 prompt；配置式模式不論能力一律附上（截斷至 16000 字） |
 
 原則：**降級後的語意要一致**，呼叫端不需要知道底下是哪個 runtime；差別只在可靠度與成本。
+
+**指令紀錄（`commandRuns`，2026-10-18 起）**：介面預設回空清單。Claude Code 讀 `~/.claude/projects/*/<session>.jsonl`
+（只取本輪開始後的 Bash 呼叫，`is_error` 與 `Exit code N`），Codex 讀 `logs/<任務>/<角色>.codex.jsonl` 的 `command_execution`；
+opencode 尚未實作，回空清單表示「沒有證據」，核對因此不生效、不會誤判。用途是核對實作自陳的品質檢查，
+見 [engineering-workflow](engineering-workflow.md#系統獨立驗證)。紀錄格式屬 CLI 內部行為，換 CLI 版本要重驗。
 各 CLI 的實際參數與陷阱見 [Codex CLI 參數契約](codex-cli-argument-contract.md)、
 [opencode 實測報告](opencode-runtime-report.md)。模型名三家互不通用，換 runtime 時要一併換模型。
 

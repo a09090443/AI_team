@@ -15,6 +15,8 @@ import java.util.concurrent.TimeUnit;
 /** 系統執行固定驗證 argv，從最終 commit 的全新 clone 取得獨立收據；不執行模型提供的指令。 */
 @Component
 public class IndependentVerifier {
+    /** 驗證指令失敗時寫進 blockedFindings 的 source；下游依此判斷這是硬閘門。 */
+    public static final String FINDING_SOURCE = "系統獨立驗證";
     public record CommandResult(List<String> argv, int exitCode, String log, String sha256) {}
     public record FileEvidence(String base, String head, String planDigest, List<WorkspaceManager.FileIdentity> files,
                                String log, String sha256) {}

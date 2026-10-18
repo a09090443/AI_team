@@ -1,5 +1,13 @@
 # 工作進度（Codex 與 Claude Code 共用）
 
+## 2026-10-18 硬閘門選項與實作自陳核對（Claude Code，分支 fix/unexecutable-options，未推送、未部署）
+
+- 使用者核准兩階段計畫（#1001 分析的後續）。第一階段：受阻來源為系統獨立驗證時，ConfiguredExecutor.appendBlockedFindings 注入硬閘門說明（IndependentVerifier.FINDING_SOURCE）；FlowEngine.routeFailedCheck 移除「不是環境問題」斷言並要求範圍外根因回 BLOCKED；FailureReport 共用契約、teams/prompts/implement.md、triage.md 補 verify_passed 與禁止不可執行選項；dynamic-api.json 測試規範分開 QA 無法核實與系統閘門。
+- 第二階段：先以 VM 真實紀錄確認格式（dynamic-api #1001 Claude session jsonl：Bash tool_result is_error=true、內容 Exit code N、頂層 timestamp；bestpartner #1041／#1042 Codex：item.completed command_execution 的 exit_code／status，指令包 /bin/bash -lc）。新增 runtime/CommandRuns、AgentRuntime.commandRuns（預設空、Claude／Codex 實作）、ConfiguredExecutor.lastCommandRuns、flow/CommandEvidence；FlowEngine 對 IMPLEMENTATION 自陳成功但配置操作最後一次失敗者改判受阻（audit REJECTED），不跑獨立驗證。以 jshell 用真實 #1001 紀錄驗證可抓到 backend-test 結束碼 1。
+- 測試：新增 CommandRunsTest 4、CommandEvidenceTest 4、FlowEngineTest 1、ConfiguredExecutorTest 1，修改 FlowEngineTest 1；flow／runtime／task 套件 562 項僅 3 項既有 Windows 失敗（/bin/sh、symlink）。check-source、三份配置 --validate-team、docs build 通過。未做 Linux 隔離 mvn verify。
+- 已核對／修正的文件：engineering-workflow（系統獨立驗證三段）、configurable-team（共用行為）、plan-approval-buttons（選項邊界）、multi-runtime（commandRuns）、project-tree、catalog；data-model 無 schema 變更、不需改。
+- 限制：選項內容仍由模型產生，硬閘門說明是依狀態注入的提示，非語意檢查；指令比對只認與操作 argv 完全相同者；CLI 換版改變紀錄格式時核對會靜默失效，需重驗；opencode 未實作。
+
 ## 2026-10-18 dynamic-api #1001 派工過程分析（Claude Code，唯讀查核）
 
 - #1001（修 ResponseRepositoryTest 編譯錯誤）：intake→design→plan→implementation（commit 640f747，編譯修好）→獨立驗證 8m38s 測試失敗→implementation 受阻→triage→人選「接受無法核實」→triage 派 verification→系統退回 implementation→triage→人結案（OWNER_CLOSE，工作區保留）。共 36 分鐘、9 次 agent 執行。

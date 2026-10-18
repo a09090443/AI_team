@@ -144,6 +144,7 @@ agent_team/
 │   │   │   ├── IssueTracker.java     # 跨專案問題清單、需求對應、逐項驗證與承接完整性
 │   │   │   ├── IndependentVerifier.java # 系統獨立驗證：全新 clone 執行固定指令並產生收據
 │   │   │   ├── VerificationPlan.java # 依變更檔案決定獨立驗證指令要執行、略過或重用
+│   │   │   ├── CommandEvidence.java # 實作自陳成功與 CLI 指令紀錄的結束碼交叉核對
 │   │   │   ├── FileComparison.java # 指定舊檔比對的計畫契約、路徑驗證與能力說明
 │   │   │   ├── ServiceDelivery.java # 服務建置目標、可用性檢查與完成契約
 │   │   │   ├── OperationContract.java # 專案操作契約（operations）
@@ -165,6 +166,7 @@ agent_team/
 │   │   │   ├── RuntimeRegistry.java  # 依 id 取用 runtime
 │   │   │   ├── ClaudeCodeRuntime.java
 │   │   │   ├── CodexRuntime.java
+│   │   │   ├── CommandRuns.java      # 從 Claude session 紀錄／Codex 事件流讀出本輪指令與結束碼
 │   │   │   ├── OpenCodeRuntime.java
 │   │   │   ├── CodexLocalTestPolicy.java # localTestNetwork 的 Codex 權限設定
 │   │   │   ├── CodexSandboxPreparation.java # Codex 雙層沙箱掛載點準備

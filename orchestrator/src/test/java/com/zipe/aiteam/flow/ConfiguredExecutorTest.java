@@ -63,6 +63,21 @@ class ConfiguredExecutorTest {
                 .contains("來源節點 review").contains("DeadlineSocketFactory 破壞隱式 TLS");
     }
 
+    @Test void failedSystemCheckTellsDownstreamItIsAHardGate() throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        StringBuilder review = new StringBuilder();
+        flow.blockedFindings.put("review", mapper.readTree("{\"verdict\":\"REQUEST_CHANGES\"}"));
+        ConfiguredExecutor.appendBlockedFindings(review, flow);
+        assertThat(review).contains("尚未解除的受阻發現").doesNotContain("硬閘門");
+
+        // #1001：分流在這種狀態下提供了「接受測試無法執行」，負責人選了流程卻無路可走。
+        StringBuilder check = new StringBuilder();
+        flow.blockedFindings.put("verification", mapper.createObjectNode()
+                .put("source", IndependentVerifier.FINDING_SOURCE).put("exit_code", 1).put("failure_summary", "2 tests failed"));
+        ConfiguredExecutor.appendBlockedFindings(check, flow);
+        assertThat(check).contains("硬閘門", "close", "successor", "also_needed", "接受無法核實");
+    }
+
     @Test void reportStageExplainsWhyThereIsNoIndependentReceipt() {
         var triage = flow.snapshot.definition().nodes().get("triage");
         assertThat(ConfiguredExecutor.receiptView(flow, triage)).contains("本節點階段不產生系統獨立驗證收據");

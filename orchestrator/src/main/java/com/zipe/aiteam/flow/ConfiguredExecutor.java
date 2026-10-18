@@ -166,7 +166,23 @@ public class ConfiguredExecutor {
         var request = new AgentRuntime.RuntimeRequest(task.id(), flow.node, cwd, prompt, context + FailureReport.INSTRUCTIONS,
                 flow.dialogue ? List.of("Read", "Grep", "Glob") : role.tools(), FailureReport.extendSchema(schema), cp.sessionId(),
                 node.maxTurns(), Duration.ofSeconds(node.timeoutSeconds()), selectedPolicy, cp.model(), role.reasoningEffort());
-        return runtime.execute(request, session -> store.saveCheckpoint(cp.withSession(session)));
+        java.time.Instant started = java.time.Instant.now();
+        commandRuns.remove(task.id());
+        AgentRuntime.RuntimeResult result = runtime.execute(request, session -> store.saveCheckpoint(cp.withSession(session)));
+        try {
+            commandRuns.put(task.id(), List.copyOf(runtime.commandRuns(request, result, started)));
+        } catch (RuntimeException e) {
+            // 指令紀錄只是交叉核對的證據；讀不到不能讓已完成的節點失敗。
+        }
+        return result;
+    }
+
+    /** 每個任務最近一次 execute 期間 agent 實際執行的指令；同一實例同一時間只跑一個任務的一個節點。 */
+    private final Map<String, List<CommandRuns.CommandRun>> commandRuns = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** 最近一次執行讀到的指令紀錄；沒有證據時回空清單。 */
+    public List<CommandRuns.CommandRun> lastCommandRuns(String taskId) {
+        return commandRuns.getOrDefault(taskId, List.of());
     }
     /**
      * 明講這個角色能執行哪些指令樣式。
@@ -318,7 +334,26 @@ public class ConfiguredExecutor {
                 + "要判定已解除，必須指出是哪一次變更修掉的，或說明原判定為何有誤。");
         flow.blockedFindings.forEach((id, report) -> context.append("\n來源節點 ").append(id).append("：\n")
                 .append(Diagnostics.clip(report.toString(), 8000)));
+        if (flow.blockedFindings.values().stream().anyMatch(ConfiguredExecutor::systemCheckFinding))
+            context.append(SYSTEM_CHECK_GATE_NOTICE);
     }
+
+    /** 由系統獨立驗證失敗產生的受阻發現（FlowEngine.routeFailedCheck 寫入）。 */
+    static boolean systemCheckFinding(com.fasterxml.jackson.databind.JsonNode report) {
+        return report != null && IndependentVerifier.FINDING_SOURCE.equals(report.path("source").asText());
+    }
+
+    /**
+     * 系統獨立驗證是硬閘門：沒有任何真人選項能讓失敗的配置指令算通過。
+     * #1001 的分流提供「接受測試無法執行」這個 decide 選項，負責人選了之後流程又跑了兩輪才停下 ——
+     * 那個選項在流程裡根本沒有路可走。這段是系統依實際狀態注入的事實，不只是一般規則。
+     */
+    static final String SYSTEM_CHECK_GATE_NOTICE = "\n系統獨立驗證是硬閘門（系統事實，非建議）：上面有配置的驗證指令在全新 clone 執行失敗。"
+            + "在這些指令以結束碼 0 通過之前，驗收、審查與發布都不會開始，任何真人選擇、補充或「記為無法核實」都不能讓它算通過。"
+            + "可行的出路只有：在已核准範圍內修正讓指令通過；需求負責人核准擴大範圍後修正（human_decision 用 decide 提出具體改法）；"
+            + "close（負責人在系統外收尾）；successor（改用新任務）。"
+            + "若指令本身在此環境不可能通過（例如配置的測試依賴不存在的路徑或服務），那是配置缺口，寫進 also_needed 交管理者修改配置，"
+            + "不得做成選擇題。不得提供「接受失敗後繼續驗收」「接受無法核實」之類的 decide 選項，選了也只會讓流程原地重跑。";
 
     /** REPORT 等階段本來就不產生系統收據；顯示 null 會被誤讀成「查無建置證據」。 */
     static String receiptView(FlowRun flow, Node node) {

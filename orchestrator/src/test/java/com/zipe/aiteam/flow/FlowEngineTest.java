@@ -1804,8 +1804,24 @@ class FlowEngineTest {
         var saved = store.flow(task.id()).orElseThrow();
         assertThat(saved.blockedFindings).doesNotContainKey("verification");
         assertThat(saved.context).contains("MailTimeoutTest.boundsElapsed:142");
+        // #1001：舊文字斷言「不是環境問題」，配置的測試依賴不存在的路徑時實作只能硬回 SUCCESS 或被誤導。
+        assertThat(saved.context).doesNotContain("不是環境問題").contains("BLOCKED", "verify_passed 填 false", "記為無法核實");
         verify(slack).post(any(), any(), any(), contains("已自動交回"));
         verifyNoInteractions(publisher);
+    }
+    @Test void claimedSuccessWithFailedOperationNeverReachesIndependentVerification() throws Exception {
+        // #1001：實作自陳成功，但 CLI 紀錄裡配置的測試結束碼 1；以前會先跑 16 分鐘注定失敗的獨立驗證。
+        when(executor.lastCommandRuns("42")).thenAnswer(c -> calls.stream().filter("implementation:builder"::equals).count() == 1
+                ? List.of(new com.zipe.aiteam.runtime.CommandRuns.CommandRun("npm test", 1))
+                : List.of(new com.zipe.aiteam.runtime.CommandRuns.CommandRun("npm test", 0)));
+
+        engine.run(task);
+
+        assertThat(calls).containsSubsequence("implementation:builder", "triage:coordinator").doesNotContain("verification:tester");
+        verify(verifier, never()).verify(any(), any());
+        assertThat(store.flow("42").orElseThrow().receipts).doesNotContainKey("implementation");
+        verify(audit).record(eq("42"), eq(AuditLog.ACTOR_SYSTEM), eq(AuditLog.ACTION_REJECTED), contains("npm test，結束碼 1"));
+        assertThat(store.flow("42").orElseThrow().context).contains("系統核對指令紀錄");
     }
     @Test void changedProtectedOldFileReturnsToImplementationWithoutChangingRequirementsOrBaseline() throws Exception {
         doThrow(new IndependentVerifier.CheckFailed(List.of(FileComparison.OPERATION), 1, "/runs/files.json", "README.md 被誤改"))

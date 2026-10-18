@@ -390,6 +390,11 @@ Runnable 交給 TaskOrchestrator，由真正的執行中工作與 FIFO 排隊清
   給權限的，寫進 `also_needed`。結案與改用新任務要用選項的 `action=close`／`successor`，由系統直接執行，
   不可寫成交回流程的 `decide`（流程沒有結案路線，見 [plan-approval-buttons](plan-approval-buttons.md#由-agent-本人說明需要你決定的事)）。
   同一個問題已回答過卻又被問時，不再提供 `decide` 按鈕並說明原因。
+  2026-10-18 起，受阻來源是系統獨立驗證時，系統會在下游脈絡注入「這是硬閘門、真人選擇無法略過」的固定說明，
+  triage 提示也明文禁止「接受失敗／記為無法核實後繼續」類選項（#1001）；詳見 [engineering-workflow](engineering-workflow.md#系統獨立驗證)。
+- **實作的品質檢查自陳會被核對**：實作回報成功時，系統讀 Claude／Codex CLI 自己的指令紀錄，本節點配置操作最後一次執行失敗就不採用
+  這份成功回報（2026-10-18 起）。共用契約同時規定 `verify_passed=true` 只能在必要檢查都實際執行且結束碼為 0 時填寫，
+  「無法核實」是驗收判定，不是實作成功的理由。
 - **計畫階段與 plan_revision**：`plan_revision` 由系統在計畫完成後計算；系統會明確告知計畫節點不得因缺少它而受阻
   （同一角色常兼任計畫與驗收，會看到驗收要引用 plan_revision 的規則）。
 - **操作契約與測試規範要一致**：`testInstructions` 要求的每一步都必須有對應的 `operations`，

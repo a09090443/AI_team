@@ -162,6 +162,24 @@ Slack 會說明「只改了文件，依專案設定略過建置與測試」，QA
   系統把失敗摘要（失敗的測試與編譯錯誤，或 log 最後 40 行）存成受阻發現，自動交回實作節點修正，
   修好後重新獨立驗證；不需真人轉達。實作節點取受阻分流節點的 `implementation` 路由，
   否則取流程中唯一具工作區寫入權的實作節點；判定不出時照舊停給真人。仍受重跑、事件額度與整輪上限約束。
+  2026-10-18 起交回說明不再斷言「不是環境問題」，改為：先依失敗摘要找根因，能在範圍內修就修；根因在本次修改之外
+  （例如配置的測試依賴此環境不存在的路徑）時，實作要回 `BLOCKED`、`verify_passed=false` 並附原始錯誤，
+  「記為無法核實」不會讓這道驗證通過。dynamic-api #1001 兩位 agent 都指出舊說法與實際根因（Windows `D:/tmp` 路徑）矛盾。
+- **硬閘門說明（2026-10-18 起）**：受阻發現的 `source` 是 `系統獨立驗證`（`IndependentVerifier.FINDING_SOURCE`）時，
+  `ConfiguredExecutor.appendBlockedFindings` 會在下游所有節點的脈絡加上固定系統說明：指令通過前驗收、審查與發布都不會開始，
+  可行出路只有範圍內修正、需求負責人核准擴大範圍、`close`、`successor`，配置問題寫進 `also_needed`，
+  不得提供「接受失敗／記為無法核實後繼續」的 `decide` 選項。#1001 分流提供了這種選項，負責人選了之後又空轉兩輪 agent 才停下。
+  這是依實際狀態注入的事實，但選項內容仍由模型產生，系統沒有逐字語意檢查。
+- **實作自陳與指令紀錄交叉核對（2026-10-18 起）**：實作節點回報 `SUCCESS` 且 `verify_passed=true` 時，系統讀取 CLI 自己寫的紀錄
+  （Claude Code：`~/.claude/projects/*/<session>.jsonl` 的 Bash `tool_use`／`tool_result`，失敗時 `is_error=true`、內容以 `Exit code N` 開頭，
+  只取本輪開始後的紀錄；Codex：`logs/<任務>/<角色>.codex.jsonl` 的 `command_execution`，帶 `exit_code`／`status`，指令外層的
+  `/bin/bash -lc '…'` 會還原）。只要某個本節點的配置操作在本輪**最後一次**執行失敗，系統就不採用這份成功回報，
+  記 audit `REJECTED`、寫入脈絡並走受阻路線，不跑獨立驗證（`runtime.CommandRuns`、`flow.CommandEvidence`）。
+  比對刻意保守：指令要與操作 argv 完全相同，後面只允許接重導向、管線或指令分隔；子集測試（加 `--tests`）、`cd … &&` 開頭等都不算；
+  同一操作先失敗、修好後重跑成功以最後一次為準；讀不到紀錄時不判定（空清單不代表沒執行）。
+  格式於 2026-10-18 以 VM 真實紀錄核對（dynamic-api #1001 的 Claude 實作、bestpartner #1041／#1042 的 Codex 事件）；
+  CLI 版本更新改變紀錄格式時，這項檢查會靜默失效（退回只看自陳），換版要重驗。#1001 第一輪實作 `gradle … test` 結束碼 1 卻回報成功，
+  系統因此跑了 8 分 38 秒的 Gradle（整段約 16 分鐘）注定失敗的獨立驗證。
 - clone／checkout 失敗、超時、輸出過大，以及 log 顯示環境缺件（相依套件抓不到、磁碟滿、找不到指令、
   沙箱啟動失敗等）、紀錄遺失／雜湊改變、版本不同，都阻止審查或 PR；失敗現場保留並明示等待人工。
 - 發布前再驗收據、log 雜湊及同一最終 commit，不因模型回報 PASS 就跳過。

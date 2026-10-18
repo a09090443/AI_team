@@ -7,6 +7,8 @@
 
 ## 正在進行
 
+- **硬閘門選項與實作自陳核對（2026-10-18，Claude Code，分支 fix/unexecutable-options，未推送、未部署）**：兩階段實作與文件完成並 commit（見 progress）。下一步：取得授權後在 VM 隔離 mvn verify；部署需三個實例都無執行中任務，以 deploy-orchestrator 換 JAR 與 teams，部署前另行徵求同意；之後以新任務實測（Claude 實作自陳成功但測試失敗時應直接受阻）。dynamic-api 的 D:/tmp 問題仍需另開任務授權測試專用設定。
+
 - **dynamic-api 實例（2026-10-18，Claude Code，已啟動）**：~/ai-team-dynamic-api，PID141371，6 角色 Socket Mode 啟動、ERROR 0。下一步：使用者在 #dynamic-api @dynamic-api-ai-team 開第一個任務修 ResponseRepositoryTest（findByPrimaryKey 少傳 ServiceType），觀察完整流程；開 PR 時確認 GitHub token 有 Pull requests 權限。分支 feature/dynamic-api-instance 未推送、未合併 main。
 
 - **#1043 文件站清理指令修正（2026-10-16，Claude Code，已部署 bestpartner）**：qa-docs-clean 從 `rm -rf`（Codex 會拒絕）改成 `find target/qa-docs -mindepth 1 -delete`。新配置 revision d6821d93…，PID37280，備份 clean-op-backup.wWMxrR，各項檢查通過。#1044 實測：清理到建置的六個步驟全部 exit 0，但 target/ 沒被忽略，副本的 package-lock.json 被判成限寫越權，任務停在 AWAIT_HUMAN。之後改成系統層方案（2026-10-17 已部署，JAR 1183a100…；bestpartner PID49119、spring-starters PID52345）：每個工作區階段會自動把操作的 writes 輸出目錄寫進 .git/info/exclude。ad5b510 已撤回，#1044 工作區已補上排除區塊、工作樹乾淨。2026-10-17 又上線兩項：沙箱不鎖輸出目錄（解決 find 遇到 Device busy），以及載入配置時擋 rm（JAR b9be907b…，bestpartner PID71506、spring-starters PID74387）。#1044 之後在 10:20 因獨立驗證超時再次停止。已部署專用依賴快取與超時辨識（JAR f922d222…，bestpartner PID80842、spring-starters PID83653）。快取預熱後實測獨立驗證 23 分鐘、QA 全過。12:08 分流因 handoff 角色名稱格式停下，已部署容錯與重送（JAR 91aa82e8…，bestpartner PID97347、spring-starters PID100186）。下一步：使用者在 #1044 按繼續執行；使用者決定第 2 項計畫（依變更檔案只跑相關的獨立驗證），以及 #1044 要繼續執行還是開新任務。QA 另外找到兩個內容問題（清除警告放在指令後面、四頁缺 title），會在新任務修。本機修改未 commit。
