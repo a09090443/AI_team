@@ -7,7 +7,7 @@
 
 ## 正在進行
 
-- **基準驗證（2026-10-18，Claude Code，分支 feature/baseline-verification，疊在 fix/unexecutable-options 之上，未推送、未部署）**：實作、測試、文件完成（見 progress）。下一步：取得授權後 Linux 隔離 mvn verify；部署（三實例無執行中任務、deploy-orchestrator）後各實例重啟會自動跑一次基準驗證，dynamic-api 預期顯示後端測試失敗（D:/tmp），核對 Slack 訊息、JSON 與任務提醒。
+- **基準驗證（2026-10-18，Claude Code，分支 feature/baseline-verification，疊在 fix/unexecutable-options 之上，未推送、未部署）**：實作、測試、文件完成；Linux 隔離 mvn verify 683 項 0 失敗（見 progress）。下一步：部署（三實例無執行中任務、deploy-orchestrator）後各實例重啟會自動跑一次基準驗證，dynamic-api 預期顯示後端測試失敗（D:/tmp），核對 Slack 訊息、JSON 與任務提醒。
 
 - **硬閘門選項與實作自陳核對（2026-10-18，Claude Code，分支 fix/unexecutable-options，未推送、未部署）**：兩階段實作與文件完成並 commit（見 progress）。下一步：取得授權後在 VM 隔離 mvn verify；部署需三個實例都無執行中任務，以 deploy-orchestrator 換 JAR 與 teams，部署前另行徵求同意；之後以新任務實測（Claude 實作自陳成功但測試失敗時應直接受阻）。dynamic-api 的 D:/tmp 問題仍需另開任務授權測試專用設定。
 

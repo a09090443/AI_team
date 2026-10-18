@@ -5,6 +5,7 @@
 - 使用者核准：接入專案或部署配置時先在基準分支跑獨立驗證，失敗只警告不阻擋；啟動自動跑＋Slack「基準驗證」手動指令。
 - 實作：flow/BaselineVerifier（WorkspaceManager.baseRef 取基準 commit；init＋fetch refs/remotes/origin/<base>＋checkout；沿用 IndependentVerifier.execute／classify／dependencyCache，抽出 pinsFor；失敗後繼續跑其餘指令；結果 JSON 存 baseline-verification/<revision>-<sha>.json，unit 編號 0）。TaskOrchestrator.scheduleBaselineOnStartup／requestBaseline／runBaseline（走中央佇列、根訊息加討論串、佇列名稱「基準驗證」）；SlackListener「基準驗證」指令（含反引號）；ConfiguredExecutor 注入已知基準失敗；FlowEngine.prepare 在新任務討論串提醒；AiTeamProperties AI_TEAM_BASELINE_VERIFY（預設 on）。
 - 測試：BaselineVerifierTest 4、BaselineScheduleTest 3、TriageRoutingTest 1、ConfiguredExecutorTest 1；主要套件 659 項中僅既有 4 項 Windows 失敗（/bin/sh、symlink、CRLF 警告）。check-source、docs build 通過。未在 VM 實跑、無 Slack 端對端。
+- Linux 隔離驗證（使用者授權，只測試不部署）：85047ce 打包 tar SHA256 aaf8f693… 兩端一致，VM 暫存目錄 /home/agent/baseline-test.SIDXke：check-source（含 Python）通過；mvn -B verify 683 項、0 失敗、0 錯誤、11 略過，BUILD SUCCESS，165 秒，JAR 28679cb5…。涵蓋 fix/unexecutable-options 與本分支。服務與三個實例未動。
 - 文件：新增 docs/baseline-verification.md 並登錄 catalog；已修正 agent/operations、agent/configuration、agent/index、agent/project-tree、INSTALL §5.1、configurable-team、engineering-workflow；env.sh.template 加註解範例。data-model 不需改（未動資料庫與 FlowRun）。
 
 ## 2026-10-18 硬閘門選項與實作自陳核對（Claude Code，分支 fix/unexecutable-options，未推送、未部署）
