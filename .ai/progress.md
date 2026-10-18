@@ -7,7 +7,9 @@
 - 預熱實測（暫存 clone ~/dynamic-api-prewarm-20261017，log 在 ~/dynamic-api-prewarm-logs）：前端 ci／type-check／lint／build 與文件站 ci／build 全部成功；Gradle 8.14.5 編譯 Spring Boot 3.2.5 主程式成功（含 --offline）。發現 backend-compile 缺 -x buildFrontend（compileTestJava 會觸發 Windows npm.cmd），已修配置與文件並同步到 VM。
 - 發現的落差：repo 的 ResponseRepositoryTest.java:15 少傳 ServiceType，測試編譯失敗，後端測試與系統獨立驗證必定失敗；屬 repo 問題，已在 configurable-team 標為已知問題，待使用者決定處理方式。
 - 已修正的文件：configurable-team（dynamic-api 段：實測結果、已知問題、狀態）。
-- 未完成：使用者填 token；啟動與 log 核對；Slack 端對端。
+- 2026-10-18 文件缺漏：configuration.md 只寫 AI_TEAM_GITHUB_TOKEN 用途，未寫取得方式與所需權限；已依 PullRequestPublisher 實際用法補上 Fine-grained token 步驟（Contents、Pull requests 讀寫）。
+- token 狀態（2026-10-18）：使用者已填 14 個 Slack token；auth.test 顯示主 App Bot Token invalid_auth、Infrastructure 與 Code Reviewer 的 Bot Token 對調，已請使用者修正；GitHub token 未填。服務尚未啟動。
+- 未完成：使用者修正 token；啟動與 log 核對；Slack 端對端。
 
 ## 2026-10-17 新增 dynamic-api 專案實例（Claude Code，來源完成、未部署、未 commit）
 

@@ -32,7 +32,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 | `AI_TEAM_INSTANCE` | 服務實例名稱（建議放 `team.env`）。單一服務留空；同一台 VM 多個專案服務時**必填且不可重複**，systemd unit 改名為 `ai-team-<實例>-…`。格式見 [多個服務實例](/docs/configurable-team#同一台-vm-多個服務實例) |
 | `AI_TEAM_HOME`、`AI_TEAM_REPO`、`AI_TEAM_WORKSPACES`、`AI_TEAM_LOGS` | 服務根目錄、目標 repo 鏡像、任務工作區、階段 log |
 | `CLAUDE_BIN`、`CODEX_BIN`、`OPENCODE_BIN` | 各 CLI 絕對路徑；只有用到該 runtime 才需要 |
-| `AI_TEAM_GITHUB_TOKEN` | 推分支與開 PR；留空時管線能跑完但核准後推不出去 |
+| `AI_TEAM_GITHUB_TOKEN` | 推分支與開 PR；留空時管線能跑完但核准後推不出去（啟動 log 會出 WARN）。`PullRequestPublisher` 以它當 HTTPS git 推送密碼並呼叫 GitHub REST API 開 PR。建議用只限目標 repo 的 Fine-grained token：<https://github.com/settings/personal-access-tokens/new> → Repository access 只選該 repo → Repository permissions 設 **Contents: Read and write**、**Pull requests: Read and write**（Metadata 唯讀自動帶入）。每個實例填自己 repo 的 token，由使用者本人填入 `env.sh`；到期要換新並重啟 |
 | `AI_TEAM_BASE_BRANCH`、`AI_TEAM_BRANCH_PREFIX` | 基準分支（留空自動偏好 `develop`）與任務分支前綴 |
 | `AI_TEAM_GIT_USER_NAME`、`AI_TEAM_GIT_USER_EMAIL` | agent commit 署名，寫在工作區 local config |
 | `AI_TEAM_MAX_CONCURRENCY` | 實例內 legacy 階段的並行槽上限；中央工作迴圈仍依序執行，單獨調高不會讓 v2 任務平行；訂閱帳號建議 1 |
