@@ -209,18 +209,18 @@ cd docs-site && npm run build                # 會先檢查文件目錄是否與
 bestpartner 新任務可由 PM 選擇 service 路線，由 Infrastructure 建置、啟動後檢查，錯誤自修或分流重驗。
 請明確提供要部署的主機；沒有主機或核准操作時會說明缺口，不會用僅有設定檔的結果結案。
 #1034 的舊快照排除實際啟動，需承接為新任務並明確要求「實際啟動且確認服務可用」，不能只按續跑。
-來源配置已指定 bestpartner-dev；宿主機 broker 的一次性登入設定完成並持續執行後，agent 才能自行準備環境與啟動。完成定義、目標設定及限制見 [服務建置](/docs/service-delivery)。
+來源配置已指定 bestpartner-dev；Agent VM 的 systemd 固定執行器經 SSH 公鑰直連 dev，僅執行已核准操作。完成定義、目標設定及限制見 [服務建置](/docs/service-delivery)。
 
 固定角色的服務交接若回傳同一既定角色，系統保留交接並繼續，不要求使用者處理 handoff 格式。其他角色、權限欄位及未配置路線仍拒絕。
 
-Windows 首次登入由管理者開啟 skill 的 `scripts/login.ps1`；使用者只需在遮蔽視窗輸入既有密碼，不必找路徑或自行安裝工具。
+首次由管理者完成互通網路、專用公鑰、主機指紋與受限入口登錄；日常不需 Windows 程式或登入密碼。
 
 
 ### 2026-10-19 部署脈絡（已部署 bestpartner）
 
-部署通道回 SERVICE_BROKER_OFFLINE 時，先依回報中的宿主機恢復入口啟動 broker，再續跑原任務；本次未完成不代表舊服務停止。既有部署歷史僅供參考，本次仍須實際健康檢查。
+部署通道回 SERVICE_EXECUTOR_OFFLINE 時，在 Agent VM 檢查 `systemctl --user status ai-team-ssh-deploy.service`；本次未完成不代表舊服務停止。既有部署歷史僅供參考，本次仍須實際健康檢查。
 
 
-### 2026-10-19 SSH 直連規格（尚未啟用）
+### 2026-10-19 SSH 直連規格（已啟用）
 
-新規格由 Agent VM 的 systemd 固定部署執行器以 SSH 公鑰直連目標 VM，不需要 Windows broker。來源已修正，須先完成網路、公鑰、主機指紋與目標受限入口驗收；目前不要依舊說明啟動 Windows 程式。詳見 [直連部署](/docs/direct-ssh-deployment)。
+Agent VM 的 systemd 固定部署執行器已啟用，以 SSH 公鑰直連 dev VM；網路、公鑰、主機指紋、受限入口與 health 已實測，不需要 Windows broker。#1046 的舊 skill 快照須新任務承接；dev VM 曾 heartbeat 停止，經使用者核准重啟後已重新驗證健康與8088入口，當機根因待查。本輪未重部署產品或續跑 Slack。詳見 [直連部署](/docs/direct-ssh-deployment)。

@@ -588,3 +588,11 @@ CRITICAL 等其他寫法不放行。放行寫成帶 `owner_waiver` 的 receipt�
 
 - 歷史資訊從同頻道、同目標的 SERVICE 報告查詢，附來源任務／時間，明確標為角色報告；舊工具收據可由管理者以帶證據索引的摘要登錄，不改舊任務紀錄。
 - 宿主恢復入口以實例 service-context/<target>.json 提供非機密說明，避免在 TeamDefinition／FlowRun 新增欄位破壞舊快照相容；不執行指令、不改操作權限。每次執行即讀取，更新 JAR 後等待中的舊任務也能取得說明。
+
+
+## 2026-10-19 Agent VM 直接 SSH 部署
+
+- 使用者要求日常路徑固定為 Agent VM → SSH 公鑰 → dev VM；取消 Windows broker 依賴。
+- 保留模型沙箱：由 Agent VM systemd 固定執行器讀即時 SERVICE 授權後操作，私鑰不進模型工作區；目標 forced-command + sudoers 僅允許 root-owned 固定入口與逐檔來源核准。
+- 兩個獨立 NAT 不互通且第二網卡停用，採共享 NAT Network ai-team-direct（172.30.46.0/24，Agent .10／dev .20），任務閒置時備份、優雅關機與切換；保留 Windows 管理入口但不作日常部署節點。
+- 舊任務 skill 快照不自動替換，承接新任務載入新規則；不偽造核准或修改歷史任務資料。

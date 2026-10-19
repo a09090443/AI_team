@@ -1221,3 +1221,18 @@
 - 原 sqlite3 -json 快照曾耗時占滿單核，嘗試停止唯讀查詢前它已自行完成；沒有發出終止訊號，也沒有更改部署腳本。沿用原始完整前後比對。
 - 已核對／修正 deploy-2026-09-06-v2、service-delivery、configuration、operations、system-map、data-model 的部署狀態，docs build 通過。未推送。
 - 使用者下一步：Windows PowerShell 依已核對的完整指令啟動 broker（Python／Paramiko／程式與私人設定路徑已確認），保持運作，再於 #1046 原串按「程式已啟動，續跑部署」；原請求沿用，本次結果須重新查核。
+
+
+## 2026-10-19 直接 SSH 部署修正（Codex）
+
+- 使用者要求取消 Windows broker 依賴並授權修正。分支 codex/direct-ssh-deployment，實作 f79f142，未推送。新增 Agent 固定 ssh_client／ssh_executor、目標 forced-command 入口與管理者初始化工具；限制公鑰、嚴格主機指紋、即時 SERVICE 授權、來源 manifest 與收據綁定／冪等取回；不給模型任意 SSH/root shell。
+- Linux 隔離 ~/direct-ssh-f79f142：來源tar f3e48f87…兩端一致，Maven687項0失敗/錯誤11略過、Python30項/check-source通過；本機Java75項、Python30項、docs build通過。
+- 三實例閒置後備份至 ~/direct-ssh-maintenance-20261019-131926，優雅停止、ACPI關機，切到共享NAT ai-team-direct：Agent172.30.46.10、dev172.30.46.20；原SSH2223/2224與HTTP8088轉送設定保留。三實例六張任務表逐列一致。
+- 專用公鑰指紋 SHA256:BHY2blujRQaMnLoYgHXmBBcAs53aj3cnya9o+pYtViA；私鑰未讀出，主機公鑰從可信dev管理介面取得。既有保護密碼檔只一次性送原VM供sudo，隨即清理；Windows CRLF在一次性傳送時正規化。日常不經GuestControl/Windows。
+- 真實直連health 7a4cc6a9…（PostgreSQL/後端正常、HTTP200）、diagnose1592ae09…通過；任意命令、未登錄指紋、未核准合法archive被拒；完成收據重取完全一致。未啟動產品重建或傳Slack訊息。
+- bestpartner安全部署JAR45879bfd…，PID8844，備份orchestrator-backup.II8thl；任務/工作區完整前後快照一致。只更新部署prompt／skill與capabilities，其餘live teams保留。三實例恢復運作；Agent systemd ai-team-ssh-deploy active/enabled，linger=yes，restart通過；Windows broker數量0。
+- **未完成／異常**：13:28:55 UTC左右dev VBox.log明示Guest heartbeat停止；之後ping/HTTP/GuestControl皆失敗、Windows8088逾時。已送ACPI正常關機，未強制reset/poweroff、不刪資料。此前HTTP200不能代表現在可用；待恢復dev並檢查上次開機journal。#1046舊skill快照須新任務承接，不手改DB或偽造核准；未做Slack E2E。
+- 發現的缺漏／落差：舊規則及現行操作文件要求Windows broker，與使用者指定Agent直連不符；已修正service-build skill、service/service-triage、角色capabilities、恢復context及現行操作敘述。
+- 已核對／修正文件：direct-ssh-deployment、service-delivery、agent operations/configuration/system-map、AGENTS、catalog/project-tree；已補初始化流程、權限、實測與異常界線。最後再次docs build驗證。
+
+- 後續恢復：使用者明確回答「允許強制重啟dev」，已執行reset；重啟後新health d443693b…exit0、PostgreSQL/後端正常、Windows8088 HTTP200。前次核心journal可讀，有RCU/clock/watchdog與VirtualBox顯示驅動警告，未確認當機根因；不宣稱永久修復。原資料卷未清除，未進行產品資料逐列比對。下一步在bestpartner頻道以新任務承接#1046，載入新skill，來源manifest不符須停止審閱；未發Slack訊息、未推送Git。

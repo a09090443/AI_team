@@ -143,7 +143,7 @@ bash deploy/bootstrap/check-source.sh
 
 ## 服務執行工具（2026-10-10）
 
-bestpartner 配置四個 `service-*` 操作，目標 `bestpartner-dev`；Windows 宿主機 `host.example.json` 的 UUID／guest_user／password_file／source_manifest／state_directory 必須由管理者設定，`tasks=[]` 依即時 SERVICE 狀態自動挑選。詳見 [服務建置](/docs/service-delivery)。
+bestpartner 配置四個 `service-*` 操作，目標 `bestpartner-dev`；Agent VM 的 `~/.config/ai-team/ssh-targets/bestpartner-dev.json` 指定 destination、port、identity_file、known_hosts_file，固定執行器依即時 SERVICE 狀態授權。詳見 [服務建置](/docs/service-delivery)。
 
 
 ### 節點 skill
@@ -151,7 +151,7 @@ bestpartner 配置四個 `service-*` 操作，目標 `bestpartner-dev`；Windows
 `nodes.<id>.skills` 選填，最多 8 份不重複的 `skills/<name>/SKILL.md` 或 `skills/<name>/references/<name>.md` 相對路徑。檔案須位於 teams 目錄內，每份不超過 256 KB。
 舊配置缺欄位照舊；skill 與參考內容納入 revision／snapshot，角色改派保留 skills，唯讀對話不注入。變更 skill 須新任務承接，不能以能力遷移替換提示。
 
-Windows 可用 skill 的 `scripts/login.ps1 -Config <設定檔>` 初始化 password_file；其父目錄必須是專用私人目錄，腳本會限制 ACL 且不覆寫既有檔案。
+直連設定僅存私鑰與 known_hosts 的路徑；私鑰留在 Agent VM，目標的 root-owned 來源 manifest 與 forced-command 入口由管理者安裝。
 
 ## 文件驗收配置（2026-10-12 來源更新）
 
@@ -165,6 +165,6 @@ plan 的 protected_path_changes 明列需跨 runtime 改派的檔案；不新增
 實例可放 service-context/<target>.json，提供不含機密的宿主程式、設定路徑、啟動指令與歷史收據索引；詳見 [服務建置](/docs/service-delivery)。此檔僅供說明，不增加操作權限。
 
 
-### 2026-10-19 SSH 直連規格（尚未啟用）
+### 2026-10-19 SSH 直連規格（已啟用）
 
-新規格由 Agent VM 的 systemd 固定部署執行器以 SSH 公鑰直連目標 VM，不需要 Windows broker。來源已修正，須先完成網路、公鑰、主機指紋與目標受限入口驗收；目前不要依舊說明啟動 Windows 程式。詳見 [直連部署](/docs/direct-ssh-deployment)。
+Agent VM 的 systemd 固定部署執行器已啟用，以 SSH 公鑰直連 dev VM；網路、公鑰、主機指紋、受限入口與 health 已實測，不需要 Windows broker。#1046 的舊 skill 快照須新任務承接；dev VM 曾 heartbeat 停止，經使用者核准重啟後已重新驗證健康與8088入口，當機根因待查。本輪未重部署產品或續跑 Slack。詳見 [直連部署](/docs/direct-ssh-deployment)。

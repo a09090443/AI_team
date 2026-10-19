@@ -1,7 +1,7 @@
 {
   "transport": "direct-ssh",
   "target": "bestpartner-dev",
-  "destination": "gary@172.30.46.2",
+  "destination": "gary@172.30.46.20",
   "port": 22,
   "identity_file": "/home/agent/.ssh/ai-team-dev-ed25519",
   "known_hosts_file": "/home/agent/.ssh/ai-team-dev-known-hosts"

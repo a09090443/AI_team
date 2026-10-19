@@ -4,9 +4,13 @@
 
 使用者指定日常路徑為 **Slack → Agent VM → SSH 公鑰認證 → dev VM**，不依賴 Windows broker 或 Guest Control。
 規格單一來源在 `.agents/skills/service-build/SKILL.md` 及 `references/host-setup.md`，同步到 Claude 與 Slack runtime 套件。
-目前來源已實作，**尚未切換線上部署通道**。兩台 VM 仍為獨立 NAT，沒有可互連的網路介面；
-Agent VM 第二張網卡停用，VirtualBox 無法於開機中啟用它。#1003 執行中，未為此中斷任務或重啟 VM。
-已在 Agent VM 建立專用 Ed25519 金鑰（未讀私鑰、未覆寫其他金鑰），但尚未向 dev 登錄，也尚未完成 SSH 連線驗證。
+2026-10-19 已啟用 Agent VM 的固定 SSH 部署執行器；Windows 不需執行 broker。收尾時 dev VM 曾無回應，使用者核准強制重啟後已恢復並重新驗證 HTTP200（詳見下方異常紀錄）。
+兩台 VM 以共享 NAT Network `ai-team-direct`（172.30.46.0/24）互通：Agent `172.30.46.10`、dev `172.30.46.20`。
+原 Windows 管理入口 127.0.0.1:2223／2224 與產品 127.0.0.1:8088 保留；這些入口不參與 Agent 日常部署。
+維護時三個實例均無執行中任務，先備份資料庫、優雅停止服務與關機，再切換網路；所有任務資料保持一致。
+專用 Ed25519 私鑰只留 Agent VM，dev 登錄 restrict／forced-command 公鑰與限定 sudoers；主機公鑰由可信 VM 管理介面取得並固定指紋。
+
+`ai-team-ssh-deploy.service` 為 active／enabled，Agent linger=yes，未崩潰重啟；已驗證網路切換後服務恢復，尚未再完整重開機驗證新執行器。
 
 ## 執行方式與權限
 
@@ -37,3 +41,22 @@ SSH 固定 BatchMode、公鑰認證、獨立 known_hosts 與嚴格指紋檢查�
 
 只有兩台 VM 的上述實測成功才可標為已啟用；Python 單元測試不是網路、公鑰或部署端對端證據。
 不在此流程中自動清空資料卷、更換資料庫密碼或覆寫未審核的來源 manifest。
+
+
+## 2026-10-19 實測與承接
+
+- 實作來源 `f79f142`，Linux Maven 687 項、零失敗／錯誤、11 略過；Python 30 項與 check-source 通過。
+- Agent → dev 真實 SSH：health 收據 `7a4cc6a9ad234113a98ea482d8b81e6c`，PostgreSQL／後端執行中，`/view/chat` HTTP 200；diagnose `1592ae09b17a460ea402fda65ee44930` 成功。
+- 任意 `id` 命令被固定入口拒絕、未登錄主機指紋被 SSH 拒絕；合法 archive 的未核准檔案被 manifest 拒絕（`341d12cd99be4627bdf4b1fa1a0a1d75`），未啟動產品；重取健康請求得到完全相同收據。
+- 網路維護前備份 `~/direct-ssh-maintenance-20261019-131926`；三實例 task／flow_run／task_checkpoint／direct_request／stage_result／quota_retry 逐列一致。
+- 本輪未重建／重部署產品，也未送 Slack 訊息或續跑任務；不是新的 Slack 部署端對端成功證據。
+- #1046 保存舊版 skill 快照，變更 skill 需新任務承接，不直接改快照。請在 bestpartner 頻道 @PM：
+  「承接 #1046，在既有 bestpartner-dev 部署測試程式。依目前 SSH 直連規則，先查部署歷史與目前健康，再執行核准的 prepare、start、health；不要清空資料卷。完成請回報版本、服務名稱與可用網址。若來源與既有核准 manifest 不符，先列出差異並停止。」
+- Agent 維運：`systemctl --user status ai-team-ssh-deploy.service`；需要恢復才用 `systemctl --user restart ai-team-ssh-deploy.service`，不需開啟 Windows 程式。
+
+
+### 收尾時 dev VM 異常
+
+13:28:55 UTC 左右，VirtualBox `VBox.log` 記錄 `Guest seems to be unresponsive`；之後 Agent ping／HTTP 與 Guest Control 均無回應，Windows 8088 也逾時。此前直連 health／diagnose 與拒絕測試均已完成成功。
+VM 狀態仍 running，不把先前 HTTP200 當成目前健康，也不認定為單一 port-forward 問題。已送 ACPI 正常關機，未強制 reset／poweroff、未清除資料卷。使用者明確核准後已對 dev 執行 reset；恢復後新健康收據 `d443693b701e4555b8dd084178e39628` 成功，PostgreSQL/後端正常，Agent SSH 與 Windows http://127.0.0.1:8088/view/chat 均 HTTP200。上次核心日誌有 RCU/clock/watchdog 與既有 VirtualBox 顯示驅動警告，未見足以確認的當機根因，不能宣稱已根治；未清空資料卷。
+bestpartner orchestrator 已安全升級：JAR `45879bfd7672ecb88d63798fb02293235d57b1337bd986c4508bdbbd9edda7ee`，PID8844，備份 `~/ai-team-bestpartner/orchestrator-backup.II8thl`；部署腳本完整任務／工作區快照比對通過。Agent 執行器 active／enabled，restart 驗證成功，Windows broker 程序數量0。

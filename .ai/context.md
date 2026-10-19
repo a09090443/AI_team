@@ -7,6 +7,8 @@
 
 ## 正在進行
 
+- **SSH 直連修正已部署（2026-10-19，Codex）**：分支 codex/direct-ssh-deployment，實作 f79f142（未推送）。Agent172.30.46.10 → SSH公鑰 → dev172.30.46.20；共享NAT ai-team-direct，2223/2224/8088入口保留，Windows broker數量0。bestpartner JAR45879bfd…/PID8844，備份orchestrator-backup.II8thl，安全部署任務/工作區完整前後比對通過；三實例維護前後六張任務表逐列一致。Agent ai-team-ssh-deploy.service active/enabled/linger=yes。Linux687項/Python30通過，docs build通過。dev收尾曾heartbeat停止，ACPI無效，使用者明確核准reset後恢復；新health d443693b…exit0、PostgreSQL/後端與Windows8088 HTTP200。核心警告有RCU/watchdog，根因未確認。下一步：在bestpartner頻道新任務承接#1046（舊skill快照不能直接替換），由新規則prepare/start/health；manifest不符先停下審閱，不清資料卷。不手改DB、不自動發Slack或續跑。完整證據見本worktree progress與direct-ssh-deployment文件。
+
 - **#1046 已部署（2026-10-19，Codex）**：bestpartner PID177129、JAR 4136d6fc…，來源 7b25f05，備份 orchestrator-backup.zgRG00；Linux 687項全過（11略過），資料／工作區前後一致、ERROR0、6角色連線。非機密 service-context 已安裝。下一步使用者啟動 Windows 宿主 broker，再於原 #1046 按「程式已啟動，續跑部署」。任務仍 AWAIT_HUMAN，未啟動 broker、未續跑、未推送；其他實例 PID 未變。
 
 

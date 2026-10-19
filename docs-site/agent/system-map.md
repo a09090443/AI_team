@@ -139,7 +139,7 @@ agent 不能自行指定角色或跳到任意節點。
 
 ## 服務執行工具（2026-10-10）
 
-服務建置另有 `orchestrator/teams/skills/service-build/`：工作區 client → 主機 broker → SSH 或 VirtualBox 配置的目標。broker 讀即時任務授權，執行四個固定操作，結果存宿主機並交回工作區；不透過 Slack 傳遞憑證。詳見 [服務建置](/docs/service-delivery)。
+服務建置另有 `orchestrator/teams/skills/service-build/`：工作區 client → Agent VM systemd 執行器 → SSH 公鑰直連目標。執行器讀即時任務授權，執行四個固定操作，目標持久化收據並交回工作區；不透過 Slack 傳遞憑證。詳見 [服務建置](/docs/service-delivery)。
 
 ### 文件任務驗證（2026-10-12 來源更新）
 
@@ -150,9 +150,9 @@ plan.protected_path_changes 由實作前置計畫提供，ProtectedPathFallback 
 
 ### 2026-10-19 部署脈絡（已部署 bestpartner）
 
-服務目標的歷史背景由 TaskStore.serviceHistory → ServiceDeploymentContext → ConfiguredExecutor 注入所有正式節點；管理者說明讀自實例 service-context/<target>.json，不自動執行宿主命令。
+服務目標的歷史背景由 TaskStore.serviceHistory → ServiceDeploymentContext → ConfiguredExecutor 注入所有正式節點；管理者說明讀自實例 service-context/<target>.json，不自動執行管理命令。
 
 
-### 2026-10-19 SSH 直連規格（尚未啟用）
+### 2026-10-19 SSH 直連規格（已啟用）
 
-新規格由 Agent VM 的 systemd 固定部署執行器以 SSH 公鑰直連目標 VM，不需要 Windows broker。來源已修正，須先完成網路、公鑰、主機指紋與目標受限入口驗收；目前不要依舊說明啟動 Windows 程式。詳見 [直連部署](/docs/direct-ssh-deployment)。
+Agent VM 的 systemd 固定部署執行器已啟用，以 SSH 公鑰直連 dev VM；網路、公鑰、主機指紋、受限入口與 health 已實測，不需要 Windows broker。#1046 的舊 skill 快照須新任務承接；dev VM 曾 heartbeat 停止，經使用者核准重啟後已重新驗證健康與8088入口，當機根因待查。本輪未重部署產品或續跑 Slack。詳見 [直連部署](/docs/direct-ssh-deployment)。
