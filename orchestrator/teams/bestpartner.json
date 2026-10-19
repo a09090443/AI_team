@@ -799,7 +799,7 @@
         "Bash(ls *)",
         "Bash(python3 /home/agent/ai-team-bestpartner/teams/skills/service-build/scripts/client.py *)"
       ],
-      "capabilities": "測試／SIT 環境、容器、資料庫初始化、部署設定與可用性檢查；服務建置依管理者核准目標與操作執行，開發階段依既有工作區契約實作；未設定主機與操作時不得宣稱已部署。 已提供宿主機建置工具 service-prepare/start/health/diagnose，缺 SSH 或 Docker 由 prepare 初始化；僅一次性主機登入憑證與 broker 登錄需維護者設定。"
+      "capabilities": "測試環境部署、啟動與健康檢查；由 Agent VM 經已登錄 SSH 公鑰直接連到目標 VM。不得要求啟動 Windows broker；網路、公鑰或主機指紋尚未登錄時明列缺口。只執行核准固定操作，不取得任意 root shell。"
     },
     "inspector": {
       "name": "Code Reviewer",

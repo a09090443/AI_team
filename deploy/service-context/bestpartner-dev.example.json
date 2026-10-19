@@ -1,10 +1,10 @@
 {
   "target": "bestpartner-dev",
-  "host": "Windows 宿主機（不是 Agent VM，也不是 dev 客體）",
-  "program": "D:/agent_team/.agents/skills/service-build/scripts/broker.py",
-  "config_file": "C:/Users/zipe1/AppData/Local/AI-Team/service-build/bestpartner-dev.json",
-  "start_command": "$env:PYTHONPATH = 'C:/Users/zipe1/AppData/Local/AI-Team/service-build/python-libs'; & 'C:/Users/zipe1/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe' 'D:/agent_team/.agents/skills/service-build/scripts/broker.py' 'C:/Users/zipe1/AppData/Local/AI-Team/service-build/bestpartner-dev.json' ",
-  "notes": "管理者在 Windows PowerShell 核對路徑、Python 與依賴後執行；確認同目標只有一個 broker 並保持視窗開啟。啟動本工具不等於產品健康。工具恢復後於原 Slack 任務續跑。設定檔與登入資料已存在，不需重新提供。路徑屬此環境，換機必須更新。",
+  "host": "Agent VM（部署連線由此機直接 SSH 至 dev VM）",
+  "program": "/home/agent/ai-team-bestpartner/teams/skills/service-build/scripts/ssh_executor.py",
+  "config_file": "/home/agent/.config/ai-team/ssh-targets/bestpartner-dev.json",
+  "start_command": "systemctl --user status ai-team-ssh-deploy.service; systemctl --user restart ai-team-ssh-deploy.service",
+  "notes": "固定執行器由 Agent VM 的 systemd 開機啟動，不需 Windows broker。首次須完成 VM 互通網路、公鑰與主機指紋核對，以及目標機固定入口安裝；未完成不可宣稱可部署。管理者設定檔只含金鑰引用，不含私鑰值。歷史成功不代表目前健康。",
   "history": [
     {
       "at": "2026-10-11",

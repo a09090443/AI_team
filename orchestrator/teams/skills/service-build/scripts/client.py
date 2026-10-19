@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline service tool for the agent; privileged work stays with the host broker."""
+"""Service request entry; fixed execution runs on the Agent VM and uses SSH to the target."""
 import json
 import os
 from pathlib import Path
@@ -42,6 +42,9 @@ def submit(action, timeout=1500):
     pending = queue / "request.json"
     if pending.exists():
         request = json.loads(pending.read_text())
+        retry = queue / (request["id"] + ".json")
+        if retry.exists() and json.loads(retry.read_text()).get("exit_code") == 75:
+            retry.unlink()  # Only an explicit repeat call asks the executor to retrieve/retry the same ID.
         if request.get("action") != action:
             raise ValueError("previous service action is still pending; do not submit another")
     else:
@@ -50,13 +53,13 @@ def submit(action, timeout=1500):
         with pending.open("x", encoding="utf-8") as out:
             json.dump(request, out)
     deadline = time.monotonic() + timeout
-    print("Waiting for the approved host broker: " + action, flush=True)
+    print("Waiting for the Agent VM SSH deployment executor: " + action, flush=True)
     started = time.monotonic()
     while time.monotonic() < deadline:
         heartbeat = queue / "broker-heartbeat"
         accepted = queue / (request["id"] + ".accepted")
         if not accepted.exists() and time.monotonic() - started > 15 and (not heartbeat.exists() or time.time() - heartbeat.stat().st_mtime > 30):
-            print("SERVICE_BROKER_OFFLINE: host worker is not responding; request retained")
+            print("SERVICE_EXECUTOR_OFFLINE: Agent VM deployment service is not responding; request retained; no Windows broker is required")
             return 75
         result = queue / (request["id"] + ".json")
         if result.exists():
@@ -64,10 +67,11 @@ def submit(action, timeout=1500):
             if data.get("id") != request["id"] or data.get("action") != action:
                 raise ValueError("service receipt mismatch")
             print(json.dumps(data, ensure_ascii=False))
-            pending.unlink(missing_ok=True)
+            if data["exit_code"] != 75:
+                pending.unlink(missing_ok=True)
             return int(data["exit_code"])
         time.sleep(2)
-    print("Host broker did not finish. The request is retained; retry the same action to wait for its receipt.")
+    print("Agent VM deployment executor did not finish. The request is retained; retry the same action to wait for its receipt.")
     return 75
 
 

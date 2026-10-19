@@ -1,5 +1,7 @@
 # 服務建置與開發分流
 
+**2026-10-19 規格修正**：日常部署改為 Agent VM 經 SSH 公鑰直連目標 VM，Windows 不再作為必要執行節點。來源已修正，網路／公鑰初始化與線上切換尚未完成，詳見 [SSH 直連部署](direct-ssh-deployment.md)。以下 Windows broker 的執行方式屬既有線上版本與歷史證據，不是新規格。
+
 bestpartner 的 `intake` 可選 `route=service`，交給既有 Infrastructure Agent：
 
 ```text
@@ -41,7 +43,7 @@ bestpartner 來源配置現在指定 `bestpartner-dev`，檢查為 `prepare`、`
 這個絕對路徑是此實例的部署設定；其他安裝位置必須調整 operations 與角色工具白名單。
 模型只在 `docs/docker/sit/.agent-service/` 寫入請求並等待收據，不直接取得管理者權限。
 
-### 可攜式 skill 與主機執行工具
+### 舊版 Windows broker 執行方式（切換前的歷史說明）
 
 `service-build` 的唯一來源在 `.agents/skills/service-build/`，同步腳本產生 Claude 與 Slack runtime 套件。
 `nodes.service.skills` 與 `service_triage.skills` 指定 SKILL.md 及 bestpartner 參考；載入時固定內容與版本，派工時注入模型提示，並非僅新增一份模型看不到的文件。

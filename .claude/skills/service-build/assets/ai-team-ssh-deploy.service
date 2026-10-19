@@ -1,0 +1,15 @@
+[Unit]
+Description=Agent VM fixed SSH deployment executor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /home/agent/ai-team-bestpartner/teams/skills/service-build/scripts/ssh_executor.py /home/agent/ai-team-bestpartner /home/agent/.config/ai-team/ssh-targets/bestpartner-dev.json
+Restart=on-failure
+RestartSec=10
+UMask=0077
+KillMode=control-group
+
+[Install]
+WantedBy=default.target

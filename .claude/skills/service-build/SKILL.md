@@ -12,7 +12,11 @@ description: 由 Slack agent 在已授權主機準備環境、建置既有系統
 
 讀取本次 serviceTarget、operations 與產品部署參考，確認來源版本、目標身分、登入及資料保留需求。
 主機位址、VM UUID、登入方式和憑證引用放在主機設定；不要寫死在本 skill 或產品程式。
-優先使用已可用的 SSH；尚未安裝 SSH 的 VirtualBox 客體可透過 Guest Control 自行準備。
+正式部署必須由 Agent VM 透過 SSH 公鑰認證直接連到目標 VM，不依賴 Windows broker、Guest Control 或宿主機上的常駐 Python 程式。
+VirtualBox／宿主機工具只可用於管理者一次性的網路與 SSH 初始化，不得成為日常部署通道。
+使用 BatchMode=yes、PasswordAuthentication=no、StrictHostKeyChecking=yes 與獨立 known_hosts；不得用停用指紋核對解決連線問題。
+私鑰留在 Agent VM 的受保護路徑，目標機公鑰使用 forced command，sudo 只授權固定入口，不授權任意 root shell。
+檢查兩台 VM 間的真實可達位址；各自 NAT 的 10.0.2.15 不是互通位址，Windows 的 localhost 轉送也不是 VM 直連。
 其他平台使用管理者已提供且核准的連線工具，沒有實際驗證就不能聲稱支援。
 
 ## 執行與修復
@@ -33,5 +37,7 @@ description: 由 Slack agent 在已授權主機準備環境、建置既有系統
 
 - bestpartner 專案：讀取 [references/bestpartner.md](references/bestpartner.md)。其他產品需提供自己的部署參考與檢查操作，不套用 bestpartner 的路徑。
 - 主機執行與換機設定：讀取 [references/host-setup.md](references/host-setup.md)。
-- `scripts/client.py` 是 agent 的固定操作入口；`broker.py`、`enroll.py`、`guest.py` 由管理者部署。
+- `scripts/client.py <action>` 是角色沙箱的固定入口。`ssh_executor.py` 在 Agent VM 由 systemd 自動常駐，核對本地任務授權後呼叫 `ssh_client.py` 直接 SSH；不需 Windows 代辦。`ssh_client.py <管理者設定> <action>` 是同機固定執行器的同步直連入口；`ssh_target.py` 與 `guest.py` 是目標機 root-owned 固定入口。
+- `install-ssh-target.sh` 由管理者在目標 VM 一次性執行，安裝受限公鑰、sudo 規則與核准來源 manifest；不清除資料或其他公鑰。
+- `client.py` 沿用任務檔案佇列交給同機執行器；`broker.py` 僅保留舊版相容，不能在 SSH 失敗時自動退回 Windows broker。
 - `assets/host.example.json` 僅是無憑證範本，實際私密設定放在 repo 外。

@@ -151,3 +151,8 @@ plan.protected_path_changes 由實作前置計畫提供，ProtectedPathFallback 
 ### 2026-10-19 部署脈絡（已部署 bestpartner）
 
 服務目標的歷史背景由 TaskStore.serviceHistory → ServiceDeploymentContext → ConfiguredExecutor 注入所有正式節點；管理者說明讀自實例 service-context/<target>.json，不自動執行宿主命令。
+
+
+### 2026-10-19 SSH 直連規格（尚未啟用）
+
+新規格由 Agent VM 的 systemd 固定部署執行器以 SSH 公鑰直連目標 VM，不需要 Windows broker。來源已修正，須先完成網路、公鑰、主機指紋與目標受限入口驗收；目前不要依舊說明啟動 Windows 程式。詳見 [直連部署](/docs/direct-ssh-deployment)。

@@ -1,24 +1,19 @@
-# 主機設定與換機
+# Agent VM 直連目標 VM 的一次性設定
 
-這份參考供管理者首次登錄或更換主機；Slack agent 只執行已核准的操作。
+日常部署固定為 Agent VM → SSH 公鑰認證 → 目標 VM。Windows 只可協助最初配置虛擬網路或傳送公鑰，不運行部署 broker。
 
-1. 以 assets/host.example.json 建立 repo 外的私密設定；設定 target、agent_home、Agent SSH 入口與獨立 state_directory。
-2. transport=virtualbox：配置 vm_uuid、guest_user、password_file、vboxmanage；需要客體 Guest Additions，SSH 可以尚未啟用。
-3. transport=ssh：配置 target_ssh、target_port、target_identity_file、target_known_hosts_file；須事先有可用 SSH、公鑰登入及 sudo -n。這些是連線前提，缺 Docker／Compose 仍由 prepare 安裝。
-4. dedicated_sit_vm=true 表示這是明確授權可安裝系統套件的專用 SIT 目標，不能把生產主機當測試機。
-5. 檢查來源後執行 python scripts/enroll.py <設定檔> <来源任務 ID>，再執行 python scripts/broker.py <設定檔>。同一設定只運行一個 broker。
+1. 確認兩台 VM 有互通位址：同一個 Internal Network／Host-only／共享 NAT Network 均可；兩個獨立 NAT 的相同 10.0.2.15 不可當互通位址。變更虛擬網卡需維護時段，不中斷進行中任務。
+2. 在 Agent VM 以 ssh-keygen 建立專用 Ed25519 金鑰，保留私鑰權限 600；不覆寫現有金鑰。只傳公鑰到目標 VM。
+3. 由管理者在目標 VM 直接核對 SSH 主機公鑰指紋，再寫入 Agent VM 的專用 known_hosts。禁止把 ssh-keyscan 單獨當身分驗證，也禁止 StrictHostKeyChecking=no。
+4. 管理者審閱目標工作區的已提交來源，以逐檔 SHA256 的 JSON manifest 核准部署範圍；不自動把未審閱的最新分支當核准來源。
+5. 於目標 VM 以 sudo 執行 scripts/install-ssh-target.sh <登入帳號> <Agent公鑰檔> <核准來源manifest> <target名稱>。它安裝 root-owned guest.py、受限 forced-command SSH 入口與僅限該入口的 sudoers，不提供 root shell、不清除資料與其他公鑰。
+6. 在 Agent VM 放置管理者 direct-ssh.example.json 的私人副本（例如 ~/.config/ai-team/ssh-targets/bestpartner-dev.json），填實際目標位址、專用私鑰與 known_hosts 的路徑。不要貼金鑰值到設定或 Slack。
+7. 安裝 assets/ai-team-ssh-deploy.service 至 Agent VM ~/.config/systemd/user/，核對本實例路徑，執行 systemctl --user daemon-reload 及 systemctl --user enable --now ai-team-ssh-deploy.service。使用者層 systemd 與 linger 的前置條件沿用 INSTALL；它核對本機 SERVICE 任務後直接 SSH，不連 Windows。
+8. 以固定操作完成 prepare、health／diagnose。沒有本次 start 成功收據不能宣稱重新部署完成；來源 manifest 不符時停下審核，不自動覆寫。
 
-换主機時另建設定和 state_directory、更新目標身分與登入引用；skill 本文保持不變。保留舊主機資料，沒有資料搬遷授權不複製或清除舊資料卷。
-需更新團隊 serviceTarget.name 及執行工具路徑時由管理者配置，以新任務快照生效；不能假設更換 JSON 就自動搬遷既有任務。
-transport=ssh 的固定程序與 VirtualBox 共用 guest.py，不接受模型自訂 shell 命令。
-兩個連線模式以單元測試驗證；真實換機、SSH 遠端安裝及 VirtualBox 完整建置仍需實測，不宣稱已驗收。
+SSH_TRANSPORT、設定缺失或 SERVICE_EXECUTOR_OFFLINE 必須清楚區分：網路／主機指紋／公鑰／受限入口是連線設定；systemd 服務未運作是 Agent VM 本機執行器問題。不得要求使用者啟動 Windows broker。
 
-## Windows 首次登入入口
+請求與收據以 id、target、action、來源 digest 綁定；相同 id 不重做已完成操作，中斷標記需核對目標後再處理。舊 Windows worker 已接單但未拿到收據時，不能直接換通道重做。
+更換主機要重新核對位址與主機指紋並更新私人設定，不複製舊資料卷或擅自變更來源核准。
 
-管理者先備好 repo 外的設定，再開啟 `powershell -NoProfile -File scripts/login.ps1 -Config <設定檔>`。使用者只在遮蔽輸入視窗輸入既有密碼一次，不需要尋找或建立檔案。腳本依 password_file 自動保存，將其所在私人目錄限為目前 Windows 帳號存取；這是 ACL 保護的明文檔，不是加密保管庫。不得將該目錄用作共用資料夾。既有檔案不覆寫，連結目錄及空密碼拒絕。登入成功保存不代表 VM 已驗證；管理者仍須測試 Guest Control 身分，再啟動 broker。
-
-Windows 入口使用 .NET ACL API，不依賴 Set-Acl 模組自動載入；已在 Windows PowerShell 5.1 與 PowerShell 7.6.5 以假密碼驗證保存、權限及不覆寫。
-
-建置最低客體記憶體2500MiB；工具依實際MemTotal保留系統用量、限制Gradle JVM及worker，下載快取留在目標專用目錄供重試使用。正常關機無回應不等於可任意強制重置；強制中斷须符合該目標的明確授權。
-
-宿主broker輪詢連線/佇列暫時失敗時採3至60秒退避並保留收據，不直接退出；--once仍回報錯誤。此程序尚未自動註冊為開機服務，宿主需持續運行。Linux start以flock避免重疊建置，建置900秒內部逾時並清理核對專用label的建置容器，資料卷與快取保留。
+舊版 broker.py／Guest Control 僅保留歷史相容，不是新規格的日常部署方式。程式測試與設定檔存在不等於兩台 VM 直連或服務部署已實測。

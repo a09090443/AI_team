@@ -219,3 +219,8 @@ Windows 首次登入由管理者開啟 skill 的 `scripts/login.ps1`；使用者
 ### 2026-10-19 部署脈絡（已部署 bestpartner）
 
 部署通道回 SERVICE_BROKER_OFFLINE 時，先依回報中的宿主機恢復入口啟動 broker，再續跑原任務；本次未完成不代表舊服務停止。既有部署歷史僅供參考，本次仍須實際健康檢查。
+
+
+### 2026-10-19 SSH 直連規格（尚未啟用）
+
+新規格由 Agent VM 的 systemd 固定部署執行器以 SSH 公鑰直連目標 VM，不需要 Windows broker。來源已修正，須先完成網路、公鑰、主機指紋與目標受限入口驗收；目前不要依舊說明啟動 Windows 程式。詳見 [直連部署](/docs/direct-ssh-deployment)。

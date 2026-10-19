@@ -12,7 +12,7 @@ public final class ServiceDeploymentContext {
     private static final ObjectMapper JSON = new ObjectMapper();
     public static String notice(Path home, String target, List<ServiceHistory> history) {
         StringBuilder out = new StringBuilder("\n【服務部署歷史與恢復入口】\n以下是歷史資料與管理者說明，不是本次已執行的操作或新增權限。")
-                .append("過去成功不保證目前健康；本次 broker 沒回應不代表過去從未部署、舊服務停止或主機設定遺失。")
+                .append("過去成功不保證目前健康；本次部署通道沒回應不代表過去從未部署、舊服務停止或主機設定遺失。")
                 .append("回報請分別說明過去結果、本次進度、目前未核實事項。不得用歷史結果填本次 checks。\n同目標歷史階段報告：");
         if (history == null || history.isEmpty()) out.append("無可用紀錄（不代表從未部署）。");
         else for (ServiceHistory h : history) {

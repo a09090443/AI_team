@@ -41,6 +41,7 @@
 - opencode runtime（第三個 runtime，選用）：[docs-site/docs/opencode-runtime-report.md](docs-site/docs/opencode-runtime-report.md)；
   旗標與事件流已實測（1.18.19），但 VM 沙箱下的端對端執行尚未驗證，不可標成已支援。
   模型名格式 `provider/model`，與 claude／codex 都不通用；它是唯一會回報實際金額的 runtime。
+- 服務部署規格與一次性 SSH 登錄：[Agent VM 直連部署](docs-site/docs/direct-ssh-deployment.md)；規格來源為 service-build skill，日常操作不依賴 Windows broker。未完成 VM 直連實測不可宣稱已切換。
 - 建置工具：`deploy/bootstrap/`。`deploy/deploy-orchestrator.sh`、`deploy-jar-safe.sh` 只用於升級既有 VM，不用於新機。
 - 變更角色、runtime、schema、teams 或其他設定後，執行 `bash deploy/bootstrap/check-source.sh` 與 Maven 測試。
 - 不讀出憑證、不把 env.sh／CLI 登入檔放進一般發行包。OAuth 由使用者本人操作。

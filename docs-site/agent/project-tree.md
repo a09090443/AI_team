@@ -67,8 +67,15 @@ agent_team/
 │       │   │   ├── bestpartner.md    # 產品部署契約與檢查限制
 │       │   │   └── host-setup.md     # SSH／VirtualBox 主機設定與換機
 │       │   ├── assets/
-│       │   │   └── host.example.json # 無憑證的主機設定範本
+│       │   │   ├── host.example.json # 無憑證的主機設定範本
+│       │   │   ├── direct-ssh.example.json # Agent VM 直連設定（只含金鑰引用）
+│       │   │   └── ai-team-ssh-deploy.service # Agent VM 自動部署服務範本
 │       │   └── scripts/
+│       │       ├── ssh_client.py     # Agent VM 固定 SSH 直連操作
+│       │       ├── ssh_executor.py   # 同機 systemd 執行器（不連 Windows）
+│       │       ├── ssh_target.py     # 目標 VM 的受限 SSH 入口
+│       │       ├── install-ssh-target.sh # 一次性目標公鑰與固定 sudo 設定
+│       │       ├── test_direct_ssh.py # 直連授權、收據與重試測試
 │       │       ├── client.py         # Agent 固定操作入口與任務授權
 │       │       ├── broker.py         # 主機連線與固定操作執行
 │       │       ├── guest.py          # 目標環境安裝、建置、啟動與檢查
@@ -94,8 +101,15 @@ agent_team/
 │       │   │   ├── bestpartner.md    # 產品部署契約與檢查限制
 │       │   │   └── host-setup.md     # SSH／VirtualBox 主機設定與換機
 │       │   ├── assets/
-│       │   │   └── host.example.json # 無憑證的主機設定範本
+│       │   │   ├── host.example.json # 無憑證的主機設定範本
+│       │   │   ├── direct-ssh.example.json # Agent VM 直連設定（只含金鑰引用）
+│       │   │   └── ai-team-ssh-deploy.service # Agent VM 自動部署服務範本
 │       │   └── scripts/
+│       │       ├── ssh_client.py     # Agent VM 固定 SSH 直連操作
+│       │       ├── ssh_executor.py   # 同機 systemd 執行器（不連 Windows）
+│       │       ├── ssh_target.py     # 目標 VM 的受限 SSH 入口
+│       │       ├── install-ssh-target.sh # 一次性目標公鑰與固定 sudo 設定
+│       │       ├── test_direct_ssh.py # 直連授權、收據與重試測試
 │       │       ├── client.py         # Agent 固定操作入口與任務授權
 │       │       ├── broker.py         # 主機連線與固定操作執行
 │       │       ├── guest.py          # 目標環境安裝、建置、啟動與檢查
@@ -233,8 +247,15 @@ agent_team/
 │   │   │       │   ├── bestpartner.md
 │   │   │       │   └── host-setup.md
 │   │   │       ├── assets/
-│   │   │       │   └── host.example.json
+│   │   │       │   ├── host.example.json
+│   │   │       │   ├── direct-ssh.example.json # Agent VM 直連設定（只含金鑰引用）
+│   │   │       │   └── ai-team-ssh-deploy.service # Agent VM 自動部署服務範本
 │   │   │       └── scripts/
+│   │   │           ├── ssh_client.py     # Agent VM 固定 SSH 直連操作
+│   │   │           ├── ssh_executor.py   # 同機 systemd 執行器（不連 Windows）
+│   │   │           ├── ssh_target.py     # 目標 VM 的受限 SSH 入口
+│   │   │           ├── install-ssh-target.sh # 一次性目標公鑰與固定 sudo 設定
+│   │   │           ├── test_direct_ssh.py # 直連授權、收據與重試測試
 │   │   │           ├── client.py
 │   │   │           ├── broker.py
 │   │   │           ├── guest.py
