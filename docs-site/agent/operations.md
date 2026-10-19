@@ -216,6 +216,6 @@ bestpartner 新任務可由 PM 選擇 service 路線，由 Infrastructure 建置
 Windows 首次登入由管理者開啟 skill 的 `scripts/login.ps1`；使用者只需在遮蔽視窗輸入既有密碼，不必找路徑或自行安裝工具。
 
 
-### 2026-10-19 部署脈絡（來源已修正、尚未部署）
+### 2026-10-19 部署脈絡（已部署 bestpartner）
 
 部署通道回 SERVICE_BROKER_OFFLINE 時，先依回報中的宿主機恢復入口啟動 broker，再續跑原任務；本次未完成不代表舊服務停止。既有部署歷史僅供參考，本次仍須實際健康檢查。

@@ -148,6 +148,6 @@ plan.protected_path_changes 由實作前置計畫提供，ProtectedPathFallback 
 現有 requires、計畫核准、QA／Review 與 PR 閘門保持；舊快照不自動載入新提示／schema／操作，詳見[配置流程](/docs/configurable-team)。
 
 
-### 2026-10-19 部署脈絡（來源已修正、尚未部署）
+### 2026-10-19 部署脈絡（已部署 bestpartner）
 
 服務目標的歷史背景由 TaskStore.serviceHistory → ServiceDeploymentContext → ConfiguredExecutor 注入所有正式節點；管理者說明讀自實例 service-context/<target>.json，不自動執行宿主命令。

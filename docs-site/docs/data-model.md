@@ -393,6 +393,6 @@ TeamDefinition.Project 新增選填 serviceTarget：name（目標名稱）與 ch
 舊報告缺此欄位仍可解析，但不從文字自動推測新的分段改派；舊快照需更新 schema／計畫或承接新任務。
 
 
-### 2026-10-19 部署脈絡（來源已修正、尚未部署）
+### 2026-10-19 部署脈絡（已部署 bestpartner）
 
 stage_attempt 現在也供 TaskStore.serviceHistory 查詢同頻道、同目標 SERVICE 歷史報告（最近 12 筆，排除本任務）；以當時 flow_run 的節點 gate 核對，不把分流摘要當服務收據。未新增資料表或序列化欄位。

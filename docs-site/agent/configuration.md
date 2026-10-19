@@ -160,6 +160,6 @@ Windows 可用 skill 的 `scripts/login.ps1 -Config <設定檔>` 初始化 passw
 plan 的 protected_path_changes 明列需跨 runtime 改派的檔案；不新增權限，仍須符合節點 protectedPathFallback.paths。詳見[配置流程](/docs/configurable-team)。尚未部署。
 
 
-### 2026-10-19 部署脈絡（來源已修正、尚未部署）
+### 2026-10-19 部署脈絡（已部署 bestpartner）
 
 實例可放 service-context/<target>.json，提供不含機密的宿主程式、設定路徑、啟動指令與歷史收據索引；詳見 [服務建置](/docs/service-delivery)。此檔僅供說明，不增加操作權限。

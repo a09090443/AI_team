@@ -1211,3 +1211,13 @@
 - 2026-10-11 11:50：Slack agent送出的start d556…真實成功：Gradle12m28s、exit0/noOOM，PostgreSQL/後端與HTTP200；宿主localhost8088另驗HTTP200。模型先因額度停，#1036 WAITING_QUOTA排10/17 22:29自動嘗試；未手改狀態或稱agent已結案。已同步Slack維運證據。新增broker輪詢退避與修正Gradle指定cache，20測試/check-source通過；前版cache未生效如實更正，下一輪待驗。核對service-delivery、host-setup、operations、configuration、system-map、quota-continuation；修正service-delivery及host-setup，其餘規則仍一致。新VM全自動及產品登入/持久化未驗收。
 
 - 本輪最終驗證：隔離Linux Maven605項（0失敗、0錯誤、11略過）、工具20項、check-source、docs-site build均通過。服務已啟動，Slack模型額度與新VM自主驗收仍是未完成事項。
+
+
+## 2026-10-19 #1046 修正已部署 bestpartner（Codex，使用者授權）
+
+- 來源 7b25f05，隔離目錄 ~/service-context-7b25f05；tar 97cda2b3… 兩端一致。Linux Maven verify 687 項、0 失敗／錯誤、11 略過，check-source（Python 20 項）通過。
+- 候選 ~/service-context-deploy-7b25f05 保留線上 teams JSON，只更新 service／service-triage 提示；部署 JAR 4136d6fc…，備份 orchestrator-backup.zgRG00，bestpartner PID177129。完整部署腳本的任務資料與工作區摘要比對均通過，額外 SQLite 逐列比對六張現場表也一致；ERROR 0、6 角色 Socket Mode 啟動。starters PID156709、dynamic-api PID152364 未變。
+- 非機密說明 ~/ai-team-bestpartner/service-context/bestpartner-dev.json 已安裝（600），#1046 保留 AWAIT_HUMAN／原請求 20db9ac9…；未啟動 broker 或自動續跑，沒有產品重部署／Slack E2E 證據。
+- 原 sqlite3 -json 快照曾耗時占滿單核，嘗試停止唯讀查詢前它已自行完成；沒有發出終止訊號，也沒有更改部署腳本。沿用原始完整前後比對。
+- 已核對／修正 deploy-2026-09-06-v2、service-delivery、configuration、operations、system-map、data-model 的部署狀態，docs build 通過。未推送。
+- 使用者下一步：Windows PowerShell 依已核對的完整指令啟動 broker（Python／Paramiko／程式與私人設定路徑已確認），保持運作，再於 #1046 原串按「程式已啟動，續跑部署」；原請求沿用，本次結果須重新查核。
