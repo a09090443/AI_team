@@ -43,6 +43,22 @@ def command(c, action, request_id, digest=None):
             "-o", "UserKnownHostsFile=" + c["known_hosts_file"], "-i", c["identity_file"],
             "-p", str(c["port"]), c["destination"], remote]
 
+class SourcePreflightError(ValueError):
+    pass
+
+def archive_source(root):
+    if subprocess.check_output(["git", "-C", str(root), "status", "--porcelain"]).strip():
+        raise SourcePreflightError("SOURCE_WORKSPACE_DIRTY: commit the approved deployment changes before start; SSH was not attempted")
+    paths = ["bestpartner-service", "docs/docker/sit", "docs/sql"]
+    existing = subprocess.check_output(["git", "-C", str(root), "ls-tree", "-z", "--name-only", "HEAD", "--", *paths]).decode("utf-8").split("\0")
+    missing = [path for path in paths if path not in existing]
+    if missing:
+        raise SourcePreflightError("SOURCE_MISSING_PATHS: committed deployment source lacks " + ", ".join(missing) + "; provide reviewed deployment files and commit them; do not retry SSH or replace the approved manifest")
+    data = subprocess.check_output(["git", "-C", str(root), "archive", "HEAD", *paths])
+    if len(data) > MAX_ARCHIVE:
+        raise SourcePreflightError("SOURCE_TOO_LARGE: deployment archive exceeds approved size; SSH was not attempted")
+    return data
+
 def run(config_file, action):
     if action not in ACTIONS:
         raise ValueError("unsupported action")
@@ -71,11 +87,15 @@ def run(config_file, action):
     data = None
     digest = None
     if action == "start":
-        if subprocess.check_output(["git", "-C", str(root), "status", "--porcelain"]).strip():
-            raise ValueError("deployment workspace must be committed and clean")
-        data = subprocess.check_output(["git", "-C", str(root), "archive", "HEAD", "bestpartner-service", "docs/docker/sit", "docs/sql"])
-        if len(data) > MAX_ARCHIVE:
-            raise ValueError("source archive too large")
+        try:
+            data = archive_source(root)
+        except SourcePreflightError as error:
+            receipt = dict(id=request["id"],action=action,target=c["target"],source_sha256=None,
+                           exit_code=1,completed=int(time.time()),evidence=[str(error)])
+            (queue / (request["id"] + ".json")).write_text(json.dumps(receipt), encoding="utf-8")
+            pending.unlink()
+            print(json.dumps(receipt, ensure_ascii=False))
+            return 1
         digest = hashlib.sha256(data).hexdigest()
     if not client.authorized(root, c["target"]):
         raise ValueError("service stage stopped before SSH execution")

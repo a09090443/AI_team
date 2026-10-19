@@ -1236,3 +1236,13 @@
 - 已核對／修正文件：direct-ssh-deployment、service-delivery、agent operations/configuration/system-map、AGENTS、catalog/project-tree；已補初始化流程、權限、實測與異常界線。最後再次docs build驗證。
 
 - 後續恢復：使用者明確回答「允許強制重啟dev」，已執行reset；重啟後新health d443693b…exit0、PostgreSQL/後端正常、Windows8088 HTTP200。前次核心journal可讀，有RCU/clock/watchdog與VirtualBox顯示驅動警告，未確認當機根因；不宣稱永久修復。原資料卷未清除，未進行產品資料逐列比對。下一步在bestpartner頻道以新任務承接#1046，載入新skill，來源manifest不符須停止審閱；未發Slack訊息、未推送Git。
+
+
+## 2026-10-19 #1047 start 受阻定位與診斷修正（Codex）
+
+- #1047 已離開QUEUED，intake/service/service_triage完成，現AWAIT_HUMAN；不是基準驗證卡住。prepare c4560d49…與diagnose3e20d7bd…成功，start三次exit1。執行器active，工作區乾淨，HEAD2216d6d沒有版控docs/docker/sit。
+- 根因：固定git archive引用不存在的pathspec，在SSH前就失敗；ssh_client頂層吞掉具體來源錯誤，executor產生泛稱連線問題的fallback，誤導重試網路。已新增來源預檢與持久失敗收據，明確SOURCE_MISSING_PATHS／SOURCE_WORKSPACE_DIRTY／SOURCE_TOO_LARGE；不省略必要來源或放寬manifest。
+- Windows/Linux各33項Python測試通過，check-source平台16項與Bash/manifest檢查通過；Linux以#1047真實工作區唯讀重現SOURCE_MISSING_PATHS docs/docker/sit，沒有嘗試SSH或啟動產品。
+- 已在無活動任務時原子更新bestpartner固定ssh_client.py，備份 ~/ai-team-bestpartner/ssh-preflight-backup-20261019-140920，systemd執行器恢復active。未換JAR、未改任務／快照／既有收據、未續跑或傳Slack訊息；新skill文字只在來源提交，未替換#1047快照。
+- 發現缺漏／落差：封裝前錯誤被歸為SSH問題，部署來源缺件未明列。已修正文件：direct-ssh-deployment、service-build skill及鏡像；已核對operations/configuration/system-map，現有固定通道規則仍一致，不需改。
+- 真正解卡仍需將經審閱的SIT部署檔正式納入任務來源並提交，與目標已核准manifest比較；不得自動取舊工作區任意檔案、覆寫manifest或把舊容器當本次部署完成。docs build通過；未推送。

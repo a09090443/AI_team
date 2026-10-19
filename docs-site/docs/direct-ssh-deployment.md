@@ -60,3 +60,14 @@ SSH 固定 BatchMode、公鑰認證、獨立 known_hosts 與嚴格指紋檢查�
 13:28:55 UTC 左右，VirtualBox `VBox.log` 記錄 `Guest seems to be unresponsive`；之後 Agent ping／HTTP 與 Guest Control 均無回應，Windows 8088 也逾時。此前直連 health／diagnose 與拒絕測試均已完成成功。
 VM 狀態仍 running，不把先前 HTTP200 當成目前健康，也不認定為單一 port-forward 問題。已送 ACPI 正常關機，未強制 reset／poweroff、未清除資料卷。使用者明確核准後已對 dev 執行 reset；恢復後新健康收據 `d443693b701e4555b8dd084178e39628` 成功，PostgreSQL/後端正常，Agent SSH 與 Windows http://127.0.0.1:8088/view/chat 均 HTTP200。上次核心日誌有 RCU/clock/watchdog 與既有 VirtualBox 顯示驅動警告，未見足以確認的當機根因，不能宣稱已根治；未清空資料卷。
 bestpartner orchestrator 已安全升級：JAR `45879bfd7672ecb88d63798fb02293235d57b1337bd986c4508bdbbd9edda7ee`，PID8844，備份 `~/ai-team-bestpartner/orchestrator-backup.II8thl`；部署腳本完整任務／工作區快照比對通過。Agent 執行器 active／enabled，restart 驗證成功，Windows broker 程序數量0。
+
+
+### #1047 來源封裝受阻（2026-10-19）
+
+#1047 已通過 prepare 與 diagnose，SSH 執行器正常；start 三次失敗後停 AWAIT_HUMAN。
+工作區基準 dev `2216d6d` 沒有版控的 `docs/docker/sit`，固定 `git archive HEAD bestpartner-service docs/docker/sit docs/sql` 因 pathspec 不存在而失敗，尚未傳送來源到 dev。
+先前執行器只產生「無法取得SSH收據」的通用訊息，誤導為網路／公鑰問題。
+已在 start 封裝前加入版控路徑預檢：缺件回 `SOURCE_MISSING_PATHS`，未提交變更回 `SOURCE_WORKSPACE_DIRTY`，超量回 `SOURCE_TOO_LARGE`，持久化具體失敗收據，不嘗試 SSH。
+缺件需將經審閱的部署檔正式加入核准來源並提交，再比對目標的來源 manifest；不能跳過缺少路徑、直接拿舊容器當本次成功，或自動覆寫 manifest。#1047 未自動續跑、未改任務狀態／歷史收據。
+
+診斷修正已更新至 bestpartner 的固定 ssh_client.py（備份 `ssh-preflight-backup-20261019-140920`），執行器 active；Windows／Linux 各33項Python測試、check-source與文件建置通過。#1047 真實工作區唯讀重現缺件，未續跑任務或重新部署產品。

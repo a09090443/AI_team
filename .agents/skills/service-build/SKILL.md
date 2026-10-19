@@ -41,3 +41,7 @@ VirtualBox／宿主機工具只可用於管理者一次性的網路與 SSH 初�
 - `install-ssh-target.sh` 由管理者在目標 VM 一次性執行，安裝受限公鑰、sudo 規則與核准來源 manifest；不清除資料或其他公鑰。
 - `client.py` 沿用任務檔案佇列交給同機執行器；`broker.py` 僅保留舊版相容，不能在 SSH 失敗時自動退回 Windows broker。
 - `assets/host.example.json` 僅是無憑證範本，實際私密設定放在 repo 外。
+
+## 來源封裝失敗
+
+start 若回 SOURCE_MISSING_PATHS，表示目前HEAD缺少必要的版控部署檔；SOURCE_WORKSPACE_DIRTY表示有未提交變更。兩者都尚未執行SSH，不重試連線或重啟執行器。列出缺件，將經審閱檔案加入來源並提交，再依既有來源manifest核准流程處理；不能跳過缺路徑或自動更新manifest。

@@ -68,6 +68,29 @@ class DirectTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,"reconcile"):direct.run(f,"start")
                 run.assert_not_called()
 
+    def test_missing_committed_deployment_paths_are_reported_before_archive(self):
+        with patch.object(direct.subprocess,"check_output",side_effect=[b"", b"bestpartner-service\0docs/sql\0"]) as git:
+            with self.assertRaisesRegex(direct.SourcePreflightError,"SOURCE_MISSING_PATHS:.*docs/docker/sit"):
+                direct.archive_source(Path("fixture"))
+            self.assertEqual(2,git.call_count)
+
+    def test_dirty_source_is_not_reported_as_ssh_failure(self):
+        with patch.object(direct.subprocess,"check_output",return_value=b" M docs/docker/sit/file") as git:
+            with self.assertRaisesRegex(direct.SourcePreflightError,"SOURCE_WORKSPACE_DIRTY"):
+                direct.archive_source(Path("fixture"))
+            self.assertEqual(1,git.call_count)
+
+    def test_source_preflight_failure_persists_specific_receipt_without_ssh(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root,c,f=self.fixture(tmp);queue=direct.client.directory(root)
+            req={"id":"a"*32,"action":"start","task":"123","created":int(time.time())}
+            (queue/"request.json").write_text(json.dumps(req))
+            with patch.object(direct.client,"workspace",return_value=root),patch.object(direct.client,"authorized",return_value=True),patch.object(direct,"archive_source",side_effect=direct.SourcePreflightError("SOURCE_MISSING_PATHS: docs/docker/sit")),patch.object(direct.subprocess,"run") as ssh:
+                self.assertEqual(1,direct.run(f,"start"));ssh.assert_not_called()
+            result=json.loads((queue/(req["id"]+".json")).read_text())
+            self.assertEqual(["SOURCE_MISSING_PATHS: docs/docker/sit"],result["evidence"])
+            self.assertFalse((queue/"request.json").exists())
+
 class TargetTests(unittest.TestCase):
     def test_only_fixed_commands_and_target_are_allowed(self):
         self.assertEqual(("health","a"*32,None),target.request("ai-team-service sit health "+"a"*32,"sit"))
