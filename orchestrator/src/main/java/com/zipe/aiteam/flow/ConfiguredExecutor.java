@@ -90,6 +90,11 @@ public class ConfiguredExecutor {
         if (!flow.dialogue) context.append("\n本階段可使用／規畫的操作契約：").append(availableOperations(flow, node));
         if (!flow.dialogue) context.append(inspectionNotice(flow, node));
         if (!flow.dialogue) context.append(ServiceDelivery.notice(flow, node));
+        if (!flow.dialogue && flow.snapshot.definition().project().serviceTarget() != null) {
+            String target = flow.snapshot.definition().project().serviceTarget().name();
+            context.append(ServiceDeploymentContext.notice(props.homePath(), target,
+                    store.serviceHistory(task.slackChannel(), target, task.id())));
+        }
         if (!flow.dialogue && OperationContract.inspectAvailable(flow.snapshot.definition())) context.append(FileComparison.notice());
         Node defined = AgentDispatch.effective(flow, flow.node);
         if (!flow.dialogue && defined != null && defined.protectedPathFallback() != null) {

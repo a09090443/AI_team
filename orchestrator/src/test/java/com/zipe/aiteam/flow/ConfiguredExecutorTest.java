@@ -27,6 +27,16 @@ class ConfiguredExecutorTest {
         assertThat(executor.workingDirectory(new Task("42", "c", "t", "u", "查核"), flow,
                 flow.snapshot.definition().nodes().get("triage"))).isEqualTo(repo);
     }
+    @Test void serviceContextReachesTheRuntimePrompt() throws Exception {
+        flow = new FlowRun(TeamCatalog.load(Path.of("teams/bestpartner.json"), key -> repo.toString()));
+        flow.node = "intake";
+        when(store.serviceHistory("c", "bestpartner-dev", "42")).thenReturn(List.of(
+                new TaskStore.ServiceHistory("1036", "2026-10-11", "{\"service_status\":\"RUNNING\",\"checks\":[]}")));
+        AtomicReference<AgentRuntime.RuntimeRequest> captured = new AtomicReference<>();
+        when(runtime.execute(any(), any())).thenAnswer(c -> { captured.set(c.getArgument(0)); return null; });
+        executor.execute(new Task("42","c","t","u","部署"),flow,flow.snapshot.definition().nodes().get("intake"));
+        assertThat(captured.get().prompt()).contains("服務部署歷史與恢復入口", "1036", "2026-10-11", "目前未核實");
+    }
     @Test void preflightFailurePreventsAnyModelCall() throws Exception {
         flow.node = "triage";
         doThrow(new IllegalStateException("missing tool: unavailable")).when(preflight).check(anyString(), any(), any(), any(), any(), any());

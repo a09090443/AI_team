@@ -148,6 +148,7 @@ agent_team/
 │   │   │   ├── BaselineVerifier.java # 基準分支上先跑驗證指令：接入／部署時警告管理者並告訴任務
 │   │   │   ├── FileComparison.java # 指定舊檔比對的計畫契約、路徑驗證與能力說明
 │   │   │   ├── ServiceDelivery.java # 服務建置目標、可用性檢查與完成契約
+│   │   │   ├── ServiceDeploymentContext.java # 同目標部署歷史與非機密宿主恢復入口
 │   │   │   ├── OperationContract.java # 專案操作契約（operations）
 │   │   │   ├── OperationPreflight.java # 各階段沙箱內的操作預檢
 │   │   │   ├── PathRules.java        # 專案相對路徑與 ** 比對
@@ -284,6 +285,8 @@ agent_team/
 ├── deploy/                           # 部署相關
 │   ├── README.md                     # deploy/ 目錄說明與 Slack 主 App 設定
 │   ├── env.sh.template               # 環境變數範本（複製為 ~/ai-team/env.sh，權限 600）
+│   ├── service-context/              # 管理者提供的非機密部署恢復說明範本
+│   │   └── bestpartner-dev.example.json # broker 入口與舊收據索引（需核對環境後安裝）
 │   ├── slack-app-manifest.yaml       # 主 App manifest
 │   ├── agent-manifests/              # 五個既有角色與 bestpartner Infrastructure Agent 的 Slack App manifest；子目錄為其他實例的 App 組
 │   │   ├── pm.yaml

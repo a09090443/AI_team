@@ -7,6 +7,9 @@
 
 ## 正在進行
 
+- **#1046 部署脈絡修正（2026-10-19，Codex）**：codex/service-deployment-context（D:/agent_team-dynamicapi）已實作歷史 SERVICE 報告與非機密 broker 恢復說明注入，214 Java／20 Python／check-source／docs build 通過。未推送、未部署。下一步取得授權後隔離 Linux verify、更新 JAR 與 bestpartner service-context/bestpartner-dev.json，再續跑 #1046 驗證；broker 未啟動。範本已列 #1036 收據與宿主 Python／程式／設定檔路徑（已驗證存在及依賴可用）。
+
+
 - **2026-10-18 23:25 代發 Slack（使用者授權「全部代發」）**：#dynamic-api 與 #spring-starters 各送「基準驗證」（量測暖快取耗時、確認 MailServiceSmtpsScenariosTest 是否不穩定）；#dynamic-api 開任務 #1003（修 ResponseRepositoryTest＋新增 backend/src/test/resources 測試專用設定，授權範圍寫在需求內），排在基準驗證之後。下一步：讀兩份新基準結果決定 timeoutSeconds 與 spring-starters 測試處理；追蹤 #1003（含新的指令紀錄核對與硬閘門行為）。
 
 - **基準驗證與硬閘門修正已部署三實例（2026-10-18，Claude Code）**：JAR 28679cb5…，來源分支 feature/baseline-verification（85047ce，含 4b6d581），2026-10-18 已依使用者要求快轉合併 main 並推送（f9074b5..35be914，Pages run 39139959848 success）。首次基準驗證：dynamic-api 失敗＋逾時、spring-starters 1 項時間門檻測試失敗、bestpartner 全過（貼近 1800 秒）。下一步：使用者決定合併推送、dynamic-api timeoutSeconds、spring-starters 測試處理；dynamic-api 第一個新任務修 ResponseRepositoryTest 並加測試專用設定。

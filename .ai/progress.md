@@ -1,5 +1,16 @@
 # 工作進度（Codex 與 Claude Code 共用）
 
+## 2026-10-19 #1046 部署歷史與恢復入口修正（Codex，來源完成、未部署）
+
+- 使用者要求修正跨任務遺漏部署紀錄，以及 broker 離線時沒有具體啟動說明。分支 codex/service-deployment-context，worktree D:/agent_team-dynamicapi。
+- TaskStore.serviceHistory 查詢同頻道／同目標最近 12 筆 SERVICE 報告，排除本任務及 triage；ServiceDeploymentContext 投影歷史報告、管理者維運說明；ConfiguredExecutor 從 intake 起注入，無需改 FlowRun 或資料表。
+- 維運說明讀實例 service-context/<target>.json，僅供脈絡、不執行命令或授權；新增 deploy/service-context/bestpartner-dev.example.json，列 Windows broker 與私人設定路徑、完整 PowerShell 指令和 #1036 收據索引。管理者須核對後安裝才生效。Python／Paramiko 和路徑已唯讀確認可用，沒有啟動 broker。
+- 提示強調區分歷史成功、本次進度與目前狀態未知；broker 未回應不等於舊服務未啟動。歷史角色報告／人工登錄不作本次服務證據。
+- 驗證：Java 214 項全過（服務、脈絡、流程、配置、追溯）；Python 20 項、check-source 平台 16 項全過；docs build 通過。新增 4 項測試涵蓋目標／頻道／節點隔離、缺失損毀說明與提示注入。未執行 Linux 實機或 Slack E2E。
+- 發現的文件缺漏：服務文件未描述跨任務部署背景與具體恢復入口。已核對／修正 service-delivery、agent/configuration、operations、system-map、project-tree、data-model、catalog；未新增資料表／快照欄位。
+- 下一步：取得部署授權後，先隔離 Linux verify，再更新 JAR 與 bestpartner 非機密 service-context 檔；檢查待執行任務後安全重啟。#1046 續跑仍須 broker 恢復並重新驗證，不自動宣稱完成。未推送、未部署。
+
+
 ## 2026-10-18 部署 85047ce 到三個實例（Claude Code，使用者授權，未推送）
 
 - 依序部署 dynamic-api → spring-starters → bestpartner，JAR 28679cb5…，備份 0nLsxQ／QC7RCI／VrAEaX；部署腳本檢查全過、log 無 ERROR、等待中任務與工作區一致。spring-starters 第一次被部署腳本的 agent 程序檢查比對到自己的 ssh 指令字串而擋下，改用不含關鍵字的指令重跑。

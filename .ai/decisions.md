@@ -582,3 +582,9 @@ CRITICAL 等其他寫法不放行。放行寫成帶 `owner_waiver` 的 receipt�
 ## 2026-10-18 dynamic-api 後端測試編譯錯誤的處理
 
 - 使用者決定：配置維持不變（後端測試仍在 QA 操作與系統獨立驗證內），服務啟動後的第一個任務就在 #dynamic-api 請 AI 團隊修 ResponseRepositoryTest（findByPrimaryKey 少傳 ServiceType）。理由：問題在 repo 本身，修好後驗證範圍不必再調整；不為了綠燈暫時移除測試。
+
+
+## 2026-10-19 部署歷史與宿主恢復說明
+
+- 歷史資訊從同頻道、同目標的 SERVICE 報告查詢，附來源任務／時間，明確標為角色報告；舊工具收據可由管理者以帶證據索引的摘要登錄，不改舊任務紀錄。
+- 宿主恢復入口以實例 service-context/<target>.json 提供非機密說明，避免在 TeamDefinition／FlowRun 新增欄位破壞舊快照相容；不執行指令、不改操作權限。每次執行即讀取，更新 JAR 後等待中的舊任務也能取得說明。

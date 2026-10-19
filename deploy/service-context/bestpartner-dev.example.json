@@ -1,0 +1,16 @@
+{
+  "target": "bestpartner-dev",
+  "host": "Windows 宿主機（不是 Agent VM，也不是 dev 客體）",
+  "program": "D:/agent_team/.agents/skills/service-build/scripts/broker.py",
+  "config_file": "C:/Users/zipe1/AppData/Local/AI-Team/service-build/bestpartner-dev.json",
+  "start_command": "$env:PYTHONPATH = 'C:/Users/zipe1/AppData/Local/AI-Team/service-build/python-libs'; & 'C:/Users/zipe1/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe' 'D:/agent_team/.agents/skills/service-build/scripts/broker.py' 'C:/Users/zipe1/AppData/Local/AI-Team/service-build/bestpartner-dev.json' ",
+  "notes": "管理者在 Windows PowerShell 核對路徑、Python 與依賴後執行；確認同目標只有一個 broker 並保持視窗開啟。啟動本工具不等於產品健康。工具恢復後於原 Slack 任務續跑。設定檔與登入資料已存在，不需重新提供。路徑屬此環境，換機必須更新。",
+  "history": [
+    {
+      "at": "2026-10-11",
+      "task": "1036",
+      "outcome": "start exit 0；當時 START_PASS、HEALTH_PASS；目前健康未知",
+      "evidence": "Windows 宿主機 C:/Users/zipe1/AppData/Local/AI-Team/service-build/receipts/d55653d5fec64cfaae0421371a58b077.json；service-delivery 部署紀錄"
+    }
+  ]
+}

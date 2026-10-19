@@ -391,3 +391,8 @@ TeamDefinition.Project 新增選填 serviceTarget：name（目標名稱）與 ch
 保存於 `receipts` 的 TEST_PLAN JSON，納入既有計畫雜湊／核准版本，沒有新增資料表或 FlowRun 欄位。
 僅供實作前置計畫宣告需跨 runtime 改派的修改範圍，不包括唯讀與禁止修改檔案；實際變更需同時符合清單與配置白名單。
 舊報告缺此欄位仍可解析，但不從文字自動推測新的分段改派；舊快照需更新 schema／計畫或承接新任務。
+
+
+### 2026-10-19 部署脈絡（來源已修正、尚未部署）
+
+stage_attempt 現在也供 TaskStore.serviceHistory 查詢同頻道、同目標 SERVICE 歷史報告（最近 12 筆，排除本任務）；以當時 flow_run 的節點 gate 核對，不把分流摘要當服務收據。未新增資料表或序列化欄位。

@@ -160,3 +160,25 @@ Infrastructure 實際送出的 start `d55653d5fec64cfaae0421371a58b077` 已完�
 模型於11:36先遇額度停止；建置工具稍後完成，不能寫成模型已讀取結果或任務結案。#1036仍WAITING_QUOTA；既有quota_retry排2026-10-17 22:29台北時間自動嘗試（供應商22:27），恢復後需先領取成功收據再做獨立health，無需重建。broker仍需宿主機持續運作，尚未註冊開機服務；此輪新增輪詢失敗3至60秒退避，避免暫時傳輸錯誤直接退出。
 
 實測發現前版GRADLE_USER_HOME環境變數不足以使映像使用指定cache，目標快取目錄仍空；現已改獨立/build-cache掛載及明確--gradle-user-home，需在下一輪建置實測效益，不能說此次已靠持久快取完成。Windows20項測試與check-source通過。登入、資料寫入/重啟持久化、獨立health操作與新VM無人工介入驗收尚未完成；本次確定的是agent送出工具的建置/啟動與工具內健康檢查成功。
+
+
+## 部署歷史與恢復入口（2026-10-19，來源已修正、尚未部署）
+
+#1046 只取得本任務脈絡與目標名稱，未取得 #1036 的歷史成功與宿主啟動入口，
+所以錯把「本次未執行」描述成服務從未部署，並只要求維運者恢復工具。
+
+`TaskStore.serviceHistory` 讀取同實例資料庫、同頻道、同目標的最近 12 筆 SERVICE 階段報告，排除本任務與分流敘述。
+`ConfiguredExecutor` 在有 serviceTarget 的正式節點注入任務編號、時間、角色回報的狀態與檢查結束碼；
+這些是歷史角色報告，不代表目前健康或本次檢查通過，也不能當新主機操作授權。
+歷史查無資料不等於從未部署。沒有正式階段報告的舊工具收據，可由管理者登錄成帶來源的歷史摘要。
+
+另外讀取實例目錄 `$AI_TEAM_HOME/service-context/<target>.json`，這是管理者維運說明，不是模型生成的操作設定。
+允許欄位為 target、host、program、config_file、start_command、notes、history（at/task/outcome/evidence）。
+檔案上限 32 KiB，歷史最多 5 筆、文字欄位最多 1500 字元；目標不符、名稱非英數底線連字號或資料損毀時明示缺漏。
+所有欄位必須是不含 token、密碼及登入檔內容的資訊；未知欄位不注入。系統只呈現說明，不執行 start_command。
+無此檔仍可執行服務任務，但需如實說明恢復入口尚未配置，不可猜指令。
+
+bestpartner 的範本為 `deploy/service-context/bestpartner-dev.example.json`，包含已核對的 #1036 歷史收據索引及 Windows PowerShell 啟動方式。
+管理者核對環境路徑後將其放到 bestpartner 實例的 `service-context/bestpartner-dev.json`。
+這不會自動啟動 broker、部署產品或將 #1046 改成成功；恢復工具後仍須續跑原任務取得本次 prepare/start/health 結果。
+新 JAR 會在每次執行時讀取此說明與資料庫，既有等待任務續跑亦適用，不改原快照／授權或完成閘門。

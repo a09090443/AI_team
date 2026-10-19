@@ -158,3 +158,8 @@ Windows 可用 skill 的 `scripts/login.ps1 -Config <設定檔>` 初始化 passw
 `project.verification.docOnlyPaths` 配合系統 Git 差異與文字副檔名限制略過不相關產品建置，三份範例配置均已提供；SQL／腳本／設定不適用。
 必要文件站建置另由 verification 操作處理。bestpartner 新增 qa-docs-dir／clean／snapshot／extract／install／build，僅寫 target/qa-docs，原 docs-site 唯讀，安裝離線使用實作準備的 npm 快取。
 plan 的 protected_path_changes 明列需跨 runtime 改派的檔案；不新增權限，仍須符合節點 protectedPathFallback.paths。詳見[配置流程](/docs/configurable-team)。尚未部署。
+
+
+### 2026-10-19 部署脈絡（來源已修正、尚未部署）
+
+實例可放 service-context/<target>.json，提供不含機密的宿主程式、設定路徑、啟動指令與歷史收據索引；詳見 [服務建置](/docs/service-delivery)。此檔僅供說明，不增加操作權限。
