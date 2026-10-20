@@ -574,6 +574,8 @@ public class FlowEngine {
                 String issueBlock = IssueTracker.ingest(flow, node, report, task.id());
                 if (issueBlock == null) flow.systemRetries.remove(flow.node + IssueTracker.FORMAT_RETRY);
                 String block = issueBlock == null ? FlowGates.blockingReason(node, report, flow) : issueBlock;
+                if (block==null && node.gate()==Gate.SERVICE && ServiceSupport.configured(props.homePath(),flow.snapshot.definition().project().serviceTarget().name()))
+                    block=ServiceSupport.deliveryReason(props.homePath(),task.id(),report);
                 // 自陳成功不夠：與 CLI 紀錄裡配置操作的實際結束碼對照，矛盾時不送去跑注定失敗的獨立驗證（#1001）。
                 if (block == null && node.gate() == Gate.IMPLEMENTATION) {
                     String contradiction = CommandEvidence.contradiction(
@@ -2062,6 +2064,14 @@ public class FlowEngine {
                 "長作業結果已保存，續同節點與來源；未重設次數、未採用半成品報告、未新增核准。" + batch.fingerprint());
         return OperationDisposition.RESUME;
     }
+    public void resumeDialogueTask(Task task,Consumer<Runnable> enqueue) {
+        FlowRun flow=store.flow(task.id()).orElseThrow();
+        if(!flow.dialogue||flow.parentId==null||task.state()!=Task.State.AWAIT_HUMAN)
+            throw new IllegalArgumentException("只能恢復原問題的受阻對話，不重開部署或修改原任務");
+        if(!store.claimState(task.id(),Task.State.AWAIT_HUMAN,Task.State.RESUME_QUEUED))return;
+        audit.record(task.id(),AuditLog.ACTOR_SYSTEM,AuditLog.ACTION_RECOVERY,"依使用者要求恢復原對話與問題，套用系統診斷修正，未改原任務快照");
+        queue(enqueue,task,()->run(store.find(task.id()).orElseThrow()));
+    }
     private void runDialogue(Task task, FlowRun flow) throws Exception {
         Role role = flow.snapshot.definition().roles().get(flow.dialogueRole);
         Node node = new Node(Kind.AGENT, flow.dialogueRole, null, Scope.READ_ONLY, Gate.REPORT, false, List.of(), null,
@@ -2077,7 +2087,28 @@ public class FlowEngine {
         store.saveStage(task.id(), new StageOutcome(flow.node, result.sessionId(), result.structuredOutput(), result.costEstimate(), 0));
         audit.record(task.id(), flow.dialogueRole, AuditLog.ACTION_RUNTIME, "配置角色唯讀對話", result.costEstimate(), result.sessionId());
         if (result.isError() || block != null || result.structuredOutput().path("answer").asText().isBlank()) throw new IllegalStateException("對話未完成：" + block);
-        slack.postConfigured(role, task.slackChannel(), task.slackThreadTs(), result.structuredOutput().path("answer").asText() + "\n（唯讀對話，未改動原任務或核准 PR。）");
+        String answer=result.structuredOutput().path("answer").asText();
+        String replyProblem=ServiceSupport.replyReason(props.homePath(),task.id(),task.requestText(),answer);
+        if(replyProblem!=null) {
+            flow.context=FlowContext.append(flow.context,replyProblem);store.saveFlow(task.id(),flow);
+            audit.record(task.id(),AuditLog.ACTOR_SYSTEM,AuditLog.ACTION_RECOVERY,"對話缺少可用入口，沿同一問題自動修正回覆");
+            try {
+                var corrected=executor.execute(task,flow,node);
+                audit.record(task.id(),flow.dialogueRole,AuditLog.ACTION_RUNTIME,"同一對話自動修正入口回覆",corrected.costEstimate(),corrected.sessionId());
+                String correctedBlock=FailureReport.blockingReason("generic",corrected.structuredOutput());
+                String candidate=corrected.structuredOutput().path("answer").asText();
+                if(!corrected.isError()&&correctedBlock==null&&!candidate.isBlank()
+                        &&ServiceSupport.replyReason(props.homePath(),task.id(),task.requestText(),candidate)==null) {
+                    result=corrected;answer=candidate;
+                } else answer=ServiceSupport.verifiedReply(props.homePath(),task.id());
+            } catch(Exception failure) {
+                if(Thread.currentThread().isInterrupted())throw failure;
+                answer=ServiceSupport.verifiedReply(props.homePath(),task.id());
+            }
+            var delivered=((com.fasterxml.jackson.databind.node.ObjectNode)result.structuredOutput()).deepCopy().put("answer",answer);
+            store.saveStage(task.id(),new StageOutcome(flow.node,result.sessionId(),delivered,result.costEstimate(),0));
+        }
+        slack.postConfigured(role, task.slackChannel(), task.slackThreadTs(), answer + "\n（原任務驗收與發布未改動；系統診斷或修復結果如上。）");
         state(task, Task.State.COMPLETED, "角色對話已完成");
     }
     public void requestRole(Identity identity, String channel, String thread, String user, String text, Consumer<Runnable> enqueue) {

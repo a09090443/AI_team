@@ -19,7 +19,7 @@ MAX_ARCHIVE = 128 * 1024 * 1024
 def request(text, expected_target):
     parts = text.split()
     if (len(parts) not in (4,5) or parts[0] != "ai-team-service" or parts[1] != expected_target
-            or parts[2] not in {"prepare","start","health","diagnose","result","status","cancel"}
+            or parts[2] not in {"prepare","start","health","diagnose","result","status","cancel","repair"}
             or not re.fullmatch(r"[0-9a-f]{32}", parts[3])):
         raise ValueError("unapproved SSH command")
     digest = parts[4] if len(parts)==5 else None
@@ -197,7 +197,7 @@ def worker(text):
     c = json.loads(CONFIG.read_text())
     action, job, digest = request(text, c["target"])
     STATE.mkdir(mode=0o700, parents=True, exist_ok=True)
-    lockfile = STATE / ("execution.lock" if action in {"prepare","start"} else job+".execution.lock")
+    lockfile = STATE / ("execution.lock" if action in {"prepare","start","repair"} else job+".execution.lock")
     with lockfile.open("a") as guard:
         fcntl.flock(guard, fcntl.LOCK_EX)
         record = STATE / (job+".json")
@@ -232,12 +232,12 @@ def worker(text):
                     os.chmod(log,0o600)
                     proc=subprocess.run(argv,stdout=out,stderr=subprocess.STDOUT,timeout=6900,
                                         env=dict(os.environ,AI_TEAM_OPERATION_ID=job))
-                expected={"prepare":"PREPARED:","start":"START_PASS:","health":"HEALTH_PASS:","diagnose":"DIAGNOSIS:"}[action]
+                expected={"prepare":"PREPARED:","start":"START_PASS:","health":"HEALTH_PASS:","diagnose":"DIAGNOSIS:","repair":"REPAIR_PASS:"}[action]
                 with log.open("rb") as source:
                     source.seek(0,2);source.seek(max(0,source.tell()-65536))
                     tail=source.read(65536).decode("utf-8",errors="replace")
                 lines=[line.strip()[:1450] for line in tail.splitlines()
-                       if line.startswith(("PREPARED:","START_PASS:","HEALTH_PASS:","DIAGNOSIS:"))][-20:]
+                       if line.startswith(("PREPARED:","START_PASS:","HEALTH_PASS:","DIAGNOSIS:","REPAIR_PASS:"))][-20:]
                 if proc.returncode or not any(line.startswith(expected) for line in lines):
                     result.update(exit_code=1,evidence=["Target operation failed; protected target log: "+str(log)]
                                   + [line for line in lines if line.startswith("DIAGNOSIS:")])

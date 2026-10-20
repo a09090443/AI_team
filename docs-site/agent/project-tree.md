@@ -73,9 +73,11 @@ agent_team/
 │       │   └── scripts/
 │       │       ├── ssh_client.py     # Agent VM 固定 SSH 直連操作
 │       │       ├── ssh_executor.py   # 同機 systemd 執行器（不連 Windows）
+│       │       ├── support.py        # 系統受控入口探測與既有版本自動修復
 │       │       ├── ssh_target.py     # 目標 VM 的受限 SSH 入口
 │       │       ├── install-ssh-target.sh # 一次性目標公鑰與固定 sudo 設定
 │       │       ├── test_direct_ssh.py # 直連授權、收據與重試測試
+│       │       ├── test_service_support.py # 網址更正、追問授權與修復回歸測試
 │       │       ├── client.py         # Agent 固定操作入口與任務授權
 │       │       ├── broker.py         # 主機連線與固定操作執行
 │       │       ├── guest.py          # 目標環境安裝、建置、啟動與檢查
@@ -107,9 +109,11 @@ agent_team/
 │       │   └── scripts/
 │       │       ├── ssh_client.py     # Agent VM 固定 SSH 直連操作
 │       │       ├── ssh_executor.py   # 同機 systemd 執行器（不連 Windows）
+│       │       ├── support.py        # 系統受控入口探測與既有版本自動修復
 │       │       ├── ssh_target.py     # 目標 VM 的受限 SSH 入口
 │       │       ├── install-ssh-target.sh # 一次性目標公鑰與固定 sudo 設定
 │       │       ├── test_direct_ssh.py # 直連授權、收據與重試測試
+│       │       ├── test_service_support.py # 網址更正、追問授權與修復回歸測試
 │       │       ├── client.py         # Agent 固定操作入口與任務授權
 │       │       ├── broker.py         # 主機連線與固定操作執行
 │       │       ├── guest.py          # 目標環境安裝、建置、啟動與檢查
@@ -164,6 +168,7 @@ agent_team/
 │   │   │   ├── OperationJobs.java   # 跨專案持久作業日誌、檢查點與明確取消
 │   │   │   ├── ServiceDelivery.java # 服務建置目標、可用性檢查與完成契約
 │   │   │   ├── ServiceDeploymentContext.java # 同目標部署歷史與非機密宿主恢復入口
+│   │   │   ├── ServiceSupport.java # 結案後部署證據、入口診斷與回覆檢查
 │   │   │   ├── OperationContract.java # 專案操作契約（operations）
 │   │   │   ├── OperationPreflight.java # 各階段沙箱內的操作預檢
 │   │   │   ├── PathRules.java        # 專案相對路徑與 ** 比對
@@ -236,7 +241,8 @@ agent_team/
 │   │   ├── SpringWiringTest.java
 │   │   ├── agent/
 │   │   ├── flow/
-│   │   │   └── OperationJobsTest.java # 跨專案作業日誌、來源綁定及取消
+│   │   │   ├── OperationJobsTest.java # 跨專案作業日誌、來源綁定及取消
+│   │   │   └── ServiceSupportTest.java # 入口對應、對話回覆與交付閘門測試
 │   │   ├── runtime/
 │   │   │   ├── RuntimeTimedOutTest.java # 逾時型別與證據保存
 │   │   │   └── RuntimeCleanupIntegrationTest.java # 三runtime逾時及中斷清理
@@ -261,9 +267,11 @@ agent_team/
 │   │   │       └── scripts/
 │   │   │           ├── ssh_client.py     # Agent VM 固定 SSH 直連操作
 │   │   │           ├── ssh_executor.py   # 同機 systemd 執行器（不連 Windows）
+│   │   │           ├── support.py        # 系統受控入口探測與既有版本自動修復
 │   │   │           ├── ssh_target.py     # 目標 VM 的受限 SSH 入口
 │   │   │           ├── install-ssh-target.sh # 一次性目標公鑰與固定 sudo 設定
 │   │   │           ├── test_direct_ssh.py # 直連授權、收據與重試測試
+│   │   │           ├── test_service_support.py # 網址更正、追問授權與修復回歸測試
 │   │   │           ├── client.py
 │   │   │           ├── broker.py
 │   │   │           ├── guest.py

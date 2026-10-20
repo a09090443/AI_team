@@ -51,6 +51,21 @@ Socket handler 僅放入 ingress 佇列並 ack，模型與 Slack 回覆不在 ha
 依據：[Slack app_mention](https://docs.slack.dev/reference/events/app_mention/)、
 [Socket Mode](https://docs.slack.dev/apis/events-api/using-socket-mode/)。
 
+## 完成任務工作區清理：原問題與修正（2026-10-20）
+
+bestpartner #1049是#1048完成後的「網址無法打開」追問，確實收到事件並建立唯讀對話。#1048工作區在23:27:56服務重載時因COMPLETED清理政策刪除；對話卻仍以原快照workspaceReady/path強制verifiedWorkspace，23:29:12在模型執行前失敗，AWAIT_HUMAN。真正Infrastructure模型未回覆，使用者看到的是後續haiku錯誤說明器的通用建議。
+
+因此上方「有原任務工作區則唯讀查看」不代表正常清理後仍能回答部署追問；目前此狀況會整段失敗，不自動用保存的報告/部署證據回答。對話也沒有注入ServiceDeploymentContext與operation-jobs，且既有Read/Grep/Glob工具不能即時探測HTTP。上述是修正前的實測缺口；新來源修正見下方，不應要求使用者反覆補充相同問題或重部署產品。網址與NAT實測見[直連部署](direct-ssh-deployment.md#2026-10-20-結案後網址與追問問題修正前實測)。
+
+## 服務追問的自動診斷與回覆（新來源已實作，待本輪部署）
+
+- 原任務COMPLETED／PR_CREATED且來源工作區已清理時，系統建立獨立dialogue-evidence/&lt;對話task&gt;保存證據資料夾，明示不是產品repository；不退回主clone假裝原工作區，不重建/修改產品。仍在執行或等待修復的原任務若工作區遺失，維持拒絕以其他來源冒充。
+- 對話注入非機密ServiceDeploymentContext與原operation-jobs可信歷史收據；工作區已清理要明示，不把歷史成功當目前健康。既有Infrastructure等SERVICE角色的追問由固定support.py先執行已登錄端點probe與必要的既有版本修復，再將新證據交給模型；模型本身仍唯讀。
+- access_endpoints明列audience、使用者url、Agent VM實測probe_url。系統不跟隨HTTP redirect、不以模型提供網址探測、不從頁面讀憑證。Agent VM探測成功與使用者電腦路徑已驗證是兩件事。
+- 端點失敗時先由同一SSH固定通道取health/diagnose；只有設定auto_repair_existing_release=true且既有服務health失敗，才repair原active應用（不build、不更換版本、不重啟資料庫、不刪資料）。保留原job結果，單對話最多兩次修復，不確定結果不另建重複repair。
+- 回覆漏掉已登錄完整入口時自動要求模型改寫一次；仍不正確時依固定工具結果輸出入口/HTTP狀態及探測位置，避免再因報告格式停等人。沒有已登錄診斷證據時不捏造。
+- 舊AWAIT_HUMAN對話可由一次性AI_TEAM_RESUME_DIALOGUE_TASK=&lt;id&gt;恢復原問題；只准原對話且有parent，走中央佇列，不改原任務快照/驗收、不重新部署。未完成對話的原有去重規則保留。
+
 ## 真實驗收清單（尚未執行）
 
 - 白名單使用者分別 @五個角色，各由正確角色回覆。

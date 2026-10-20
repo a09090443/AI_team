@@ -17,3 +17,5 @@ checks 的 name／operation_id 必須對應 serviceTarget.checks，acceptance_id
 工具回OPERATION_PENDING時立即結束模型本輪，以BLOCKED說明等待原job；不要長時間輪詢、不要另送start、不要要求使用者重啟。系統會等待固定執行器並續同節點。系統注入的同任務/來源HEAD/目標verified prepare與start可沿用，僅補缺少健康檢查；已成功啟動不重建。未取回的pending action先收取原結果。checks.operation_id保持配置ID，原job ID填evidence。模型逾時與SSH回覆遺失不能推論部署失敗或執行器離線，先依系統檢查點對帳。
 
 uncertainties只列需求基準或配置檢查要求、且仍未核實的事項。需求未要求的登入、資料寫入或重啟測試，可在summary說明驗證邊界；不要自行把它們升成阻擋交付的新驗收項目。需求有要求時仍須完成，不得用此規則省略必要驗證。
+
+服務交付摘要必須包含系統登錄的使用者完整url與audience；probe_url只作內部探測依據。缺正確入口或系統探測失敗時先修正，不以VM內部根網址交付。系統已提供新診斷或修復結果時直接據實回覆，不要求使用者再啟動Windows程式或重填已知資料。

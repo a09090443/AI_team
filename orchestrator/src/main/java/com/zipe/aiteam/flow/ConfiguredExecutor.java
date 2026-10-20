@@ -34,7 +34,8 @@ public class ConfiguredExecutor {
             + "必要的技術名詞第一次出現時用一句話解釋。"
             + "\n3. 以系統提供的「原任務工作區現況」為準；工作區有未提交的檔案時要明講，不可只看最新 commit 就說已經全部 commit。"
             + "\n4. 最後一段寫「你可以怎麼做」，給可以直接複製的指令或按鈕名稱。"
-            + "\n5. 不確定就說不確定，不要用推測回答。";
+            + "\n5. 不確定就說不確定，不要用推測回答。"
+            + "\n6. 系統已提供入口診斷或已完成修復時，直接回答結果與可用完整網址；不要再要求使用者重填已知資料或用重新派工取代回答。";
 
     @org.springframework.beans.factory.annotation.Autowired
     public ConfiguredExecutor(AiTeamProperties props, RuntimeRegistry runtimes, ExecutionSandbox sandbox, WorkspaceManager workspaces, TaskStore store) {
@@ -57,11 +58,11 @@ public class ConfiguredExecutor {
         Role role = flow.snapshot.definition().roles().get(node.role());
         AgentRuntime runtime = runtimes.require(role.runtime());
         Path cwd = workingDirectory(task, flow, node);
-        if (!Files.isDirectory(cwd.resolve(".git"))) throw new IllegalStateException("快照的工作目錄不存在或不是 repository：" + cwd);
+        if (!flow.dialogue && !Files.isDirectory(cwd.resolve(".git"))) throw new IllegalStateException("快照的工作目錄不存在或不是 repository：" + cwd);
         SandboxPolicy selectedPolicy = policy(flow, node, runtime, cwd);
         // 新契約專案才啟用；舊快照不因更新程式被暗中加上新派工條件。
         OperationPreflight.Evidence evidence = null;
-        if (flow.snapshot.definition().project().operations() != null) {
+        if (!flow.dialogue && flow.snapshot.definition().project().operations() != null) {
             evidence = preflight.check(task.id(), flow, node, cwd, selectedPolicy, runtime);
             flow.executionContexts.put(flow.node, evidence); store.saveFlow(task.id(), flow);
         }
@@ -95,10 +96,16 @@ public class ConfiguredExecutor {
             String operationHead = flow.workspaceReady ? workspaces.headSha(task.id()) : null;
             context.append(new OperationJobs(props.homePath()).read(task.id(), flow.node, operationHead).notice());
         }
-        if (!flow.dialogue && flow.snapshot.definition().project().serviceTarget() != null) {
+        if (flow.snapshot.definition().project().serviceTarget() != null) {
             String target = flow.snapshot.definition().project().serviceTarget().name();
             context.append(ServiceDeploymentContext.notice(props.homePath(), target,
                     store.serviceHistory(task.slackChannel(), target, task.id())));
+            boolean serviceRole = flow.snapshot.definition().nodes().values().stream()
+                    .anyMatch(n -> n.gate()==Gate.SERVICE && Objects.equals(n.role(),flow.dialogueRole));
+            if (node.gate()==Gate.SERVICE || (flow.dialogue && flow.parentId!=null && serviceRole))
+                context.append(ServiceSupport.collect(props.homePath(),task.id(),flow.dialogue?flow.parentId:task.id(),target));
+            if (flow.dialogue && flow.parentId!=null)
+                context.append(savedServiceEvidence(flow.parentId,target));
         }
         if (!flow.dialogue && OperationContract.inspectAvailable(flow.snapshot.definition())) context.append(FileComparison.notice());
         Node defined = AgentDispatch.effective(flow, flow.node);
@@ -441,7 +448,8 @@ public class ConfiguredExecutor {
         if (flow.parentId == null) return "";
         try {
             FlowRun parent = store.flow(flow.parentId).orElse(null);
-            if (parent == null || !parent.workspaceReady || !workspaces.exists(flow.parentId)) return "";
+            if (parent == null || !parent.workspaceReady) return "";
+            if (!workspaces.exists(flow.parentId)) return "\n原任務來源工作區已清理；本輪只使用保存的部署報告、固定工具收據與新診斷，不讀主repository假裝原工作區。";
             List<String> dirty = workspaces.uncommittedPaths(flow.parentId);
             return "\n原任務工作區現況（系統查得，非 agent 自陳）：最新 commit=" + workspaces.headSha(flow.parentId)
                     + (dirty.isEmpty() ? "；沒有未提交的修改。"
@@ -455,7 +463,11 @@ public class ConfiguredExecutor {
         if (flow.dialogue && flow.parentId != null) {
             FlowRun parent = store.flow(flow.parentId).orElseThrow(() -> new IllegalStateException("原任務快照遺失，禁止改查其他專案"));
             if (!parent.snapshot.repository().equals(flow.snapshot.repository())) throw new IllegalStateException("對話與原任務的 repository 不符");
-            if (parent.workspaceReady || parent.workspacePath != null) return verifiedWorkspace(flow.parentId, parent.workspacePath);
+            if (parent.workspaceReady || parent.workspacePath != null) {
+                if (!workspaces.exists(flow.parentId) && store.find(flow.parentId).map(t -> t.state()==Task.State.COMPLETED || t.state()==Task.State.PR_CREATED).orElse(false))
+                    return evidenceDirectory(task,flow);
+                return verifiedWorkspace(flow.parentId, parent.workspacePath);
+            }
             return Path.of(flow.snapshot.repository());
         }
         // workspace=false 原意是不必建立工作區，不應讓後續唯讀分流檢查過時的主副本。
@@ -464,6 +476,35 @@ public class ConfiguredExecutor {
             return verifiedWorkspace(task.id(), flow.workspacePath);
         }
         return node.workspace() ? workspaces.pathFor(task.id()) : Path.of(flow.snapshot.repository());
+    }
+    private Path evidenceDirectory(Task task,FlowRun flow) throws Exception {
+        Path directory=props.homePath().resolve("dialogue-evidence").resolve(task.id());
+        Files.createDirectories(directory);
+        if (!directory.toRealPath().equals(directory.toAbsolutePath().normalize())) throw new IllegalStateException("對話證據路徑不符");
+        Files.writeString(directory.resolve("deployment-evidence.txt"),
+                "原任務已完成，來源工作區已由清理政策移除。這是保存的診斷證據資料夾，不是產品repository，不可宣稱已查原始碼。\n"+flow.context);
+        if (!Files.isDirectory(directory.resolve(".git"))) {
+            Process init=new ProcessBuilder("git","init","--quiet",directory.toString()).redirectErrorStream(true)
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
+            if(!init.waitFor(10,java.util.concurrent.TimeUnit.SECONDS)||init.exitValue()!=0)
+                throw new IllegalStateException("對話證據資料夾初始化失敗");
+        }
+        return directory;
+    }
+    private String savedServiceEvidence(String parent,String target) {
+        if(props.homePath()==null||!parent.matches("[0-9]+"))return "";
+        Path directory=props.homePath().resolve("operation-jobs").resolve(parent);
+        StringBuilder out=new StringBuilder("\n原部署固定執行器保存的歷史收據（不代表目前健康）：");
+        if(Files.isDirectory(directory,LinkOption.NOFOLLOW_LINKS))try(var paths=Files.list(directory)) {
+            var json=new com.fasterxml.jackson.databind.ObjectMapper();
+            for(Path path:paths.limit(32).toList()) {
+                if(!Files.isRegularFile(path,LinkOption.NOFOLLOW_LINKS)||Files.size(path)>65536)continue;
+                var record=json.readTree(path.toFile());
+                if(parent.equals(record.path("task").asText())&&target.equals(record.path("target").asText())&&record.path("verified").asBoolean())
+                    out.append("\n").append(Diagnostics.safe(record.toString()));
+            }
+        }catch(Exception e){out.append("保存收據無法讀取，不推測成功。");}
+        return Diagnostics.clip(out.toString(),16000);
     }
     private Path verifiedWorkspace(String taskId, String savedPath) throws Exception {
         if (savedPath == null) throw new IllegalStateException("已建立工作區但缺少路徑證據，禁止退回主 repository");

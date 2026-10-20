@@ -12,5 +12,13 @@
       "outcome": "start exit 0；當時 START_PASS、HEALTH_PASS；目前健康未知",
       "evidence": "Windows 宿主機 C:/Users/zipe1/AppData/Local/AI-Team/service-build/receipts/d55653d5fec64cfaae0421371a58b077.json；service-delivery 部署紀錄"
     }
-  ]
+  ],
+  "access_endpoints": [
+    {
+      "audience": "執行VirtualBox的這台Windows電腦",
+      "url": "http://127.0.0.1:8088/view/chat",
+      "probe_url": "http://172.30.46.20/view/chat"
+    }
+  ],
+  "auto_repair_existing_release": true
 }

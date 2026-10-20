@@ -35,6 +35,8 @@ public final class ServiceDeploymentContext {
                     out.append("\n管理者恢復說明（").append(file).append("）：");
                     for (String key : List.of("host", "program", "config_file", "start_command", "notes"))
                         if (data.hasNonNull(key)) out.append("\n").append(key).append(": ").append(safe(data,key));
+                    if(data.path("access_endpoints").isArray())
+                        out.append("\n管理者登錄的使用者入口與內部探測對應（不代表本次已實測）：").append(data.path("access_endpoints"));
                     int count=0;
                     for (JsonNode h : data.path("history")) {
                         if (++count > 5) break;

@@ -379,6 +379,18 @@ def start_locked(archive_file):
     print("START_PASS: release=" + release.name)
 
 
+def repair():
+    import fcntl
+    with (ROOT/"build.lock").open("a") as lock:
+        fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        release=previous_release()
+        if release is None:
+            raise ValueError("no verified active release to recover; data retained")
+        run(compose(release,"up","-d","--no-deps","--no-build","bestpartner"))
+        wait_healthy(release)
+        print("REPAIR_PASS: existing release="+release.name+"; no source build; database and data volumes retained")
+
+
 def main():
     if os.geteuid() != 0:
         raise ValueError("reviewed service operations require administrator execution in the target VM")
@@ -394,6 +406,8 @@ def main():
         prepare()
     elif action == "start":
         start(sys.argv[2])
+    elif action == "repair":
+        repair()
     elif action in {"health", "diagnose"}:
         state = ROOT / ("pending" if action == "diagnose" and (ROOT / "pending").exists() else "active")
         release = Path(state.read_text().strip())

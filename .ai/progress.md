@@ -1295,3 +1295,19 @@
 - #1048使用正式一次性恢復入口接回。原prepare/start verified與原health a62bbfe9…綁同start/source成功；沒有新start/重建產品/手改DB或快照。短暫離線由PM自行分流；報告擴大uncertainties範圍也由PM要求修正。最終COMPLETED/end、activeNode=null、transitions12、service visits5/repeats1，沒有重設次數。
 - 發現缺漏/落差：歷史null設定未納入fixture；模型將未要求測試升為交付阻礙。已修正程式/回歸及skill/service prompt；已修正並核對direct-ssh-deployment、failure-reporting、multi-runtime、engineering-workflow、data-model、service-delivery、operations/configuration/system-map、catalog與project-tree。資料/來源完整性不等同所有runtime與故障組合實測，仍保留此證據邊界。
 - Windows http://127.0.0.1:8088/view/chat HEAD200。最終工具同步後正常重載完成（無resume變數），啟動/沙箱/6角色Socket Mode通過、ERROR0，1048仍COMPLETED，其他任務與實例資料保持；未推送/合併。
+
+
+## 2026-10-20 網址與#1049追問失敗分析
+
+- 使用者只要求分析；未修程式/部署、未發Slack、未恢復工作區或續跑任務。#1048仍COMPLETED；#1049 dialogue/infrastructure/parent1048在AWAIT_HUMAN。
+- 網址缺兩層：agent摘要172.30.46.20/屬VM內網，Windows逾時；根路徑即使在VM內也404。實際NAT127.0.0.1:8088→172.30.46.20:80，Windows8088/view/chat HEAD200、8088/404，Agent VM內/view/chat200。
+- 已核實23:27:56上輪最後服務重載觸發purgeWorkspaces，依既有COMPLETED清理刪task1048（來源工作區，非產品資料）；使用者23:29:08追問建立1049，23:29:12在ConfiguredExecutor.workingDirectory/verifiedWorkspace先失敗，尚未呼叫Infrastructure模型。只有ErrorExplainer haiku回通用錯誤/按鈕建議。不是未收到Slack或丟失全部任務記憶。
+- 發現缺漏/落差：ServiceTarget/完成閘門不區分/檢驗使用者入口；工作區清理政策與完成後對話要求衝突；對話不注入部署context/journal且無HTTP工具。已核對direct-agent-requests、direct-ssh-deployment、service-delivery、host-setup與相關程式；已補前兩文件現行已知問題與真實證據。docs npm run build通過（含目錄、鏡像與斷鏈檢查）。
+
+
+## 2026-10-20 服務追問自主修正：來源驗證完成
+
+- 使用者明確要求Slack agent自己修正並回答。新增ServiceSupport/support.py與repair固定協定；來源清理後採明示證據資料夾、保存部署證據/管理入口、新probe與安全原版本修復。FlowEngine核對完整入口、自動更正同一回覆，正式單筆dialogue恢復入口接原問題，不手改快照。
+- 本機相關172項、Python90項通過；Linux隔離/home/agent/support-build-20261020完整726項0失敗/錯誤、11略過，包含真實cgroup測試；check-source90及平台16 fixture、docs build無斷鏈通過。190個來源檔與本機逐檔相同。
+- 已核對/修正direct-agent-requests、direct-ssh-deployment、configuration、operations、system-map、data-model、skill、service prompt、service-context範本、catalog與project-tree。原已知問題保留為修正前證據，新來源仍標待實際部署/1049恢復，不誤稱已完成。
+- dev root工具已備份tool-backup-support-20261020後更新（ssh_target fb5ccb6d…、guest1f443f2a…）；private臨時目錄/登入檔用EXIT trap與finally清理。未重建/重新部署產品。JAR切換與#1049實測待接續。

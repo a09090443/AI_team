@@ -1251,6 +1251,11 @@ public class TaskOrchestrator {
     public void spinoff(Task task, int index, String user) {
         if (flowEngine != null && flowEngine.owns(task.id())) flowEngine.spinoff(task, index, user, this::enqueue);
     }
+    public void resumeDialogueTask(String id) {
+        Task task=store.find(id).orElseThrow(()->new IllegalArgumentException("找不到對話"));
+        if(flowEngine==null||!flowEngine.owns(id))throw new IllegalArgumentException("對話不是配置流程");
+        flowEngine.resumeDialogueTask(task,this::enqueue);
+    }
     public void resumeOperationTask(String id) {
         Task task = store.find(id).orElseThrow(() -> new IllegalArgumentException("指定任務不存在"));
         if (flowEngine == null || !flowEngine.owns(id)) throw new IllegalArgumentException("指定任務不是配置流程");

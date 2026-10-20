@@ -27,6 +27,17 @@ class ConfiguredExecutorTest {
         assertThat(executor.workingDirectory(new Task("42", "c", "t", "u", "查核"), flow,
                 flow.snapshot.definition().nodes().get("triage"))).isEqualTo(repo);
     }
+    @Test void completedParentCanAnswerFromEvidenceAfterSourceCleanup() throws Exception {
+        var parent=new FlowRun(flow.snapshot);parent.workspaceReady=true;parent.workspacePath=repo.toString();
+        when(store.flow("1048")).thenReturn(Optional.of(parent));
+        var completed=new Task("1048","c","t","u","deploy");completed.state(com.zipe.aiteam.task.Task.State.COMPLETED);
+        when(store.find("1048")).thenReturn(Optional.of(completed));when(props.homePath()).thenReturn(tmp);
+        flow.dialogue=true;flow.parentId="1048";flow.context="saved deployment evidence";
+        Path evidence=executor.workingDirectory(new Task("1049","c","t","u","網址無法打開"),flow,flow.snapshot.definition().nodes().get("triage"));
+        assertThat(evidence).isEqualTo(tmp.resolve("dialogue-evidence/1049"));
+        assertThat(Files.readString(evidence.resolve("deployment-evidence.txt"))).contains("不是產品repository","saved deployment evidence");
+        assertThat(evidence.resolve(".git")).isDirectory();
+    }
     @Test void serviceContextReachesTheRuntimePrompt() throws Exception {
         flow = new FlowRun(TeamCatalog.load(Path.of("teams/bestpartner.json"), key -> repo.toString()));
         flow.node = "intake";

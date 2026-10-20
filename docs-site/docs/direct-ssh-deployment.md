@@ -152,3 +152,21 @@ bestpartner orchestrator 已安全升級：JAR `45879bfd7672ecb88d63798fb0229323
 本次封裝SHA256為 `a0c53284074fff3b35e97d6b7444744a2b02bf2a5b8ba2a837e31e1be7057dd8`。prepare、health與diagnose均exit0，start兩次回 `Source approval or target setup check failed; data retained`（f66d63fe…、03a0f745…）。
 可確認已到目標核准／設定檢查，不能視為新版本部署成功；現有health HTTP200只代表既有服務可用。PM判斷舊manifest尚未更新，但本次僅唯讀查任務／工作區／收據，未以root檢查或更新目標manifest，因此尚未獨立排除其他目標setup檢查失敗。
 下一步由管理者核對目標manifest與已審閱來源差異，再決定更新核准清單；未更新前重按部署會再被拒絕。不得自動覆寫清單、改任務狀態或用健康收據替代start成功。
+
+
+## 2026-10-20 結案後網址與追問問題（修正前實測）
+
+#1048最終agent摘要提供 `http://172.30.46.20/`，但該位址屬VM共享NAT網段，Windows實測8秒逾時。管理者實際NAT規則是127.0.0.1:8088→172.30.46.20:80；Windows `http://127.0.0.1:8088/view/chat` HTTP200，根路徑 `http://127.0.0.1:8088/` HTTP404。Agent VM內172.30.46.20根路徑也404、/view/chat為200。因此有「存取者網路位置」與「應用路徑」兩項缺漏，不是服務全面停止。
+
+目前ServiceTarget只含name/checks，ServiceDelivery完成閘門不檢查摘要內網址，也沒有內部健康位址與使用者入口的結構化區分。固定health證據只能證明目標端/view/chat正常，不能證明摘要提供的根網址可用。此為已知交付缺口，尚未修程式或重部署；不能再把Agent VM內可達當Windows使用者可達。
+
+23:27:56協調服務最後重載時，啟動purgeWorkspaces依既有COMPLETED清理政策刪除task-1048；這是協調服務重載觸發的來源工作區清理，不是dev產品/資料卷消失。23:29:08使用者追問「網址無法打開」建立dialogue #1049、parentId1048。23:29:12在ConfiguredExecutor.workingDirectory→verifiedWorkspace拋「原工作區遺失或路徑不符，禁止退回主repository核實」，Infrastructure runtime尚未執行；之後只呼叫haiku錯誤說明器並轉AWAIT_HUMAN。
+
+結案清理與結案後唯讀對話對工作區的要求不相容；此外對話未注入ServiceDeploymentContext或可信部署job證據，且只准Read/Grep/Glob，即使能啟動也不能實測HTTP。後續修正須保留可查部署資訊、明列使用者入口並驗證、讓正常來源清理不阻斷純狀態/網址追問；不能偽稱還在原工作區查碼，也不能以重新部署產品解決此對話錯誤。本輪僅分析與補文件，未恢復工作區/續跑1049/發送Slack/修改程式或線上配置。
+
+
+### 新來源修正（待本輪部署與#1049實測）
+
+ServiceSupport與固定support.py新增工作區外的service-support診斷紀錄、登錄入口探測、同一SSH固定通道的health/diagnose/repair。root repair只以原active版本的Compose執行應用up --no-deps --no-build並重驗，不重新打包或建置、不操作資料庫/資料卷。只有固定登錄明確啟用自動修復時執行；不能因根路徑404而重啟健康服務。執行中/未知結果續原ID，單次追問最多兩次repair。
+
+service-context access_endpoints分開Windows完整入口與Agent VM探測位址。ServiceDelivery額外核對已登錄入口本次probe與摘要url，避免再交付172.30.46.20/；對話注入同一資訊並檢查回覆。完成後來源清理改用明示的證據資料夾對話，不以主repo冒充來源。正式原問題恢復入口為一次性AI_TEAM_RESUME_DIALOGUE_TASK，不修改DB或舊快照。其他主機應登錄自己的入口/修復設定，不寫死bestpartner資訊到共用Java程式。新來源測試與實測結果稍後追加，不把原問題紀錄改寫成修復成功。

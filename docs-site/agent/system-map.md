@@ -170,3 +170,8 @@ OperationJobs 驗證 task／node／HEAD 與結果綁定；ConfiguredExecutor 注
 重啟恢復由 TaskOrchestrator.recoverOnStartup → FlowEngine.recover 經中央佇列排原 task；只涵蓋原執行中／RESUME_QUEUED、node=activeNode 且有有效同 HEAD journal 的配置任務。舊 AWAIT_HUMAN 另需管理者先核實收據，再以一次 AI_TEAM_RESUME_OPERATION_TASK 指定。真人中斷產生精確 job 取消要求，模型 timeout／SSH 斷線本身不取消。
 
 已驗證的同 HEAD prepare/start 可重用，health 綁當次 start release。未知結果不新建相同 start；#1048 已成功版本不得重建。流程細節與歷史證據見[直連部署](/docs/direct-ssh-deployment)。已部署 bestpartner；Linux cgroup與SSH背景health已實測。重啟、取消與所有故障組合的真實端對端尚未全面演練，見直連部署紀錄。
+
+
+### 服務追問與來源清理（新來源）
+
+ConfiguredExecutor在結案來源已清理時建立dialogue-evidence，保持非產品來源標示；ServiceSupport從非機密service-context啟動固定support.py，從service-support取得新探測/修復證據。模型收到歷史收據與新診斷，FlowEngine驗證入口並必要時自動改寫回覆；原任務驗收不被對話覆寫。root SSH新增repair只操作已存在active應用，沒有新來源建置。原對話可透過AI_TEAM_RESUME_DIALOGUE_TASK正式續跑。

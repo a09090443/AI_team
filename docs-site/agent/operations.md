@@ -240,3 +240,8 @@ Agent VM 的 systemd 固定部署執行器已啟用，以 SSH 公鑰直連 dev V
 舊 AWAIT_HUMAN（如 #1048）由管理者先透過固定 executor 的 --reconcile 核實原目標收據、HEAD 與來源 digest，再只於一次啟動設定 AI_TEAM_RESUME_OPERATION_TASK 為單一任務編號；要求乾淨工作區、原 activeNode 與有效同來源 journal。這不是 Slack 指令，也不會核准新計畫或 PR；用後移除變數，不直接改 DB 或偽造成功。步驟與 #1048 禁止重建的證據見[直連部署](/docs/direct-ssh-deployment)。
 
 上述恢復已部署 bestpartner；Linux精確cgroup清理與獨立SSH背景health已實測，完整驗證719項零失敗／錯誤、11略過。真實任務恢復結果見直連部署紀錄；所有故障組合尚未全面演練。
+
+
+### 結案後服務/網址追問（新來源）
+
+使用者照常在原串@Infrastructure詢問「網址無法打開」。有已登錄service-context入口時系統先probe；必要且已啟用時經固定SSH repair原版本，再由agent直接回結果與指定使用位置的完整網址。正常清理的來源工作區不再阻斷COMPLETED任務之追問，且不要求重新部署。模型仍唯讀；系統固定診斷/修復有自己的持久證據。舊卡住對話由管理者一次AI_TEAM_RESUME_DIALOGUE_TASK恢復原問題，勿要求使用者重複描述。存取位置未登錄時不猜使用者網路可達性。

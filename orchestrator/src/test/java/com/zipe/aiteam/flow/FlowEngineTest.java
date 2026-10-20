@@ -1041,6 +1041,26 @@ class FlowEngineTest {
                 .isEqualTo(FlowEngine.OperationDisposition.STOP);
         verifyNoInteractions(executor,publisher);
     }
+    @Test void serviceDialogueCorrectsWrongUrlWithoutHumanOrDeploying() throws Exception {
+        when(props.homePath()).thenReturn(tmp);mode="dialogueWrongUrl";
+        FlowRun f=store.flow(task.id()).orElseThrow();f.dialogue=true;f.dialogueRole="coordinator";f.node="dialogue";
+        store.saveFlow(task.id(),f);
+        task=new Task("42","c","t","u","網址無法打開");store.save(task);
+        Path evidence=tmp.resolve("service-support/42/current.json");Files.createDirectories(evidence.getParent());
+        Files.writeString(evidence,"{\"healthy\":true,\"endpoints\":[{\"url\":\"http://127.0.0.1:8088/view/chat\",\"audience\":\"Windows\",\"http_status\":200}]}" );
+        engine.run(task);
+        assertThat(store.find("42").orElseThrow().state()).withFailMessage("audit=%s calls=%s",mockingDetails(audit).getInvocations(),calls).isEqualTo(Task.State.COMPLETED);
+        assertThat(calls).hasSize(2);
+        assertThat(store.find("42").orElseThrow().stage("dialogue").orElseThrow().result().path("answer").asText()).contains("http://127.0.0.1:8088/view/chat");
+        verifyNoInteractions(publisher,verifier);
+    }
+    @Test void stoppedDialogueCanResumeSameQuestionWithoutChangingParent() throws Exception {
+        FlowRun f=store.flow(task.id()).orElseThrow();f.dialogue=true;f.dialogueRole="coordinator";f.parentId="1048";f.node="dialogue";
+        store.saveFlow(task.id(),f);task.state(Task.State.AWAIT_HUMAN);store.save(task);
+        List<Runnable> queued=new ArrayList<>();engine.resumeDialogueTask(task,queued::add);
+        assertThat(queued).hasSize(1);assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.RESUME_QUEUED);
+        assertThat(store.flow("42").orElseThrow().parentId).isEqualTo("1048");verifyNoInteractions(executor,publisher);
+    }
     @TempDir Path tmp;
     ObjectMapper mapper = new ObjectMapper();
     TaskStore store;
@@ -1097,6 +1117,10 @@ class FlowEngineTest {
         when(executor.execute(any(), any(), any())).thenAnswer(c -> {
             FlowRun flow = c.getArgument(1); TeamDefinition.Node node = c.getArgument(2); calls.add(flow.node + ":" + node.role());
             Task executing = c.getArgument(0);
+            if (mode.equals("dialogueWrongUrl")) {
+                var answer=mapper.createObjectNode().put("answer","請開http://172.30.46.20/").put("execution_status","COMPLETED").putNull("failure_report");
+                return new AgentRuntime.RuntimeResult("session","",answer,0.1,false,tmp.resolve("log"),"model",null);
+            }
             if (executing.continuation() != null) resumed.add(flow.node + ":" + executing.continuation().sessionId());
             if (mode.equals("interrupt") && flow.node.equals("implementation") && executing.continuation() == null) {
                 store.saveCheckpoint(new Checkpoint("42", flow.node, "claude-code", "sonnet", "kept-session", "context", "head1", null));

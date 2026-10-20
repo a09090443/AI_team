@@ -608,3 +608,8 @@ CRITICAL 等其他寫法不放行。放行寫成帶 `owner_waiver` 的 receipt�
 ## 2026-10-20 長作業與模型生命週期分離
 
 使用者要求跨任務自主部署。以executor-owned operation-jobs檔案日誌保存job與可信收據，外部工具獨立systemd unit執行；不因模型/SSH逾時宣告工具失敗。FlowEngine作通用對帳與同節點續跑，保留中央名額與次數，避免同時增加部署負載；不新增Task.State或DB schema。明確中斷透過operation-cancellations取消精確job，傳輸失聯保留UNCERTAIN。既有同HEAD成功prepare/start可重用但health需綁同release重新驗證；SHA僅完整性，不恢復已取消的逐版人工清單核准。
+
+
+## 2026-10-20 服務追問採持久證據與固定工具自修
+
+使用者明確要求Slack agent自主修正並正確回答。結案來源可依既有政策清理，但對話須以明示非產品repo的診斷資料夾運作，不改原task或以主clone冒充來源。系統在模型外從管理者登錄的入口probe並必要時用同SSH通道repair原active應用；模型仍不取得任意root/SSH或資料初始化工具。內部probe與指定使用者url分開，禁止稱已從使用者電腦驗證；回覆與交付檢查完整url，必要時自動改寫同一回覆。使用者沒有重述義務，舊卡住問題由正式單筆對話恢復API接回，不手改快照或造假成功。

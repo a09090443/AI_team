@@ -129,7 +129,7 @@ export const docs = [
     status: 'current',
     summary: 'Agent VM 直連目標、受限公鑰與固定操作；取代 Windows broker 的規格、一次性設定與未完成驗收。',
     readWhen: '設定 SSH 直連部署、管理公鑰與主機指紋，或排查部署通道。',
-    code: ['orchestrator/src/main/java/com/zipe/aiteam/flow/OperationJobs.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/FlowEngine.java', 'orchestrator/src/main/java/com/zipe/aiteam/runtime/RuntimeTimedOut.java', 'orchestrator/src/main/java/com/zipe/aiteam/sandbox/SandboxUnitCleanup.java', '.agents/skills/service-build/', 'orchestrator/teams/skills/service-build/', 'orchestrator/teams/prompts/service.md', 'orchestrator/teams/prompts/service-triage.md', 'orchestrator/teams/bestpartner.json'],
+    code: ['orchestrator/src/main/java/com/zipe/aiteam/flow/ServiceSupport.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/OperationJobs.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/FlowEngine.java', 'orchestrator/src/main/java/com/zipe/aiteam/runtime/RuntimeTimedOut.java', 'orchestrator/src/main/java/com/zipe/aiteam/sandbox/SandboxUnitCleanup.java', '.agents/skills/service-build/', 'orchestrator/teams/skills/service-build/', 'orchestrator/teams/prompts/service.md', 'orchestrator/teams/prompts/service-triage.md', 'orchestrator/teams/bestpartner.json'],
   },
   {
     id: 'service-delivery',

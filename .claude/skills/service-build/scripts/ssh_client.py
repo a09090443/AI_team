@@ -31,7 +31,7 @@ def config(path):
     return c
 
 def command(c, action, request_id, digest=None):
-    if action not in ACTIONS | {"result", "status", "cancel"} or not re.fullmatch(r"[0-9a-f]{32}", request_id):
+    if action not in ACTIONS | {"result", "status", "cancel", "repair"} or not re.fullmatch(r"[0-9a-f]{32}", request_id):
         raise ValueError("invalid fixed operation")
     remote = "ai-team-service " + c["target"] + " " + action + " " + request_id
     if action == "start":
@@ -129,7 +129,7 @@ def run(config_file, action):
         raise ValueError("SSH receipt mismatch; request retained")
     if receipt["exit_code"] == 0 and result.returncode != 0:
         raise ValueError("SSH transport failed despite success claim; request retained")
-    marker={"prepare":"PREPARED:","start":"START_PASS:","health":"HEALTH_PASS:","diagnose":"DIAGNOSIS:"}[action]
+    marker={"prepare":"PREPARED:","start":"START_PASS:","health":"HEALTH_PASS:","diagnose":"DIAGNOSIS:", "repair":"REPAIR_PASS:"}[action]
     evidence=receipt.get("evidence")
     if (not isinstance(evidence,list) or not evidence or any(not isinstance(x,str) or len(x)>1500 for x in evidence)
             or type(receipt.get("completed")) is not int
@@ -146,7 +146,7 @@ def run(config_file, action):
 
 
 def validate_receipt(receipt, c, action, job_id, digest):
-    marker = {"prepare":"PREPARED:", "start":"START_PASS:", "health":"HEALTH_PASS:", "diagnose":"DIAGNOSIS:"}[action]
+    marker = {"prepare":"PREPARED:", "start":"START_PASS:", "health":"HEALTH_PASS:", "diagnose":"DIAGNOSIS:", "repair":"REPAIR_PASS:"}[action]
     if (receipt.get("id") != job_id or receipt.get("target") != c["target"]
             or receipt.get("action") != action or receipt.get("source_sha256") != digest
             or type(receipt.get("exit_code")) is not int or type(receipt.get("completed")) is not int
