@@ -63,8 +63,8 @@ bestpartner #1049是#1048完成後的「網址無法打開」追問，確實收�
 - 對話注入非機密ServiceDeploymentContext與原operation-jobs可信歷史收據；工作區已清理要明示，不把歷史成功當目前健康。既有Infrastructure等SERVICE角色的追問由固定support.py先執行已登錄端點probe與必要的既有版本修復，再將新證據交給模型；模型本身仍唯讀。
 - access_endpoints明列audience、使用者url、Agent VM實測probe_url。系統不跟隨HTTP redirect、不以模型提供網址探測、不從頁面讀憑證。Agent VM探測成功與使用者電腦路徑已驗證是兩件事。
 - 端點失敗時先由同一SSH固定通道取health/diagnose；只有設定auto_repair_existing_release=true且既有服務health失敗，才repair原active應用（不build、不更換版本、不重啟資料庫、不刪資料）。保留原job結果，單對話最多兩次修復，不確定結果不另建重複repair。
-- 回覆漏掉已登錄完整入口時自動要求模型改寫一次；仍不正確時依固定工具結果輸出入口/HTTP狀態及探測位置，避免再因報告格式停等人。沒有已登錄診斷證據時不捏造。
-- 舊AWAIT_HUMAN對話可由一次性AI_TEAM_RESUME_DIALOGUE_TASK=&lt;id&gt;恢復原問題；只准原對話且有parent，走中央佇列，不改原任務快照/驗收、不重新部署。未完成對話的原有去重規則保留。
+- 回覆漏掉已登錄完整入口，或建議使用者用執行前綴續跑已結案任務時，自動要求模型改寫一次；仍不正確時依固定工具結果輸出入口/HTTP狀態及探測位置，避免再因報告格式停等人。沒有已登錄診斷證據時不捏造。
+- 舊AWAIT_HUMAN對話可由一次性AI_TEAM_RESUME_DIALOGUE_TASK=&lt;id&gt;恢復原問題；只准原對話且有parent；已COMPLETED的服務對話僅在保存答案仍含不可執行的執行前綴建議時可校正，走中央佇列，不改原任務快照/驗收、不重新部署。未完成對話的原有去重規則保留。
 
 ## 真實驗收清單（尚未執行）
 

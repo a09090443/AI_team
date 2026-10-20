@@ -90,8 +90,9 @@ Agent 停止或完成後不接受新的部署操作；已經執行中的系統�
 - 每項 `status=PASS`、整數 `exit_code=0`、非空 `evidence`（本次 log 或工具呼叫 ID）。
 - 每項列 `acceptance_ids`；全部檢查合計涵蓋需求基準的所有原子驗收項目。
 - `uncertainties` 為空；缺項、失敗或僅產出檔案均不能完成。僅將需求基準或配置檢查要求而仍未核實的事項放入此欄；未要求的登入、資料寫入或重啟測試在摘要說明驗證邊界，不自行新增阻擋項。原需求有要求時仍須完成。
+- 若service-context已登錄access_endpoints，固定support工具的本次探測須healthy，摘要須含使用者url完整路徑；不能以Agent VM內部根網址交付。端點診斷與既有版本自修規範見[直接追問](direct-agent-requests.md)。
 
-這是角色報告與配置的機械核對，**服務檢查證據仍由 agent 回報，並非系統另行登入主機做第二次驗證**。
+角色checks仍為報告與配置的機械核對；已登錄的入口另有固定工具實測，兩者不能互相冒充。系統probe由Agent VM進行，不等同已從使用者電腦驗證。
 不產生開發流程的 IndependentVerifier 收據、不開 PR；`COMPLETED` 只表示這次服務交付報告通過契約，
 不是日後持續健康保證。正式環境的監控、告警、回滾操作需另依目標主機設定。
 

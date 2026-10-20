@@ -1311,3 +1311,10 @@
 - 本機相關172項、Python90項通過；Linux隔離/home/agent/support-build-20261020完整726項0失敗/錯誤、11略過，包含真實cgroup測試；check-source90及平台16 fixture、docs build無斷鏈通過。190個來源檔與本機逐檔相同。
 - 已核對/修正direct-agent-requests、direct-ssh-deployment、configuration、operations、system-map、data-model、skill、service prompt、service-context範本、catalog與project-tree。原已知問題保留為修正前證據，新來源仍標待實際部署/1049恢復，不誤稱已完成。
 - dev root工具已備份tool-backup-support-20261020後更新（ssh_target fb5ccb6d…、guest1f443f2a…）；private臨時目錄/登入檔用EXIT trap與finally清理。未重建/重新部署產品。JAR切換與#1049實測待接續。
+
+
+## 2026-10-21 00:06 實測回覆的第二階段校正
+
+- 第一版6bb706a已安全部署360e8279…，備份Y8VX5g；六表/workspace一致、Windows8088/view/chat200。正式恢復#1049後23:59:41COMPLETED，實際Infrastructure回答正確完整url，support實測Agent內部200/repairfalse；原1048source仍已清理，對話使用獨立evidence資料夾。其他任務與兩實例未變，未新增start/重建產品。
+- 但回覆仍建議`@Infrastructure Agent 執行 檢查Windows轉送`；這不適用已結案父任務，不能只因url正確就算全部完成。已修ServiceSupport回覆guard、DIALOGUE_REPLY_RULES/父結案指引及正式COMP對話校正資格：只校正保存答案中的不可執行建議，不重開原部署。原模型回覆留在Slack/歷史log，不偽造或刪除。
+- 新174本機相關測試、Linux完整728項0失敗/錯誤（11略過，含cgroup）通過；90Python未改、來源/文件已驗證。待新一輪受控JAR切換與同1049正式校正實測。新備份B使用support-maintenance-reply-20261021以保留首輪證據。

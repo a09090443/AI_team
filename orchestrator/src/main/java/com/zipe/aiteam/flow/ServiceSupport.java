@@ -56,17 +56,21 @@ public final class ServiceSupport {
         return "\n【系統服務追問診斷：固定工具實測，非模型推測】\n"+Diagnostics.clip(Diagnostics.safe(evidence.toString()),16000)
                 +"\nurl是給指定audience使用的入口，probe_url是Agent VM實際探測位置。禁止把VM內部位址當Windows入口，禁止把probe成功說成已從使用者電腦驗證。"
                 +"已登錄user URL與probe URL的轉送關係由管理者提供；回覆明列完整路徑及使用位置。若原網址錯誤而登錄入口健康，直接更正入口，無需重新部署。"
-                +"repair_attempted/operations表示系統已透過同一SSH固定工具執行既有版本修復；依真實結果說明，不請人重填同樣問題。";
+                +"只有repair_attempted=true才表示系統曾嘗試固定SSH修復；是否成功依operations真實結果說明，不請人重填同樣問題。";
     }
     public static String replyReason(Path home,String task,String request,String answer) {
         if(request==null||!request.matches("(?is).*(網址|打不開|無法.*開|連線|https?://|url|website|accessible).*"))return null;
         JsonNode evidence=current(home,task);
         if(!evidence.path("endpoints").isArray()||evidence.path("endpoints").isEmpty())return null;
+        if(unsupportedFollowup(answer))return "不要要求使用者用執行前綴續跑已結案任務；直接回答診斷/修復結果與正確入口。若仍缺新瀏覽器錯誤，只詢問該必要資訊。"+notice(home,task);
         if(answer.matches("(?is).*(已從|已經從|從你的Windows|在你的Windows).{0,24}(驗證成功|實測成功|確認正常|測試成功).*"))
             return "不可宣稱已從使用者電腦驗證；系統探測位置是Agent VM。"+notice(home,task);
         for(JsonNode endpoint:evidence.path("endpoints"))
             if(!answer.contains(endpoint.path("url").asText()))return "回覆缺少指定使用位置的完整入口；請直接更正網址並說明檢查位置："+notice(home,task);
         return null;
+    }
+    public static boolean unsupportedFollowup(String answer) {
+        return answer!=null&&answer.matches("(?is).*@[^`\\n]{1,100}\\s執行\\s.*");
     }
     public static String verifiedReply(Path home,String task) {
         JsonNode evidence=current(home,task);

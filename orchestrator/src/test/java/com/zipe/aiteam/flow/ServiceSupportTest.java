@@ -14,6 +14,9 @@ class ServiceSupportTest {
   evidence();assertThat(ServiceSupport.replyReason(home,"1049","網址無法打開","請開http://172.30.46.20/" )).contains("完整入口");
   assertThat(ServiceSupport.replyReason(home,"1049","網址無法打開","請在Windows開http://127.0.0.1:8088/view/chat")).isNull();
  }
+ @Test void completedTaskExecutionAdviceIsAutomaticallyCorrected() throws Exception {
+  evidence();assertThat(ServiceSupport.replyReason(home,"1049","網址無法打開","請開http://127.0.0.1:8088/view/chat，若無法開啟輸入`@Infrastructure Agent 執行 檢查轉送`" )).contains("已結案");
+ }
  @Test void trustedFallbackKeepsAudienceAndProbeLimit() throws Exception {
   evidence();assertThat(ServiceSupport.verifiedReply(home,"1049")).contains("Windows host","http://127.0.0.1:8088/view/chat","未宣稱已從你的電腦驗證");
  }

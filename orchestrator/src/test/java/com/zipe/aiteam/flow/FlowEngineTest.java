@@ -1054,6 +1054,15 @@ class FlowEngineTest {
         assertThat(store.find("42").orElseThrow().stage("dialogue").orElseThrow().result().path("answer").asText()).contains("http://127.0.0.1:8088/view/chat");
         verifyNoInteractions(publisher,verifier);
     }
+    @Test void completedServiceDialogueWithUnsupportedAdviceCanBeCorrected() throws Exception {
+        enableService(true);FlowRun f=store.flow(task.id()).orElseThrow();f.dialogue=true;f.dialogueRole="builder";f.parentId="1048";f.node="dialogue";
+        store.saveFlow(task.id(),f);task.state(Task.State.COMPLETED);store.save(task);
+        var reply=mapper.createObjectNode().put("answer","請開http://127.0.0.1:8088/view/chat，輸入`@Infrastructure Agent 執行 檢查轉送`" );
+        store.saveStage(task.id(),new com.zipe.aiteam.task.StageOutcome("dialogue","session",reply,0.1,0));
+        task=store.find("42").orElseThrow();List<Runnable> queued=new ArrayList<>();engine.resumeDialogueTask(task,queued::add);
+        assertThat(queued).hasSize(1);assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.RESUME_QUEUED);
+        assertThat(store.flow("42").orElseThrow().context).contains("上次回答留下不能執行");verifyNoInteractions(executor,publisher);
+    }
     @Test void stoppedDialogueCanResumeSameQuestionWithoutChangingParent() throws Exception {
         FlowRun f=store.flow(task.id()).orElseThrow();f.dialogue=true;f.dialogueRole="coordinator";f.parentId="1048";f.node="dialogue";
         store.saveFlow(task.id(),f);task.state(Task.State.AWAIT_HUMAN);store.save(task);

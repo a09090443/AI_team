@@ -2066,9 +2066,13 @@ public class FlowEngine {
     }
     public void resumeDialogueTask(Task task,Consumer<Runnable> enqueue) {
         FlowRun flow=store.flow(task.id()).orElseThrow();
-        if(!flow.dialogue||flow.parentId==null||task.state()!=Task.State.AWAIT_HUMAN)
-            throw new IllegalArgumentException("只能恢復原問題的受阻對話，不重開部署或修改原任務");
-        if(!store.claimState(task.id(),Task.State.AWAIT_HUMAN,Task.State.RESUME_QUEUED))return;
+        boolean correction=task.state()==Task.State.COMPLETED && flow.snapshot.definition().project().serviceTarget()!=null
+                && task.stage("dialogue").map(r -> ServiceSupport.unsupportedFollowup(r.result().path("answer").asText())).orElse(false);
+        if(!flow.dialogue||flow.parentId==null||(task.state()!=Task.State.AWAIT_HUMAN&&!correction))
+            throw new IllegalArgumentException("只能恢復受阻對話或校正含不可執行建議的服務對話，不重開部署或修改原任務");
+        if(correction)flow.context=FlowContext.append(flow.context,"上次回答留下不能執行的續跑命令。原部署已結案，請校正同一回答：直接提供已登錄完整入口及探測證據，不要求使用者以執行前綴重新派工。");
+        store.saveFlow(task.id(),flow);
+        if(!store.claimState(task.id(),task.state(),Task.State.RESUME_QUEUED))return;
         audit.record(task.id(),AuditLog.ACTOR_SYSTEM,AuditLog.ACTION_RECOVERY,"依使用者要求恢復原對話與問題，套用系統診斷修正，未改原任務快照");
         queue(enqueue,task,()->run(store.find(task.id()).orElseThrow()));
     }

@@ -33,7 +33,7 @@ public class ConfiguredExecutor {
             + "\n2. 用白話；不要用內部代號（例如 HEAD、receipt、節點 id、gate、verify_passed），"
             + "必要的技術名詞第一次出現時用一句話解釋。"
             + "\n3. 以系統提供的「原任務工作區現況」為準；工作區有未提交的檔案時要明講，不可只看最新 commit 就說已經全部 commit。"
-            + "\n4. 最後一段寫「你可以怎麼做」，給可以直接複製的指令或按鈕名稱。"
+            + "\n4. 最後一段寫「你可以怎麼做」，只給目前可執行的下一步；服務追問可直接給完整入口，不要求以執行前綴續跑已結案任務。"
             + "\n5. 不確定就說不確定，不要用推測回答。"
             + "\n6. 系統已提供入口診斷或已完成修復時，直接回答結果與可用完整網址；不要再要求使用者重填已知資料或用重新派工取代回答。";
 
@@ -88,6 +88,8 @@ public class ConfiguredExecutor {
                 + "\n測試規範：" + (ServiceDelivery.serviceStage(flow, node) ? "建置後執行 serviceTarget.checks，失敗自修並重驗；不套用開發 QA 計畫。" : flow.snapshot.definition().project().testInstructions()) + "\n補充與已知阻礙：\n" + flow.context);
         if (evidence != null) context.append("\n系統派工前證據（不是建置成功或真人核准）：").append(evidence);
         if (flow.dialogue) context.append(parentWorkspaceState(flow));
+        if (flow.dialogue && flow.parentId!=null && store.find(flow.parentId).map(t -> t.state()==Task.State.COMPLETED).orElse(false))
+            context.append("\n原任務已結案：不能建議用執行前綴續跑。服務追問已由系統自動診斷，直接回結果/完整網址；仍缺新的瀏覽器錯誤時只詢問該必要資訊，不虛構可執行的指令。");
         if (!flow.dialogue) context.append("\n本階段可使用／規畫的操作契約：").append(availableOperations(flow, node));
         if (!flow.dialogue) context.append(inspectionNotice(flow, node));
         if (!flow.dialogue) context.append(ServiceDelivery.notice(flow, node));
