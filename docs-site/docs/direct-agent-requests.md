@@ -22,7 +22,7 @@
   legacy 才交 PM triage，要求原任務在 `AWAIT_HUMAN` 且有 QA 計畫與 QA 結果；不符合會明示拒絕。
 - `@PM Agent 處理 #1011` 或 `@PM Agent 補充 #1011 答案`：沿用原 PM triage 指令，須原頻道與原討論串。
 
-一般文字一律視為對話，包括「幫我改」；真正派工請用「執行 」前綴。
+一般文字視為對話，包括「幫我改」；產品程式修改的派工使用「執行 」前綴並受原任務狀態限制。服務/網址追問則可由系統固定工具自動診斷及修復已授權的既有服務，無需把相同問題再派一次。
 原有 `@zipe-ai-team` 行為不變。一次只能 @一個團隊帳號，避免多個 App 重複派工。
 沒有明確任務歸屬、同串有多個工作任務時拒絕猜測。
 
@@ -55,9 +55,9 @@ Socket handler 僅放入 ingress 佇列並 ack，模型與 Slack 回覆不在 ha
 
 bestpartner #1049是#1048完成後的「網址無法打開」追問，確實收到事件並建立唯讀對話。#1048工作區在23:27:56服務重載時因COMPLETED清理政策刪除；對話卻仍以原快照workspaceReady/path強制verifiedWorkspace，23:29:12在模型執行前失敗，AWAIT_HUMAN。真正Infrastructure模型未回覆，使用者看到的是後續haiku錯誤說明器的通用建議。
 
-因此上方「有原任務工作區則唯讀查看」不代表正常清理後仍能回答部署追問；目前此狀況會整段失敗，不自動用保存的報告/部署證據回答。對話也沒有注入ServiceDeploymentContext與operation-jobs，且既有Read/Grep/Glob工具不能即時探測HTTP。上述是修正前的實測缺口；新來源修正見下方，不應要求使用者反覆補充相同問題或重部署產品。網址與NAT實測見[直連部署](direct-ssh-deployment.md#2026-10-20-結案後網址與追問問題修正前實測)。
+因此上方「有原任務工作區則唯讀查看」不代表正常清理後仍能回答部署追問；修正前此狀況會整段失敗，不自動用保存的報告/部署證據回答。該次對話尚未注入ServiceDeploymentContext與operation-jobs，且既有Read/Grep/Glob工具不能即時探測HTTP。上述是修正前的實測缺口；新來源修正見下方，不應要求使用者反覆補充相同問題或重部署產品。網址與NAT實測見[直連部署](direct-ssh-deployment.md#2026-10-20-結案後網址與追問問題修正前實測)。
 
-## 服務追問的自動診斷與回覆（新來源已實作，待本輪部署）
+## 服務追問的自動診斷與回覆（已部署bestpartner，#1049實測完成）
 
 - 原任務COMPLETED／PR_CREATED且來源工作區已清理時，系統建立獨立dialogue-evidence/&lt;對話task&gt;保存證據資料夾，明示不是產品repository；不退回主clone假裝原工作區，不重建/修改產品。仍在執行或等待修復的原任務若工作區遺失，維持拒絕以其他來源冒充。
 - 對話注入非機密ServiceDeploymentContext與原operation-jobs可信歷史收據；工作區已清理要明示，不把歷史成功當目前健康。既有Infrastructure等SERVICE角色的追問由固定support.py先執行已登錄端點probe與必要的既有版本修復，再將新證據交給模型；模型本身仍唯讀。
@@ -74,3 +74,10 @@ bestpartner #1049是#1048完成後的「網址無法打開」追問，確實收�
 - 「執行」走中央管線；重送與多角色 mention 不重複實作。
 - 用量中斷可恢復對話，且沒有進入 Backend 或 PR 發布。
 - 觀察每個角色 Socket Mode 的實際事件到達，不能只依 443 連線數宣稱成功。
+
+
+### 2026-10-21 #1049實測
+
+原task-1048來源仍已清理，正式恢復同一#1049後已由Infrastructure模型回答，未再在模型前失敗。固定診斷從Agent VM探測172.30.46.20/view/chat為200，提供Windows完整127.0.0.1:8088/view/chat；這次服務健康，repair_attempted=false，沒有新start、重建或重啟產品。
+
+第一輪回覆雖給對URL，仍附不可執行的`@Infrastructure Agent 執行 ...`建議；已補機械回覆guard與父結案指引。修正版00:13:29使同一#1049再次COMPLETED，最新回覆不再要求重新派工，只在正確URL仍失敗時詢問真實瀏覽器錯誤。角色發言無ERROR，原#1048及其他任務/兩實例資料比對未變。Linux728項0失敗/錯誤（11略過）、Python90、文件build通過；詳見直連部署紀錄。這次沒有注入真實服務故障，修復失敗/重試/資料保留以回歸測試驗證，不宣稱所有故障組合已實測。

@@ -1318,3 +1318,12 @@
 - 第一版6bb706a已安全部署360e8279…，備份Y8VX5g；六表/workspace一致、Windows8088/view/chat200。正式恢復#1049後23:59:41COMPLETED，實際Infrastructure回答正確完整url，support實測Agent內部200/repairfalse；原1048source仍已清理，對話使用獨立evidence資料夾。其他任務與兩實例未變，未新增start/重建產品。
 - 但回覆仍建議`@Infrastructure Agent 執行 檢查Windows轉送`；這不適用已結案父任務，不能只因url正確就算全部完成。已修ServiceSupport回覆guard、DIALOGUE_REPLY_RULES/父結案指引及正式COMP對話校正資格：只校正保存答案中的不可執行建議，不重開原部署。原模型回覆留在Slack/歷史log，不偽造或刪除。
 - 新174本機相關測試、Linux完整728項0失敗/錯誤（11略過，含cgroup）通過；90Python未改、來源/文件已驗證。待新一輪受控JAR切換與同1049正式校正實測。新備份B使用support-maintenance-reply-20261021以保留首輪證據。
+
+
+## 2026-10-21 服務追問自主修正完成
+
+- 來源6bb706a+d9ff79e已部署bestpartner，JAR95cb87fb…；備份i9gcOl與首輪Y8VX5g保留。728 Linux完整/174本機相關/90 Python、來源檢查及文件build通過；190來源一致。root工具備份tool-backup-support-20261020，暫存登入檔已清除。未推送/合併。
+- #1049正式原問題恢復後第一輪已給正確URL但建議不可執行命令，補守門及校正API後，00:13:29同一#1049COMPLETED，Infrastructure實際回覆完整Windows入口與Agent內部200，明示不用重新派工；未經錯誤說明器替代。角色發言沒有ERROR；6角色Socket Mode正常，固定SSH執行器active。
+- 原task1048來源仍清理，實測是evidence-only資料夾/保存收據/新HTTP診斷，不重建舊workspace；原部署仍COMPLETED，jobs仍三筆，沒有start或產品重啟。repair_attempted=false（因服務健康），不能宣稱實際注入產品故障修復。Windows維護端另測8088/view/chat HEAD200；Agent證據仍正確標user_route_verified=false。
+- 兩輪safe六表/workspace一致，校正前後除1049外所有任務/兩實例資料逐列比對未變。證據路徑support-maintenance-reply-20261021、support-deploy-reply.log、support-build-20261020/orchestrator/full-build.log、實例service-support/1049/current.json。
+- 已核對與修正direct-agent-requests、direct-ssh-deployment、service-delivery、configuration、operations、system-map、data-model、catalog、project-tree；skill/service prompt及範本/鏡像同步。發現的落差與修正：入口資訊/探測位置未區分、來源清理阻斷追問、不可執行續跑建議；現皆有流程與回歸保護。所有真實故障組合/Windows端自動管理不在已驗收範圍。

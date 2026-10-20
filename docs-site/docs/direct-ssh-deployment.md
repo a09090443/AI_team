@@ -162,11 +162,22 @@ bestpartner orchestrator 已安全升級：JAR `45879bfd7672ecb88d63798fb0229323
 
 23:27:56協調服務最後重載時，啟動purgeWorkspaces依既有COMPLETED清理政策刪除task-1048；這是協調服務重載觸發的來源工作區清理，不是dev產品/資料卷消失。23:29:08使用者追問「網址無法打開」建立dialogue #1049、parentId1048。23:29:12在ConfiguredExecutor.workingDirectory→verifiedWorkspace拋「原工作區遺失或路徑不符，禁止退回主repository核實」，Infrastructure runtime尚未執行；之後只呼叫haiku錯誤說明器並轉AWAIT_HUMAN。
 
-結案清理與結案後唯讀對話對工作區的要求不相容；此外對話未注入ServiceDeploymentContext或可信部署job證據，且只准Read/Grep/Glob，即使能啟動也不能實測HTTP。後續修正須保留可查部署資訊、明列使用者入口並驗證、讓正常來源清理不阻斷純狀態/網址追問；不能偽稱還在原工作區查碼，也不能以重新部署產品解決此對話錯誤。本輪僅分析與補文件，未恢復工作區/續跑1049/發送Slack/修改程式或線上配置。
+結案清理與結案後唯讀對話對工作區的要求不相容；此外對話未注入ServiceDeploymentContext或可信部署job證據，且只准Read/Grep/Glob，即使能啟動也不能實測HTTP。後續修正須保留可查部署資訊、明列使用者入口並驗證、讓正常來源清理不阻斷純狀態/網址追問；不能偽稱還在原工作區查碼，也不能以重新部署產品解決此對話錯誤。該次查核僅分析與補文件；後續來源修正與正式1049回覆結果如下。
 
 
-### 新來源修正（待本輪部署與#1049實測）
+### 來源修正（已部署bestpartner）
 
 ServiceSupport與固定support.py新增工作區外的service-support診斷紀錄、登錄入口探測、同一SSH固定通道的health/diagnose/repair。root repair只以原active版本的Compose執行應用up --no-deps --no-build並重驗，不重新打包或建置、不操作資料庫/資料卷。只有固定登錄明確啟用自動修復時執行；不能因根路徑404而重啟健康服務。執行中/未知結果續原ID，單次追問最多兩次repair。
 
-service-context access_endpoints分開Windows完整入口與Agent VM探測位址。ServiceDelivery額外核對已登錄入口本次probe與摘要url，避免再交付172.30.46.20/；對話注入同一資訊並檢查回覆。完成後來源清理改用明示的證據資料夾對話，不以主repo冒充來源。正式原問題恢復入口為一次性AI_TEAM_RESUME_DIALOGUE_TASK，不修改DB或舊快照。其他主機應登錄自己的入口/修復設定，不寫死bestpartner資訊到共用Java程式。新來源測試與實測結果稍後追加，不把原問題紀錄改寫成修復成功。
+service-context access_endpoints分開Windows完整入口與Agent VM探測位址。ServiceDelivery額外核對已登錄入口本次probe與摘要url，避免再交付172.30.46.20/；對話注入同一資訊並檢查回覆。完成後來源清理改用明示的證據資料夾對話，不以主repo冒充來源。正式原問題恢復入口為一次性AI_TEAM_RESUME_DIALOGUE_TASK，不修改DB或舊快照。其他主機應登錄自己的入口/修復設定，不寫死bestpartner資訊到共用Java程式。新來源測試與實測結果如下，修正前紀錄保留。
+
+
+### 2026-10-21 服務追問自主修正完成
+
+- 來源6bb706a、d9ff79e，未推送/合併。最終bestpartner JAR SHA256 `95cb87fbeab9fde6a70e7f1fbd70966c7db4901875b1a823618480b62afa5c5d`；備份orchestrator-backup.i9gcOl（首輪Y8VX5g保留）。兩輪受控部署六表與全部既存工作區前後一致，其他兩實例未更新且資料比對未變。
+- Linux最終完整728項0失敗/錯誤、11略過，含真實cgroup清理；本機相關174項、Python90項、check-source與docs build通過；190來源檔逐檔一致。dev root工具備份tool-backup-support-20261020，管理暫存與憑證已清除。
+- service-context已登錄Windows完整url `http://127.0.0.1:8088/view/chat`、內部probe_url `http://172.30.46.20/view/chat`、audience與auto_repair_existing_release=true。#1049的新probe為200，repair_attempted=false；沒有為錯誤URL重啟健康服務。Windows也由本次維護端獨立HEAD實測200，不能混稱為Agent VM從Windows驗證。
+- 保留task1048來源不存在的真實情境，建立dialogue-evidence/1049；原問題「網址無法打開」經正式API恢復，未重建/重部署產品、未手改DB或舊快照。原operation-jobs1048仍僅prepare/start/health三筆，原task1048仍COMPLETED。
+- 第一輪模型答案留下不可執行的結案續跑命令，已補機械回覆自修與正式已完成對話校正資格。00:13:29最終#1049=COMPLETED，Infrastructure回覆正確完整入口/使用位置/Agent實測證據，明示「不需要重新派工」，必要時只問新的瀏覽器錯誤。Slack發言沒有ERROR，6角色Socket Mode正常，固定SSH執行器active。
+- 完整證據：~/support-build-20261020/orchestrator/full-build.log（首輪另存full-build-first.log）、~/support-deploy-reply.log、~/support-maintenance-reply-20261021、實例service-support/1049/current.json與logs/1049。原對話前一輪答案留在歷史，不刪除或偽造成一直正確。
+- 本次真實實測的是來源清理後的自動網址診斷/回覆；沒有注入產品中斷，repair故障路徑以回歸測試驗證。固定repair已安裝，不代表所有主機故障或使用者電腦網路都能自動修復。

@@ -3,9 +3,13 @@
 > 換手前務必更新這份檔案。內容只寫「現在正在做什麼、卡在哪、下一步」，
 > 長期結論寫 `decisions.md`，已完成的寫 `progress.md`。舊內容查 git 歷史，不要在這裡累積流水帳。
 
-最後更新：2026-10-20（Codex）
+最後更新：2026-10-21（Codex）
 
 ## 正在進行
+
+- **2026-10-21 服務追問自主修正已完成（最高優先，取代下方WIP/分析狀態）**：6bb706a+d9ff79e已部署bestpartner，最終JAR95cb87fb…，備份i9gcOl/首輪Y8VX5g；未push/merge。Linux728項0失敗/錯誤11略過、本機174相關、Python90/來源/docs build通過，190來源一致。新ServiceSupport/support.py在模型外從註冊endpoint probe，必要時固定SSH修復active app不build/不動DB資料；dialogue已清理來源採明示證據repo、可信歷史收據與新診斷，失敗回覆會自動改寫/固定證據fallback。機械攔截缺完整userURL及不可執行結案續跑建議；正式AI_TEAM_RESUME_DIALOGUE_TASK可恢復AWAIT或僅校正有此壞建議的COMP服務對話，不改父任務/快照。
+  - #1049原問題已由真實Infrastructure於00:13:29COMPLETED回答：Windows127.0.0.1:8088/view/chat、Agent172.30.46.20/view/chat200、明示不需重新派工；沒有錯誤說明器替代或發言ERROR。原1048source仍已清理、COMPLETED、jobs僅3筆；沒有新start/產品重啟，repairfalse因健康，不能宣稱真實中斷repair E2E已完成。Windows維護端HEAD200，Agent不冒稱從Windows驗證。其他任務與兩實例資料比對未變，6角色連線與SSH executor active。service-context已註冊內外URL/audience並啟用安全既有版本repair；root暫存credential已刪。最新完整證據見progress/direct-ssh-deployment。
+  - 後續使用者照常在原Slack串@Infrastructure描述服務問題，已註冊範圍可自動診斷/修復/回覆；不需要執行前綴重派已完成任務。未實測全部runtime/故障組合或使用者Windows網路自動管理，不重建產品來處理網址或對話錯誤。收尾文件build通過，完成驗證紀錄提交；不需再部署或重播1049。
 
 - **00:03 追問實測後的回覆校正補修（2026-10-21，最高優先）**：第一版6bb706a已部署JAR360e8279…，備份orchestrator-backup.Y8VX5g，safe六表/workspace一致；正式恢復1049後23:59:41COMPLETED並由Infrastructure回正確Windows完整url，原1048source仍刪除、證據folder正常、support.current健康200/repairfalse，其他任務與兩實例資料未變。但最後仍建議`@Infrastructure Agent 執行 檢查Windows轉送`，對COMP父任務不可執行。不能當全完成！已再修ServiceSupport.unsupportedFollowup/回覆guard與DIALOGUE_REPLY_RULES/父結案指引；resumeDialogueTask新增僅可校正COMP服務對話中已保存的不可執行建議（原AWAIT恢復仍有效），不手改DB、不新開任務。新174相關Java通過；Linux/home/agent/support-build-20261020重新完整verify中（session98824，已覆寫5個新Java/test來源，原726log另存full-build-first.log）。Java來源尚未commit。
   - 下一步待728完整通過後：新safe deploy腳本B/C需改為support-maintenance-reply-20261021/support-candidate-reply-20261021以保留第一輪證據；保留現有teams JSON、tool scripts/prompt不變，僅新JAR。新resume腳本斷言1049已COMPLETED（不要用舊assertAWAIT），只一次AI_TEAM_RESUME_DIALOGUE_TASK=1049校正原問題。這次回覆不能給不可用執行命令，缺真實新瀏覽器錯誤只能問該資訊。safe前後一致通過才resume，實測model回答與Slack無發言錯誤。root工具fb5ccb6d…/guest1f443f2a…已更新不需重傳；不重部署產品。原source1048缺失是測試情境不修復。

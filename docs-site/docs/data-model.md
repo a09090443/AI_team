@@ -426,7 +426,7 @@ fingerprint 由作業 id、state、sourceHead、errorKind 組合計算 SHA256，
 備份／換機須一併考量 journal、取消要求、原 task／flow_run、工作區 HEAD 與目標收據；只備份 SQLite 無法重建長作業證據，本文不宣稱現有備份腳本已自動涵蓋這些新目錄。此版本已部署 bestpartner，重啟／取消／晚到收據的所有真實故障組合尚未全面演練。
 
 
-## 服務追問診斷資料（新來源，非DB schema變更）
+## 服務追問診斷資料（已部署bestpartner，非DB schema變更）
 
 service-support/&lt;對話或service task&gt;/current.json是本次固定工具診斷：target、parent、observed_at、endpoints、healthy、repair_attempted、operations。endpoint含audience、url、probe_url、probe_origin、user_route_verified（Agent VM probe固定false）、http_status與healthy；operations保存受限SSH收據。health/diagnose/repair.json保存原id/action/target與result，repair另外持久attempts、最多兩次。
 
