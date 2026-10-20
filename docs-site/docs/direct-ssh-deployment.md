@@ -15,13 +15,13 @@
 ## 執行方式與權限
 
 角色仍只呼叫固定 `client.py prepare|start|health|diagnose`，寫入原任務工作區的請求。
-`ssh_executor.py` 是 Agent VM 的 systemd 使用者服務：查詢本機資料庫，僅接受目標相符、正在執行的 SERVICE 節點。
+`ssh_executor.py` 是 Agent VM 的 systemd 使用者服務：新請求僅接受目標相符、正在執行的 SERVICE 節點。2026-10-20 來源新增獨立 journal，已受理作業可在任務暫停後繼續查詢結果；此恢復版本尚未部署，詳見下節。
 它在同一台 Agent VM 執行固定 `ssh_client.py`，直接連目標 VM，不需要 Windows 程式輪詢。
 這是為保留角色沙箱與私鑰管理界線；未把角色改成可任意 SSH 或執行 root shell。
 
 SSH 固定 BatchMode、公鑰認證、獨立 known_hosts 與嚴格指紋檢查；沒有 Windows 或密碼 fallback。
 目標公鑰帶 `restrict,command=...`；sudoers 只允許 root-owned `ai-team-ssh-service` 固定入口。
-目標只接受 target、prepare/start/health/diagnose、請求 ID 與 start 來源 SHA256，不接受模型自訂 shell。
+角色只使用 prepare/start/health/diagnose；2026-10-20 來源的受限 SSH 協定另提供 result/status/cancel，供固定執行器管理精確 job ID。目標驗證 target、操作、請求 ID 與 start 來源 SHA256，不接受模型自訂 shell。
 部署來源為已授權任務的已提交HEAD。目標核對傳輸SHA256與壓縮檔結構，不再使用逐版source-manifest.json清單，也不另要求管理者核准正常版本更新。
 
 請求 ID、target、action、來源 digest 必須與收據完全相符；成功還須有對應完成標記與整數結束碼。
@@ -47,7 +47,7 @@ SSH 固定 BatchMode、公鑰認證、獨立 known_hosts 與嚴格指紋檢查�
 
 使用者明確取消額外逐版清單關卡。SSH目標身分與固定部署授權仍有效，正常更新不需要第二次人工核准。安裝工具不再要求manifest，既有target.json的source_manifest欄位與舊檔案不再讀取，保留歷史備份不會阻擋新來源。
 agent使用已提交且乾淨的工作區自行prepare、start、health與修復；只在缺少真正的主機權限、登入或任務範圍時請使用者處理，不要求維護清單。SHA256用於傳輸完整性與收據綁定，保留固定請求ID與避免重複啟動的機制。
-#1048更新工具後可在原討論串重新部署，不需建立新任務或變更任務快照；系統注入的service-context提供最新實際能力說明，舊拒絕收據僅供歷史。完成必須取得新的START_PASS與HEALTH_PASS。
+取消清單時曾建議 #1048 在原討論串重試；之後已取得 start 成功收據，此建議已由下方日期更新取代。現在不得重送已成功 start；須對帳原結果並補缺少的 health 與交付驗證，不需新建任務或偽造快照。
 
 ### 上線與驗證
 
@@ -57,6 +57,52 @@ agent使用已提交且乾淨的工作區自行prepare、start、health與修復
 - Windows/Linux各36項Python測試、Java75項相關測試、check-source與docs build通過。用#1048真實封裝 `a0c53284…` 驗證來源格式可接受而不需清單；這不是本次產品start成功證據。
 - 服務啟動與沙箱自檢通過、ERROR0，SSH執行器active且NRestarts0；新health收據 `ab1c03e97bcf48018a563e70d94e2a11` exit0，PostgreSQL/後端正常，Windows8088 HTTP200。
 - #1048仍AWAIT_HUMAN，未自動發Slack訊息或續跑、未重部署產品；可由原討論串補充「部署清單限制已移除，請重新執行部署與健康檢查」續跑，無需管理者更新清單或另開新任務。Slack新一輪start到結案仍待實測。
+
+## #1048 部署成功但流程未結案的歷史查核（2026-10-20）
+
+以下描述當時部署中的舊版行為與證據；後續來源修正見下方「持久長作業恢復」，不表示 VM 已更新。
+
+以下時間皆為台灣時間。清單取消後，21:53:40進入service；第一次建置用完guest.py的900秒限制，22:09:29收到失敗收據，diagnose確認timed_out=true、oom_killed=false。agent自行診斷並再次start。
+外層Codex在22:23:43因同一service階段累計30分鐘到期而被調度器判定失敗，22:24:01轉AWAIT_HUMAN；但遠端第二次start已於22:23:55成功，收據 `bda3dcac47be4a3c8e6905b83814b1db` 含START_PASS及HEALTH_PASS，來源a0c53284…，release `a0c53284074fff3b-973bf406`。
+22:24:08後續health請求 `a62bbfe966f4472e878748d6424cf404` 留在工作區，沒有accepted或結果。不是已確認執行器離線：systemd顯示active/NRestarts0；ssh_executor只掃STAGE_RUNNING，client.authorized也拒絕AWAIT_HUMAN，因此不會接單。client僅以任務佇列heartbeat推斷離線，會混淆「任務已暫停」與「執行器不可用」。
+模型/工具事件檔在外層逾時之後仍有收據與health操作，表示目前停止外層程序不等於所有沙箱/遠端工作已收斂；需查核systemd單位與子程序生命週期，不能把模型逾時當成部署失敗。
+任務目前node/activeNode=service，transitions8/24、service repeats1/3，並非已確認的節點預算用盡。最新停止由RuntimeExecutionException走錯誤說明並等待人工，未自動讀取晚到的成功收據。已知舊lastBlockReason仍含清單問題，不能拿它取代最新時間線。
+另外發現ssh_executor.poll以with sqlite3.connect處理交易但未明確close；現場455個SQLite檔案描述符，10/19日誌曾Too many open files後systemd自動重啟。這是另一長期可靠性缺陷，非本次health未接單的必要原因。
+
+當時提出的改善方向（其後已完成部分來源實作，部署與端對端狀態見下節）：將部署作業持久化並與模型回合分開；按job ID讀進度/收據與checkpoint接續；模型逾時先對帳成功/執行中/已失敗，不直接等人；僅在真正取消時停止作業。獨立服務heartbeat、任務暫停/未授權/排隊等結構化狀態取代泛稱離線；診斷綁job/release且提供遮蔽機密後的可操作錯誤；修正SQLite close及systemd子程序生命週期。#1048應接回既有start成功收據、只做缺少的health與交付驗證，不重新建置或偽造成功。
+本次只分析、補文件，未修改程式、任務、收據或重新部署；現行網頁HTTP200不代替尚未完成的任務驗收。
+
+## 持久長作業恢復（2026-10-20 來源已實作，尚未部署）
+
+本節描述目前工作樹的 Java／Python 契約；先前 SSH 直連已啟用、舊版 HTTP200 或單元測試都不是新恢復流程的端對端證據。尚未以此版本在 VM 驗證模型逾時、服務重啟、自動續跑及 #1048 結案。
+
+### 模型回合與部署作業分開
+
+1. client 在工作區 docs/docker/sit/.agent-service/ 保存請求；固定執行器另在實例 home 的 operation-jobs/&lt;task&gt;/&lt;id&gt;.json 寫入持久 journal。後者位於模型工作區外，由執行器保存，不能以模型自陳代替。
+2. client 預設最多等待 30 秒；未有終態結果就回 OPERATION_PENDING（通常工具 exit 0），保留原請求 ID。模型應立即以 BLOCKED 交回，說明系統仍在執行；不要長輪詢、從 prepare 重排或新建相同 start。
+3. FlowEngine 讀取綁定 task、node、目前 HEAD 的 journal。等待原 job 時沒有模型程序，但仍保留中央執行槽，其他同實例工作繼續排隊；完成或到 journal deadline 後，帶檢查點續同一 activeNode，不新增節點造訪、重跑或 transition 計數。
+4. QUEUED/RUNNING/UNCERTAIN 都視為尚待對帳；到期不宣稱成功，也不自動重送 start。恢復以結果指紋限次，時間戳更新不產生新恢復機會；失敗／未知仍須診斷或沿既有受阻路由處理。
+
+模型逾時須為 RuntimeTimedOut、phase=MODEL 且 cleanup.status=CONFIRMED，FlowEngine 才啟動逾時對帳。清理只停止本次模型 sandbox unit 的整個 cgroup，保留 stdout／session，不會停止 Agent 獨立 executor 或遠端部署 job。
+
+### 遠端受理與可信檢查點
+
+目標 root 固定入口把請求與來源保存於 /var/lib/ai-team-service/，以獨立 systemd system unit ai-team-service-job-&lt;id&gt;.service 執行 worker，結果原子寫入 &lt;id&gt;.json；SSH 斷線不等於 worker 失敗。固定執行器以 result/status 查原 ID，結果須核對 id、target、action、source SHA256、整數 exit code 與完成標記。只有目標明確回 UNKNOWN、授權仍有效且來源一致，才允許用同一 ID 補送；未確認的傳輸中斷不能換新 ID 重建。
+
+只有 journal 中 verified=true、SUCCEEDED、exit 0，且 task、activeNode、target、目前 HEAD 一致的 prepare/start 可以重用；HEAD 改變不沿用舊成功。health 必須重新核實，並綁定同 HEAD／target 已驗證 start 的 release，收據附 start_id、start_source_sha256。成功 start 不等於完整交付。
+
+executor 的獨立 operation-executor-heartbeat 不再依工作區佇列心跳判斷離線；未接單時區分 TASK_NOT_ACTIVE 與 SERVICE_EXECUTOR_OFFLINE。SQLite 使用 contextlib.closing 關閉連線，修正舊版只結束交易而未 close 的缺口。
+
+### 重啟、指定舊任務與取消
+
+- 服務重啟時，原本執行中或 RESUME_QUEUED、node 等於 activeNode 且有同 HEAD 有效 journal 的配置任務，經中央佇列排回原 task。其他中斷任務維持原本等待人工規則；不是重啟整台 VM 就會自動啟動 orchestrator。
+- 舊 AWAIT_HUMAN 不會全面自動恢復。先由管理者使用固定 executor 的 --reconcile 查目標真實成功收據，參數順序為 ssh_executor.py &lt;實例home&gt; &lt;直連設定&gt; --reconcile &lt;task&gt; &lt;id&gt; &lt;HEAD&gt; &lt;SHA256&gt;。核對當前 HEAD 與封裝 digest 後建立 verified journal；不手寫成功收據或改資料庫。
+- 再只在該次啟動設定 AI_TEAM_RESUME_OPERATION_TASK=&lt;單一task編號&gt;。入口要求配置流程、非角色對話、AWAIT_HUMAN、node=activeNode、乾淨工作區及同來源有效 journal，通過才排 RESUME_QUEUED。用後移除變數，不寫成每次啟動的常駐開關；它不核准新計畫或 PR。
+- 真人明確「中斷這一輪」才產生本輪 operation-cancellations/&lt;task&gt;/&lt;id&gt;.json 取消要求；模型 timeout、OPERATION_PENDING、SSH 斷線不代表取消。executor 亦對 ABORTED／FAILED 終止任務收斂未完成作業。取消只作用於精確 job unit 與該 job 的 build，不清資料卷；無法確認停止則保留 UNCERTAIN／CANCEL_UNCONFIRMED，不偽造失敗或覆寫已成功結果。
+
+### #1048 恢復限制（2026-10-20 補充）
+
+歷史 start bda3dcac47be4a3c8e6905b83814b1db 已成功，來源 a0c53284074fff3b35e97d6b7444744a2b02bf2a5b8ba2a837e31e1be7057dd8，release a0c53284074fff3b-973bf406。恢復前核對原工作區 HEAD 72f694ba483a9f686453804572965c34345b39ec 與目標收據，沿用已成功結果，只補缺少的 health／交付驗證。不得因模型逾時、舊清單拒絕紀錄或未接單 health 而重建此 release。本節沒有宣稱已執行對帳、部署新版本或恢復 #1048。
 
 ## 歷史紀錄（以下逐版清單流程已於2026-10-20取消）
 

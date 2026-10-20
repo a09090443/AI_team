@@ -161,6 +161,7 @@ agent_team/
 │   │   │   ├── CommandEvidence.java # 實作自陳成功與 CLI 指令紀錄的結束碼交叉核對
 │   │   │   ├── BaselineVerifier.java # 基準分支上先跑驗證指令：接入／部署時警告管理者並告訴任務
 │   │   │   ├── FileComparison.java # 指定舊檔比對的計畫契約、路徑驗證與能力說明
+│   │   │   ├── OperationJobs.java   # 跨專案持久作業日誌、檢查點與明確取消
 │   │   │   ├── ServiceDelivery.java # 服務建置目標、可用性檢查與完成契約
 │   │   │   ├── ServiceDeploymentContext.java # 同目標部署歷史與非機密宿主恢復入口
 │   │   │   ├── OperationContract.java # 專案操作契約（operations）
@@ -189,11 +190,13 @@ agent_team/
 │   │   │   ├── SessionCapture.java   # 從 JSONL 事件流取出 session id
 │   │   │   ├── QuotaExceeded.java    # 辨識供應商額度錯誤
 │   │   │   ├── ProviderAccessDenied.java # 辨識帳號／登入被供應商拒絕，產生固定中文說明
+│   │   │   ├── RuntimeTimedOut.java # 模型逾時型別與精確unit清理證據
 │   │   │   ├── RuntimeUsageError.java # CLI 參數錯誤（未呼叫模型）
 │   │   │   └── Diagnostics.java      # 遮蔽後的診斷輸出與白話原因
 │   │   ├── sandbox/                  # 包在 runtime 外層的 systemd 執行沙箱
 │   │   │   ├── ArgumentListTooLong.java # 子行程參數超過作業系統上限時附上大小診斷，不重試
 │   │   │   ├── ExecutionSandbox.java # 把指令包成受限 systemd user unit
+│   │   │   ├── SandboxUnitCleanup.java # 單次runtime unit與子程序的有界清理
 │   │   │   ├── SandboxPolicy.java    # 單次執行的隔離條件（可寫路徑、網路、資源）
 │   │   │   └── TaskUnits.java        # 停掉某任務正在跑的 agent 與系統驗證
 │   │   ├── slack/                    # Slack 進入點、發言與版面
@@ -233,8 +236,13 @@ agent_team/
 │   │   ├── SpringWiringTest.java
 │   │   ├── agent/
 │   │   ├── flow/
+│   │   │   └── OperationJobsTest.java # 跨專案作業日誌、來源綁定及取消
 │   │   ├── runtime/
+│   │   │   ├── RuntimeTimedOutTest.java # 逾時型別與證據保存
+│   │   │   └── RuntimeCleanupIntegrationTest.java # 三runtime逾時及中斷清理
 │   │   ├── sandbox/
+│   │   │   ├── SandboxUnitCleanupTest.java # 精確unit清理與失敗狀態
+│   │   │   └── SandboxUnitCleanupLinuxTest.java # Linux cgroup實測、不影響其他unit
 │   │   ├── slack/
 │   │   ├── store/
 │   │   ├── task/

@@ -36,6 +36,16 @@
   （Ubuntu 24.04 起預設 `kernel.apparmor_restrict_unprivileged_userns=1`），systemd **不會報錯，只會靜默略過**
   上述檔案系統防護。啟動時的 `selfTest()` 會實際嘗試越界寫入，把靜默失敗變成啟動失敗；它不是可有可無的健全性檢查。
 
+### 共用 timeout 與精確 unit 清理（2026-10-20 來源已實作）
+
+三個 adapter 的模型逾時統一拋 RuntimeTimedOut，繼承 AgentRuntime.RuntimeExecutionException，不改 execute 簽章。靜態 find(Throwable) 遍歷 cause chain（防循環），找不到回 null。可讀取 runtimeId、timeout、unit、stdoutLog、stderrLog、phase 與 cleanup；phase 為 MODEL 或 Codex 的 PREFLIGHT，cleanup 含 status／unit／detail。
+
+unit 由既有 wrap 使用的名稱加 UUID 識別本次執行。ExecutionSandbox 明確設定 KillMode=control-group、TimeoutStopSec=3s、SendSIGKILL=yes；逾時或 Interrupted 先由 SandboxUnitCleanup 停精確 user unit，必要時對同 unit 全部程序送 SIGKILL，檢查 unit／cgroup 後再回收 systemd-run launcher，保留 interrupt 旗標。CONFIRMED 表示已確認停止／cgroup 清空，FAILED 表示已觀察到清理未完成，UNKNOWN 表示無法確認；不能只看 launcher 結束就宣稱所有子程序終止。
+
+stdout／stderr 保留，既有 sessionStarted callback 與 checkpoint 介面維持。模型 timeout 不等於遠端操作失敗；FlowEngine 只有在 phase=MODEL、cleanup.status=CONFIRMED 且有有效 journal 時先對帳，再續同 activeNode。沒有全域 task kill，不停止獨立 Agent executor 或遠端 root job。詳見[長作業恢復](direct-ssh-deployment.md)。
+
+來源程式與測試已加入；本輪隔離 HEAD 副本套用 runtime／sandbox 修改後，70 項通過、1 項 Linux 實測略過。此證據不包含後續 FlowEngine／Python 整合；尚未部署或完成 VM／Slack 端對端。Linux opt-in 測試以 AI_TEAM_SANDBOX_CLEANUP_SMOKE=true 啟用，未執行不能標為 cgroup 真實驗收通過。
+
 ### Claude Code 角色寫不了受保護路徑（已知限制）
 
 `ClaudeCodeRuntime` 固定以 `--permission-mode dontAsk` 執行。Claude Code 對一組**受保護路徑**的寫入

@@ -227,7 +227,7 @@ v2 配置式流程的整份執行快照，對應 `com.zipe.aiteam.flow.FlowRun`�
 | `activeNode` | String | 已進入但尚未結束的節點。**非 null 代表現場還在**，續跑可直接恢復，不需重做配置遷移 |
 | `transitions` | int | 一般流程累計轉換次數；受控責任交接可越過 `definition.maxTransitions()`，歷史值不重設 |
 | `visits` | Map&lt;節點,次數&gt; | 各節點造訪次數，上限為節點自己的 `maxVisits()` |
-| `systemRetries` | Map&lt;鍵,次數&gt; | 系統層自動重試次數。鍵為節點 id 時是環境失敗重試（上限 `SystemFailure.RETRY_LIMIT`，該節點真的跑起來即清除）；鍵為 `<節點>#issue-format` 時表示已對該節點自動修正過一次問題清單格式，回報通過問題清單檢查即清除（2026-10-15 起，沿用既有欄位、無 schema 變更） |
+| `systemRetries` | Map&lt;鍵,次數&gt; | 系統層自動重試次數。鍵為節點 id 時是環境失敗重試（上限 `SystemFailure.RETRY_LIMIT`，該節點真的跑起來即清除）；鍵為 `<節點>#issue-format` 時表示已對該節點自動修正過一次問題清單格式，回報通過問題清單檢查即清除（2026-10-15 起）；2026-10-20 長作業另使用 operation-checkpoint／operation-timeout／operation-timeout-total 鍵，見下節。沿用既有 Map，無 schema 變更 |
 | `automaticHandoff` | String | 尚待使用的受阻證據鍵；含配置版本、來源／目標節點、HEAD 與報告摘要 |
 | `automaticHandoffs` | int | 已處理的獨立受阻事件數；基本上限 6；可辨識的舊制逐節點 key 會按證據合併重算 |
 | `automaticHandoffExtraBudget` | int | 真人針對目前現場增加的事件額度；每次 2、最多額外 6，不重設既有計數；配置遷移時歸零 |
@@ -396,3 +396,31 @@ TeamDefinition.Project 新增選填 serviceTarget：name（目標名稱）與 ch
 ### 2026-10-19 部署脈絡（已部署 bestpartner）
 
 stage_attempt 現在也供 TaskStore.serviceHistory 查詢同頻道、同目標 SERVICE 歷史報告（最近 12 筆，排除本任務）；以當時 flow_run 的節點 gate 核對，不把分流摘要當服務收據。未新增資料表或序列化欄位。
+
+## 工作區外的長作業 journal（2026-10-20 來源已實作）
+
+本次不新增 SQLite table、Task.State 或 FlowRun 欄位。OperationJobs 讀取實例 AI_TEAM_HOME/operation-jobs/&lt;task&gt;/&lt;id&gt;.json；標準 workspaces 佈局下 Python executor 由 workspace 的 home 定位同一路徑。journal 在模型工作區外，由固定執行器原子保存；工作區 docs/docker/sit/.agent-service/ 的請求／收據是工具交付通道，不取代可信 journal。
+
+| journal 欄位 | 用途 |
+|---|---|
+| version／id／task／node | version=1；檔名須等於 32 位小寫十六進位 id.json；綁原任務與 activeNode |
+| action／target | 固定操作及登錄目標 |
+| source_head／source_sha256 | 當前 Git HEAD；start 封裝 SHA256，其他操作可為 null |
+| state | QUEUED、RUNNING、SUCCEEDED、FAILED、UNCERTAIN；前兩者與 UNCERTAIN 均為待對帳 |
+| updated／deadline | Unix epoch 秒，與 SQLite 的 ISO-8601 TEXT 時間不同；executor 建立作業時 deadline 為當下加 7200 秒 |
+| result／verified／error_kind | 固定執行器的驗證結果、可信標記與結構化原因；SUCCEEDED 必須 verified=true，結果 id／action／target／digest 與 journal 一致，exit_code 為整數且為 0 |
+| launched／next_poll_at／cancel_requested | Python 執行器使用的提交、輪詢及取消追蹤欄位；不是新的 FlowRun 欄位 |
+
+OperationJobs 只讀取同 task／node／目前 HEAD 的有效記錄，拒絕 journal 基底／任務目錄 symlink、非一般檔案、非預期檔名、單檔超過 65536 bytes；每次最多讀取排序後 256 個檔案。無法讀取時保留現場並拋錯，不猜測部署結果。FAILED 終態也須有對應且非零的整數 exit_code；UNCERTAIN 不等於已失敗。
+
+FlowRun.systemRetries 沿用以下持久鍵：
+
+- operation-checkpoint:&lt;fingerprint&gt;：同一結果只續一次。
+- operation-timeout:&lt;fingerprint&gt;：同一逾時觀察只恢復一次。
+- operation-timeout-total:&lt;node&gt;：同節點模型逾時恢復總數，上限 SystemFailure.RETRY_LIMIT（2）。
+
+fingerprint 由作業 id、state、sourceHead、errorKind 組合計算 SHA256，不含更新時間；不能靠 heartbeat／timestamp 變化取得新恢復額度。續原 activeNode 不新計次，原 visits／repeats／transitions 不歸零。
+
+取消要求另存 AI_TEAM_HOME/operation-cancellations/&lt;task&gt;/&lt;id&gt;.json，含 version、id、task、node、requested_at、reason=user_interrupt；只要求取消原 pending job。獨立 heartbeat 為 AI_TEAM_HOME/operation-executor-heartbeat。目標 root 在 /var/lib/ai-team-service/ 保存 id.request、id.source、id.running、id.cancel 與 id.json 等作業證據；不要把 agent journal 與目標收據當同一份資料。
+
+備份／換機須一併考量 journal、取消要求、原 task／flow_run、工作區 HEAD 與目標收據；只備份 SQLite 無法重建長作業證據，本文不宣稱現有備份腳本已自動涵蓋這些新目錄。此版本尚未部署，重啟／取消／晚到收據的真實端對端仍待驗證。

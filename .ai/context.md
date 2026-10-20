@@ -7,6 +7,12 @@
 
 ## 正在進行
 
+- **通用長作業恢復實作中（2026-10-20，Codex）**：使用者已明確說「那就照你方式修改」，本輪已授權實作/測試/VM部署與正式恢復#1048（不重build既有成功release）。工作樹D:/agent_team-dynamicapi分支codex/direct-ssh-deployment，起點a118e37，未推送。新增flow/OperationJobs讀home/operation-jobs/taskid/id.json，FlowEngine在pending/typed timeout對帳、釋放模型但保留中央執行名額，續同activeNode不新計次；restart有trusted job自動排原任務；管理入口AI_TEAM_RESUME_OPERATION_TASK僅精確指定有verified同HEAD日誌的停止任務。ConfiguredExecutor提供系統檢查點。尚未部署、尚未恢復1048。
+  - 分工Bohr 01a159bf-7419-7601-9102-b63999dfee2e：runtime typed RuntimeTimedOut、sandbox精確unit cgroup清理與測試（已在寫檔）。Maxwell 01a159c0-d4d1-73f2-8197-bcca1c8ddb8f：Python async遠端worker/result、可信journal/closing/獨立heartbeat/checkpoint重用/health release binding（第一輪46測試，正修systemd-run獨立job、UNKNOWN重送同ID、cancel、rollback等整合審查）。不要互改這些檔案。
+  - 本地Java相關167項已通過（含OperationJobsTest4/新增FlowEngine恢復測試4），後續增2個OperationJobs測試、精確中斷operation-cancellations標記、timeout須cleanup CONFIRMED才對帳；整合測試session11239進行中；Python第一輪46通過未同步。需補全部新檔project-tree/catalog與現行docs，sync-agent-config，完整Java/Python/Linux測試，部署前備份與全任務/workspace對比。VM仍舊版，#1048 AWAIT_HUMAN，start bda3dcac47be4a3c8e6905b83814b1db已成功；health a62bbfe966f4472e878748d6424cf404未接單。正式用ssh_executor --reconcile核對舊root收據/HEAD72f694ba483a9f686453804572965c34345b39ec/digest a0c53284074fff3b35e97d6b7444744a2b02bf2a5b8ba2a837e31e1be7057dd8，不能偽造報告/手改DB。後續部署重載env一次性resume參數走原FlowEngine中央佇列。
+
+- **#1048已成功啟動但流程卡住（2026-10-20僅分析，Codex）**：新start bda3dcac…22:23:55 exit0，來源a0c53284…/release973bf406；外層Codex22:23:43先達30分鐘，22:24:01AWAIT_HUMAN。health a62bbfe9…22:24:08未接單；executor active，只處理STAGE_RUNNING，故誤報離線。首次build900秒逾時後agent已有自行診斷/重試。不是預算用完（8/24、repeats1/3）。另有SQLite連線未close/455 FD及歷史Too many open files。使用者要整體自主部署改善，先給分析與分階段方案，尚未授權本輪實作；不要重建已成功版本、不要偽造收據/修改快照。詳direct-ssh-deployment及progress。
+
 - **自主部署關卡已取消（2026-10-20，Codex）**：使用者明確要求取消我新增的逐版manifest人工核准，讓Slack agent自行部署。dev固定入口已取消清單比對，備份tool-backup-20261020-134631；Agent工具/提示/skill/service-context已更新，配置d1334fe3…/PID10731，備份autonomous-deploy-backup-20261020-134803。Windows/Linux Python36、Java75、check-source/docs build通過；#1048來源a0c53284…可接受無需更新清單。任務表/工作區前後一致；health ab1c03e9…及8088 HTTP200。#1048仍AWAIT_HUMAN，可原串續跑，不需另開任務；未發Slack訊息/重部署產品，不宣稱新一輪E2E。這項新指示取代下方所有要求管理者更新manifest的舊下一步。未推送。
 
 - **#1047 部署受阻（2026-10-19，Codex）**：AWAIT_HUMAN；prepare/diagnose成功，start在SSH前因HEAD2216d6d缺少版控docs/docker/sit而封裝失敗。已修正ssh_client明列來源缺件，不再泛稱SSH故障；Linux/Windows Python33項與check-source通過，helper已備份後更新至bestpartner、systemd active。未改任務快照/收據、未續跑或重部署產品。下一步需將經審閱SIT部署檔納入來源並提交、核對既有manifest，不能盲目按繼續或重啟VM。

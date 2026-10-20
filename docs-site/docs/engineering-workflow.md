@@ -196,6 +196,16 @@ Slack 會說明「只改了文件，依專案設定略過建置與測試」，QA
 驗證現場目前不自動清理，應另訂保留與容量政策。
 收據含絕對路徑，搬到不同安裝位置後需要重新驗證，不手動竄改資料庫讓舊證據過關。
 
+## 服務長作業與模型回合（2026-10-20 來源已實作）
+
+固定部署工具是模型回合之外的持久作業：executor 保存實例 home/operation-jobs 的 journal，遠端 root systemd job 以原請求 ID 執行、查詢結果。client 預設等待 30 秒後回 OPERATION_PENDING，模型應以 BLOCKED 結束本輪；此狀態表示待對帳，不表示部署失敗或需要重新核准。
+
+FlowEngine 在一般受阻路由前讀取同 task／activeNode／HEAD 的有效 journal，等待期間釋放模型但保留中央執行槽。結果就緒或到 deadline 後，注入系統檢查點續同 activeNode，不增加節點／重跑／transition 次數，也不重置既有計數或代造完成報告。真正模型 timeout 只有在 RuntimeTimedOut 的 MODEL 階段且 cgroup cleanup=CONFIRMED 時才可走相同恢復。結果／timeout 指紋限制重複恢復，避免無限重開模型。
+
+prepare/start 只有固定執行器 verified 的同 HEAD、同 task／node／target 成功結果可重用；health 仍須核對該 start release，不得把舊 HTTP200 當成新版本驗收。服務重啟可依有效 journal 排回原 task；舊 AWAIT_HUMAN 需管理者先核實原收據，再以單次 AI_TEAM_RESUME_OPERATION_TASK 指定恢復，不修改任務快照或核准。
+
+模型逾時與斷線不取消遠端 job。真人明確中斷時才產生本輪取消要求，目標對精確 job 清理；終止任務也由 executor 收斂。詳見[SSH 直連部署](direct-ssh-deployment.md)。此為來源實作，尚未部署或完成真實端對端；#1048 的既有成功 start 必須保留，不可重建。
+
 ## PR 與產品交付
 
 人工 PR 核准仍然必須存在。PR 建立成功後記為 `PR_CREATED`，保存 URL 與 publishedHead，

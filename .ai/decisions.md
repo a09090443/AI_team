@@ -603,3 +603,8 @@ CRITICAL 等其他寫法不放行。放行寫成帶 `owner_waiver` 的 receipt�
 - 使用者明確指出已完全授權測試沙箱部署，要求Slack agent自行完成正常版本更新，取消我先前擅加的manifest管理者關卡。
 - 本決策取代10/19「目標逐檔來源manifest核准」部分。來源為任務已提交HEAD，沿用主機/固定SERVICE操作授權與SSH身分；SHA256是傳輸完整性與收據綁定，不是新的真人核准。
 - 不另做「管理者更新清單」或新增Slack逐commit核准流程。資料保留、來源完整性、不可偽造成功與原本其他流程的核准界線仍按任務與使用者指示處理。
+
+
+## 2026-10-20 長作業與模型生命週期分離
+
+使用者要求跨任務自主部署。以executor-owned operation-jobs檔案日誌保存job與可信收據，外部工具獨立systemd unit執行；不因模型/SSH逾時宣告工具失敗。FlowEngine作通用對帳與同節點續跑，保留中央名額與次數，避免同時增加部署負載；不新增Task.State或DB schema。明確中斷透過operation-cancellations取消精確job，傳輸失聯保留UNCERTAIN。既有同HEAD成功prepare/start可重用但health需綁同release重新驗證；SHA僅完整性，不恢復已取消的逐版人工清單核准。

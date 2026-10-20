@@ -36,6 +36,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 | `AI_TEAM_BASE_BRANCH`、`AI_TEAM_BRANCH_PREFIX` | 基準分支（留空自動偏好 `develop`）與任務分支前綴 |
 | `AI_TEAM_GIT_USER_NAME`、`AI_TEAM_GIT_USER_EMAIL` | agent commit 署名，寫在工作區 local config |
 | `AI_TEAM_MAX_CONCURRENCY` | 實例內 legacy 階段的並行槽上限；中央工作迴圈仍依序執行，單獨調高不會讓 v2 任務平行；訂閱帳號建議 1 |
+| `AI_TEAM_RESUME_OPERATION_TASK` | 2026-10-20 來源新增、尚未部署。只在一次啟動指定一個數字 task ID，將符合條件的舊 AWAIT_HUMAN 排回原長作業；須同 activeNode、乾淨工作區與有效同 HEAD journal。不是批次掃描或核准開關，用後移除，勿常駐 env.sh／team.env |
 | `AI_TEAM_TASK_TIMEOUT_SECONDS`、`AI_TEAM_GIT_TIMEOUT_SECONDS` | 全域逾時覆寫（0＝用各階段設定）與 git 逾時 |
 | `AI_TEAM_PROGRESS_INTERVAL_SECONDS` | 進度卡更新秒數，預設 300、最小 30；**不能設成空字串** |
 | `AI_TEAM_REPORT_DETAIL` | `brief`（預設）或 `full`；完整報告可用 `補充 #<id> 檢視完整報告 [節點]` 叫出 |
@@ -162,9 +163,19 @@ plan 的 protected_path_changes 明列需跨 runtime 改派的檔案；不新增
 
 ### 2026-10-19 部署脈絡（已部署 bestpartner）
 
-實例可放 service-context/<target>.json，提供不含機密的宿主程式、設定路徑、啟動指令與歷史收據索引；詳見 [服務建置](/docs/service-delivery)。此檔僅供說明，不增加操作權限。
+實例可放 service-context/&lt;target&gt;.json，提供不含機密的宿主程式、設定路徑、啟動指令與歷史收據索引；詳見 [服務建置](/docs/service-delivery)。此檔僅供說明，不增加操作權限。
 
 
 ### 2026-10-19 SSH 直連規格（已啟用）
 
 Agent VM 的 systemd 固定部署執行器已啟用，以 SSH 公鑰直連 dev VM；網路、公鑰、主機指紋、受限入口與 health 已實測，不需要 Windows broker。#1046 的舊 skill 快照須新任務承接；dev VM 曾 heartbeat 停止，經使用者核准重啟後已重新驗證健康與8088入口，當機根因待查。本輪未重部署產品或續跑 Slack。詳見 [直連部署](/docs/direct-ssh-deployment)。
+
+## 長作業恢復的設定邊界（2026-10-20 來源已實作）
+
+AI_TEAM_RESUME_OPERATION_TASK 在一般 recoverOnStartup 之後讀取，只接受單一數字任務編號；限定配置流程、非角色對話、AWAIT_HUMAN、node=activeNode、乾淨工作區與有效同 HEAD journal。由中央佇列排 RESUME_QUEUED；不是套用新快照、重新核准計畫或核准 PR。管理者應先以固定 executor --reconcile 驗證原成功收據，用後清除變數；程式不會自動修改你的 env 檔。
+
+沒有新增團隊 JSON 的 operation timeout 設定。client 等待預設 30 秒後交回 OPERATION_PENDING；executor journal deadline 建立時為 7200 秒；遠端 root job 的 RuntimeMaxSec 為 7000 秒、TimeoutStopSec 為 30 秒；模型 sandbox 的 TimeoutStopSec 為 3 秒。這些是不同層的來源常數，不能用調高節點 timeoutSeconds 取代結果對帳。
+
+標準佈局下，Java 依 AI_TEAM_HOME、Python 依 workspace 的 home 定位 operation-jobs、operation-cancellations、operation-executor-heartbeat。journal 不在模型工作區；自訂 workspaces 位置時須核對兩者是否指向同一實例 home，不可假稱任意佈局已實測。可信 prepare/start 只在 task／activeNode／target／HEAD 相符時重用，health 仍須核對 start release。詳見[直連部署](/docs/direct-ssh-deployment)。
+
+此為來源設定契約，尚未部署及完成真實端對端；本次未修改 env.sh、team.env 或既有任務資料。

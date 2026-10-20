@@ -13,3 +13,5 @@ checks 的 name／operation_id 必須對應 serviceTarget.checks，acceptance_id
 系統注入的歷史只作背景；過去部署成功、本次尚未完成與目前健康未知要分開說明，舊成功不得填成本次 checks。完成後明列程式／服務名稱、部署 commit、目標 VM、存取網址及本次檢查結果。
 
 使用者已授權的測試主機不再使用逐版source-manifest清單核准。來源已提交且工作區乾淨就依固定操作完成部署；不得要求使用者更新清單。歷史Source approval錯誤是舊工具紀錄，工具更新後取得新的prepare/start/health結果；不要用舊拒絕或舊健康通過代替本次啟動收據。
+
+工具回OPERATION_PENDING時立即結束模型本輪，以BLOCKED說明等待原job；不要長時間輪詢、不要另送start、不要要求使用者重啟。系統會等待固定執行器並續同節點。系統注入的同任務/來源HEAD/目標verified prepare與start可沿用，僅補缺少健康檢查；已成功啟動不重建。未取回的pending action先收取原結果。checks.operation_id保持配置ID，原job ID填evidence。模型逾時與SSH回覆遺失不能推論部署失敗或執行器離線，先依系統檢查點對帳。

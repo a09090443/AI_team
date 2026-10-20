@@ -111,6 +111,12 @@ public class AiTeamApplication implements CommandLineRunner {
             orchestrator.resumeApprovedPlanTask(approvedTask);
         }
 
+        String operationTask = System.getenv("AI_TEAM_RESUME_OPERATION_TASK");
+        if (operationTask != null && !operationTask.isBlank()) {
+            if (!operationTask.matches("[0-9]+")) throw new IllegalArgumentException("AI_TEAM_RESUME_OPERATION_TASK 必須是單一任務編號");
+            orchestrator.resumeOperationTask(operationTask);
+        }
+
         // SocketModeApp.start() 會阻塞，因此不能等 ApplicationReadyEvent 才啟動。
         quotaAutoResume.start();
 

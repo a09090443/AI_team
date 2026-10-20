@@ -112,6 +112,10 @@ public class ExecutionSandbox {
             cmd.add("-p"); cmd.add("ReadOnlyPaths=" + pathProperty(p.toAbsolutePath().toString()));
         }
 
+        cmd.add("-p"); cmd.add("KillMode=control-group");
+        cmd.add("-p"); cmd.add("TimeoutStopSec=3s");
+        cmd.add("-p"); cmd.add("SendSIGKILL=yes");
+
         // ---- 資源 ----
         // MemorySwapMax=0：不准用 swap 撐過上限，否則 VM 會先被 swap 拖垮才觸發 OOM。
         cmd.add("-p"); cmd.add("MemoryMax=" + policy.memoryMaxMb() + "M");

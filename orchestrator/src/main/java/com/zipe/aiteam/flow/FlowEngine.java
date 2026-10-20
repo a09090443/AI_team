@@ -68,6 +68,10 @@ public class FlowEngine {
             return;
         }
         if (interruptRequests.putIfAbsent(task.id(), user) != null) return;
+        if (flow.workspaceReady) {
+            try { new OperationJobs(props.homePath()).requestCancellation(task.id(),flow.node,workspaces.headSha(task.id())); }
+            catch (Exception e) { audit.record(task.id(),user,AuditLog.ACTION_ERROR,"背景作業取消要求未保存："+Diagnostics.describe(e)); }
+        }
         audit.record(task.id(), user, AuditLog.ACTION_BUTTON, "要求中斷節點 " + flow.node + " 這一輪");
         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
                 "⏸ <@" + user + "> 要求中斷任務 #" + task.id() + " 的「" + flow.node + "」這一輪，正在停止執行中的程序；"
@@ -564,6 +568,9 @@ public class FlowEngine {
                         flow.context = FlowContext.append(flow.context, evidence);
                     }
                 }
+                OperationDisposition operation = reconcileOperations(task, flow, node, false);
+                if (operation == OperationDisposition.STOP) return;
+                if (operation == OperationDisposition.RESUME) continue;
                 String issueBlock = IssueTracker.ingest(flow, node, report, task.id());
                 if (issueBlock == null) flow.systemRetries.remove(flow.node + IssueTracker.FORMAT_RETRY);
                 String block = issueBlock == null ? FlowGates.blockingReason(node, report, flow) : issueBlock;
@@ -737,6 +744,22 @@ public class FlowEngine {
             // 停止訊息會提供「繼續執行」，續跑沿用原 session 且不再計次。
             // 越界寫入等安全問題不能被「使用者要求中斷」掩蓋，照原本的錯誤處理停下並記錄。
             if (!(e instanceof SecurityException) && stopForInterrupt(task, flow)) return;
+            RuntimeTimedOut timedOut = RuntimeTimedOut.find(e);
+            if (timedOut != null && timedOut.phase() == RuntimeTimedOut.Phase.MODEL
+                    && timedOut.cleanup().status() == com.zipe.aiteam.sandbox.SandboxUnitCleanup.Status.CONFIRMED) {
+                Node interrupted = AgentDispatch.effective(flow, flow.node);
+                if (interrupted != null) {
+                    try {
+                        OperationDisposition operation = reconcileOperations(task, flow, interrupted, true);
+                        if (operation == OperationDisposition.STOP) return;
+                        if (operation == OperationDisposition.RESUME) { run(task); return; }
+                    } catch (Exception reconciliationFailure) {
+                        e.addSuppressed(reconciliationFailure);
+                        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY,
+                                "長作業對帳受阻，保留現場：" + Diagnostics.describe(reconciliationFailure));
+                    }
+                }
+            }
             QuotaExceeded quota = QuotaExceeded.find(e);
             com.zipe.aiteam.runtime.RuntimeUsageError usage = com.zipe.aiteam.runtime.RuntimeUsageError.find(e);
             if (quota != null && store.checkpoint(task.id()).isPresent()) {
@@ -1947,9 +1970,97 @@ public class FlowEngine {
                 + "\n修正上面的原因後，直接再按一次核准即可，不必重跑任何步驟（核准前仍會重新檢查證據與 commit）。\ncommit=" + flow.approvalHead;
         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), message, SlackBlocks.approvalBlocks(task.id(), message));
     }
-    public void recover(Task task) {
+    /** Compatibility entry used when no central queue was supplied. */
+    public void recover(Task task) { recover(task, null); }
+    public void recover(Task task, Consumer<Runnable> enqueue) {
+        FlowRun flow = store.flow(task.id()).orElseThrow();
+        if (enqueue != null && (task.state().isRunning() || task.state()==Task.State.RESUME_QUEUED) && flow.node.equals(flow.activeNode)
+                && !operationBatch(task, flow).empty()) {
+            enqueueOperationRecovery(task, flow, enqueue, "服務重啟後接回原長作業與檢查點，不重新提交已成功操作");
+            return;
+        }
         if (task.state().isRunning() || task.state() == Task.State.QUEUED || task.state() == Task.State.RESUME_QUEUED)
-            waitHuman(task, store.flow(task.id()).orElseThrow(), "服務重啟中斷，保留原配置、工作區與節點；不自動重跑。");
+            waitHuman(task, flow, "服務重啟中斷，保留原配置、工作區與節點；不自動重跑。");
+    }
+    /** Administrator-selected recovery, bound to an executor-verified current-source journal. */
+    public void resumeOperationTask(Task task, Consumer<Runnable> enqueue) {
+        FlowRun flow = store.flow(task.id()).orElseThrow();
+        if (task.state() != Task.State.AWAIT_HUMAN || flow.dialogue || !flow.node.equals(flow.activeNode)
+                || !operationWorkspaceClean(task) || operationBatch(task, flow).empty())
+            throw new IllegalArgumentException("沒有可核對的同來源長作業檢查點，保留原任務；不重新部署或偽造完成");
+        enqueueOperationRecovery(task, flow, enqueue, "管理者依既有授權指定對帳長作業，只接續未完成操作");
+    }
+    private void enqueueOperationRecovery(Task task, FlowRun flow, Consumer<Runnable> enqueue, String reason) {
+        Task.State from = task.state();
+        if (!store.claimState(task.id(), from, Task.State.RESUME_QUEUED)) return;
+        task.state(Task.State.RESUME_QUEUED);
+        flow.context = FlowContext.append(flow.context, reason + operationBatch(task, flow).notice());
+        store.saveFlow(task.id(), flow);
+        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY, reason);
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                "任務 #" + task.id() + " 已接回已保存的作業結果，將自動補做剩餘步驟；不需要重新部署或重新核准。");
+        queue(enqueue, task, () -> run(store.find(task.id()).orElseThrow()));
+    }
+
+    private boolean operationWorkspaceClean(Task task) {
+        try { return workspaces.clean(task.id()); }
+        catch (com.zipe.aiteam.workspace.WorkspaceManager.WorkspaceException e) {
+            throw new IllegalStateException("長作業工作區無法核對，保留現場", e);
+        }
+    }
+    enum OperationDisposition { NONE, RESUME, STOP }
+    /** Test hook only changes polling latency; production waits without holding a model process. */
+    Runnable operationPoll = () -> {
+        try { Thread.sleep(1000); }
+        catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new IllegalStateException("等待作業被服務中斷；檢查點保留", e); }
+    };
+    private OperationJobs.Batch operationBatch(Task task, FlowRun flow) {
+        try {
+            String head = flow.workspaceReady ? workspaces.headSha(task.id()) : null;
+            return new OperationJobs(props.homePath()).read(task.id(), flow.node, head);
+        } catch (com.zipe.aiteam.workspace.WorkspaceManager.WorkspaceException e) {
+            throw new IllegalStateException("長作業來源版本無法核對，保留現場", e);
+        }
+    }
+    OperationDisposition reconcileOperations(Task task, FlowRun flow, Node node, boolean timeout) {
+        if (flow.dialogue || !flow.node.equals(flow.activeNode)) return OperationDisposition.NONE;
+        OperationJobs.Batch batch = operationBatch(task, flow);
+        if (batch.empty() || (!timeout && !batch.pending())) return OperationDisposition.NONE;
+        String initial = batch.fingerprint();
+        if (timeout && (flow.systemRetries.containsKey("operation-timeout:" + initial)
+                || flow.systemRetries.getOrDefault("operation-timeout-total:"+flow.node,0)>=SystemFailure.RETRY_LIMIT))
+            return OperationDisposition.NONE;
+        if (batch.pending()) {
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY,
+                    "長作業仍在背景執行；釋放模型並等待原job，保留階段與次數。" + initial);
+            slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                    "任務 #" + task.id() + " 的工具仍在執行，系統會追蹤原作業並自動接續；不需重送或重啟。");
+            try (var progress = new StageProgress(slack, store, task, "長作業執行與結果對帳", props.progressIntervalSeconds(), true)) {
+                while (batch.pending()) {
+                    if (aborted(task) || stopForInterrupt(task, flow)) return OperationDisposition.STOP;
+                    long now = java.time.Instant.now().getEpochSecond();
+                    if (batch.deadline() <= now) break;
+                    operationPoll.run();
+                    OperationJobs.Batch next = operationBatch(task, flow);
+                    if (next.empty()) throw new IllegalStateException("已受理的長作業紀錄遺失，保留現場，不重送操作");
+                    batch = next;
+                }
+            }
+        }
+        // One recovery per observed result; unchanged expired work cannot restart the model forever.
+        String key = "operation-checkpoint:" + batch.fingerprint();
+        if (flow.systemRetries.containsKey(key)) return OperationDisposition.NONE;
+        flow.systemRetries.put(key, 1);
+        if (timeout) {
+            flow.systemRetries.put("operation-timeout:" + initial, 1);
+            flow.systemRetries.merge("operation-timeout-total:"+flow.node,1,Integer::sum);
+        }
+        flow.context = FlowContext.append(flow.context, "系統已核對長作業；模型本輪結束不代表工具失敗。只接續剩餘步驟。" + batch.notice());
+        flow.lastBlockReason = "";
+        store.saveFlow(task.id(), flow);
+        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY,
+                "長作業結果已保存，續同節點與來源；未重設次數、未採用半成品報告、未新增核准。" + batch.fingerprint());
+        return OperationDisposition.RESUME;
     }
     private void runDialogue(Task task, FlowRun flow) throws Exception {
         Role role = flow.snapshot.definition().roles().get(flow.dialogueRole);

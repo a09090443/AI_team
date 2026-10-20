@@ -292,7 +292,7 @@ public class TaskOrchestrator {
         log.info("啟動恢復：發現 {} 個未完成的任務", unfinished.size());
 
         for (Task t : unfinished) {
-            if (flowEngine != null && flowEngine.owns(t.id())) { flowEngine.recover(t); continue; }
+            if (flowEngine != null && flowEngine.owns(t.id())) { flowEngine.recover(t, this::enqueue); continue; }
             if (legacyBlockedByNewConfiguration(t)) {
                 if (t.state().isRunning() || t.state() == Task.State.QUEUED || t.state() == Task.State.RESUME_QUEUED || t.state() == Task.State.TRIAGE_QUEUED) {
                     t.state(Task.State.AWAIT_HUMAN); store.save(t);
@@ -1250,6 +1250,11 @@ public class TaskOrchestrator {
     /** 純詢問結束後的「開成新需求」按鈕；新任務走同一個中央佇列。 */
     public void spinoff(Task task, int index, String user) {
         if (flowEngine != null && flowEngine.owns(task.id())) flowEngine.spinoff(task, index, user, this::enqueue);
+    }
+    public void resumeOperationTask(String id) {
+        Task task = store.find(id).orElseThrow(() -> new IllegalArgumentException("指定任務不存在"));
+        if (flowEngine == null || !flowEngine.owns(id)) throw new IllegalArgumentException("指定任務不是配置流程");
+        flowEngine.resumeOperationTask(task, this::enqueue);
     }
     public void resumeApprovedPlanTask(String id) {
         Task task = store.find(id).orElseThrow(() -> new IllegalArgumentException("指定任務不存在"));

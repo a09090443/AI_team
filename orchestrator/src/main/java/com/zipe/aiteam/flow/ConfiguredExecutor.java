@@ -90,6 +90,11 @@ public class ConfiguredExecutor {
         if (!flow.dialogue) context.append("\n本階段可使用／規畫的操作契約：").append(availableOperations(flow, node));
         if (!flow.dialogue) context.append(inspectionNotice(flow, node));
         if (!flow.dialogue) context.append(ServiceDelivery.notice(flow, node));
+        if (!flow.dialogue) {
+            context.append(OperationJobs.instruction());
+            String operationHead = flow.workspaceReady ? workspaces.headSha(task.id()) : null;
+            context.append(new OperationJobs(props.homePath()).read(task.id(), flow.node, operationHead).notice());
+        }
         if (!flow.dialogue && flow.snapshot.definition().project().serviceTarget() != null) {
             String target = flow.snapshot.definition().project().serviceTarget().name();
             context.append(ServiceDeploymentContext.notice(props.homePath(), target,

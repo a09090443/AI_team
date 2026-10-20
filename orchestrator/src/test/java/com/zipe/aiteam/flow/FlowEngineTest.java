@@ -995,6 +995,52 @@ class FlowEngineTest {
         assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
         verifyNoInteractions(publisher);
     }
+    private Path operationJob(FlowRun f, String state) throws Exception {
+        when(props.homePath()).thenReturn(tmp);
+        f.workspaceReady=true; f.activeNode=f.node;
+        Path dir=tmp.resolve("operation-jobs/42");Files.createDirectories(dir);
+        ObjectNode record=mapper.createObjectNode();
+        record.put("version",1).put("id","a".repeat(32)).put("task","42").put("node",f.node)
+                .put("action","start").put("target","test-target").put("source_head","head1")
+                .put("state",state).put("verified",true).put("updated",1).put("deadline",java.time.Instant.now().getEpochSecond()+60);
+        if (state.equals("SUCCEEDED")) record.putObject("result").put("id","a".repeat(32))
+                .put("action","start").put("target","test-target").put("exit_code",0);
+        Path file=dir.resolve("a".repeat(32)+".json");Files.writeString(file,record.toString());return file;
+    }
+    @Test void pendingOperationWaitsWithoutAnotherModelOrNodeCount() throws Exception {
+        FlowRun f=new FlowRun(catalog.snapshot());operationJob(f,"RUNNING");f.transitions=8;
+        task.state(Task.State.STAGE_RUNNING);store.save(task);store.saveFlow(task.id(),f);
+        engine.operationPoll=()->{try{operationJob(f,"SUCCEEDED");}catch(Exception e){throw new RuntimeException(e);}};
+        assertThat(engine.reconcileOperations(task,f,f.snapshot.definition().nodes().get(f.node),false))
+                .isEqualTo(FlowEngine.OperationDisposition.RESUME);
+        assertThat(f.transitions).isEqualTo(8);assertThat(f.activeNode).isEqualTo(f.node);
+        assertThat(f.context).contains("SUCCEEDED","只接續剩餘步驟");
+        verifyNoInteractions(executor,publisher);
+    }
+    @Test void modelTimeoutReconcilesLateSuccessOnceWithoutNewStart() throws Exception {
+        FlowRun f=new FlowRun(catalog.snapshot());operationJob(f,"SUCCEEDED");
+        task.state(Task.State.STAGE_RUNNING);store.save(task);store.saveFlow(task.id(),f);
+        assertThat(engine.reconcileOperations(task,f,f.snapshot.definition().nodes().get(f.node),true))
+                .isEqualTo(FlowEngine.OperationDisposition.RESUME);
+        assertThat(engine.reconcileOperations(task,f,f.snapshot.definition().nodes().get(f.node),true))
+                .isEqualTo(FlowEngine.OperationDisposition.NONE);
+        verifyNoInteractions(executor,publisher);
+    }
+    @Test void restartWithTrustedOperationQueuesSameTaskAndSnapshot() throws Exception {
+        FlowRun f=new FlowRun(catalog.snapshot());operationJob(f,"RUNNING");
+        task.state(Task.State.STAGE_RUNNING);store.save(task);store.saveFlow(task.id(),f);
+        List<Runnable> queued=new ArrayList<>();engine.recover(task,queued::add);
+        assertThat(queued).hasSize(1);assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.RESUME_QUEUED);
+        assertThat(store.flow(task.id()).orElseThrow().snapshot.revision()).isEqualTo(f.snapshot.revision());
+        verifyNoInteractions(executor,publisher);
+    }
+    @Test void abortedTaskNeverAutomaticallyResumesAnOperation() throws Exception {
+        FlowRun f=new FlowRun(catalog.snapshot());operationJob(f,"RUNNING");
+        task.state(Task.State.ABORTED);store.save(task);store.saveFlow(task.id(),f);
+        assertThat(engine.reconcileOperations(task,f,f.snapshot.definition().nodes().get(f.node),false))
+                .isEqualTo(FlowEngine.OperationDisposition.STOP);
+        verifyNoInteractions(executor,publisher);
+    }
     @TempDir Path tmp;
     ObjectMapper mapper = new ObjectMapper();
     TaskStore store;
@@ -1072,6 +1118,16 @@ class FlowEngineTest {
             if (mode.equals("quota") && flow.node.equals("verification")) {
                 store.saveCheckpoint(new Checkpoint("42", flow.node, "claude-code", "sonnet", "saved-session", "context", "head1", "quota"));
                 throw new QuotaExceeded("usage_limit_reached");
+            }
+            if (mode.startsWith("serviceOperationTimeout") && flow.node.equals("service")
+                    && calls.stream().filter(v -> v.startsWith("service:")).count()==1) {
+                operationJob(flow,"SUCCEEDED");
+                throw new com.zipe.aiteam.runtime.RuntimeTimedOut("codex", java.time.Duration.ofSeconds(1),
+                        tmp.resolve("stdout"), tmp.resolve("stderr"),
+                        new com.zipe.aiteam.sandbox.SandboxUnitCleanup.Result(
+                                mode.endsWith("Unknown") ? com.zipe.aiteam.sandbox.SandboxUnitCleanup.Status.UNKNOWN
+                                        : com.zipe.aiteam.sandbox.SandboxUnitCleanup.Status.CONFIRMED,
+                                "ai-team-test.service","test"));
             }
             JsonNode report = report(node.gate());
             if (mode.startsWith("service") && flow.node.equals("intake")) ((ObjectNode)report).put("route", "service");
@@ -1272,6 +1328,19 @@ class FlowEngineTest {
         assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.COMPLETED);
         assertThat(calls).containsExactly("intake:coordinator", "service:builder");
         verifyNoInteractions(verifier, publisher);
+    }
+    @Test void serviceTypedTimeoutResumesSuccessfulJobWithoutAnotherVisit() throws Exception {
+        enableService(true); mode="serviceOperationTimeout"; engine.run(task);
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.COMPLETED);
+        assertThat(calls).containsExactly("intake:coordinator","service:builder","service:builder");
+        assertThat(store.flow(task.id()).orElseThrow().visits.get("service")).isEqualTo(1);
+        verifyNoInteractions(verifier,publisher);
+    }
+    @Test void serviceTypedTimeoutRequiresConfirmedModelCleanup() throws Exception {
+        enableService(true); mode="serviceOperationTimeoutUnknown"; engine.run(task);
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        assertThat(calls).containsExactly("intake:coordinator","service:builder");
+        verifyNoInteractions(verifier,publisher);
     }
     @Test void serviceFailureRoutesBackToBuilderAndRechecks() throws Exception {
         enableService(true); mode = "serviceRepair"; engine.run(task);

@@ -142,7 +142,7 @@ public class ClaudeCodeRuntime implements AgentRuntime {
         // 安全邊界在 runtime 之外：這裡交出指令，由 ExecutionSandbox 決定它能碰什麼。
         // 加上時間戳避免與殘留的同名 unit 相撞（重做時 task+role 會重複）。
         String unit = props.unitPrefix() + req.taskId() + "-" + req.role()
-                + "-" + (System.currentTimeMillis() / 1000);
+                + "-" + java.util.UUID.randomUUID();
         List<String> cli = buildCommand(req);
         String session = req.resumeSessionId();
         if (session == null || session.isBlank()) {
@@ -195,11 +195,8 @@ public class ClaudeCodeRuntime implements AgentRuntime {
             }
 
             if (!process.waitFor(req.timeout().toSeconds(), TimeUnit.SECONDS)) {
-                process.destroyForcibly();
-                QuotaExceeded.check(id(), Files.readString(stdoutLog, StandardCharsets.UTF_8), stdoutLog.toString());
-                throw new RuntimeExecutionException(
-                        "Claude Code 超過設定逾時 " + req.timeout() + "，已送出強制終止。"
-                        + "耗時根因與 commit 狀態尚未確認。stdout：" + stdoutLog + "；stderr：" + stderrLog);
+                var cleanup = com.zipe.aiteam.sandbox.SandboxUnitCleanup.terminate(unit, process);
+                throw new RuntimeTimedOut(id(), req.timeout(), stdoutLog, stderrLog, cleanup);
             }
 
             String stdout = Files.readString(stdoutLog, StandardCharsets.UTF_8);
@@ -221,13 +218,13 @@ public class ClaudeCodeRuntime implements AgentRuntime {
         } catch (RuntimeExecutionException e) {
             throw e;
         } catch (InterruptedException e) {
-            if (process != null) process.destroyForcibly();
+            var cleanup = com.zipe.aiteam.sandbox.SandboxUnitCleanup.terminate(unit, process);
             Thread.currentThread().interrupt();
-            throw new RuntimeExecutionException("執行被中斷", e);
+            throw new RuntimeExecutionException("執行被中斷；sandbox 清理=" + cleanup.status() + "；unit=" + unit, e);
         } catch (Exception e) {
-            if (process != null) process.destroyForcibly();
+            var cleanup = com.zipe.aiteam.sandbox.SandboxUnitCleanup.terminate(unit, process);
             throw new RuntimeExecutionException("無法執行 Claude Code；stdout=" + stdoutLog
-                    + "；stderr=" + stderrLog, e);
+                    + "；stderr=" + stderrLog + "；sandbox 清理=" + cleanup.status(), e);
         }
     }
 

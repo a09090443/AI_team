@@ -19,7 +19,7 @@ agent 自陳與 runtime 實際事件分開標示，不強迫模型杜撰未知�
 
 共用驗證會攔下 BLOCKED、缺漏的失敗回報，以及宣稱 COMPLETED 卻仍有
 FAILED/PARTIAL/FAIL/LOW、建置未過、越界或 reviewer 阻擋的矛盾結果。
-先保留 stage_result，再停止下游、保留現場並向 PM／需求提出者回報。
+先保留 stage_result，再停止下游、保留現場並向 PM／需求提出者回報。2026-10-20 來源新增的持久長作業例外：若有有效 pending journal，先由中央流程等待及對帳，再續同節點，不把 OPERATION_PENDING 的 BLOCKED 立即當成須人工處理；此版本尚未部署。
 核准及真正發布前也會檢查各階段報告；舊報告缺欄位需重新核實。
 
 執行例外以底層原因優先呈現並保留證據目錄、影響與處理者。
@@ -79,6 +79,8 @@ VM 供授權查核。格式檢查保證欄位存在，不保證 agent 自陳內�
 Linux 完整測試 636 項通過，2026-10-14 已部署 bestpartner 與 spring-starters（見[部署紀錄](/docs/deploy-2026-09-06-v2#2026-10-14-帳號或登入被拒的固定說明)）；尚未以真實停用帳號做端對端驗證。
 
 說明 agent 沒有任何工具，只看得到錯誤紀錄本身；紀錄沒寫出根因時，它只能照實寫「目前無法確定原因」。
+模型逾時由 typed timeout 與長作業對帳處理，不以「模型未啟動」退還計數；以下啟動／串流系統錯誤重試不能取代部署結果對帳。
+
 **系統層失敗的自動重試**（`SystemFailure.transientFailure`）：錯誤訊息符合已知的暫時性特徵
 （例如 `Failed to start transient service`、串流中斷），或是任何提到 `systemd-run` 的 IOException，就判定為系統沒跑起來，
 還原本輪計數後自動重試，最多 `RETRY_LIMIT`（2）次，用完才停給人。
@@ -108,3 +110,17 @@ Linux 完整測試 636 項通過，2026-10-14 已部署 bestpartner 與 spring-s
 Gate.SERVICE 不能以設定檔產出宣稱完成；啟動或健康檢查失敗時由 service_triage 交回原角色修正並重驗。
 缺少目標主機時在模型執行前明確說明，不把權限／環境缺口說成使用者未選擇驗收降級。
 機械驗證的欄位與 agent 自陳證據的限制見 [服務建置](service-delivery.md)。
+
+
+## 部署長作業逾時與對帳（2026-10-20 來源已實作）
+
+#1048 的歷史舊版先因模型逾時轉 AWAIT_HUMAN，之後才有 start 成功收據；未接單 health 又被誤稱執行器離線。此時間線保留於[SSH 直連部署](direct-ssh-deployment.md)，不能從模型逾時推論部署失敗。
+
+1. 工具等待預設 30 秒後回 OPERATION_PENDING，模型以 BLOCKED 交回。FlowEngine 以工作區外的可信 journal 判定是否等待，不只比對模型文字；保留中央執行槽，沒有模型長輪詢。
+2. 真正模型逾時拋 RuntimeTimedOut extends AgentRuntime.RuntimeExecutionException，可由 RuntimeTimedOut.find(Throwable) 取得。只有 phase=MODEL 且 cleanup=CONFIRMED 才先對帳；PREFLIGHT、清理 FAILED／UNKNOWN 或沒有有效 journal 不走此自動恢復。
+3. 對帳綁 task、node、HEAD 及已驗證結果；執行中查原 job，成功只補缺少步驟，失敗先診斷，UNCERTAIN 不改稱成功或另送 start。續同 activeNode 不新計次，不拿部分模型輸出當完成報告。
+4. 結果指紋限制同一檢查點只恢復一次；timeout 恢復另受 SystemFailure.RETRY_LIMIT（2）限制，避免未知作業造成無限模型重開。
+
+runtime 清理精確 sandbox unit 的 cgroup，stdout／stderr 及 session checkpoint 保留；獨立部署 executor／遠端 root job 不因模型 timeout 被殺。真人中斷產生精確 job 的取消要求；傳輸中斷或模型回合結束不等於取消，取消未確認則保留未知狀態。執行器獨立 heartbeat 區分任務未啟動與離線；連線使用 closing，避免舊版 SQLite FD 累積。
+
+此恢復契約已在來源實作，尚未部署到 VM，尚未完成真實模型逾時、重啟、取消與晚到成功收據的端對端驗收；#1048 不能因此宣稱已結案。

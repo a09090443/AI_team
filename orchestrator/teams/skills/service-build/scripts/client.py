@@ -34,45 +34,109 @@ def directory(root):
     return path
 
 
-def submit(action, timeout=1500):
+def source_head(root):
+    return subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
+
+
+def atomic_json(path, data):
+    import tempfile
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if path.is_symlink() or path.parent.resolve() != path.parent.absolute():
+        raise ValueError("unsafe operation path")
+    fd, name = tempfile.mkstemp(dir=path.parent, prefix=".operation-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as out:
+            json.dump(data, out)
+            out.flush()
+            os.fsync(out.fileno())
+        os.replace(name, path)
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
+
+
+def cancellation_requested(home, job):
+    path = home / "operation-cancellations" / job["task"] / (job["id"]+".json")
+    if not path.exists():
+        return False
+    if path.is_symlink() or path.resolve()!=path.absolute() or path.stat().st_size>4096:
+        return False
+    try:
+        marker=json.loads(path.read_text())
+        return (type(marker.get("version")) is int and marker["version"]==1
+                and marker.get("id")==job["id"] and marker.get("task")==job["task"]
+                and marker.get("node")==job.get("node") and marker.get("reason")=="user_interrupt"
+                and type(marker.get("requested_at")) is int)
+    except (ValueError,OSError,AttributeError):
+        return False
+
+
+def submit(action, timeout=30):
     if action not in ACTIONS:
         raise ValueError("unsupported service action")
     root = workspace()
     queue = directory(root)
     pending = queue / "request.json"
+    head = None
     if pending.exists():
         request = json.loads(pending.read_text())
-        retry = queue / (request["id"] + ".json")
-        if retry.exists() and json.loads(retry.read_text()).get("exit_code") == 75:
-            retry.unlink()  # Only an explicit repeat call asks the executor to retrieve/retry the same ID.
         if request.get("action") != action:
-            raise ValueError("previous service action is still pending; do not submit another")
-    else:
+            old = queue / (request["id"] + ".json")
+            if not old.exists() or json.loads(old.read_text()).get("exit_code") == 75:
+                print(json.dumps(dict(status="OPERATION_PENDING",execution_state="RUNNING",
+                                      id=request["id"],action=request["action"],task=request["task"])))
+                return 0
+            pending.unlink()
+    if not pending.exists():
+        head = source_head(root)
+        # Only trusted executor receipts can be reused as checkpoints.
+        jobs = root.parent.parent / "operation-jobs" / root.name[5:]
+        if action in {"prepare", "start"}:
+            for path in sorted(jobs.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+                job = json.loads(path.read_text())
+                if (job.get("source_head") == head and job.get("action") == action
+                        and job.get("verified") is True and job.get("state") == "SUCCEEDED" and job.get("result")
+                        and job.get("task") == root.name[5:] and job["result"].get("exit_code") == 0):
+                    with closing(sqlite3.connect((root.parent.parent / "ai-team.db").as_uri()+"?mode=ro",uri=True)) as db:
+                        row = db.execute("select data from flow_run where task_id=?",(root.name[5:],)).fetchone()
+                    current = json.loads(row[0]) if row else {}
+                    target = current.get("snapshot",{}).get("definition",{}).get("project",{}).get("serviceTarget",{}).get("name")
+                    if job.get("target") != target or job.get("node") != current.get("activeNode"):
+                        continue
+                    print(json.dumps(job["result"], ensure_ascii=False))
+                    return 0
         request = {"id": uuid.uuid4().hex, "action": action, "task": root.name[5:],
-                   "created": int(time.time())}
-        with pending.open("x", encoding="utf-8") as out:
-            json.dump(request, out)
+                   "created": int(time.time()), "source_head": head}
+        atomic_json(pending, request)
     deadline = time.monotonic() + timeout
-    print("Waiting for the Agent VM SSH deployment executor: " + action, flush=True)
-    started = time.monotonic()
-    while time.monotonic() < deadline:
-        heartbeat = queue / "broker-heartbeat"
-        accepted = queue / (request["id"] + ".accepted")
-        if not accepted.exists() and time.monotonic() - started > 15 and (not heartbeat.exists() or time.time() - heartbeat.stat().st_mtime > 30):
-            print("SERVICE_EXECUTOR_OFFLINE: Agent VM deployment service is not responding; request retained; no Windows broker is required")
-            return 75
+    while True:
         result = queue / (request["id"] + ".json")
         if result.exists():
             data = json.loads(result.read_text())
             if data.get("id") != request["id"] or data.get("action") != action:
                 raise ValueError("service receipt mismatch")
-            print(json.dumps(data, ensure_ascii=False))
             if data["exit_code"] != 75:
+                print(json.dumps(data, ensure_ascii=False))
                 pending.unlink(missing_ok=True)
-            return int(data["exit_code"])
-        time.sleep(2)
-    print("Agent VM deployment executor did not finish. The request is retained; retry the same action to wait for its receipt.")
-    return 75
+                return int(data["exit_code"])
+        if result.exists() and data["exit_code"] == 75:
+            print(json.dumps({"status":"OPERATION_PENDING","execution_state":"RUNNING","id":request["id"],"action":action,"task":request["task"]}))
+            return 0
+        accepted = queue / (request["id"] + ".accepted")
+        trusted_job = root.parent.parent / "operation-jobs" / request["task"] / (request["id"]+".json")
+        if not accepted.exists() and not trusted_job.exists():
+            if not authorized(root):
+                print("TASK_NOT_ACTIVE: request retained")
+                return 75
+            heartbeat = root.parent.parent / "operation-executor-heartbeat"
+            if not heartbeat.exists() or time.time() - heartbeat.stat().st_mtime > 30:
+                print("SERVICE_EXECUTOR_OFFLINE: request retained")
+                return 75
+        if time.monotonic() >= deadline:
+            print(json.dumps({"status": "OPERATION_PENDING", "execution_state": "RUNNING", "id": request["id"],
+                              "action": action, "task": request["task"]}))
+            return 0
+        time.sleep(min(2, max(0, deadline - time.monotonic())))
 
 
 def broker_read(root):
@@ -85,7 +149,7 @@ def broker_read(root):
     if pending.is_symlink() or pending.stat().st_size > 2048:
         raise ValueError("unsafe request")
     request = json.loads(pending.read_text())
-    if (set(request) != {"id", "action", "task", "created"}
+    if (not {"id", "action", "task", "created"} <= set(request)
             or not re.fullmatch(r"[0-9a-f]{32}", request["id"])
             or request["action"] not in ACTIONS or request["task"] != root.name[5:]
             or not isinstance(request["created"], int)

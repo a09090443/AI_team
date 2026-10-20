@@ -1264,3 +1264,24 @@
 - 僅工具/提示重載啟動時暫用AI_TEAM_BASELINE_VERIFY=off，不重跑無關產品基準；未修改env.sh/team.env、產品來源或驗證指令。新task-context說明本次使用者授權及取消清單；舊任務快照/核准/收據均未改。
 - 新health ab1c03e9…exit0，PostgreSQL/後端及Windows8088 HTTP200；ERROR0、沙箱自檢通過、六角色Socket Mode、SSH執行器active/NRestarts0。#1048仍AWAIT_HUMAN；未發Slack訊息、未自動續跑、未重新部署產品，不宣稱Slack端對端已完成。
 - 已核對文件：direct-ssh-deployment、service-delivery、agent operations/configuration/system-map、service-build skill與references；已修正以上文件中的逐版清單要求並保留歷史證據。新檔案無，catalog/tree路徑未變，docs build通過。未推送或合併。
+
+
+## 2026-10-20 #1048 全流程受阻分析（Codex，僅分析）
+
+- 使用者要求釐清反覆中斷及自主修復改善。已查audit、flow快照/節點預算、stage_attempt、Codex事件、佇列收據、systemd日誌/FD與程式。未改程式/任務/收據，未重跑或發Slack訊息。
+- 關鍵新事實：清單取消後21:53:40開始service，首次build900秒逾時，22:09:29失敗，diagnose證明timed_out=true/OOM=false；agent自行診斷後重試。外層22:23:43達30分鐘先判Codex逾時，22:24:01AWAIT_HUMAN，但第二次start22:23:55成功（bda3dcac…exit0，START_PASS+HEALTH_PASS，來源a0c53284…，release a0c53284074fff3b-973bf406）。
+- 22:24:08health a62bbfe9…保留無accepted/收據；執行器active，因只掃STAGE_RUNNING/authorized拒絕AWAIT_HUMAN，並非實際離線。模型事件在外層逾時後仍繼續，需核實systemd程序終止範圍。例外直接等人，缺少晚到成功收據對帳及剩餘步驟恢復。
+- 不是重跑預算用盡：transitions8/24、service repeats1/3，activeNode仍service。舊lastBlockReason含已解除清單原因，不可當最新根因。僅知道使用者按完整報告，未查到新的續跑拒絕事件，不能宣稱按鈕確定消失。
+- 發現另一缺陷：executor with sqlite3.connect未明確close，現場455個SQLite FD；前一天journal曾Too many open files後自動重啟。需修但不混稱本次主因。網頁現測HTTP200；未獨立核實runtime commit/profile/資料持續性，不將start收據當完整結案。
+- 改善建議：部署job獨立持久化、模型與作業逾時分離、先對帳晚到收據、按checkpoint只續health、結構化故障與job綁定診斷、同範圍自動修復/回滾、真實human升級、受控舊任務恢復；E2E注入timeout/重啟/部分成功驗證。下一步待使用者確認整體方案，不只拉長timeout或取消上限。
+- 已核對direct-ssh-deployment、failure-reporting、pm-triage、quota-continuation與流程/工具實作；修正/補寫前兩份現行文件的已知行為缺口，docs build驗證。
+
+
+## 2026-10-20 通用長作業恢復：來源完成、VM切換前
+
+- 使用者已核准實作、測試、部署與恢復#1048；不推送、不合併。分支codex/direct-ssh-deployment。
+- 新OperationJobs/FlowEngine保存與對帳executor-owned journal，模型OPERATION_PENDING立即交回，中央保留執行槽、沿同activeNode不新計次；typed timeout須確認精確unit清理，重啟/指定舊任務經正式入口排隊。新增明確取消、same-ID重送、prepare/start同HEAD重用、health綁release、失敗診斷/程式版本回復及SQLite close。
+- 發現缺漏/落差：舊文件未說模型與遠端作業分離；舊逾時一律等人；舊executor心跳與SQLite連線會誤判/累積FD。已修正文件：direct-ssh-deployment、failure-reporting、multi-runtime、engineering-workflow、data-model、operations、configuration、system-map；核對catalog與project-tree並登錄新程式/測試，更新skill與鏡像、service prompt、service-context範本。
+- 本機FlowEngine+OperationJobs131項通過；Python75項；docs npm run build通過。Windows完整719項有既有平台限制（symlink、/bin/sh、Git換行）及舊RuntimeDiagnostics契約落差，後者已修並以20項重驗通過。Linux完整驗證進行中；隔離包epoch時間戳使Maven漏複製schema資源，已改正時間戳重驗，不改產品schema。測試stdin漏mock已修。
+- dev固定工具已備份至/var/lib/ai-team-service/tool-backup-operation-20261020後更新；獨立systemd health job b1c9c59d2061485e94be6c30698e11ab在SSH離開後仍完成，release a0c53284074fff3b-973bf406、HTTP200。一次性私有目錄及登入檔已移除。
+- 從目標真實收據經--reconcile核對1048當前HEAD與完整archive SHA，已匯入verified prepare f7c36598cf644be2b8aab3001c2850d9/start bda3dcac47be4a3c8e6905b83814b1db，沒有重建/啟動產品、沒有改任務DB。#1048仍AWAIT_HUMAN。orchestrator尚未切換；Linux完整與正式恢復結果待後續追加。
