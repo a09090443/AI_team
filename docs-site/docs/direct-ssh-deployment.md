@@ -10,12 +10,12 @@
 維護時三個實例均無執行中任務，先備份資料庫、優雅停止服務與關機，再切換網路；所有任務資料保持一致。
 專用 Ed25519 私鑰只留 Agent VM，dev 登錄 restrict／forced-command 公鑰與限定 sudoers；主機公鑰由可信 VM 管理介面取得並固定指紋。
 
-`ai-team-ssh-deploy.service` 為 active／enabled，Agent linger=yes，未崩潰重啟；2026-10-20 使用者重啟後已確認新執行器自動 active/enabled；三個 orchestrator 仍依既有規則以 service.sh 手動恢復。
+`ai-team-ssh-deploy.service` 為 active／enabled，Agent linger=yes；2026-10-20 使用者重啟後已確認新執行器自動 active/enabled；三個 orchestrator 仍依既有規則以 service.sh 手動恢復。
 
 ## 執行方式與權限
 
 角色仍只呼叫固定 `client.py prepare|start|health|diagnose`，寫入原任務工作區的請求。
-`ssh_executor.py` 是 Agent VM 的 systemd 使用者服務：新請求僅接受目標相符、正在執行的 SERVICE 節點。2026-10-20 來源新增獨立 journal，已受理作業可在任務暫停後繼續查詢結果；此恢復版本尚未部署，詳見下節。
+`ssh_executor.py` 是 Agent VM 的 systemd 使用者服務：新請求僅接受目標相符、正在執行的 SERVICE 節點。2026-10-20 來源新增獨立 journal，已受理作業可在任務暫停後繼續查詢結果；此恢復版本已部署 bestpartner，詳見下節。
 它在同一台 Agent VM 執行固定 `ssh_client.py`，直接連目標 VM，不需要 Windows 程式輪詢。
 這是為保留角色沙箱與私鑰管理界線；未把角色改成可任意 SSH 或執行 root shell。
 
@@ -60,7 +60,7 @@ agent使用已提交且乾淨的工作區自行prepare、start、health與修復
 
 ## #1048 部署成功但流程未結案的歷史查核（2026-10-20）
 
-以下描述當時部署中的舊版行為與證據；後續來源修正見下方「持久長作業恢復」，不表示 VM 已更新。
+以下描述修正前的歷史行為與證據；新版本部署與#1048完成結果見下方「持久長作業恢復」。
 
 以下時間皆為台灣時間。清單取消後，21:53:40進入service；第一次建置用完guest.py的900秒限制，22:09:29收到失敗收據，diagnose確認timed_out=true、oom_killed=false。agent自行診斷並再次start。
 外層Codex在22:23:43因同一service階段累計30分鐘到期而被調度器判定失敗，22:24:01轉AWAIT_HUMAN；但遠端第二次start已於22:23:55成功，收據 `bda3dcac47be4a3c8e6905b83814b1db` 含START_PASS及HEALTH_PASS，來源a0c53284…，release `a0c53284074fff3b-973bf406`。
@@ -72,9 +72,9 @@ agent使用已提交且乾淨的工作區自行prepare、start、health與修復
 當時提出的改善方向（其後已完成部分來源實作，部署與端對端狀態見下節）：將部署作業持久化並與模型回合分開；按job ID讀進度/收據與checkpoint接續；模型逾時先對帳成功/執行中/已失敗，不直接等人；僅在真正取消時停止作業。獨立服務heartbeat、任務暫停/未授權/排隊等結構化狀態取代泛稱離線；診斷綁job/release且提供遮蔽機密後的可操作錯誤；修正SQLite close及systemd子程序生命週期。#1048應接回既有start成功收據、只做缺少的health與交付驗證，不重新建置或偽造成功。
 本次只分析、補文件，未修改程式、任務、收據或重新部署；現行網頁HTTP200不代替尚未完成的任務驗收。
 
-## 持久長作業恢復（2026-10-20 來源已實作，尚未部署）
+## 持久長作業恢復（2026-10-20 已部署 bestpartner）
 
-本節描述目前工作樹的 Java／Python 契約；先前 SSH 直連已啟用、舊版 HTTP200 或單元測試都不是新恢復流程的端對端證據。尚未以此版本在 VM 驗證模型逾時、服務重啟、自動續跑及 #1048 結案。
+本節描述已部署 bestpartner 的 Java／Python 契約。#1048已經正式流程恢復並完成；Linux精確cgroup清理、獨立SSH health與原收據對帳已實測，所有runtime／故障組合尚未全面演練。
 
 ### 模型回合與部署作業分開
 
@@ -102,7 +102,17 @@ executor 的獨立 operation-executor-heartbeat 不再依工作區佇列心跳�
 
 ### #1048 恢復限制（2026-10-20 補充）
 
-歷史 start bda3dcac47be4a3c8e6905b83814b1db 已成功，來源 a0c53284074fff3b35e97d6b7444744a2b02bf2a5b8ba2a837e31e1be7057dd8，release a0c53284074fff3b-973bf406。恢復前核對原工作區 HEAD 72f694ba483a9f686453804572965c34345b39ec 與目標收據，沿用已成功結果，只補缺少的 health／交付驗證。不得因模型逾時、舊清單拒絕紀錄或未接單 health 而重建此 release。本節沒有宣稱已執行對帳、部署新版本或恢復 #1048。
+歷史 start bda3dcac47be4a3c8e6905b83814b1db 已成功，來源 a0c53284074fff3b35e97d6b7444744a2b02bf2a5b8ba2a837e31e1be7057dd8，release a0c53284074fff3b-973bf406。恢復前核對原工作區 HEAD 72f694ba483a9f686453804572965c34345b39ec 與目標收據，沿用已成功結果，只補缺少的 health／交付驗證。不得因模型逾時、舊清單拒絕紀錄或未接單 health 而重建此 release。後續已依此方式恢復#1048並正式完成，證據如下。
+
+### 2026-10-20 部署與#1048正式完成
+
+- 核心來源60cff26，bestpartner JAR SHA256 `ad96be1c56180af5bce7505c63d7cfae8f918889a8e4a5e74e3130545b72b82b`；備份 `~/ai-team-bestpartner/orchestrator-backup.yPNuTY`。受控切換的六張任務表與全部工作區HEAD/status/diff前後一致；另外兩個實例資料未變。只更新bestpartner，未推送或合併。
+- Linux完整verify 719項、零失敗／錯誤、11略過；真實cgroup測試清除owned detached子程序且另一unit持續。Python最終78項與check-source、文件build通過。Windows完整有已記錄的平台限制，沒有宣稱全過。
+- dev固定工具備份 `/var/lib/ai-team-service/tool-backup-operation-20261020`；獨立health job `b1c9c59d2061485e94be6c30698e11ab` 提交後退出SSH，另一次連線仍取得同release成功結果。管理暫存登入檔已清除，不改產品資料。
+- 以--reconcile從目標查證同HEAD／archive的原prepare與start；再以一次性AI_TEAM_RESUME_OPERATION_TASK=1048經正式中央佇列恢復，沒有手改DB／快照／報告或重設次數。原health `a62bbfe966f4472e878748d6424cf404` 成功，綁定start `bda3dcac47be4a3c8e6905b83814b1db` 與source SHA；沒有新增start或重建產品。
+- 真實整合找到歷史serviceTarget=null使executor重啟，已修null／非物件設定相容與單筆壞job隔離，新增回歸測試後上線。暫時離線由PM自行分流回service。報告將未要求登入／持久化演練列為uncertainties後，PM再自行要求依原驗收範圍修正，未要求真人授權。
+- 最終#1048=COMPLETED、node=end、activeNode=null；transitions12、service visits5／repeats1，沒有重設計次。prepare/start/health均PASS。保留驗證邊界：登入、資料寫入、重啟後持久性未額外演練，沒有以刪資料或降低原驗收條件解決。
+- PostgreSQL／後端正常，同release `/view/chat` HTTP200；Windows實測 `http://127.0.0.1:8088/view/chat` HTTP200。其他任務與實例資料比對未變；executor觀測FD4、SQLite FD0、獨立heartbeat新鮮。完整證據在 `~/operation-maintenance-20261020`、`~/operation-deploy.log` 與隔離建置log。僅該次啟動使用AI_TEAM_BASELINE_VERIFY=off避免無關產品基準，未改env.sh/team.env。
 
 ## 歷史紀錄（以下逐版清單流程已於2026-10-20取消）
 

@@ -3,13 +3,13 @@
 > 換手前務必更新這份檔案。內容只寫「現在正在做什麼、卡在哪、下一步」，
 > 長期結論寫 `decisions.md`，已完成的寫 `progress.md`。舊內容查 git 歷史，不要在這裡累積流水帳。
 
-最後更新：2026-10-14（Claude Code）
+最後更新：2026-10-20（Codex）
 
 ## 正在進行
 
-- **通用長作業恢復實作中（2026-10-20，Codex）**：使用者已明確說「那就照你方式修改」，本輪已授權實作/測試/VM部署與正式恢復#1048（不重build既有成功release）。工作樹D:/agent_team-dynamicapi分支codex/direct-ssh-deployment，起點a118e37，未推送。新增flow/OperationJobs讀home/operation-jobs/taskid/id.json，FlowEngine在pending/typed timeout對帳、釋放模型但保留中央執行名額，續同activeNode不新計次；restart有trusted job自動排原任務；管理入口AI_TEAM_RESUME_OPERATION_TASK僅精確指定有verified同HEAD日誌的停止任務。ConfiguredExecutor提供系統檢查點。尚未部署、尚未恢復1048。
-  - 分工Bohr 01a159bf-7419-7601-9102-b63999dfee2e：runtime typed RuntimeTimedOut、sandbox精確unit cgroup清理與測試（已在寫檔）。Maxwell 01a159c0-d4d1-73f2-8197-bcca1c8ddb8f：Python async遠端worker/result、可信journal/closing/獨立heartbeat/checkpoint重用/health release binding（第一輪46測試，正修systemd-run獨立job、UNKNOWN重送同ID、cancel、rollback等整合審查）。不要互改這些檔案。
-  - 本地Java相關167項已通過（含OperationJobsTest4/新增FlowEngine恢復測試4），後續增2個OperationJobs測試、精確中斷operation-cancellations標記、timeout須cleanup CONFIRMED才對帳；整合測試session11239進行中；Python第一輪46通過未同步。需補全部新檔project-tree/catalog與現行docs，sync-agent-config，完整Java/Python/Linux測試，部署前備份與全任務/workspace對比。VM仍舊版，#1048 AWAIT_HUMAN，start bda3dcac47be4a3c8e6905b83814b1db已成功；health a62bbfe966f4472e878748d6424cf404未接單。正式用ssh_executor --reconcile核對舊root收據/HEAD72f694ba483a9f686453804572965c34345b39ec/digest a0c53284074fff3b35e97d6b7444744a2b02bf2a5b8ba2a837e31e1be7057dd8，不能偽造報告/手改DB。後續部署重載env一次性resume參數走原FlowEngine中央佇列。
+- **通用長作業恢復已部署、#1048完成（2026-10-20，Codex）**：工作樹D:/agent_team-dynamicapi，分支codex/direct-ssh-deployment。核心60cff26與後續歷史null相容/交付範圍修正已完成，未推送/合併。bestpartner JAR ad96be1c…，備份orchestrator-backup.yPNuTY；dev固定工具備份tool-backup-operation-20261020。Linux719項0失敗/錯誤、11略過（含真實cgroup）；Python78+check-source+docs build通過。Windows完整有平台限制，不宣稱全過。
+  - #1048經正式AI_TEAM_RESUME_OPERATION_TASK一次恢復：沿用verified prepare/start、原health a62bbfe9…綁原start bda3dcac…與同HEAD/source成功，沒有重建/新start、手改DB/快照/核准或重設計次。PM自行處理短暫離線與報告超出驗收範圍，最終COMPLETED/end、activeNode=null、transitions12。此最新狀態取代下方歷史AWAIT_HUMAN與尚未授權說法。
+  - 最終工具/prompt同步後正常重載（沒有resume變數），Spring/沙箱/6角色Socket Mode通過、ERROR0；executor PID29238/FD4/SQLite FD0/heartbeat正常；其他任務與兩實例資料比對未變。Windows8088/view/chat HTTP200。僅當次baseline off，未改env.sh/team.env。下一步：使用者照常在Slack派工，無需續跑1048或啟動Windows程式。詳細證據/限制見progress與direct-ssh-deployment；所有runtime/故障組合未全面實測，不宣稱乾淨VM重建成功。
 
 - **#1048已成功啟動但流程卡住（2026-10-20僅分析，Codex）**：新start bda3dcac…22:23:55 exit0，來源a0c53284…/release973bf406；外層Codex22:23:43先達30分鐘，22:24:01AWAIT_HUMAN。health a62bbfe9…22:24:08未接單；executor active，只處理STAGE_RUNNING，故誤報離線。首次build900秒逾時後agent已有自行診斷/重試。不是預算用完（8/24、repeats1/3）。另有SQLite連線未close/455 FD及歷史Too many open files。使用者要整體自主部署改善，先給分析與分階段方案，尚未授權本輪實作；不要重建已成功版本、不要偽造收據/修改快照。詳direct-ssh-deployment及progress。
 

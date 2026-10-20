@@ -161,7 +161,7 @@ Agent VM 的 systemd 固定部署執行器已啟用，以 SSH 公鑰直連 dev V
 
 2026-10-20：SSH目標取消逐版來源manifest比對，沿用任務SERVICE授權、SSH身分與固定操作；SHA256只作傳輸完整性和收據綁定。新版本不需人工更新清單。
 
-## 持久長作業恢復分層（2026-10-20 來源已實作）
+## 持久長作業恢復分層（2026-10-20 已部署 bestpartner）
 
 client → Agent VM 固定 executor → SSH root 固定入口 → 獨立 systemd job／持久 result。角色仍只呼叫四個固定業務操作；result/status/cancel 由執行器管理，不給模型任意 SSH。Agent journal 與遠端 root 收據分開保存，SQLite 連線明確關閉，heartbeat 獨立於工作區。
 
@@ -169,4 +169,4 @@ OperationJobs 驗證 task／node／HEAD 與結果綁定；ConfiguredExecutor 注
 
 重啟恢復由 TaskOrchestrator.recoverOnStartup → FlowEngine.recover 經中央佇列排原 task；只涵蓋原執行中／RESUME_QUEUED、node=activeNode 且有有效同 HEAD journal 的配置任務。舊 AWAIT_HUMAN 另需管理者先核實收據，再以一次 AI_TEAM_RESUME_OPERATION_TASK 指定。真人中斷產生精確 job 取消要求，模型 timeout／SSH 斷線本身不取消。
 
-已驗證的同 HEAD prepare/start 可重用，health 綁當次 start release。未知結果不新建相同 start；#1048 已成功版本不得重建。流程細節與歷史證據見[直連部署](/docs/direct-ssh-deployment)。來源尚未部署，重啟、晚到結果、取消與 Slack 模型端對端仍未驗收。
+已驗證的同 HEAD prepare/start 可重用，health 綁當次 start release。未知結果不新建相同 start；#1048 已成功版本不得重建。流程細節與歷史證據見[直連部署](/docs/direct-ssh-deployment)。已部署 bestpartner；Linux cgroup與SSH背景health已實測。重啟、取消與所有故障組合的真實端對端尚未全面演練，見直連部署紀錄。

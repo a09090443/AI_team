@@ -19,7 +19,7 @@ agent 自陳與 runtime 實際事件分開標示，不強迫模型杜撰未知�
 
 共用驗證會攔下 BLOCKED、缺漏的失敗回報，以及宣稱 COMPLETED 卻仍有
 FAILED/PARTIAL/FAIL/LOW、建置未過、越界或 reviewer 阻擋的矛盾結果。
-先保留 stage_result，再停止下游、保留現場並向 PM／需求提出者回報。2026-10-20 來源新增的持久長作業例外：若有有效 pending journal，先由中央流程等待及對帳，再續同節點，不把 OPERATION_PENDING 的 BLOCKED 立即當成須人工處理；此版本尚未部署。
+先保留 stage_result，再停止下游、保留現場並向 PM／需求提出者回報。2026-10-20 來源新增的持久長作業例外：若有有效 pending journal，先由中央流程等待及對帳，再續同節點，不把 OPERATION_PENDING 的 BLOCKED 立即當成須人工處理；此版本已部署 bestpartner。
 核准及真正發布前也會檢查各階段報告；舊報告缺欄位需重新核實。
 
 執行例外以底層原因優先呈現並保留證據目錄、影響與處理者。
@@ -112,7 +112,7 @@ Gate.SERVICE 不能以設定檔產出宣稱完成；啟動或健康檢查失敗�
 機械驗證的欄位與 agent 自陳證據的限制見 [服務建置](service-delivery.md)。
 
 
-## 部署長作業逾時與對帳（2026-10-20 來源已實作）
+## 部署長作業逾時與對帳（2026-10-20 已部署 bestpartner）
 
 #1048 的歷史舊版先因模型逾時轉 AWAIT_HUMAN，之後才有 start 成功收據；未接單 health 又被誤稱執行器離線。此時間線保留於[SSH 直連部署](direct-ssh-deployment.md)，不能從模型逾時推論部署失敗。
 
@@ -123,4 +123,4 @@ Gate.SERVICE 不能以設定檔產出宣稱完成；啟動或健康檢查失敗�
 
 runtime 清理精確 sandbox unit 的 cgroup，stdout／stderr 及 session checkpoint 保留；獨立部署 executor／遠端 root job 不因模型 timeout 被殺。真人中斷產生精確 job 的取消要求；傳輸中斷或模型回合結束不等於取消，取消未確認則保留未知狀態。執行器獨立 heartbeat 區分任務未啟動與離線；連線使用 closing，避免舊版 SQLite FD 累積。
 
-此恢復契約已在來源實作，尚未部署到 VM，尚未完成真實模型逾時、重啟、取消與晚到成功收據的端對端驗收；#1048 不能因此宣稱已結案。
+此恢復契約已部署 bestpartner。Linux cgroup與獨立SSH背景health已實測，真實模型逾時／重啟／取消的所有故障組合尚未全面演練；#1048須以正式流程最終狀態為準。

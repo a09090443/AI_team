@@ -1285,3 +1285,13 @@
 - 本機FlowEngine+OperationJobs131項通過；Python75項；docs npm run build通過。Windows完整719項有既有平台限制（symlink、/bin/sh、Git換行）及舊RuntimeDiagnostics契約落差，後者已修並以20項重驗通過。Linux完整驗證進行中；隔離包epoch時間戳使Maven漏複製schema資源，已改正時間戳重驗，不改產品schema。測試stdin漏mock已修。
 - dev固定工具已備份至/var/lib/ai-team-service/tool-backup-operation-20261020後更新；獨立systemd health job b1c9c59d2061485e94be6c30698e11ab在SSH離開後仍完成，release a0c53284074fff3b-973bf406、HTTP200。一次性私有目錄及登入檔已移除。
 - 從目標真實收據經--reconcile核對1048當前HEAD與完整archive SHA，已匯入verified prepare f7c36598cf644be2b8aab3001c2850d9/start bda3dcac47be4a3c8e6905b83814b1db，沒有重建/啟動產品、沒有改任務DB。#1048仍AWAIT_HUMAN。orchestrator尚未切換；Linux完整與正式恢復結果待後續追加。
+
+
+## 2026-10-20 長作業恢復已部署、#1048正式完成
+
+- 核心commit60cff26（未推送），Linux完整719項0失敗/錯誤、11略過，含真實精確cgroup清理；Python最終78項與Linux check-source、docs build通過。本機與隔離來源186檔比對一致（後續Python null修正另外78測試）。
+- bestpartner JAR ad96be1c…已部署，備份orchestrator-backup.yPNuTY；受控切換六表與全部工作區前後一致。dev固定工具備份tool-backup-operation-20261020，背景health b1c9…跨SSH連線完成，臨時登入檔已移除。其他兩實例未部署、資料未變。
+- 現場發現歷史serviceTarget=null使新executor重啟，已補service_parts相容與單筆壞job隔離，78項回歸/Linux來源檢查通過後上線；未放寬任務授權或偽造收據。executor FD4/SQLite FD0，heartbeart正常。
+- #1048使用正式一次性恢復入口接回。原prepare/start verified與原health a62bbfe9…綁同start/source成功；沒有新start/重建產品/手改DB或快照。短暫離線由PM自行分流；報告擴大uncertainties範圍也由PM要求修正。最終COMPLETED/end、activeNode=null、transitions12、service visits5/repeats1，沒有重設次數。
+- 發現缺漏/落差：歷史null設定未納入fixture；模型將未要求測試升為交付阻礙。已修正程式/回歸及skill/service prompt；已修正並核對direct-ssh-deployment、failure-reporting、multi-runtime、engineering-workflow、data-model、service-delivery、operations/configuration/system-map、catalog與project-tree。資料/來源完整性不等同所有runtime與故障組合實測，仍保留此證據邊界。
+- Windows http://127.0.0.1:8088/view/chat HEAD200。最終工具同步後正常重載完成（無resume變數），啟動/沙箱/6角色Socket Mode通過、ERROR0，1048仍COMPLETED，其他任務與實例資料保持；未推送/合併。

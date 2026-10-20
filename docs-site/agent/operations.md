@@ -107,7 +107,7 @@ description: Slack 上建立與操作任務的指令、按鈕語意，以及維�
 | agent 的選項按鈕 | agent 以 `human_decision` 提出選擇題 | 依選項 `action`：`decide` 交回流程重新判斷；`close` 由系統直接結案（`ABORTED`、只限驗收負責人、**保留工作區**）；`successor` 同「改用新任務繼續」；`publish` 同「開 PR」（證據不符合時不出現） |
 | 開 PR | 停下等人且發布證據有效時 | 同 `開 PR #<id>` 指令：只限驗收負責人，重新檢查後直接推分支開 PR，不必再按核准 |
 | 繼續執行 | 只在真的會前進時出現 | 沿用原 session 續跑 |
-| 中斷這一輪 | 執行中狀態卡 | 停掉本任務 agent 與系統驗證程序，任務保留；2026-10-20 來源新增對原 pending job 的取消要求，尚未部署，見下方長作業恢復 |
+| 中斷這一輪 | 執行中狀態卡 | 停掉本任務 agent 與系統驗證程序，任務保留；2026-10-20 來源新增對原 pending job 的取消要求，已部署 bestpartner，見下方長作業恢復 |
 | 中止任務 | 停止訊息／核准卡（紅色） | 任務 `ABORTED`，下次服務重啟時刪除工作區 |
 | 改用新任務繼續 | 任務停下等人時 | 在新討論串開新任務，從原分支最新 commit 接著做、套用目前配置、次數重算；**不沿用任何核准** |
 | 保存修改並改用新任務繼續 | 工作區有未提交修改時 | 先代為 commit 可歸責的修改（不含保護路徑與 `.git`），再開新任務 |
@@ -229,7 +229,7 @@ Agent VM 的 systemd 固定部署執行器已啟用，以 SSH 公鑰直連 dev V
 
 正常版本更新不再需要管理者維護source-manifest清單；Slack agent在既有SERVICE授權與固定SSH操作下自行prepare/start/health。舊清單拒絕紀錄不是新的人工核准要求，需核實對應啟動與健康收據；#1048 已有成功 start，不能重新建置，改由下方受控入口對帳並補缺少的驗證。詳見[直連部署](/docs/direct-ssh-deployment)。
 
-### 長作業自動接續與舊任務恢復（2026-10-20 來源已實作）
+### 長作業自動接續與舊任務恢復（2026-10-20 已部署 bestpartner）
 
 看到「工具仍在執行，系統會追蹤原作業並自動接續」時，不需重送任務、重啟 VM 或再核准。工具預設 30 秒交回 OPERATION_PENDING，模型以 BLOCKED 結束本輪，中央流程等待可信 journal 後續同 activeNode，不新計次；同實例後方任務仍排隊。未知／到期不表示成功，系統不能無限重開模型。
 
@@ -239,4 +239,4 @@ Agent VM 的 systemd 固定部署執行器已啟用，以 SSH 公鑰直連 dev V
 
 舊 AWAIT_HUMAN（如 #1048）由管理者先透過固定 executor 的 --reconcile 核實原目標收據、HEAD 與來源 digest，再只於一次啟動設定 AI_TEAM_RESUME_OPERATION_TASK 為單一任務編號；要求乾淨工作區、原 activeNode 與有效同來源 journal。這不是 Slack 指令，也不會核准新計畫或 PR；用後移除變數，不直接改 DB 或偽造成功。步驟與 #1048 禁止重建的證據見[直連部署](/docs/direct-ssh-deployment)。
 
-上述恢復來源尚未部署，模型逾時、重啟、自動續跑及取消的真實端對端未完成；不要把舊版網頁 HTTP200 當成這次恢復已驗收。
+上述恢復已部署 bestpartner；Linux精確cgroup清理與獨立SSH背景health已實測，完整驗證719項零失敗／錯誤、11略過。真實任務恢復結果見直連部署紀錄；所有故障組合尚未全面演練。

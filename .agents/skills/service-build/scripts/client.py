@@ -55,6 +55,20 @@ def atomic_json(path, data):
             os.unlink(name)
 
 
+def mapping(value):
+    return value if isinstance(value,dict) else {}
+
+
+def service_parts(flow):
+    flow=mapping(flow)
+    definition=mapping(mapping(flow.get("snapshot")).get("definition"))
+    nodes=mapping(definition.get("nodes"))
+    name=flow.get("node")
+    node=mapping(nodes.get(name)) if isinstance(name,str) else {}
+    target=mapping(mapping(definition.get("project")).get("serviceTarget"))
+    return definition,node,target
+
+
 def cancellation_requested(home, job):
     path = home / "operation-cancellations" / job["task"] / (job["id"]+".json")
     if not path.exists():
@@ -93,14 +107,20 @@ def submit(action, timeout=30):
         jobs = root.parent.parent / "operation-jobs" / root.name[5:]
         if action in {"prepare", "start"}:
             for path in sorted(jobs.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
-                job = json.loads(path.read_text())
+                try:
+                    job = mapping(json.loads(path.read_text()))
+                except (ValueError,OSError):
+                    continue
                 if (job.get("source_head") == head and job.get("action") == action
                         and job.get("verified") is True and job.get("state") == "SUCCEEDED" and job.get("result")
                         and job.get("task") == root.name[5:] and job["result"].get("exit_code") == 0):
                     with closing(sqlite3.connect((root.parent.parent / "ai-team.db").as_uri()+"?mode=ro",uri=True)) as db:
                         row = db.execute("select data from flow_run where task_id=?",(root.name[5:],)).fetchone()
-                    current = json.loads(row[0]) if row else {}
-                    target = current.get("snapshot",{}).get("definition",{}).get("project",{}).get("serviceTarget",{}).get("name")
+                    try:
+                        current = mapping(json.loads(row[0])) if row else {}
+                    except (ValueError,TypeError):
+                        current = {}
+                    target = service_parts(current)[2].get("name")
                     if job.get("target") != target or job.get("node") != current.get("activeNode"):
                         continue
                     print(json.dumps(job["result"], ensure_ascii=False))
@@ -165,11 +185,14 @@ def authorized(root, target_name="bestpartner-dev"):
                            (root.name[5:],)).fetchone()
     if row is None or row[0] != "STAGE_RUNNING":
         return False
-    flow = json.loads(row[1])
-    node = flow.get("snapshot", {}).get("definition", {}).get("nodes", {}).get(flow.get("node"), {})
-    target = flow.get("snapshot", {}).get("definition", {}).get("project", {}).get("serviceTarget")
-    return (node.get("gate") == "SERVICE" and flow.get("activeNode") == flow.get("node")
-            and target and target.get("name") == target_name)
+    try:
+        flow = mapping(json.loads(row[1]))
+    except (ValueError,TypeError):
+        return False
+    _,node,target = service_parts(flow)
+    return bool(node.get("gate") == "SERVICE" and isinstance(flow.get("node"),str)
+                and flow.get("activeNode") == flow.get("node") and target.get("name") == target_name)
+
 
 
 def main():

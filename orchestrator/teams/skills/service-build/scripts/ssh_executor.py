@@ -43,9 +43,10 @@ def poll(home, config):
         except (ValueError,TypeError):
             continue
         jobs_dir = home / "operation-jobs" / task
-        definition = flow.get("snapshot",{}).get("definition",{})
-        node = definition.get("nodes",{}).get(flow.get("node"),{})
-        target = definition.get("project",{}).get("serviceTarget",{}).get("name")
+        if not isinstance(flow,dict):
+            continue
+        definition,node,service_target = client.service_parts(flow)
+        target = service_target.get("name")
         service = node.get("gate")=="SERVICE" and target==c["target"]
         if not service and not any(jobs_dir.glob("*.json")):
             continue
@@ -79,7 +80,12 @@ def poll(home, config):
                 (queue / (req["id"] + ".accepted")).touch()
                 (queue / (req["id"] + ".ssh-accepted")).touch()
         for path in jobs_dir.glob("*.json"):
-            job = json.loads(path.read_text())
+            try:
+                job = json.loads(path.read_text())
+            except (ValueError,OSError):
+                continue
+            if not isinstance(job,dict):
+                continue
             if job.get("task") != task or job.get("target") != c["target"]:
                 continue
             if job["state"] in {"SUCCEEDED", "FAILED"}:

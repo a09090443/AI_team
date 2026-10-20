@@ -397,7 +397,7 @@ TeamDefinition.Project 新增選填 serviceTarget：name（目標名稱）與 ch
 
 stage_attempt 現在也供 TaskStore.serviceHistory 查詢同頻道、同目標 SERVICE 歷史報告（最近 12 筆，排除本任務）；以當時 flow_run 的節點 gate 核對，不把分流摘要當服務收據。未新增資料表或序列化欄位。
 
-## 工作區外的長作業 journal（2026-10-20 來源已實作）
+## 工作區外的長作業 journal（2026-10-20 已部署 bestpartner）
 
 本次不新增 SQLite table、Task.State 或 FlowRun 欄位。OperationJobs 讀取實例 AI_TEAM_HOME/operation-jobs/&lt;task&gt;/&lt;id&gt;.json；標準 workspaces 佈局下 Python executor 由 workspace 的 home 定位同一路徑。journal 在模型工作區外，由固定執行器原子保存；工作區 docs/docker/sit/.agent-service/ 的請求／收據是工具交付通道，不取代可信 journal。
 
@@ -423,4 +423,4 @@ fingerprint 由作業 id、state、sourceHead、errorKind 組合計算 SHA256，
 
 取消要求另存 AI_TEAM_HOME/operation-cancellations/&lt;task&gt;/&lt;id&gt;.json，含 version、id、task、node、requested_at、reason=user_interrupt；只要求取消原 pending job。獨立 heartbeat 為 AI_TEAM_HOME/operation-executor-heartbeat。目標 root 在 /var/lib/ai-team-service/ 保存 id.request、id.source、id.running、id.cancel 與 id.json 等作業證據；不要把 agent journal 與目標收據當同一份資料。
 
-備份／換機須一併考量 journal、取消要求、原 task／flow_run、工作區 HEAD 與目標收據；只備份 SQLite 無法重建長作業證據，本文不宣稱現有備份腳本已自動涵蓋這些新目錄。此版本尚未部署，重啟／取消／晚到收據的真實端對端仍待驗證。
+備份／換機須一併考量 journal、取消要求、原 task／flow_run、工作區 HEAD 與目標收據；只備份 SQLite 無法重建長作業證據，本文不宣稱現有備份腳本已自動涵蓋這些新目錄。此版本已部署 bestpartner，重啟／取消／晚到收據的所有真實故障組合尚未全面演練。

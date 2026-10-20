@@ -691,4 +691,85 @@ class DiagnosticTests(unittest.TestCase):
                 self.assertEqual(action,record["action"]);self.assertTrue(record["verified"])
                 self.assertEqual(receipt["source_sha256"],record["source_sha256"])
 
+
+class NullFlowTests(unittest.TestCase):
+    def test_historical_null_flows_do_not_block_current_service(self):
+        import sqlite3
+        import client
+        import ssh_executor as executor
+        with tempfile.TemporaryDirectory() as tmp:
+            home,root,job=MockProtocolTests().executor_fixture(tmp)
+            valid={"node":"service","activeNode":"service","snapshot":{"definition":{
+                "nodes":{"service":{"gate":"SERVICE"}},"project":{"serviceTarget":{"name":"sit"}}}}}
+            bad=[None,[],"legacy",{"snapshot":None},{"snapshot":{"definition":None}},
+                 {"snapshot":{"definition":{"project":None}}},
+                 {"snapshot":{"definition":{"project":{"serviceTarget":None}}}},
+                 {"snapshot":{"definition":{"nodes":None}}},
+                 {"snapshot":{"definition":{"project":{"serviceTarget":[]}}}},
+                 {"snapshot":{"definition":{"project":{"serviceTarget":"legacy"}}}},
+                 {"node":"service","snapshot":{"definition":{"nodes":{"service":None}}}},
+                 {"node":[],"snapshot":{"definition":{"nodes":[],"project":[]}}},
+                 {"node":"plan","snapshot":{"definition":{"nodes":{"plan":{"gate":"PLAN"}},"project":{"serviceTarget":None}}}}]
+            db=sqlite3.connect(home/"ai-team.db")
+            for index,flow in enumerate(bad,1):
+                task=str(index)
+                (home/"workspaces"/("task-"+task)).mkdir()
+                db.execute("insert into task values (?,?)",(task,"STAGE_RUNNING"))
+                db.execute("insert into flow_run values (?,?)",(task,json.dumps(flow)))
+            db.execute("update flow_run set data=? where task_id='123'",(json.dumps(valid),))
+            # Missing task directory is an ordinary skipped historical row.
+            db.execute("insert into task values ('999','STAGE_RUNNING')")
+            db.execute("insert into flow_run values ('999','null')")
+            db.commit();db.close()
+            with patch.object(executor.ssh_client,"config",return_value={"target":"sit"}),patch.object(executor.ssh_client,"execute_job",return_value=None) as execute:
+                executor.poll(home,None)
+                execute.assert_called_once()
+                self.assertTrue(execute.call_args.kwargs["allow_launch"])
+            for index in range(1,len(bad)+1):
+                self.assertFalse(client.authorized(home/"workspaces"/("task-"+str(index)),"sit"))
+                self.assertFalse((home/"workspaces"/("task-"+str(index))/client.RELATIVE).exists())
+            self.assertTrue(client.authorized(root,"sit"))
+
+    def test_null_checkpoint_target_is_not_reused_or_crash(self):
+        import sqlite3
+        import client
+        with tempfile.TemporaryDirectory() as tmp:
+            home,root,job=MockProtocolTests().executor_fixture(tmp)
+            job.update(action="prepare",state="SUCCEEDED",verified=True,result=dict(exit_code=0))
+            client.atomic_json(home/"operation-jobs"/"123"/(job["id"]+".json"),job)
+            db=sqlite3.connect(home/"ai-team.db")
+            db.execute("update flow_run set data=?", (json.dumps({"activeNode":"service","snapshot":{"definition":{"project":{"serviceTarget":None}}}}),))
+            db.commit();db.close()
+            with patch.object(client,"workspace",return_value=root),patch.object(client,"source_head",return_value="head"),patch("builtins.print") as output:
+                self.assertEqual(75,client.submit("prepare",timeout=0))
+                self.assertIn("TASK_NOT_ACTIVE",output.call_args.args[0])
+
+    def test_invalid_json_job_is_skipped_before_valid_job(self):
+        import ssh_executor as executor
+        with tempfile.TemporaryDirectory() as tmp:
+            home,root,job=MockProtocolTests().executor_fixture(tmp,"AWAIT_HUMAN")
+            jobs=home/"operation-jobs"/"123"
+            fixtures={"000.json":"null","001.json":"{broken","002.json":"[]",
+                      "003.json":"false","004.json":"{}","005.json":'{"task":"other","target":"sit"}',
+                      "006.json":"unreadable"}
+            for name,data in fixtures.items():(jobs/name).write_text(data)
+            original_glob=Path.glob
+            original_read=Path.read_text
+            visited=[]
+            def ordered_glob(path,pattern,*args,**kwargs):
+                result=original_glob(path,pattern,*args,**kwargs)
+                return iter(sorted(result,key=lambda p:p.name)) if path==jobs else result
+            def read_record(path,*args,**kwargs):
+                if path.parent==jobs:
+                    visited.append(path.name)
+                    if path.name=="006.json":raise PermissionError("fixture")
+                return original_read(path,*args,**kwargs)
+            with patch.object(Path,"glob",new=ordered_glob),patch.object(Path,"read_text",new=read_record),patch.object(executor.ssh_client,"config",return_value={"target":"sit"}),patch.object(executor.ssh_client,"execute_job",return_value=None) as execute:
+                executor.poll(home,None)
+                execute.assert_called_once()
+                self.assertEqual(job["id"],execute.call_args.args[2]["id"])
+            self.assertEqual(list(fixtures),visited[:len(fixtures)])
+            for name,data in fixtures.items():self.assertEqual(data,(jobs/name).read_text())
+
+
 if __name__=="__main__":unittest.main()
