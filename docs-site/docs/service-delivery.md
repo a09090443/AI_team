@@ -1,6 +1,6 @@
 # 服務建置與開發分流
 
-**2026-10-19 規格修正**：日常部署改為 Agent VM 經 SSH 公鑰直連目標 VM，Windows 不再作為必要執行節點。bestpartner 已完成網路／公鑰初始化並啟用固定執行器，曾驗 health HTTP200；dev VM 曾無回應，核准重啟後已重驗健康與8088入口，根因待查。未重部署產品或進行 Slack 端對端驗證，詳見 [SSH 直連部署](direct-ssh-deployment.md)。以下 Windows broker 的執行方式屬已被取代的歷史實作與證據，不是新規格。
+**2026-10-20 規格修正**：日常部署改為 Agent VM 經 SSH 公鑰直連目標 VM，Windows 不再作為必要執行節點；已授權測試環境的逐版manifest人工核准已取消，正常更新由agent自行完成固定prepare/start/health。bestpartner 已完成網路／公鑰初始化並啟用固定執行器，曾驗 health HTTP200；dev VM 曾無回應，核准重啟後已重驗健康與8088入口，根因待查。未重部署產品或進行 Slack 端對端驗證，詳見 [SSH 直連部署](direct-ssh-deployment.md)。以下 Windows broker 的執行方式屬已被取代的歷史實作與證據，不是新規格。
 
 bestpartner 的 `intake` 可選 `route=service`，交給既有 Infrastructure Agent：
 

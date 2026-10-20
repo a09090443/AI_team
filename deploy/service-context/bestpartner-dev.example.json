@@ -4,7 +4,7 @@
   "program": "/home/agent/ai-team-bestpartner/teams/skills/service-build/scripts/ssh_executor.py",
   "config_file": "/home/agent/.config/ai-team/ssh-targets/bestpartner-dev.json",
   "start_command": "systemctl --user status ai-team-ssh-deploy.service; systemctl --user restart ai-team-ssh-deploy.service",
-  "notes": "固定執行器由 Agent VM 的 systemd 開機啟動，不需 Windows broker。首次須完成 VM 互通網路、公鑰與主機指紋核對，以及目標機固定入口安裝；未完成不可宣稱可部署。管理者設定檔只含金鑰引用，不含私鑰值。歷史成功不代表目前健康。",
+  "notes": "2026-10-20 使用者已完整授權此測試主機的部署與正常版本更新。逐版 source-manifest 核准關卡已取消；目標工具只檢查壓縮格式、傳輸SHA256與固定操作，不需更新清單。舊 Source approval 收據屬歷史，不代表目前仍需人工核准；重新執行 prepare/start/health 取得新的收據。Agent VM systemd 執行器自動啟動，直接SSH，不需Windows broker。保留既有資料與機密，實際成功才回報完成。",
   "history": [
     {
       "at": "2026-10-11",

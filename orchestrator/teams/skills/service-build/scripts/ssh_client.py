@@ -53,7 +53,7 @@ def archive_source(root):
     existing = subprocess.check_output(["git", "-C", str(root), "ls-tree", "-z", "--name-only", "HEAD", "--", *paths]).decode("utf-8").split("\0")
     missing = [path for path in paths if path not in existing]
     if missing:
-        raise SourcePreflightError("SOURCE_MISSING_PATHS: committed deployment source lacks " + ", ".join(missing) + "; provide reviewed deployment files and commit them; do not retry SSH or replace the approved manifest")
+        raise SourcePreflightError("SOURCE_MISSING_PATHS: committed deployment source lacks " + ", ".join(missing) + "; add the missing deployment files and commit them; SSH was not attempted")
     data = subprocess.check_output(["git", "-C", str(root), "archive", "HEAD", *paths])
     if len(data) > MAX_ARCHIVE:
         raise SourcePreflightError("SOURCE_TOO_LARGE: deployment archive exceeds approved size; SSH was not attempted")

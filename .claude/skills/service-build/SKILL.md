@@ -26,7 +26,7 @@ VirtualBox／宿主機工具只可用於管理者一次性的網路與 SSH 初�
 - 呼叫 health 及需求指定的額外檢查。網頁可開不等於登入、資料寫入與重啟保留都成功，逐項提供實測證據。
 - 失敗先 diagnose，依退出碼與當前狀態修正核准範圍內的設定或暫時性安裝問題，再執行同一檢查。相同原因最多重試兩次。
 - 請求已接單但等待逾時時，先取得原請求結果，不能另建請求重複啟動。保留不確定執行的現場。
-- 只有確實需要新權限、可用登入憑證、來源審核或產品程式修改時才說明單一缺口；skill 不會自行取得主機權限。
+- 只有確實需要新主機權限、可用登入憑證或超出任務範圍的產品程式修改時才說明單一缺口；skill 不會自行取得主機權限。
 
 ## 交付
 
@@ -38,10 +38,14 @@ VirtualBox／宿主機工具只可用於管理者一次性的網路與 SSH 初�
 - bestpartner 專案：讀取 [references/bestpartner.md](references/bestpartner.md)。其他產品需提供自己的部署參考與檢查操作，不套用 bestpartner 的路徑。
 - 主機執行與換機設定：讀取 [references/host-setup.md](references/host-setup.md)。
 - `scripts/client.py <action>` 是角色沙箱的固定入口。`ssh_executor.py` 在 Agent VM 由 systemd 自動常駐，核對本地任務授權後呼叫 `ssh_client.py` 直接 SSH；不需 Windows 代辦。`ssh_client.py <管理者設定> <action>` 是同機固定執行器的同步直連入口；`ssh_target.py` 與 `guest.py` 是目標機 root-owned 固定入口。
-- `install-ssh-target.sh` 由管理者在目標 VM 一次性執行，安裝受限公鑰、sudo 規則與核准來源 manifest；不清除資料或其他公鑰。
+- `install-ssh-target.sh` 由管理者在目標 VM 一次性執行，安裝受限公鑰、sudo 規則與目標名稱；不建立逐版來源清單；不清除資料或其他公鑰。
 - `client.py` 沿用任務檔案佇列交給同機執行器；`broker.py` 僅保留舊版相容，不能在 SSH 失敗時自動退回 Windows broker。
 - `assets/host.example.json` 僅是無憑證範本，實際私密設定放在 repo 外。
 
 ## 來源封裝失敗
 
-start 若回 SOURCE_MISSING_PATHS，表示目前HEAD缺少必要的版控部署檔；SOURCE_WORKSPACE_DIRTY表示有未提交變更。兩者都尚未執行SSH，不重試連線或重啟執行器。列出缺件，將經審閱檔案加入來源並提交，再依既有來源manifest核准流程處理；不能跳過缺路徑或自動更新manifest。
+start 若回 SOURCE_MISSING_PATHS，表示目前HEAD缺少必要的版控部署檔；SOURCE_WORKSPACE_DIRTY表示有未提交變更。兩者都尚未執行SSH，不重試連線或重啟執行器。列出缺件，在任務既有範圍補齊部署檔並提交後重新部署；不能跳過必要檔案。正常新增檔案與版本更新不需要另請管理者核准manifest。
+
+## 已授權主機的自主部署
+
+使用者已授權的測試主機與固定部署操作，agent自行完成prepare、start、health與一般部署修復。已提交且工作區乾淨的來源可部署，不再逐版比對或要求管理者更新source-manifest.json。SHA256僅核對傳輸完整性和收據對應，不是第二道真人核准。舊收據的Source approval失敗屬已移除機制，不據此再次請人更新清單；取得新的本次收據。保留資料與機密，不假造成功或繞過尚未授權的其他主機操作。

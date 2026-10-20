@@ -151,7 +151,7 @@ bestpartner 配置四個 `service-*` 操作，目標 `bestpartner-dev`；Agent V
 `nodes.<id>.skills` 選填，最多 8 份不重複的 `skills/<name>/SKILL.md` 或 `skills/<name>/references/<name>.md` 相對路徑。檔案須位於 teams 目錄內，每份不超過 256 KB。
 舊配置缺欄位照舊；skill 與參考內容納入 revision／snapshot，角色改派保留 skills，唯讀對話不注入。變更 skill 須新任務承接，不能以能力遷移替換提示。
 
-直連設定僅存私鑰與 known_hosts 的路徑；私鑰留在 Agent VM，目標的 root-owned 來源 manifest 與 forced-command 入口由管理者安裝。
+直連設定僅存私鑰與 known_hosts 的路徑；私鑰留在 Agent VM，目標的 forced-command 入口由管理者一次性安裝；已授權測試部署不需逐版來源manifest。
 
 ## 文件驗收配置（2026-10-12 來源更新）
 

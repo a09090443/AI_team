@@ -7,6 +7,8 @@
 
 ## 正在進行
 
+- **自主部署關卡已取消（2026-10-20，Codex）**：使用者明確要求取消我新增的逐版manifest人工核准，讓Slack agent自行部署。dev固定入口已取消清單比對，備份tool-backup-20261020-134631；Agent工具/提示/skill/service-context已更新，配置d1334fe3…/PID10731，備份autonomous-deploy-backup-20261020-134803。Windows/Linux Python36、Java75、check-source/docs build通過；#1048來源a0c53284…可接受無需更新清單。任務表/工作區前後一致；health ab1c03e9…及8088 HTTP200。#1048仍AWAIT_HUMAN，可原串續跑，不需另開任務；未發Slack訊息/重部署產品，不宣稱新一輪E2E。這項新指示取代下方所有要求管理者更新manifest的舊下一步。未推送。
+
 - **#1047 部署受阻（2026-10-19，Codex）**：AWAIT_HUMAN；prepare/diagnose成功，start在SSH前因HEAD2216d6d缺少版控docs/docker/sit而封裝失敗。已修正ssh_client明列來源缺件，不再泛稱SSH故障；Linux/Windows Python33項與check-source通過，helper已備份後更新至bestpartner、systemd active。未改任務快照/收據、未續跑或重部署產品。下一步需將經審閱SIT部署檔納入來源並提交、核對既有manifest，不能盲目按繼續或重啟VM。
 
 - **SSH 直連修正已部署（2026-10-19，Codex）**：分支 codex/direct-ssh-deployment，實作 f79f142（未推送）。Agent172.30.46.10 → SSH公鑰 → dev172.30.46.20；共享NAT ai-team-direct，2223/2224/8088入口保留，Windows broker數量0。bestpartner JAR45879bfd…/PID8844，備份orchestrator-backup.II8thl，安全部署任務/工作區完整前後比對通過；三實例維護前後六張任務表逐列一致。Agent ai-team-ssh-deploy.service active/enabled/linger=yes。Linux687項/Python30通過，docs build通過。dev收尾曾heartbeat停止，ACPI無效，使用者明確核准reset後恢復；新health d443693b…exit0、PostgreSQL/後端與Windows8088 HTTP200。核心警告有RCU/watchdog，根因未確認。下一步：在bestpartner頻道新任務承接#1046（舊skill快照不能直接替換），由新規則prepare/start/health；manifest不符先停下審閱，不清資料卷。不手改DB、不自動發Slack或續跑。完整證據見本worktree progress與direct-ssh-deployment文件。

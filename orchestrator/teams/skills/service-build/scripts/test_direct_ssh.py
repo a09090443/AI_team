@@ -139,19 +139,46 @@ class ExecutionTests(unittest.TestCase):
                 self.assertEqual(75,client.submit("start",timeout=5))
             self.assertTrue((queue/"request.json").exists())
 
-    def test_source_rejected_before_root_guest_is_executed(self):
-        import hashlib,tarfile
+    def target_start(self,tmp,data,digest=None,invoke=False):
+        import hashlib
+        base=Path(tmp);state=base/"state"
+        config=base/"target.json"
+        # A stale legacy manifest reference must never block a normal new version.
+        config.write_text(json.dumps({"target":"sit","source_manifest":str(base/"nonexistent-old-manifest")}))
+        try:import fcntl
+        except ImportError:fcntl=SimpleNamespace(LOCK_EX=2,flock=lambda *args:None)
+        def completed(argv,stdout,**kwargs):
+            stdout.write("START_PASS: release=fixture-new-version\n")
+            return SimpleNamespace(returncode=0)
+        with patch.dict("sys.modules",fcntl=fcntl),patch.object(target,"STATE",state),patch.object(target,"CONFIG",config),patch.object(target.os,"geteuid",return_value=0,create=True),patch.object(target.sys,"stdin",SimpleNamespace(buffer=io.BytesIO(data))),patch.object(target.subprocess,"run",side_effect=completed) as run:
+            result=target.execute("ai-team-service sit start "+"a"*32+" "+(digest or hashlib.sha256(data).hexdigest()))
+            self.assertEqual(int(invoke),run.call_count)
+            return result
+
+    def archive(self,path,content=b"new version"):
+        import tarfile
+        stream=io.BytesIO()
+        with tarfile.open(fileobj=stream,mode="w") as archive:
+            item=tarfile.TarInfo(path);item.size=len(content);archive.addfile(item,io.BytesIO(content))
+        return stream.getvalue()
+
+    def test_new_committed_source_needs_no_manifest_update(self):
+        for path in ["bestpartner-service/new-file.txt","docs/docker/sit/docker-compose.yml"]:
+            with self.subTest(path=path),tempfile.TemporaryDirectory() as tmp:
+                result=self.target_start(tmp,self.archive(path),invoke=True)
+                self.assertEqual(0,result["exit_code"])
+                self.assertEqual(["START_PASS: release=fixture-new-version"],result["evidence"])
+
+    def test_archive_traversal_still_rejected_before_guest(self):
         with tempfile.TemporaryDirectory() as tmp:
-            base=Path(tmp);state=base/"state";manifest=base/"manifest.json";manifest.write_text(json.dumps({"bestpartner-service/test.txt":"0"*64}))
-            config=base/"target.json";config.write_text(json.dumps({"target":"sit","source_manifest":str(manifest)}))
-            stream=io.BytesIO()
-            with tarfile.open(fileobj=stream,mode="w") as archive:
-                item=tarfile.TarInfo("bestpartner-service/test.txt");item.size=4;archive.addfile(item,io.BytesIO(b"test"))
-            data=stream.getvalue();digest=hashlib.sha256(data).hexdigest()
-            try:import fcntl
-            except ImportError:fcntl=SimpleNamespace(LOCK_EX=2,flock=lambda *args:None)
-            with patch.dict("sys.modules",fcntl=fcntl),patch.object(target,"STATE",state),patch.object(target,"CONFIG",config),patch.object(target.os,"geteuid",return_value=0,create=True),patch.object(target.sys,"stdin",SimpleNamespace(buffer=io.BytesIO(data))),patch.object(target.subprocess,"run") as run:
-                result=target.execute("ai-team-service sit start "+"a"*32+" "+digest)
-                self.assertEqual(1,result["exit_code"]);run.assert_not_called()
+            self.assertEqual(1,self.target_start(tmp,self.archive("../../etc/passwd"))["exit_code"])
+
+    def test_archive_digest_mismatch_still_rejected_before_guest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(1,self.target_start(tmp,self.archive("bestpartner-service/file"),digest="0"*64)["exit_code"])
+
+    def test_malformed_archive_has_a_failure_receipt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(1,self.target_start(tmp,b"not a tar archive")["exit_code"])
 
 if __name__=="__main__":unittest.main()

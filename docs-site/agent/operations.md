@@ -224,3 +224,7 @@ bestpartner 新任務可由 PM 選擇 service 路線，由 Infrastructure 建置
 ### 2026-10-19 SSH 直連規格（已啟用）
 
 Agent VM 的 systemd 固定部署執行器已啟用，以 SSH 公鑰直連 dev VM；網路、公鑰、主機指紋、受限入口與 health 已實測，不需要 Windows broker。#1046 的舊 skill 快照須新任務承接；dev VM 曾 heartbeat 停止，經使用者核准重啟後已重新驗證健康與8088入口，當機根因待查。本輪未重部署產品或續跑 Slack。詳見 [直連部署](/docs/direct-ssh-deployment)。
+
+### 已授權測試環境自主部署（2026-10-20）
+
+正常版本更新不再需要管理者維護source-manifest清單；Slack agent在既有SERVICE授權與固定SSH操作下自行prepare/start/health。舊清單拒絕紀錄不是新的人工核准要求，需取得本次啟動與健康收據；#1048可由原討論串重新執行。詳見[直連部署](/docs/direct-ssh-deployment)。

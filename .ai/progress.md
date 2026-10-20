@@ -1246,3 +1246,21 @@
 - 已在無活動任務時原子更新bestpartner固定ssh_client.py，備份 ~/ai-team-bestpartner/ssh-preflight-backup-20261019-140920，systemd執行器恢復active。未換JAR、未改任務／快照／既有收據、未續跑或傳Slack訊息；新skill文字只在來源提交，未替換#1047快照。
 - 發現缺漏／落差：封裝前錯誤被歸為SSH問題，部署來源缺件未明列。已修正文件：direct-ssh-deployment、service-build skill及鏡像；已核對operations/configuration/system-map，現有固定通道規則仍一致，不需改。
 - 真正解卡仍需將經審閱的SIT部署檔正式納入任務來源並提交，與目標已核准manifest比較；不得自動取舊工作區任意檔案、覆寫manifest或把舊容器當本次部署完成。docs build通過；未推送。
+
+
+## 2026-10-20 最新任務 #1048 唯讀查核（Codex）
+
+- #1048 AWAIT_HUMAN，HEAD72f694b乾淨，SIT compose/schema已版控，封裝a0c53284…；prepare/health/diagnose成功，start兩次目標回來源核准或setup檢查失敗。使用者按恢復後重驗仍同一封裝被拒；未完成本次部署。
+- PM歸因舊manifest未更新；本次未以root核對目標manifest，不能將通用核准/setup錯誤當精確獨立診斷。需管理者比對來源與核准範圍後再更新；未改清單、未重試start、未續跑任務、未傳Slack訊息。
+- 已核對pm-triage與direct-ssh-deployment；修正文件中執行器重開機尚未驗證的過時敘述（10/20已驗），追加#1048的實證與判斷界線；docs build驗證。
+
+
+## 2026-10-20 取消額外逐版來源核准（Codex，使用者明確要求）
+
+- 使用者要求已完整授權的測試環境由Slack agent自行完成，不接受每次版本更新另請管理者更新清單。已直接取消ssh_target逐檔manifest比對，不是自動擴充白名單；installer不再要求manifest，已提交HEAD可部署，SHA256只作傳輸完整性/收據對應。
+- 保留已登錄SSH身分與固定操作、有效SERVICE授權、壓縮檔結構/完整性檢查、收據ID/target/action/digest綁定、冪等與中斷保留；未新增人工核准。更新service-build原始skill與鏡像、service/service-triage提示及service-context，明確撤銷舊manifest卡點。
+- Windows/Linux各36項Python測試通過，含新檔/改版不需manifest、舊manifest引用不存在仍可部署、傳輸毀損/不合法archive拒絕；Java75項相關測試、check-source及docs build通過。#1048真實HEAD72f694b來源封裝a0c53284…通過新版預檢。
+- dev固定入口與target.json已更新，備份/var/lib/ai-team-service/tool-backup-20261020-134631；未讀出憑證，既有保護登入檔僅一次性供原VM的sudo，立即清理。Agent備份autonomous-deploy-backup-20261020-134803，重載bestpartner提示/skill/固定工具，配置d1334fe3…、PID10731，六張任務表及所有工作區前後完全一致。
+- 僅工具/提示重載啟動時暫用AI_TEAM_BASELINE_VERIFY=off，不重跑無關產品基準；未修改env.sh/team.env、產品來源或驗證指令。新task-context說明本次使用者授權及取消清單；舊任務快照/核准/收據均未改。
+- 新health ab1c03e9…exit0，PostgreSQL/後端及Windows8088 HTTP200；ERROR0、沙箱自檢通過、六角色Socket Mode、SSH執行器active/NRestarts0。#1048仍AWAIT_HUMAN；未發Slack訊息、未自動續跑、未重新部署產品，不宣稱Slack端對端已完成。
+- 已核對文件：direct-ssh-deployment、service-delivery、agent operations/configuration/system-map、service-build skill與references；已修正以上文件中的逐版清單要求並保留歷史證據。新檔案無，catalog/tree路徑未變，docs build通過。未推送或合併。
