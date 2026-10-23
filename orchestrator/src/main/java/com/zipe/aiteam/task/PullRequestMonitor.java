@@ -28,8 +28,12 @@ public class PullRequestMonitor {
     public PullRequestMonitor(TaskStore store, TaskOrchestrator orchestrator) {
         this.store = store; this.orchestrator = orchestrator;
     }
+    /**
+     * 第一次也等一個間隔：受控部署會在啟動後比對所有任務資料與工作區前後一致，
+     * 啟動當下就同步 PR 或標記已關閉，會被當成部署改動了任務而回復。
+     */
     public void start() {
-        timer.scheduleWithFixedDelay(this::poll, 2, INTERVAL_MINUTES * 60, TimeUnit.SECONDS);
+        timer.scheduleWithFixedDelay(this::poll, INTERVAL_MINUTES * 60, INTERVAL_MINUTES * 60, TimeUnit.SECONDS);
     }
     void poll() {
         try {

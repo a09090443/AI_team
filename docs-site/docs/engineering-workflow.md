@@ -267,7 +267,7 @@ PR 是系統自己開的，分支與工作區都還在，因此改由原任務�
 配置驗證要求主線（entry 沿 next）上有 gate=IMPLEMENTATION 的節點。
 
 **偵測**：
-- `PullRequestMonitor` 每 10 分鐘以 `AI_TEAM_GITHUB_TOKEN` 查一次 `PR_CREATED` 任務的 PR（`PullRequestPublisher.status`，GitHub `GET /pulls/{n}`）；
+- `PullRequestMonitor` 每 10 分鐘（服務啟動 10 分鐘後第一次，避開部署的前後一致比對）以 `AI_TEAM_GITHUB_TOKEN` 查一次 `PR_CREATED` 任務的 PR（`PullRequestPublisher.status`，GitHub `GET /pulls/{n}`）；
 - 需求負責人也可以送「同步 PR #編號」立即觸發，兩者走同一套判斷（`PullRequestSync.assess`）。
 
 | GitHub 狀態 | 處理 |
