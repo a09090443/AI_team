@@ -60,9 +60,21 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
   "roles": { "<角色 ID>": { "...": "角色設定" } },
   "entry": "intake",
   "maxTransitions": 24,
+  "collaboration": { "consultPerVisit": 2, "consultPerTask": 12, "questionsPerRound": 2, "boardMaxEntries": 100 },
   "nodes": { "<節點 ID>": { "...": "節點設定" } }
 }
 ```
+
+`collaboration` 是選填欄位，用來啟用角色諮詢與共享看板，各欄位的上限如下：
+
+| 欄位 | 範圍 | 說明 |
+|---|---|---|
+| `consultPerVisit` | 0～2 | 每次節點執行最多幾輪諮詢 |
+| `consultPerTask` | 0～16 | 每個任務最多幾題 |
+| `questionsPerRound` | 1～3 | 每輪最多幾題 |
+| `boardMaxEntries` | 1～200 | 看板最多幾筆 |
+
+沒設定時，整個功能關閉，舊配置的 revision 也不會變動。行為說明見[角色諮詢與共享看板](/docs/configurable-team#角色諮詢與共享看板2026-10-17)。
 
 ### `project`
 
@@ -97,6 +109,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 | `kind` | `AGENT` 或 `APPROVAL` |
 | `role`、`schema`、`instructions` | 執行角色、輸出 schema、階段指示（優先於角色 prompt） |
 | `candidateRoles` | 選填 1～16 個不重複的合格角色 ID（須含原 role）；非入口 agent 節點可用。上游以 handoff 選擇下一階段負責人，缺漏或越權會受阻；未設定時維持原 role |
+| `consultRoles` | 選填 1～8 個可諮詢的角色 ID，須先設定頂層 `collaboration`。不可含自己（含 candidateRoles）；REVIEW 節點不可諮詢實作角色；被諮詢角色須有 `capabilities`。見 [角色諮詢與共享看板](/docs/configurable-team#角色諮詢與共享看板2026-10-17) |
 | `scope` | 寫入權限，見下表 |
 | `gate` | 工作契約，見下表 |
 | `workspace` | 是否建立任務工作區；已有工作區的 READ_ONLY 節點仍唯讀查看該副本 |

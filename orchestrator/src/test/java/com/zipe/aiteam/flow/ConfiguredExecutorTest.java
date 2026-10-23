@@ -245,6 +245,55 @@ class ConfiguredExecutorTest {
         when(runtime.escalationPins(any())).thenReturn(List.of());
         executor = new ConfiguredExecutor(props, new RuntimeRegistry(List.of(runtime)), mock(ExecutionSandbox.class), workspace, store, preflight);
     }
+    @Test void consultAnswersReadOnlyWithoutTouchingTheAskersCheckpoint() throws Exception {
+        flow.snapshot = ConsultationTest.collaborative(flow.snapshot, 1, 4);
+        flow.node = "plan"; flow.visits.put("plan", 1);
+        var plan = flow.snapshot.definition().nodes().get("plan");
+        var request = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode().put("summary", "計畫草稿：登入情境");
+        request.putArray("consult").addObject().put("role", "builder").put("question", "登入 API 回傳哪些錯誤碼？").put("why", "反例要用");
+        var pending = Consultation.begin(flow, plan, Consultation.parse(flow, plan, request), request);
+        AtomicReference<AgentRuntime.RuntimeRequest> captured = new AtomicReference<>();
+        when(runtime.execute(any(), any())).thenAnswer(c -> { captured.set(c.getArgument(0)); return null; });
+
+        executor.consult(new Task("42", "c", "t", "u", "做登入"), flow, pending, 0);
+
+        var sent = captured.get();
+        assertThat(sent.role()).isEqualTo("plan-consult-1-1");
+        assertThat(sent.allowedTools()).containsExactly("Read", "Grep", "Glob");
+        assertThat(sent.sandboxPolicy().writablePaths()).doesNotContain(repo);
+        assertThat(sent.resumeSessionId()).isNull();
+        assertThat(sent.jsonSchema()).contains("\"answer\"", "\"confidence\"");
+        assertThat(sent.prompt()).contains("登入 API 回傳哪些錯誤碼？", "計畫草稿：登入情境", "團隊共享看板");
+        assertThat(Files.readString(sent.systemPromptFile())).contains("唯讀", "另一位團隊角色");
+        verify(store, never()).saveCheckpoint(any());
+    }
+    @Test void collaborativeSnapshotAddsBoardConsultAndAnswersToTheStage() throws Exception {
+        flow.snapshot = ConsultationTest.collaborative(flow.snapshot, 1, 4);
+        flow.node = "plan"; flow.visits.put("plan", 1);
+        var plan = flow.snapshot.definition().nodes().get("plan");
+        var request = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode().put("summary", "d");
+        request.putArray("consult").addObject().put("role", "builder").put("question", "分頁大小？").put("why", "w");
+        var pending = Consultation.begin(flow, plan, Consultation.parse(flow, plan, request), request);
+        Consultation.record(flow, pending, 0, new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode()
+                .put("answer", "預設 20 筆").put("confidence", "MEDIUM").put("evidence", ""));
+        AtomicReference<AgentRuntime.RuntimeRequest> captured = new AtomicReference<>();
+        when(runtime.execute(any(), any())).thenAnswer(c -> { captured.set(c.getArgument(0)); return null; });
+
+        executor.execute(new Task("42", "c", "t", "u", "做登入"), flow, plan);
+
+        assertThat(captured.get().prompt()).contains("團隊共享看板", "諮詢問答", "預設 20 筆");
+        assertThat(captured.get().jsonSchema()).contains("\"board_updates\"");
+        // 本次執行的一輪已用完（consultPerVisit=1）：不再開放 consult 欄位。
+        assertThat(captured.get().jsonSchema()).doesNotContain("\"consult\"");
+    }
+    @Test void legacySnapshotStageHasNoCollaborationText() throws Exception {
+        flow.node = "plan";
+        AtomicReference<AgentRuntime.RuntimeRequest> captured = new AtomicReference<>();
+        when(runtime.execute(any(), any())).thenAnswer(c -> { captured.set(c.getArgument(0)); return null; });
+        executor.execute(new Task("42", "c", "t", "u", "做登入"), flow, flow.snapshot.definition().nodes().get("plan"));
+        assertThat(captured.get().prompt()).doesNotContain("團隊共享看板", "角色諮詢", "諮詢問答");
+        assertThat(captured.get().jsonSchema()).doesNotContain("board_updates", "\"consult\"");
+    }
     @Test void dialogueSeesTheParentWorkspaceStateIncludingUncommittedFiles() throws Exception {
         // #1017：QA 對話只看到最新 commit，就答「不是沒有 commit」，漏掉它上一輪留下的 3 個未提交測試檔。
         FlowRun parent = new FlowRun(flow.snapshot); parent.workspaceReady = true;

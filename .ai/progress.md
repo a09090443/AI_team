@@ -1,5 +1,11 @@
 # 工作進度（Codex 與 Claude Code 共用）
 
+## 2026-10-23 定義專案終極目標（Claude Code，文件修改、未 commit）
+
+- 依使用者要求，在 AGENTS.md 開頭新增「專案終極目標」：agent 自主協作、不需真人介入、通用於不同專案，並列出自主不等於擴權與通用性的具體原則；docs-site/agent/index.md「這個專案是什麼」加入摘要。
+- 已核對的文件：agent/index.md（原文只寫真人核准後開 PR，已補目標與現況閘門說明）、catalog（無新增檔案，不需改）、project-tree（無新增檔案，不需改）。發現的缺漏：先前文件未寫專案終極目標。
+- 追加「任務效率」原則：AGENTS.md、orchestrator/teams/prompts/intake.md 與 triage.md 加入派工前確認能否縮短執行時間、不把簡單任務複雜化；configurable-team 新增「派工的任務效率要求」段、agent/index 補摘要。提示修改會改變配置 revision，未部署、未在真實任務驗證。驗證：check-source 通過（Python 單元測試以 shim 略過，未執行）、TeamCatalogTest／ToolTrustTest 通過、docs build 通過。
+
 ## 2026-10-19 #1046 部署歷史與恢復入口修正（Codex，來源完成、未部署）
 
 - 使用者要求修正跨任務遺漏部署紀錄，以及 broker 離線時沒有具體啟動說明。分支 codex/service-deployment-context，worktree D:/agent_team-dynamicapi。
@@ -63,6 +69,37 @@
 - Slack 頻道：內建瀏覽器的登入狀態沒有生效，改用 Claude in Chrome（使用者已登入）在 AI-team 建立公開頻道 #dynamic-api，ID C0CA5CXTUHJ；未邀請任何成員或 App。
 - Slack App：使用者要求代建，以 Claude in Chrome 建立並安裝 7 個 App（dynamic-api-ai-team A0C9VFTUHK5、DA PM A0C9LBNDEA3、DA Architecture A0C9LBRTFHV、DA Backend A0C9ZQ5CZAS、DA QA A0C9ZQ8UQJ2、DA Infrastructure A0CA1HNBR4J、DA Code Reviewer A0CA5E836JY），Review 頁核對 scope 數正確，全部 /invite 進 #dynamic-api（頻道顯示 Gary 和其他 7 位已加入）。依 AGENTS「不讀出憑證」，未產生 App-Level Token、安裝後的 token 頁未截圖或讀取。第一次以 CodeMirror setValue 帶入 manifest 無效（Review 提示無 scope），已取消未建立，改用 paste 方式；經驗已寫入 slack-agent-apps。
 - 未完成：App-Level Token 產生與兩種 token 填入、VM 安裝 ~/ai-team-dynamic-api（AI_TEAM_INSTANCE=dynamicapi）、Gradle 8.14.5 對 Spring Boot 3.2.5 與後端測試在 Linux 是否通過皆未實測。工作樹位於 phase1 分支且混有其他 session 未 commit 的修改，本次檔案未 commit。
+
+## 2026-10-17 獨立驗證依變更檔案只跑相關指令並重用結果（Claude Code，已部署，分支 feature/scoped-verification）
+
+- 使用者核准計畫與三項決定：qaOnlyPaths 內的建置檔只由 QA 驗證；bestpartner-mcp-servers、scripts、skills 維持全跑；先 commit 修正分支（5c714a5，fix/issue-observation-revision）再開新分支實作。
+- 實作（worktree D:/agent_team-issuefix，分支 feature/scoped-verification，已 commit f9074b5；使用者要求後 main 已 fast-forward 至 f9074b5 並 push 到 origin（67f6a74..f9074b5），Pages Actions 39030900760 success）：新增 VerificationPlan（四類歸類、fail closed、指紋＝範圍內檔案＋共用檔，沒設範圍時為整棵樹；配置驗證採固定前綴保守判斷重疊）。TeamDefinition.Verification 新增 commandScopes／qaOnlyPaths；WorkspaceManager.treeEntries；IndependentVerifier 依決定執行，每個通過的指令記入 FlowRun.verificationHistory（最多 20 筆），收據新增 decisions／changedFiles／taskId，發布前由 decisionReason 重算變更與指紋。PrReport、QA 收據說明（ConfiguredExecutor.receiptView）、Slack 摘要同步更新。bestpartner.json 加入範圍設定。
+- 測試：新增 VerificationPlanTest 5 項、IndependentVerifierTest 5 項（#1044 變更組合全部略過且不 clone、只跑命中範圍的指令、範圍外全跑、重用與配置／紀錄變更、持久化往返）；調整 2 項既有測試以配合重用與錯誤訊息。Linux scoped-build.ZxjLkv：check-source 通過、664 項 0 失敗／錯誤、11 略過，JAR 10500125…。
+- 部署：JAR 部署到 bestpartner（備份 orchestrator-backup.61TvTL）與 spring-starters（備份 orchestrator-backup.Rl7Kmn）。bestpartner 的 teams 配置以 VM 現有檔案為基礎只加入兩個欄位（備份 scope-config-backup.o9qLa2），重啟後 PID124134，新配置 revision 4be132d7…，ERROR 0 行，任務資料前後一致。
+- 文件：engineering-workflow（新段落，並修正「不沿用共享快取」的舊說法）、data-model（收據與 verificationHistory）、agent/configuration、system-map、project-tree、catalog。docs build 通過。
+- 注意：`git stash create` 不會包含未追蹤的新檔，第一次 Linux 建置因此缺少 VerificationPlan 而失敗；改成先 git add 新檔再打包。
+- 尚未完成：真實任務端對端驗證（需要新的 bestpartner 任務）；兩個分支尚未合併回 main；另一個 session 的 phase1 分支之後要 rebase 並處理 FlowRun／TeamDefinition／TeamCatalog／FlowEngine 的衝突。
+
+## 2026-10-17 驗收後新增觀察項不使核對失效（Claude Code，已部署，分支 fix/issue-observation-revision）
+
+- 查核：#1044 的 QA 全部 PASS 後，審查把兩個 LOW 提醒記成 OBSERVATION（OBS-REVIEW-EVIDENCE-NARRATIVE），清單版本從 64899d… 變成 e37061…。IssueTracker.checksReason 要求版本完全相同，completionReason 因此擋下發布；使用者 13:53 按續跑，又立刻 AWAIT_HUMAN。
+- 修正：IssueTracker.checkedRevisionStillValid 會從清單尾端拿掉驗收後新增的非處理項（非 REPAIR／DECISION），拿掉後的版本等於驗收時的版本就承認舊核對。checksReason（發布閘門）與 summary 共用這個判斷；處理項有任何變動照樣失效。各節點回報時的版本檢查（STALE_REVISION）不變。
+- 為了不把另一個 session 在 feature/team-collaboration-phase1 上尚未 commit 的 Consultation／TeamBoard 一起部署，改在 worktree `D:/agent_team-issuefix`（分支 fix/issue-observation-revision，從 main 06ab560 開出）修改，**未 commit**。
+- 測試：IssueTrackerTest 新增 1 項；本機 IssueTracker 14 項、FlowEngine 118 項通過。Linux issuefix-build.SfjkxQ：check-source 通過、654 項 0 失敗／錯誤、11 略過，JAR 375ee0d5…。
+- 部署：bestpartner PID108535（備份 orchestrator-backup.9R7WhE）、spring-starters PID111719（備份 orchestrator-backup.LK0Z03），ERROR 0 行，任務資料前後一致。只替換 JAR，VM 上的 teams 沒有動。
+- 文件：worktree 內的 engineering-workflow.md 問題完整性段落（例外規則）；docs build 通過。
+- 尚未完成：#1044 要由使用者按續跑來確認會出現 PR 核准按鈕。worktree 的修改要 commit 並合併回 main，之後 phase1 分支也要 rebase 或合併。
+
+## 2026-10-17 第一階段：角色諮詢與共享看板（Claude Code，本機來源完成，未部署）
+
+- 使用者核准計畫，先把 #1044 系列修改 commit 到 main（06ab560，未 push），再開分支 feature/team-collaboration-phase1 實作。
+- 新增 flow/Consultation.java：節點可暫停並向 consultRoles 唯讀提問，以原 session 接續、不計次；有三層額度上限，格式錯誤會以原 session 修正一次，額度中斷時先補答再接回提問者。
+- 新增 flow/TeamBoard.java：所有角色共用的決策、假設、問題、風險與備註；只收最終報告，寫錯不擋流程，不納入防循環指紋，承接時帶走，並在核准與結束訊息附上摘要。
+- 修改 TeamDefinition（collaboration、Node.consultRoles，null 不序列化）、TeamCatalog（驗證）、FlowRun（新欄位為空時不寫入）、ConfiguredExecutor（consult()、注入看板／諮詢／問答）、FlowEngine（攔截、續答、看板攝入、承接、摘要）。bestpartner.json 啟用 collaboration 與 6 個節點的 consultRoles，並補上 tester 的 capabilities。
+- 測試：新增 ConsultationTest 9 項、TeamBoardTest 9 項；ConfiguredExecutorTest 新增 3 項（含舊快照提示與 schema 不變）、FlowEngineTest 新增 7 項（接續不計次、額度續答、格式修正一次、持續錯誤受阻、題目之間中斷、受阻報告收看板、舊快照忽略）。flow 相關 9 個類別 241 項通過。本機完整 Maven 681 項：2 個失敗、2 個錯誤、14 項略過，4 項都是既有的 Windows 環境限制（符號連結權限、/bin/sh、程序逾時、CRLF），與本次修改無關。
+- 已核對的文件：configurable-team、agent/configuration、data-model、agent/system-map、agent/operations、catalog、project-tree。已修正的文件：上述全部（新增「角色諮詢與共享看板」章節、欄位表、FlowRun 欄位、Slack 訊息說明、目錄樹兩個新檔）。docs build 通過。
+- 本機 check-source 因 python3 是 Store 空殼而無法執行（exit 49，已知限制）。Linux 隔離驗證與部署都要另外取得使用者授權。
+- 證據等級：只有程式測試通過；尚未部署，也沒有真實 Slack／CLI 端對端驗證。
 
 ## 2026-10-17 handoff 角色名稱容錯與重送（Claude Code，已部署）
 
@@ -1399,3 +1436,30 @@
 - 驗證：VM ~/verifyfix-20261022（tar 5e8ce463…）Maven verify 761 項 0 失敗、check-source 通過；docs build 通過。
 - 部署（#1054 停下後自動執行）：JAR 78244c65…→8f895e5c…，PID 132799，配置仍 13e4b047…，備份 orchestrator-backup.dLSBGv；六表與工作區一致、0 ERROR。
 - 待辦：負責人在 #1054 補充續跑以重新驗收；HEAD 2b0116a 程式不需再改。
+
+## 2026-10-19 #1046 部署脈絡查核（Codex）
+
+- 唯讀查 bestpartner #1046：AWAIT_HUMAN，prepare 兩次 exit 75；原請求 20db9ac9… 保留。#1036 start 收據 d55653d5… exit 0，先前確曾部署成功。
+- 發現缺漏：ConfiguredExecutor 未自動注入同目標歷史收據，serviceTarget 未供應宿主啟動入口；agent 混淆本次未部署與過去部署，回覆缺具體指令。已補 docs/service-delivery.md 的已知問題與恢復位置。
+- 已核對 service-delivery、direct-agent-requests、service/service-triage prompts、ConfiguredExecutor、#1046 快照。私人設定檔存在，未讀憑證；CIM 程序查詢被權限限制，未獨立確認 broker 程序。未啟動工具、未修改任務或部署。
+
+## 2026-10-20 重啟後服務恢復（Codex）
+
+- 使用者重啟後Agent/dev兩VM均running，Agent SSH恢復。三實例原STOPPED，依service.sh逐一start後Spring啟動與沙箱工具鏈自檢全部通過，ERROR0；Slack角色Socket Mode各5/6/6連線完成，未送Slack測試訊息。
+- ai-team-ssh-deploy.service開機自動active/enabled、NRestarts0；產品127.0.0.1:8088/view/chat HTTP200。#1047仍AWAIT_HUMAN、dynamic-api#1003仍AWAIT_HUMAN，未手動續跑或改任務資料。
+- 既有警告：spring-starters缺GitHub token；bestpartner/dynamic-api BUILDER_CODEX缺角色App-Level Token，共用token角色mention限制；未改憑證或設定。
+- 已核對operations的VM重開機後手動start規則，符合現況，不需修正文檔；未變更程式/配置或重新部署產品。
+
+2026-10-20：使用者要求取消額外逐版來源清單核准，已實作並部署；commit a118e37（D:/agent_team-dynamicapi，未推送），詳該工作樹 .ai/progress.md；#1048原串可續跑，不再要求更新manifest。
+
+
+2026-10-20：通用持久長作業/精確unit清理/同ID對帳/歷史null相容已在D:/agent_team-dynamicapi完成並部署bestpartner；#1048正式COMPLETED，不重建既有成功產品。719項Linux、78項Python及文件build通過；詳細完成紀錄與文件核對清單在該工作樹.ai/progress.md。未推送/合併。
+
+
+2026-10-21：服務追問自主診斷/入口回覆/已清理來源證據模式與不可執行建議自修已部署bestpartner。原1049真實Infrastructure回覆完成、父1048/其他任務/兩實例未變；728 Linux、174本機相關、90 Python與文件驗證通過。完整程式、文件核對、備份與E2E證據在D:/agent_team-dynamicapi/.ai/progress.md。未推送/合併。
+
+
+2026-10-21：使用者核准狀態式提示/證據驅動分流/持久診斷修改，來源與文件驗證完成，詳D:/agent_team-dynamicapi/.ai/context.md及progress。未部署、未commit/push本輪修改；前輪04cb0d9已push。Linux734首輪/218相關，最終181本機+2Linux恢復、97Python及文件build通過，證據等級與範圍以該工作樹紀錄為準。
+
+
+2026-10-21：依使用者要求已部署bestpartner新狀態式決策/持久診斷，JARa4e66bbf…/PID70717；735完整Linux、97Python、啟動/六角色連線/資料與工作區比對通過。快照改唯讀逐列雜湊避免sqlite3 CLI耗CPU，文件入口舊broker已修。其他實例未升級，本輪未commit/push/merge；詳細備份/驗證範圍見D:/agent_team-dynamicapi/.ai/progress.md。

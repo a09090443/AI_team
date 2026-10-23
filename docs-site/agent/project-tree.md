@@ -146,6 +146,8 @@ agent_team/
 │   │   │   ├── FlowEngine.java       # 流程引擎：節點轉移、受阻路由、停止、承接新任務
 │   │   │   ├── FlowRun.java          # 每任務的流程快照（存於 flow_run 表）
 │   │   │   ├── AgentDispatch.java    # Agent 選擇角色、派工契約驗證與歷史保存
+│   │   │   ├── Consultation.java     # 角色互相諮詢：暫停提問、唯讀回答、原 session 接續與額度
+│   │   │   ├── TeamBoard.java        # 團隊共享看板：決策／假設／問題／風險，承接時帶走
 │   │   │   ├── FlowLimits.java       # 防循環上限的唯一判斷（引擎與按鈕共用）
 │   │   │   ├── FlowGates.java        # 依工作契約（gate）驗證節點報告
 │   │   │   ├── FlowContext.java      # 滾動的交接紀錄 flow.context

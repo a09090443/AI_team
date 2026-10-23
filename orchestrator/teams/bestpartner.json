@@ -759,6 +759,7 @@
     },
     "tester": {
       "name": "QA Agent",
+      "capabilities": "測試計畫、反例設計與驗收：依需求與固定操作判斷要測哪些情境、如何驗證、證據是否足夠；熟悉本專案的驗收操作與文件站隔離建置。",
       "runtime": "codex",
       "model": "gpt-5.6-sol",
       "reasoningEffort": "medium",
@@ -849,6 +850,12 @@
       ]
     }
   },
+  "collaboration": {
+    "consultPerVisit": 2,
+    "consultPerTask": 12,
+    "questionsPerRound": 2,
+    "boardMaxEntries": 100
+  },
   "entry": "intake",
   "maxTransitions": 24,
   "nodes": {
@@ -876,6 +883,7 @@
     },
     "design": {
       "kind": "AGENT",
+      "consultRoles": ["builder", "tester"],
       "role": "architect",
       "schema": "schemas/analysis.json",
       "scope": "READ_ONLY",
@@ -904,6 +912,7 @@
     "plan": {
       "instructions": "prompts/plan.md",
       "kind": "AGENT",
+      "consultRoles": ["architect", "builder", "infrastructure"],
       "role": "tester",
       "schema": "schemas/plan.json",
       "scope": "READ_ONLY",
@@ -923,6 +932,7 @@
     },
     "implementation": {
       "kind": "AGENT",
+      "consultRoles": ["architect", "tester"],
       "role": "builder",
       "schema": "schemas/implementation.json",
       "scope": "WORKSPACE",
@@ -954,6 +964,7 @@
     },
     "verification": {
       "kind": "AGENT",
+      "consultRoles": ["architect", "builder"],
       "role": "tester",
       "schema": "schemas/verification.json",
       "scope": "LIMITED",
@@ -984,6 +995,7 @@
     },
     "review": {
       "kind": "AGENT",
+      "consultRoles": ["architect"],
       "role": "inspector",
       "schema": "schemas/review.json",
       "scope": "READ_ONLY",
@@ -1004,6 +1016,7 @@
     "triage": {
       "instructions": "prompts/triage.md",
       "kind": "AGENT",
+      "consultRoles": ["architect", "builder", "tester", "infrastructure"],
       "role": "coordinator",
       "schema": "schemas/analysis.json",
       "scope": "READ_ONLY",
