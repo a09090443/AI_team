@@ -167,8 +167,11 @@ class TeamCatalogTest {
         Files.createDirectories(tmp.resolve(".git"));
         assertThat(TeamCatalog.load(Path.of("teams/bestpartner.json"), key -> tmp.toString()).definition().project().autonomy())
                 .isEqualTo(new TeamDefinition.Autonomy(2, 3600, 2, true, true, true));
-        for (String team : java.util.List.of("spring-starters", "node-web", "dynamic-api"))
-            assertThat(TeamCatalog.load(Path.of("teams/" + team + ".json"), key -> tmp.toString()).definition().project().autonomy()).isNull();
+        // dynamic-api、spring-starters 只開延後驗收（2026-10-23）；node-web 是範例配置，維持停用。
+        for (String team : java.util.List.of("spring-starters", "dynamic-api"))
+            assertThat(TeamCatalog.load(Path.of("teams/" + team + ".json"), key -> tmp.toString()).definition().project().autonomy())
+                    .isEqualTo(new TeamDefinition.Autonomy(0, 0, 0, false, false, true));
+        assertThat(TeamCatalog.load(Path.of("teams/node-web.json"), key -> tmp.toString()).definition().project().autonomy()).isNull();
     }
     @Test void broadCacheWriteRejected() throws Exception {
         var config = config(); ((ObjectNode)config.path("project")).putArray("cachePaths").add(".ssh");

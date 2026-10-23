@@ -4,6 +4,14 @@
   "project": {
     "requirePlanApproval": true,
     "autoApprovePlanWhenValid": true,
+    "autonomy": {
+      "modelTimeoutRecoveries": 0,
+      "maxTimeoutSeconds": 0,
+      "verificationContinuations": 0,
+      "requirementChangeOptions": false,
+      "channelCommandRouting": false,
+      "deferUnverifiable": true
+    },
     "operations": {
       "java-verify": {"nodes": ["implementation"], "directory": ".", "argv": ["mvn", "-B", "verify"], "writes": ["."]},
       "docs-install": {"nodes": ["implementation"], "directory": "doc-site", "argv": ["npm", "ci"], "writes": ["doc-site/node_modules"]},

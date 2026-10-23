@@ -156,7 +156,7 @@ bash deploy/bootstrap/check-source.sh
 ## 自主恢復（project.autonomy）
 
 選填，null＝停用。欄位 `modelTimeoutRecoveries`（0～3）、`maxTimeoutSeconds`（0～3600）、`verificationContinuations`（0～3）、
-`requirementChangeOptions`、`channelCommandRouting`、`deferUnverifiable`（2026-10-23，缺欄位為 false）；各實例的啟用狀態見[實例一覽](/docs/configurable-team#各專案實例的功能啟用狀態)（啟用中的值為 2／3600／2／true／true／true）。可原地配置遷移。
+`requirementChangeOptions`、`channelCommandRouting`、`deferUnverifiable`（2026-10-23，缺欄位為 false）；各實例的啟用狀態見[實例一覽](/docs/configurable-team#各專案實例的功能啟用狀態)（bestpartner 為 2／3600／2／true／true／true；dynamic-api 與 spring-starters 為 0／0／0／false／false／true，只開延後驗收）。可原地配置遷移。
 行為與邊界見 [失敗回報](/docs/failure-reporting)「管理者授權的自主恢復」一節。
 
 ## 服務建置與指定腳本

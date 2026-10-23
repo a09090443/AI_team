@@ -81,7 +81,9 @@ public final class AutonomousRecovery {
 
     /** 讓 agent 自己安排優先順序：知道時限，才不會把時間花在本次不需要的長檢查上（#1053 實作補跑後端測試）。 */
     static String timeBudgetNotice(FlowRun flow, int seconds) {
-        if (of(flow) == null) return "";
+        // 屬於逾時接續的配套；只開其他 autonomy 項目（例如只開 deferUnverifiable）的團隊不加這段提示。
+        Autonomy autonomy = of(flow);
+        if (autonomy == null || autonomy.modelTimeoutRecoveries() <= 0) return "";
         return "\n本階段時限：" + Math.max(1, seconds / 60) + " 分鐘（含所有安裝、建置與測試指令）。"
                 + "優先完成需求與必要檢查；與本次變更無關的長時間檢查不要執行，在 summary 說明未執行的原因。";
     }

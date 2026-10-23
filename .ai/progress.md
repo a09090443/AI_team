@@ -1,5 +1,11 @@
 # 工作進度（Codex 與 Claude Code 共用）
 
+## 2026-10-23 dynamic-api、spring-starters 開啟延後驗收（Claude Code）
+
+- 使用者要求兩份配置加 autonomy、只開 deferUnverifiable（其餘 0／false），驗證後依序部署三個實例。
+- AutonomousRecovery.timeBudgetNotice 改為只在 modelTimeoutRecoveries>0 時加入，讓只開延後驗收的團隊其他行為與未設定相同；新增 AutonomousRecoveryTest 1 項，TeamCatalogTest 斷言更新。基準驗證鍵不受影響（verificationContinuations 仍為 0）。
+- 已核對：failure-reporting、configurable-team、agent/configuration、data-model（欄位不變）。已修正前三者。docs build 通過。
+
 ## 2026-10-23 縮短簡單任務建置時間的五項修正（Claude Code，來源完成、未部署）
 
 - 依使用者核准的計畫（依節省時間排序），起因 #1053～#1055 花 48 小時（等真人約 27 小時、agent 約 5.5 小時）。使用者決定驗不了的驗收「自動延後、PR 列出」。

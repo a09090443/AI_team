@@ -127,7 +127,7 @@ runtime 清理精確 sandbox unit 的 cgroup，stdout／stderr 及 session check
 
 ## 管理者授權的自主恢復（project.autonomy，2026-10-22，#1053）
 
-`project.autonomy` 是選填的團隊配置，目前只有 bestpartner 啟用；沒設定（null）時以下行為全部不啟用，照舊停下等人。
+`project.autonomy` 是選填的團隊配置；沒設定（null）時以下行為全部不啟用，照舊停下等人。各欄位可分別開關：bestpartner 全開，dynamic-api 與 spring-starters 自 2026-10-23 只開 `deferUnverifiable`（其餘為 0／false，行為與未設定相同），見[實例一覽](configurable-team.md#各專案實例的功能啟用狀態)。
 起因是 #1053 一天內停了四次，每次都是系統自己能處理的事。實作在 `AutonomousRecovery`，次數記在 `systemRetries`，不新增 FlowRun 欄位。
 
 | 欄位 | bestpartner | 行為 |
@@ -139,7 +139,7 @@ runtime 清理精確 sandbox unit 的 cgroup，stdout／stderr 及 session check
 | `channelCommandRouting` | true | 頻道頂層訊息「#編號 已知指令」或「補充 #編號 …」轉給該任務處理（回覆貼在原討論串），不另開新任務。已知指令：檢視配置更新、核准配置更新、狀態、檢視完整報告、檢視測試計畫、核准需求變更、核准測試計畫。只限同頻道、白名單使用者；別的任務討論串裡的指令照舊拒絕。 |
 | `deferUnverifiable`（2026-10-23，缺欄位為 false） | true | 測試計畫可把「需要驗收節點操作契約沒有的能力才能驗」的驗收項目（實際部署探測、外部系統、真實資料庫、專案外檔案）列入 `deferred_acceptance`，算作已涵蓋、不停給真人；驗收提示說明它們不屬本次驗收，核准 PR 訊息與 PR 說明逐項列出「延後驗收」。見[工程流程](engineering-workflow.md#延後驗收與沿用前次結果2026-10-23)。 |
 
-另外啟用時，每個節點的脈絡會加上「本階段時限 N 分鐘，與本次變更無關的長檢查不要執行」，讓 agent 自己安排優先順序。
+另外 `modelTimeoutRecoveries` 大於 0 時，每個節點的脈絡會加上「本階段時限 N 分鐘，與本次變更無關的長檢查不要執行」，讓 agent 自己安排優先順序（2026-10-23 起只隨逾時接續啟用；只開延後驗收的團隊不加）。
 
 不變的邊界：不擴權、不放寬受保護路徑；需求變更與 PR 仍要真人核准（change_requirements 只是讓負責人按一次就送出核准）；
 所有自動動作都有上限並寫稽核紀錄（RECOVERY）。舊任務需經「檢視配置更新／核准配置更新」取得 autonomy（已列為可遷移欄位）。

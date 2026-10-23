@@ -34,6 +34,19 @@ class AutonomousRecoveryTest {
         assertThat(flow.systemRetries).isEmpty();
     }
 
+    /** 只開延後驗收的團隊（dynamic-api、spring-starters）：其他自主恢復與時限提示都不啟用。 */
+    @Test void deferralOnlyAutonomyKeepsEveryRecoveryOff() throws Exception {
+        autonomy("{\"modelTimeoutRecoveries\":0,\"maxTimeoutSeconds\":0,\"verificationContinuations\":0,"
+                + "\"requirementChangeOptions\":false,\"channelCommandRouting\":false,\"deferUnverifiable\":true}");
+        assertThat(AutonomousRecovery.claimTimeoutRecovery(flow, "implementation", "h:clean")).isZero();
+        assertThat(AutonomousRecovery.claimVerificationContinuation(flow, "h", 0, 3)).isZero();
+        assertThat(AutonomousRecovery.timeBudgetNotice(flow, 1800)).isEmpty();
+        assertThat(AutonomousRecovery.requirementChangeOptions(flow)).isFalse();
+        assertThat(AutonomousRecovery.channelCommandRouting(flow.snapshot.definition())).isFalse();
+        assertThat(DeferredAcceptance.enabled(flow)).isTrue();
+        assertThat(flow.systemRetries).isEmpty();
+    }
+
     @Test void timeoutRecoveryIsBoundedPerTaskAndNeedsProgressBetweenRounds() throws Exception {
         autonomy(ENABLED);
         var node = flow.snapshot.definition().nodes().get("implementation");
