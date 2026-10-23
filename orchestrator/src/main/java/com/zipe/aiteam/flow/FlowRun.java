@@ -73,6 +73,21 @@ public class FlowRun {
     public boolean changeAuthorized;
     public String prUrl;
     public String publishedHead;
+    /*
+     * 已開 PR 與基準衝突的自動同步（{@link PullRequestSync}，#1056）。空值不寫入 JSON，理由同下方協作欄位。
+     */
+    /** 進行中的同步輪；沒有在同步時為 null。 */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public PullRequestSync.Round pullRequestSync;
+    /** 已開始過的同步輪數，不因成功或失敗退還；上限見 project.autonomy.pullRequestSyncRounds。 */
+    @JsonInclude(JsonInclude.Include.NON_DEFAULT)
+    public int pullRequestSyncRounds;
+    /** GitHub 回報 PR 已合併或關閉，之後不再查詢。 */
+    @JsonInclude(JsonInclude.Include.NON_DEFAULT)
+    public boolean pullRequestClosed;
+    /** 已在討論串說明過、系統不自動處理的 PR 狀態；同一狀態只說一次。 */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public String pullRequestNotice;
     public IndependentVerifier.Receipt independentEvidence;
     /** 同一任務內通過過的獨立驗證指令（最多 20 筆）；相同配置、指令與輸入指紋時重用，見 VerificationPlan。缺欄位的舊快照為空。 */
     public List<VerificationPlan.HistoryEntry> verificationHistory = new ArrayList<>();

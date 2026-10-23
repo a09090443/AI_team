@@ -10,7 +10,9 @@
       "verificationContinuations": 2,
       "requirementChangeOptions": true,
       "channelCommandRouting": true,
-      "deferUnverifiable": true
+      "deferUnverifiable": true,
+      "pullRequestSyncRounds": 2,
+      "pullRequestSyncAutoPush": true
     },
     "operations": {
       "backend-compile": {

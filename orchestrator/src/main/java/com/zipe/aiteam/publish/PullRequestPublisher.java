@@ -90,6 +90,26 @@ public class PullRequestPublisher {
         return openPullRequest(repo, branch, base, title, body);
     }
 
+    /**
+     * 把同步後的任務分支推回既有 PR（#1056），不開新 PR。
+     * 推送前再查一次 GitHub：PR 必須仍開啟、來源分支相同，且遠端 head 仍是系統上次發布的 commit ——
+     * 有人在這段期間推過這個分支，就不蓋過對方。一般 push，不加 force；不是 fast-forward 時 GitHub 會拒絕。
+     */
+    public Result update(String taskId, String branch, String prUrl, String expectedRemoteHead) throws PublishException {
+        if (!props.hasGithubToken()) throw new PublishException("未設定 AI_TEAM_GITHUB_TOKEN，無法推回 PR。");
+        Path ws = workspaces.pathFor(taskId);
+        if (!java.nio.file.Files.isDirectory(ws.resolve(".git")))
+            throw new PublishException("工作區不存在或不是 git repository：" + ws);
+        PullRequestState pr = status(prUrl);
+        if (!pr.open()) throw new PublishException("PR 已" + (pr.merged() ? "合併" : "關閉") + "，不推送：" + prUrl);
+        if (!branch.equals(pr.headRef()) || !expectedRemoteHead.equals(pr.headSha()))
+            throw new PublishException("PR 的來源分支或最新 commit 已不是系統上次發布的版本（遠端 " + pr.headRef() + "@"
+                    + pr.headSha() + "），不蓋過其他人的推送：" + prUrl);
+        push(ws, branch);
+        log.info("任務 {} 的分支 {} 已推回既有 PR {}", taskId, branch, prUrl);
+        return new Result(branch, prUrl, pr.number());
+    }
+
     // ------------------------------------------------------------------ git
 
     /**
@@ -227,6 +247,51 @@ public class PullRequestPublisher {
         } catch (IOException e) {
             throw new PublishException("呼叫 GitHub API 失敗：" + e, e);
         }
+    }
+
+    /**
+     * GitHub 對既有 PR 的判斷。mergeable 為 null 代表 GitHub 還在計算，不是可合併也不是衝突。
+     */
+    public record PullRequestState(int number, String state, boolean merged, Boolean mergeable, String mergeableState,
+                                   String headRef, String headSha, String baseRef) {
+        public boolean open() { return "open".equals(state) && !merged; }
+        public boolean conflicting() { return open() && Boolean.FALSE.equals(mergeable) && "dirty".equals(mergeableState); }
+    }
+
+    private static final Pattern PR_URL = Pattern.compile("^https://github[.]com/([^/]+)/([^/]+)/pull/([0-9]+)/?$");
+
+    /** 只讀查詢既有 PR 的狀態；系統自己的判斷依據，不經 agent。 */
+    public PullRequestState status(String prUrl) throws PublishException {
+        if (!props.hasGithubToken()) throw new PublishException("未設定 AI_TEAM_GITHUB_TOKEN，無法查詢 PR。");
+        Matcher m = PR_URL.matcher(prUrl == null ? "" : prUrl.trim());
+        if (!m.find()) throw new PublishException("認不得的 PR 位址：" + prUrl);
+        String url = "https://api.github.com/repos/" + m.group(1) + "/" + m.group(2) + "/pulls/" + m.group(3);
+        try {
+            HttpRequest req = HttpRequest.newBuilder(URI.create(url))
+                    .timeout(Duration.ofSeconds(60))
+                    .header("Authorization", "Bearer " + props.githubToken())
+                    .header("Accept", "application/vnd.github+json")
+                    .header("X-GitHub-Api-Version", "2022-11-28")
+                    .GET().build();
+            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() != 200)
+                throw new PublishException("查詢 PR 失敗（HTTP " + resp.statusCode() + "）：" + redact(abbreviate(resp.body())));
+            return parseState(mapper.readTree(resp.body()));
+        } catch (PublishException e) {
+            throw e;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new PublishException("查詢 GitHub PR 時被中斷", e);
+        } catch (IOException e) {
+            throw new PublishException("查詢 GitHub PR 失敗：" + e, e);
+        }
+    }
+
+    public static PullRequestState parseState(JsonNode pr) {
+        JsonNode mergeable = pr.path("mergeable");
+        return new PullRequestState(pr.path("number").asInt(), pr.path("state").asText(""), pr.path("merged").asBoolean(false),
+                mergeable.isBoolean() ? mergeable.asBoolean() : null, pr.path("mergeable_state").asText(""),
+                pr.path("head").path("ref").asText(""), pr.path("head").path("sha").asText(""), pr.path("base").path("ref").asText(""));
     }
 
     private static String abbreviate(String s) {

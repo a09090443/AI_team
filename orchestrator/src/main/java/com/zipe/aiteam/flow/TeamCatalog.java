@@ -203,6 +203,13 @@ public class TeamCatalog {
                     && autonomy.maxTimeoutSeconds() >= 0 && autonomy.maxTimeoutSeconds() <= 3600
                     && autonomy.verificationContinuations() >= 0 && autonomy.verificationContinuations() <= 3,
                     "project.autonomy 上限無效：模型逾時接續與驗證續驗各 0～3 次，maxTimeoutSeconds 0～3600");
+        if (autonomy != null) {
+            require(autonomy.pullRequestSyncRounds() >= 0 && autonomy.pullRequestSyncRounds() <= 3,
+                    "project.autonomy.pullRequestSyncRounds 須為 0～3");
+            if (autonomy.pullRequestSyncRounds() > 0)
+                require(PullRequestSync.implementationNode(d) != null,
+                        "project.autonomy.pullRequestSyncRounds 需要主線（entry 沿 next）上有 gate=IMPLEMENTATION 的節點來解衝突");
+        }
         Set<String> reached = new HashSet<>(); visit(d, d.entry(), reached);
         require(reached.size() == d.nodes().size(), "存在不可到達節點，請修正流程");
     }

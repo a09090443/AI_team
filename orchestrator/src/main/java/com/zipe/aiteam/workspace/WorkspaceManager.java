@@ -275,6 +275,34 @@ public class WorkspaceManager {
         return new BaseRef(base, sha);
     }
 
+    /** 主 repo 遠端記錄的新舊：ok=本次（或 60 秒內）fetch 成功；at=最後一次成功的時間，從未成功時為 null。 */
+    public record Freshness(boolean ok, java.time.Instant at) {}
+
+    private final java.util.Map<Path, java.time.Instant> fetchedAt = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * 唯讀節點直接在主 repo 執行，系統不 fetch 的話它們看到的是上一次建工作區時的遠端狀態。
+     * #1056：GitHub 上已合併的 PR 看不到，agent 以舊的 origin/dev 推論而猜錯衝突檔。
+     * 只更新 refs/remotes（--prune 一併移除遠端已刪的分支），不碰本機分支與工作樹；
+     * 同一個 repo 一次只 fetch 一個，60 秒內成功過就沿用；失敗只警告，由呼叫端告知 agent 資料可能過時。
+     */
+    public Freshness refreshOrigin(Path repository) {
+        Path key = repository.toAbsolutePath().normalize();
+        synchronized (key.toString().intern()) {
+            java.time.Instant last = fetchedAt.get(key);
+            java.time.Instant now = java.time.Instant.now();
+            if (last != null && last.isAfter(now.minusSeconds(60))) return new Freshness(true, last);
+            try {
+                git(repository, "fetch", "--quiet", "--prune", "origin");
+                fetchedAt.put(key, now);
+                return new Freshness(true, now);
+            } catch (WorkspaceException e) {
+                log.warn("fetch 主 repo 失敗，唯讀節點將使用既有的遠端記錄：{}", e.getMessage());
+                return new Freshness(false, last);
+            }
+        }
+    }
+
     private boolean remoteBranchExists(Path repo, String branch) {
         try {
             gitOutput(repo, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/" + branch);
@@ -289,6 +317,11 @@ public class WorkspaceManager {
     }
 
     private String gitOutput(Path cwd, String... args) throws WorkspaceException {
+        return gitOutput(cwd, false, args);
+    }
+
+    /** conflictExit=true 時結束碼 1 也接受：merge-tree 有衝突時仍會輸出合併結果的 tree。 */
+    private String gitOutput(Path cwd, boolean conflictExit, String... args) throws WorkspaceException {
         List<String> cmd = new ArrayList<>();
         cmd.add("git");
         cmd.addAll(List.of(args));
@@ -309,7 +342,7 @@ public class WorkspaceManager {
                 p.destroyForcibly();
                 throw new WorkspaceException("git 逾時：" + String.join(" ", cmd));
             }
-            if (p.exitValue() != 0) {
+            if (p.exitValue() != 0 && !(conflictExit && p.exitValue() == 1)) {
                 throw new WorkspaceException(
                         "git 失敗（結束碼 " + p.exitValue() + "）：" + String.join(" ", cmd)
                       + System.lineSeparator() + out);
@@ -553,6 +586,101 @@ public class WorkspaceManager {
             result.add(dir);
         }
         return List.copyOf(result);
+    }
+
+    // ------------------------------------------------------------------ 已開 PR 的基準同步
+
+    /**
+     * 基準合併的起點。
+     *
+     * @param baseSha   合併進來的基準分支最新 commit
+     * @param conflicts 文字衝突的檔案；空清單代表 git 已自動合併並由系統 commit
+     * @param upToDate  基準已包含在 HEAD 裡，沒有要合併的東西
+     */
+    public record BaseMerge(String baseSha, List<String> conflicts, boolean upToDate) {}
+
+    /**
+     * 把基準分支的最新 commit 合併進任務分支（已開 PR 衝突同步，#1056）。
+     * 只用一般 merge，不 rebase、不改寫既有 commit，推回原 PR 才會是 fast-forward。
+     * 有衝突時保留合併中的狀態給實作角色解；沒有衝突時以系統身分直接 commit。
+     * 停用 repository 自帶的 hooks，理由同 {@link #commitPaths}。
+     */
+    public BaseMerge mergeBase(String taskId, Path repository, String base, String expectedHead) throws WorkspaceException {
+        Path ws = pathFor(taskId);
+        if (!headSha(taskId).equals(expectedHead)) throw new WorkspaceException("工作區 HEAD 不是已發布的 commit，拒絕同步：預期 " + expectedHead);
+        if (!clean(taskId)) throw new WorkspaceException("工作區有未提交的修改，拒絕同步");
+        // 同步一定要最新基準：fetch 失敗就停，不用舊記錄合併出一個仍然衝突的結果。
+        git(repository, "fetch", "--quiet", "--prune", "origin");
+        git(ws, "fetch", "--quiet", repository.toString(), "refs/remotes/origin/" + base);
+        String baseSha = gitOutput(ws, "rev-parse", "FETCH_HEAD");
+        try {
+            git(ws, "merge-base", "--is-ancestor", baseSha, "HEAD");
+            return new BaseMerge(baseSha, List.of(), true);
+        } catch (WorkspaceException notAncestor) {
+            // 基準有新 commit，往下合併。
+        }
+        try {
+            git(ws, "-c", "core.hooksPath=/dev/null", "merge", "--no-ff", "--no-commit", baseSha);
+        } catch (WorkspaceException e) {
+            if (!Files.exists(ws.resolve(".git/MERGE_HEAD"))) throw e;
+        }
+        List<String> conflicts = java.util.Arrays.stream(gitOutput(ws, "-c", "core.quotePath=false", "diff", "--name-only", "--diff-filter=U", "-z").split("\u0000"))
+                .filter(s -> !s.isEmpty()).distinct().sorted().toList();
+        if (conflicts.isEmpty())
+            git(ws, "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "--no-edit");
+        git(ws, "config", BASE_SHA_CONFIG_KEY, baseSha);
+        return new BaseMerge(baseSha, conflicts, false);
+    }
+
+    /**
+     * 同步輪的實作角色實際改了哪些檔案：工作目錄（含已提交）與 git 自動合併結果的差異，加上未追蹤檔。
+     * 不能用一般的 {@link #auditPaths}：以原 PR commit 為起點會把基準帶進來的全部變更算成角色的修改，
+     * 基準剛好改過受保護或禁止的路徑時（例如 .claude/**）就會被誤判越權。
+     */
+    public List<String> pathsChangedFromAutoMerge(String taskId, String parentHead, String baseSha) throws WorkspaceException {
+        Path ws = pathFor(taskId);
+        String auto = autoMergeTree(ws, parentHead, baseSha);
+        String changed = gitOutput(ws, "diff", "--no-renames", "--name-only", "-z", auto);
+        String untracked = gitOutput(ws, "ls-files", "--others", "--exclude-standard", "-z");
+        return java.util.stream.Stream.of(changed, untracked)
+                .flatMap(s -> java.util.Arrays.stream(s.split("\u0000")))
+                .filter(s -> !s.isEmpty()).distinct().sorted().toList();
+    }
+
+    /** git 自動合併兩個 commit 的結果 tree；有衝突時衝突檔內含衝突標記（merge-tree 此時結束碼為 1）。 */
+    private String autoMergeTree(Path ws, String parentHead, String baseSha) throws WorkspaceException {
+        String tree = gitOutput(ws, true, "merge-tree", "--write-tree", "--no-messages", parentHead, baseSha).lines().findFirst().orElse("");
+        if (!tree.matches("[0-9a-f]{40,64}")) throw new WorkspaceException("無法取得自動合併的結果");
+        return tree;
+    }
+
+    /** 同步無法開始時放棄合併中的狀態，讓工作區回到已發布的 commit；沒有合併中時不做事。 */
+    public void abortMerge(String taskId) throws WorkspaceException {
+        if (Files.exists(pathFor(taskId).resolve(".git/MERGE_HEAD"))) git(pathFor(taskId), "merge", "--abort");
+    }
+
+    /**
+     * 實作角色解完衝突後由系統核對，不採信自陳；回傳不通過的原因，通過時為 null。
+     * 合併 commit 的兩個上層必須是原 PR 的 commit 與基準 commit，沒有殘留衝突標記，
+     * 而且相對 git 自動合併的結果只動了衝突檔。
+     */
+    public String mergeProblem(String taskId, String parentHead, String baseSha, List<String> conflicts) throws WorkspaceException {
+        Path ws = pathFor(taskId);
+        if (Files.exists(ws.resolve(".git/MERGE_HEAD"))) return "合併尚未完成（仍有 MERGE_HEAD），需要解完衝突後 git commit --no-edit";
+        if (!clean(taskId)) return "工作區有未提交的修改";
+        List<String> line = List.of(gitOutput(ws, "rev-list", "--parents", "-n", "1", "HEAD").split(" "));
+        if (line.size() != 3 || !line.get(1).equals(parentHead) || !line.get(2).equals(baseSha))
+            return "HEAD 不是「原 PR commit＋基準 commit」的合併 commit（上層 commit：" + String.join(" ", line.subList(1, line.size())) + "）";
+        for (String path : conflicts) {
+            // git grep 找不到時結束碼為 1。
+            String markers = gitOutput(ws, true, "--literal-pathspecs", "grep", "-n", "-E", "^(<<<<<<<|>>>>>>>)( |$)|^=======$", "HEAD", "--", path);
+            if (!markers.isBlank()) return "衝突檔仍有衝突標記：" + path;
+        }
+        String auto = autoMergeTree(ws, parentHead, baseSha);
+        List<String> extra = gitOutput(ws, "-c", "core.quotePath=false", "diff", "--name-only", "--no-renames", auto, "HEAD")
+                .lines().filter(s -> !s.isBlank() && !conflicts.contains(s)).toList();
+        if (!extra.isEmpty()) return "衝突檔以外的檔案與自動合併結果不同：" + String.join("、", extra.stream().limit(20).toList());
+        return null;
     }
 
     /** 工作區是否存在且是 git repository。 */

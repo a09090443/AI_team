@@ -208,6 +208,11 @@ public class TaskStore {
         return rows;
     }
 
+    /** 已開 PR 的任務編號（由小到大）；PR 衝突同步的排程用，不載入階段結果。 */
+    public List<String> pullRequestTaskIds() {
+        return jdbc.queryForList("SELECT id FROM task WHERE state = 'PR_CREATED' ORDER BY CAST(id AS INTEGER)", String.class);
+    }
+
     private void loadStages(Task t) {
         jdbc.query("SELECT * FROM stage_result WHERE task_id = ?", rs -> {
             JsonNode result = null;

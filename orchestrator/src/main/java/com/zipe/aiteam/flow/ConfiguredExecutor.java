@@ -91,6 +91,7 @@ public class ConfiguredExecutor {
         AgentRuntime runtime = runtimes.require(role.runtime());
         Path cwd = workingDirectory(task, flow, node);
         if (!flow.dialogue && !Files.isDirectory(cwd.resolve(".git"))) throw new IllegalStateException("快照的工作目錄不存在或不是 repository：" + cwd);
+        String remoteNotice = remoteFreshness(flow, cwd);
         SandboxPolicy selectedPolicy = policy(flow, node, runtime, cwd);
         // 新契約專案才啟用；舊快照不因更新程式被暗中加上新派工條件。
         OperationPreflight.Evidence evidence = null;
@@ -122,6 +123,7 @@ public class ConfiguredExecutor {
                 + "\n建置規範：" + (ServiceDelivery.serviceStage(flow, node) ? "依 serviceTarget 及本階段核准操作建置既有服務。" : flow.snapshot.definition().project().buildInstructions())
                 + "\n測試規範：" + (ServiceDelivery.serviceStage(flow, node) ? "建置後執行 serviceTarget.checks，失敗自修並重驗；不套用開發 QA 計畫。" : flow.snapshot.definition().project().testInstructions()) + "\n補充與已知阻礙：\n" + flow.context);
         context.append(executionFacts(task, flow, node));
+        context.append(remoteNotice);
         int timeoutSeconds = AutonomousRecovery.timeoutSeconds(flow, flow.node, node);
         if (!flow.dialogue) context.append(AutonomousRecovery.timeBudgetNotice(flow, timeoutSeconds));
         if (evidence != null) context.append("\n系統派工前證據（不是建置成功或真人核准）：").append(evidence);
@@ -578,6 +580,21 @@ public class ConfiguredExecutor {
         } catch (Exception e) {
             return "\n原任務工作區現況：系統這次查不到（" + e.getClass().getSimpleName() + "），請告訴使用者無法確認，不要自行推斷。";
         }
+    }
+    /**
+     * 在主 repo 執行的節點先更新遠端記錄（#1056），並告訴 agent 這份記錄有多新；工作區節點不受影響。
+     * fetch 失敗不擋派工，但要求 agent 把涉及遠端的判斷標成無法確認，不得當成最新狀態。
+     */
+    String remoteFreshness(FlowRun flow, Path cwd) {
+        Path repository = Path.of(flow.snapshot.repository()).toAbsolutePath().normalize();
+        if (!cwd.toAbsolutePath().normalize().equals(repository)) return "";
+        var freshness = workspaces.refreshOrigin(repository);
+        if (freshness == null) return "";
+        if (freshness.ok())
+            return "\n主 repo 遠端記錄（origin/*）已於 " + com.zipe.aiteam.task.TaipeiTime.seconds(freshness.at()) + " 更新，可視為當時的 GitHub 狀態。";
+        return "\n主 repo 遠端記錄這次更新失敗，" + (freshness.at() == null ? "本次服務啟動後從未更新成功" : "沿用 "
+                + com.zipe.aiteam.task.TaipeiTime.seconds(freshness.at()) + " 的記錄")
+                + "：涉及遠端分支、已合併 PR 等判斷請標明「無法確認最新狀態」，不得當成事實。";
     }
     Path workingDirectory(Task task, FlowRun flow, Node node) throws Exception {
         if (flow.dialogue && flow.parentId != null) {

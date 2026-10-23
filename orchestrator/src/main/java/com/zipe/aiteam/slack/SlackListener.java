@@ -223,6 +223,19 @@ public class SlackListener {
             orchestrator.requestTriage(existing, com.zipe.aiteam.flow.HumanOptions.PUBLISH_COMMAND, e.getUser());
             return;
         }
+        // 已開 PR 與基準衝突時立即同步（排程每 10 分鐘也會查）；原討論串或頻道頂層都可以，回覆貼在原討論串。
+        var sync = Pattern.compile("^同步\\s*PR\\s+#(\\d+)\\s*$", Pattern.CASE_INSENSITIVE).matcher(text);
+        if (sync.matches()) {
+            Task existing = orchestrator.lookup(sync.group(1)).orElse(null);
+            boolean here = existing != null && existing.slackChannel().equals(e.getChannel())
+                    && (e.getThreadTs() == null || existing.slackThreadTs().equals(threadTs));
+            if (!here) {
+                notifier.post(SlackNotifier.Identity.SYSTEM, e.getChannel(), threadTs, "請在該任務原討論串或同頻道頂層送出同步 PR 指令，未變更任何任務。");
+                return;
+            }
+            orchestrator.checkPullRequest(existing, e.getUser());
+            return;
+        }
         // 管理者確認配置的驗證指令在基準分支上能不能過；不建立任務，結果另開一則訊息。
         if (BASELINE.matcher(text).matches() && role == SlackNotifier.Identity.SYSTEM) {
             orchestrator.requestBaseline(e.getChannel(), e.getUser(), "由 <@" + e.getUser() + "> 手動要求");

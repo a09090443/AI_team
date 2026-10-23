@@ -113,6 +113,7 @@ App-Level Token 留空**：發言與交接 tag 使用同一個角色身分，不
 | 角色諮詢與共享看板（`collaboration`／`consultRoles`） | ✓ | ✓ | ✓ | —（範例，作為對照組） |
 | 自主恢復（`project.autonomy` 的逾時接續、續驗、需求變更選項、頂層指令） | ✓ | — | — | — |
 | 驗收環境驗不了的項目自動延後（`project.autonomy.deferUnverifiable`） | ✓ | ✓ | ✓ | — |
+| 已開 PR 衝突自動同步（`project.autonomy.pullRequestSyncRounds`／`pullRequestSyncAutoPush`） | ✓（2 輪、自動推回） | — | — | — |
 | 自主派工（`candidateRoles`） | design、implementation | design、implementation | — | — |
 | 跨 runtime 改派（`protectedPathFallback`） | ✓ | ✓ | — | — |
 | 服務建置路線（`service` 節點、`serviceTarget`） | ✓ | — | — | — |
@@ -518,6 +519,17 @@ Runnable 交給 TaskOrchestrator，由真正的執行中工作與 FIFO 排隊清
   `package.json` 之類不會被誤判成修改受保護檔案，也不會被代為提交。目錄底下只要有任何 git 追蹤的檔案就**不排除**（fail closed），
   所以 `writes` 不能拿來藏真正的原始碼。適用所有團隊與既有快照，專案不需要改 `.gitignore`。
   同一批目錄在限寫節點的沙箱裡也不會被 protectedPaths 釘成唯讀（`ConfiguredExecutor.protectedPins`），QA 才能清理和重建自己的副本。
+- **主 repo 執行的節點先更新遠端記錄（2026-10-23，#1056）**：`workspace=false` 的節點（intake、design、triage 等）與以主 repo
+  回答的角色對話，在 `snapshot.repository()` 主 repo 執行。起因是 #1056：主 repo 原本只在建立工作區（`WorkspaceManager.provision`）或基準驗證（`baseRef`）時 fetch，
+  #1056 因此以 19:03 的舊 `origin/dev` 推論，猜錯衝突檔（猜 ddl 檔頭，實際是 `docs-site/docs/getting-started/installation.md`）。
+  現在 `ConfiguredExecutor.remoteFreshness` 會在派工前呼叫 `WorkspaceManager.refreshOrigin`：
+  - 執行 `git fetch --quiet --prune origin`，只更新 refs/remotes，不碰主 repo 的本機分支與工作樹；
+  - 同一個 repo 一次只 fetch 一個，60 秒內成功過就沿用；
+  - 提示會寫明「遠端記錄於 <台北時間> 更新」；fetch 失敗時不擋派工，但要求 agent 把涉及遠端的判斷標成「無法確認最新狀態」。
+
+  不設開關，所有團隊適用；工作區節點不受影響。
+- **已開 PR 衝突同步**：見[工程流程與驗證邊界](engineering-workflow.md#已開-pr-的衝突同步2026-10-23)。
+  以 `project.autonomy.pullRequestSyncRounds` 開啟；開啟後，該實例所有仍開啟、且由系統開出的 PR 都會納入檢查。
 
 
 ## 服務建置分支

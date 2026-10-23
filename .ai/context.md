@@ -27,6 +27,8 @@
 
 ## 正在進行
 
+- **2026-10-23 已開 PR 衝突同步＋主 repo 先 fetch（Claude Code，最高優先）**：來源完成、未 commit／未部署（細節見 progress 同日條目、decisions）。Linux 隔離建置 /home/agent/prsync-build.j5Flph。下一步：commit；部署 bestpartner 需使用者同意；部署後中止 #1056，以 PR #6（任務 1055，衝突檔 docs-site/docs/getting-started/installation.md）做真實端對端。
+
 - **2026-10-23 簡單任務效率五項修正（Claude Code，最高優先）**：commit 8269d27 已於 23:45～23:51 部署三個實例（JAR 5fc7db7b…，檢查全部通過）。下一步：以下一個小型任務對照 #1053～#1055 的耗時與停頓。細節見 progress 同日條目。
 
 - **2026-10-23 負責人裁定待決問題（Claude Code，最高優先）**：commit 2e61dab 已部署 bestpartner 並真實驗證：#1055 按「移出範圍」後 agent 自行修好審查發現的 2 個缺陷，21:47 停在 AWAIT_PR_APPROVAL（commit 522c2a9）。下一步：負責人核准 PR；可另行處理驗證範圍誤跑後端測試與 tester 沙箱 localhost 問題。

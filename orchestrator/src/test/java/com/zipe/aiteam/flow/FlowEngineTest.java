@@ -2245,6 +2245,126 @@ class FlowEngineTest {
         assertThat(task.state()).isEqualTo(Task.State.PR_CREATED);
     }
 
+    static final String PR_URL = "https://github.com/test/example/pull/1";
+    static final String SYNC_BASE = "b".repeat(40);
+    /** 先走到 PR_CREATED，再把目前配置改成開啟 PR 衝突同步（舊任務快照沒有這兩個欄位）。 */
+    private FlowRun publishedAndSyncEnabled(boolean autoPush) throws Exception {
+        engine.run(task);
+        when(publisher.publish(eq("42"), any(), any(), eq("feature/task42"))).thenReturn(new PullRequestPublisher.Result("feature/task42", PR_URL, 1));
+        List<Runnable> jobs = new ArrayList<>(); engine.approve(task, "u", jobs::add); jobs.getFirst().run();
+        assertThat(task.state()).isEqualTo(Task.State.PR_CREATED);
+        var current = catalog.snapshot();
+        ObjectNode definition = mapper.valueToTree(current.definition());
+        ((ObjectNode) definition.path("project")).putObject("autonomy").put("pullRequestSyncRounds", 2).put("pullRequestSyncAutoPush", autoPush);
+        when(catalog.snapshot()).thenReturn(new TeamDefinition.Snapshot(current.revision(),
+                mapper.treeToValue(definition, TeamDefinition.class), current.repository(), current.assets()));
+        when(publisher.status(PR_URL)).thenReturn(new PullRequestPublisher.PullRequestState(1, "open", false, false, "dirty", "feature/task42", "head1", "main"));
+        when(workspace.mergeBase(eq("42"), any(), eq("main"), eq("head1"))).thenAnswer(c -> {
+            workspaceHead = "merged"; return new WorkspaceManager.BaseMerge(SYNC_BASE, List.of("README.md"), false); });
+        when(workspace.pathsChangedFromAutoMerge("42", "head1", SYNC_BASE)).thenReturn(List.of("README.md"));
+        when(publisher.update("42", "feature/task42", PR_URL, "head1")).thenReturn(new PullRequestPublisher.Result("feature/task42", PR_URL, 1));
+        calls.clear();
+        return store.flow("42").orElseThrow();
+    }
+
+    @Test void conflictingPullRequestIsResolvedOnTheOriginalTaskAndPushedBackToTheSamePr() throws Exception {
+        FlowRun published = publishedAndSyncEnabled(true);
+        // 原任務的整輪換手早已用完（#1055 為 38／24），同步輪仍有自己的固定額度。
+        published.transitions = published.snapshot.definition().maxTransitions();
+        store.saveFlow("42", published);
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.checkPullRequest(task, null, jobs::add);
+
+        assertThat(jobs).hasSize(1);
+        FlowRun syncing = store.flow("42").orElseThrow();
+        assertThat(syncing.node).isEqualTo("implementation");
+        assertThat(syncing.pullRequestSync.conflicts()).containsExactly("README.md");
+        assertThat(syncing.comparisonBase).isEqualTo(SYNC_BASE);
+        assertThat(syncing.context).contains("已開 PR 與基準衝突").contains("README.md");
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.RESUME_QUEUED);
+
+        jobs.getFirst().run();
+
+        assertThat(calls).anyMatch(c -> c.startsWith("implementation:")).anyMatch(c -> c.startsWith("verification:"))
+                .anyMatch(c -> c.startsWith("review:")).noneMatch(c -> c.startsWith("intake:") || c.startsWith("plan:"));
+        verify(workspace).mergeProblem("42", "head1", SYNC_BASE, List.of("README.md"));
+        verify(publisher).update("42", "feature/task42", PR_URL, "head1");
+        verify(publisher, times(1)).publish(any(), any(), any(), any());
+        FlowRun done = store.flow("42").orElseThrow();
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.PR_CREATED);
+        assertThat(done.publishedHead).isEqualTo("merged");
+        assertThat(done.pullRequestSync).isNull();
+        assertThat(done.pullRequestSyncRounds).isEqualTo(1);
+
+        // GitHub 重新判斷後可合併：只通知一次。
+        when(publisher.status(PR_URL)).thenReturn(new PullRequestPublisher.PullRequestState(1, "open", false, true, "clean", "feature/task42", "merged", "main"));
+        engine.checkPullRequest(store.find("42").orElseThrow(), null, jobs::add);
+        engine.checkPullRequest(store.find("42").orElseThrow(), null, jobs::add);
+        verify(slack, times(1)).post(any(), eq("c"), eq("t"), contains("GitHub 已確認 PR 不再衝突"));
+    }
+
+    @Test void syncWithoutAutoPushWaitsForApprovalAndThenUpdatesInsteadOfOpeningANewPr() throws Exception {
+        publishedAndSyncEnabled(false);
+        List<Runnable> jobs = new ArrayList<>();
+        engine.checkPullRequest(task, null, jobs::add);
+        jobs.getFirst().run();
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        verify(slack).post(any(), eq("c"), eq("t"), contains("推回既有 PR"), any());
+        verify(publisher, never()).update(any(), any(), any(), any());
+
+        Task waiting = store.find("42").orElseThrow(); jobs.clear();
+        engine.approve(waiting, "u", jobs::add); jobs.getFirst().run();
+        verify(publisher).update("42", "feature/task42", PR_URL, "head1");
+        verify(publisher, times(1)).publish(any(), any(), any(), any());
+    }
+
+    @Test void failedMergeCheckNeverPushesBack() throws Exception {
+        publishedAndSyncEnabled(true);
+        when(workspace.mergeProblem(any(), any(), any(), any())).thenReturn("衝突檔仍有衝突標記：README.md");
+        List<Runnable> jobs = new ArrayList<>();
+        engine.checkPullRequest(task, null, jobs::add);
+        jobs.getFirst().run();
+        verify(publisher, never()).update(any(), any(), any(), any());
+        assertThat(store.find("42").orElseThrow().state()).isNotEqualTo(Task.State.PR_CREATED);
+        assertThat(store.flow("42").orElseThrow().context).contains("系統核對合併結果");
+    }
+
+    @Test void pullRequestPushedBySomeoneElseIsReportedOnceAndNeverSynced() throws Exception {
+        publishedAndSyncEnabled(true);
+        when(publisher.status(PR_URL)).thenReturn(new PullRequestPublisher.PullRequestState(1, "open", false, false, "dirty", "feature/task42", "someone", "main"));
+        List<Runnable> jobs = new ArrayList<>();
+        engine.checkPullRequest(task, null, jobs::add);
+        engine.checkPullRequest(task, null, jobs::add);
+        assertThat(jobs).isEmpty();
+        verify(workspace, never()).mergeBase(any(), any(), any(), any());
+        verify(slack, times(1)).post(any(), eq("c"), eq("t"), contains("不蓋過其他人的修改"));
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.PR_CREATED);
+    }
+
+    @Test void mergedPullRequestStopsBeingPolledAndDisabledConfigurationNeverCallsGithub() throws Exception {
+        publishedAndSyncEnabled(true);
+        when(publisher.status(PR_URL)).thenReturn(new PullRequestPublisher.PullRequestState(1, "closed", true, null, "", "feature/task42", "head1", "main"));
+        List<Runnable> jobs = new ArrayList<>();
+        engine.checkPullRequest(task, null, jobs::add);
+        engine.checkPullRequest(task, null, jobs::add);
+        verify(publisher, times(1)).status(PR_URL);
+        assertThat(store.flow("42").orElseThrow().pullRequestClosed).isTrue();
+
+        // 手動指令只限需求負責人；未開啟同步的配置不查 GitHub。
+        engine.checkPullRequest(task, "stranger", jobs::add);
+        FlowRun reopened = store.flow("42").orElseThrow(); reopened.pullRequestClosed = false; store.saveFlow("42", reopened);
+        var current = catalog.snapshot();
+        ObjectNode definition = mapper.valueToTree(current.definition());
+        ((ObjectNode) definition.path("project")).remove("autonomy");
+        when(catalog.snapshot()).thenReturn(new TeamDefinition.Snapshot(current.revision(),
+                mapper.treeToValue(definition, TeamDefinition.class), current.repository(), current.assets()));
+        engine.checkPullRequest(task, "u", jobs::add);
+        verify(publisher, times(1)).status(PR_URL);
+        verify(slack).post(any(), eq("c"), eq("t"), contains("未開啟 PR 衝突同步"));
+        assertThat(jobs).isEmpty();
+    }
+
     @Test void changedHeadAfterApprovalNeverPublishes() throws Exception {
         engine.run(task); when(workspace.headSha("42")).thenReturn("changed");
         List<Runnable> jobs = new ArrayList<>(); engine.approve(task, "u", jobs::add); jobs.get(0).run();

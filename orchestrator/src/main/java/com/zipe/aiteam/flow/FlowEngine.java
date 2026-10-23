@@ -355,9 +355,21 @@ public class FlowEngine {
                         publishApproved(task, flow);
                         return;
                     }
+                    var syncRound = flow.pullRequestSync;
+                    if (syncRound != null && syncRound.autoPush()) {
+                        // PR 衝突同步：原 PR 已由真人核准開出，需求與計畫沒變；證據在新 commit 上全部通過，依開始時的配置授權直接推回同一個 PR。
+                        store.saveFlow(task.id(), flow);
+                        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "依 project.autonomy.pullRequestSyncAutoPush 自動推回 PR（同步第 "
+                                + syncRound.round() + " 輪，證據全部通過）；commit=" + head);
+                        state(task, Task.State.PUBLISH_RUNNING, "任務 #" + task.id() + " 自動推回 PR 中");
+                        publishApproved(task, flow);
+                        return;
+                    }
                     store.saveFlow(task.id(), flow);
                     state(task, Task.State.AWAIT_PR_APPROVAL, "任務 #" + task.id() + " 等待人工核准 PR");
-                    String message = "任務 #" + task.id() + " 已完成配置中的檢查，請核准才會推分支與開 PR（不代表產品已交付）。\ncommit=" + head
+                    String message = "任務 #" + task.id() + " 已完成配置中的檢查，"
+                            + (flow.prUrl != null ? "請核准才會把解完衝突的 commit 推回既有 PR " + flow.prUrl : "請核准才會推分支與開 PR")
+                            + "（不代表產品已交付）。\ncommit=" + head
                             + "\n需求基準=" + flow.baselineRevision + "\n需求／驗收負責人=<@" + flow.acceptanceOwner + ">"
                             + IssueTracker.summary(flow) + DeferredAcceptance.summary(flow) + TeamBoard.summary(flow) + reviewSuggestions(flow, 8);
                     slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), message, SlackBlocks.approvalBlocks(task.id(), message));
@@ -685,6 +697,17 @@ public class FlowEngine {
                 }
                 if (block == null) flow.systemRetries.remove(flow.node + AgentDispatch.FORMAT_RETRY);
                 if (block == null) commitAssignedImplementation(task, flow, node);
+                // PR 衝突同步：合併結果由系統核對，不採信實作角色的自陳（#1056）。
+                if (block == null && PullRequestSync.resolving(flow, flow.node)) {
+                    var round = flow.pullRequestSync;
+                    String problem = workspaces.mergeProblem(task.id(), round.parentHead(), round.baseSha(), round.conflicts());
+                    if (problem != null) {
+                        block = "PR 衝突同步的合併核對未通過：" + problem;
+                        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_REJECTED, "節點 " + flow.node + "：" + block);
+                        flow.context = FlowContext.append(flow.context, "系統核對合併結果：" + problem
+                                + "\n請照【系統：已開 PR 與基準衝突】的要求修正；不要 rebase 或重新合併。");
+                    }
+                }
                 if (block == null && node.gate() == Gate.SERVICE) {
                     // auditScope 已核對限寫路徑；不讓 runtime 自行提交或把未提交成果當成完成。
                     List<String> dirty = workspaces.uncommittedPaths(task.id());
@@ -1025,14 +1048,24 @@ public class FlowEngine {
         if (!AgentDispatch.enabled(node) || node.scope() != Scope.WORKSPACE
                 || !"codex".equals(flow.snapshot.definition().roles().get(node.role()).runtime())) return;
         if (flow.beforeHead == null) throw new SecurityException("缺少自主派工實作的起始 commit");
-        List<String> changed = workspaces.auditPaths(task.id(), flow.beforeHead);
+        List<String> changed = implementationPaths(task, flow, node);
         if (changed.stream().anyMatch(ProtectedPathFallback::denied))
             throw new SecurityException("自主派工實作修改了禁止的工具行為或版控路徑");
         List<String> dirty = workspaces.uncommittedPaths(task.id());
         if (!dirty.isEmpty()) {
-            String head = workspaces.commitPaths(task.id(), dirty, "任務 #" + task.id() + " 自主派工實作（" + node.role() + "）");
+            // PR 衝突同步時合併還沒 commit：這次提交就是合併 commit（含基準帶進來的變更），由 mergeProblem 核對。
+            String head = workspaces.commitPaths(task.id(), dirty, flow.pullRequestSync != null
+                    ? "合併 " + flow.pullRequestSync.baseBranch() + " 並解決衝突（任務 #" + task.id() + " PR 衝突同步，" + node.role() + "）"
+                    : "任務 #" + task.id() + " 自主派工實作（" + node.role() + "）");
             audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "自主派工核對後代為提交：" + head);
         }
+    }
+    /** 實作節點這一輪實際改了哪些路徑；PR 衝突同步時以 git 自動合併結果為起點，基準帶進來的變更不算（{@link PullRequestSync}）。 */
+    private List<String> implementationPaths(Task task, FlowRun flow, Node node) throws Exception {
+        var round = flow.pullRequestSync;
+        if (PullRequestSync.resolving(flow, flow.node))
+            return workspaces.pathsChangedFromAutoMerge(task.id(), round.parentHead(), round.baseSha());
+        return workspaces.auditPaths(task.id(), flow.beforeHead);
     }
     /**
      * 分段改派（{@link ProtectedPathFallback}）：需求要改原角色 runtime 必定寫不了、而且管理者允許改派的路徑時，
@@ -1155,7 +1188,7 @@ public class FlowEngine {
     }
     private void auditScope(Task task, FlowRun flow, Node node) throws Exception {
         if (AgentDispatch.enabled(node) && node.scope() == Scope.WORKSPACE && flow.beforeHead != null
-                && workspaces.auditPaths(task.id(), flow.beforeHead).stream().anyMatch(ProtectedPathFallback::denied))
+                && implementationPaths(task, flow, node).stream().anyMatch(ProtectedPathFallback::denied))
             throw new SecurityException("自主派工實作修改了禁止的工具行為或版控路徑");
         if (!node.workspace() || node.scope() != Scope.LIMITED) return;
         if (flow.beforeHead == null) throw new SecurityException("缺少限寫階段起始 commit，不能核實寫入範圍");
@@ -2033,6 +2066,110 @@ public class FlowEngine {
                 slack.post(Identity.SYSTEM, channel, thread, text + "\n（按鈕無法顯示時可輸入：補充 #" + task.id() + " <要怎麼改>）");
         }
     }
+    /**
+     * 已開 PR 的衝突同步（{@link PullRequestSync}，#1056）。排程定期呼叫（byUser=null），
+     * 需求負責人也可用「同步 PR #編號」立即觸發；兩者走同一套判斷，排程只在有狀態變化時發言。
+     */
+    public void checkPullRequest(Task task, String byUser, Consumer<Runnable> enqueue) {
+        FlowRun flow = store.flow(task.id()).orElse(null);
+        java.util.function.Consumer<String> reply = text -> {
+            if (byUser != null) slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id() + " " + text);
+        };
+        if (byUser != null && !props.allowedUsers().contains(byUser)) return;
+        if (flow == null || flow.dialogue || flow.prUrl == null) { reply.accept("沒有系統開出的 PR，無法同步。"); return; }
+        if (byUser != null && !byUser.equals(flow.acceptanceOwner)) { reply.accept("只有需求負責人可以要求同步 PR。"); return; }
+        if (task.state() != Task.State.PR_CREATED) { reply.accept("目前為 " + task.state() + "，只有已開 PR 且沒有在處理中的任務可以同步。"); return; }
+        if (flow.pullRequestClosed) { reply.accept("PR 已合併或關閉，不再同步。"); return; }
+        int max; boolean autoPush;
+        try {
+            var current = catalog.snapshot();
+            if (!current.repository().equals(flow.snapshot.repository())) { reply.accept("目前服務配置的 repository 與原任務不同，不能同步。"); return; }
+            max = PullRequestSync.maxRounds(current.definition());
+            autoPush = PullRequestSync.autoPush(current.definition());
+        } catch (Exception e) { reply.accept("讀不到目前的團隊配置，未同步。"); return; }
+        if (max == 0) { reply.accept("目前配置未開啟 PR 衝突同步（project.autonomy.pullRequestSyncRounds）。"); return; }
+        PullRequestPublisher.PullRequestState pr;
+        try { pr = publisher.status(flow.prUrl); }
+        catch (PullRequestPublisher.PublishException e) {
+            org.slf4j.LoggerFactory.getLogger(getClass()).warn("任務 {} 查詢 PR 失敗：{}", task.id(), Diagnostics.safe(e.getMessage()));
+            reply.accept("查詢 PR 狀態失敗：" + Diagnostics.clip(Diagnostics.safe(e.getMessage()), 600)); return;
+        }
+        switch (PullRequestSync.assess(flow, pr, max)) {
+            case NONE -> reply.accept(pr.mergeable() == null ? "GitHub 還在計算 PR 能否合併，請稍後再試。" : "PR 目前沒有衝突，不需要同步。");
+            case CLOSED -> {
+                flow.pullRequestClosed = true; store.saveFlow(task.id(), flow);
+                audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "PR 已" + (pr.merged() ? "合併" : "關閉") + "，停止追蹤衝突：" + flow.prUrl);
+                reply.accept("PR 已" + (pr.merged() ? "合併" : "關閉") + "，不再同步。");
+            }
+            case CONFIRMED -> {
+                flow.pullRequestNotice = PullRequestSync.confirmedNotice(flow.publishedHead); store.saveFlow(task.id(), flow);
+                audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "GitHub 確認同步後的 PR 可合併（mergeable=true）；commit=" + pr.headSha());
+                slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id()
+                        + " GitHub 已確認 PR 不再衝突，可以合併：" + flow.prUrl + "\ncommit=" + pr.headSha());
+            }
+            case MISMATCH -> notifyOnce(task, flow, PullRequestSync.mismatchNotice(pr), byUser, "PR " + flow.prUrl + " 與 " + pr.baseRef()
+                    + " 衝突，但 PR 的分支或最新 commit 已不是系統上次推的版本（遠端 " + pr.headRef() + "@" + Diagnostics.clip(pr.headSha(), 12)
+                    + "，系統紀錄 " + flow.branch + "@" + Diagnostics.clip(String.valueOf(flow.publishedHead), 12)
+                    + "），系統不蓋過其他人的修改，不自動同步。請在 GitHub 處理衝突。");
+            case EXHAUSTED -> notifyOnce(task, flow, PullRequestSync.exhaustedNotice(flow.publishedHead), byUser, "PR " + flow.prUrl
+                    + " 又與 " + pr.baseRef() + " 衝突，但這個 PR 已用完 " + max + " 輪自動同步（project.autonomy.pullRequestSyncRounds），"
+                    + "系統不再自動處理。請在 GitHub 處理衝突。");
+            case SYNC -> startPullRequestSync(task, flow, pr, byUser == null ? "排程偵測" : byUser, autoPush, max, enqueue);
+        }
+    }
+    /** 系統不自動處理的 PR 狀態：同一狀態只說一次；手動要求時一律回覆。 */
+    private void notifyOnce(Task task, FlowRun flow, String key, String byUser, String text) {
+        if (byUser == null && key.equals(flow.pullRequestNotice)) return;
+        flow.pullRequestNotice = key; store.saveFlow(task.id(), flow);
+        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "PR 衝突未自動同步：" + key);
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                (flow.acceptanceOwner == null ? "" : "<@" + flow.acceptanceOwner + "> ") + "任務 #" + task.id() + " " + text);
+    }
+    private void startPullRequestSync(Task task, FlowRun flow, PullRequestPublisher.PullRequestState pr, String trigger,
+                                      boolean autoPush, int max, Consumer<Runnable> enqueue) {
+        if (!store.claimState(task.id(), Task.State.PR_CREATED, Task.State.RESUME_QUEUED)) return;
+        task.state(Task.State.RESUME_QUEUED);
+        // 先計輪：合併前就失敗也算一輪，排程才不會每 10 分鐘重試同一個失敗。
+        flow.pullRequestSyncRounds++;
+        String base = flow.snapshot.definition().project().baseBranch();
+        try {
+            String implementation = PullRequestSync.implementationNode(flow.snapshot.definition());
+            if (implementation == null) throw new IllegalStateException("原任務配置的主線上沒有實作節點，無法派人解衝突");
+            if (!flow.workspaceReady) throw new IllegalStateException("原任務沒有工作區");
+            requireWorkspace(task, flow);
+            var merge = workspaces.mergeBase(task.id(), Path.of(flow.snapshot.repository()), base, flow.publishedHead);
+            if (merge.upToDate()) throw new IllegalStateException("本機合併時 " + base + " 已包含在 PR 分支裡，與 GitHub 的衝突判斷不一致");
+            var round = new PullRequestSync.Round(flow.pullRequestSyncRounds, pr.number(), base, merge.baseSha(), flow.publishedHead,
+                    merge.conflicts(), trigger, autoPush, flow.transitions, java.time.Instant.now().toString());
+            flow.pullRequestSync = round;
+            flow.pullRequestNotice = null;
+            // 驗收與稽核改以新基準比較：PR 的實際差異是「新基準 → 合併後」，基準帶進來的變更不算本任務的修改。
+            flow.comparisonBase = merge.baseSha();
+            flow.independentEvidence = null; flow.approvalHead = null; flow.ownerPublishBy = null;
+            flow.node = implementation; flow.activeNode = null;
+            flow.context = FlowContext.append(flow.context, PullRequestSync.instruction(round, flow.prUrl));
+            store.saveFlow(task.id(), flow);
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY, "PR 衝突同步第 " + round.round() + "／" + max
+                    + " 輪（觸發：" + trigger + "）：合併 " + base + "@" + merge.baseSha() + " 進 " + flow.branch + "@" + round.parentHead()
+                    + "；衝突檔=" + merge.conflicts() + "；自動推送=" + autoPush + "；沿用原需求、計畫與核准，歷史計數未重設");
+            slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id() + " 的 PR " + flow.prUrl
+                    + " 與 " + base + " 衝突，系統自動同步（第 " + round.round() + "／" + max + " 輪）。"
+                    + "\n衝突檔：" + (merge.conflicts().isEmpty() ? "（本機合併沒有文字衝突）" : String.join("、", merge.conflicts()))
+                    + "\n接著由實作角色解衝突，再重跑驗收與審查；"
+                    + (autoPush ? "全部通過後直接推回同一個 PR，不需要你操作。" : "全部通過後會請你核准推回 PR。"));
+            queue(enqueue, task, () -> run(store.find(task.id()).orElseThrow()));
+        } catch (Exception e) {
+            flow.pullRequestSync = null;
+            store.saveFlow(task.id(), flow);
+            try { if (workspaces.exists(task.id())) workspaces.abortMerge(task.id()); }
+            catch (Exception abort) { audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_ERROR, "放棄合併失敗：" + Diagnostics.safe(Diagnostics.describe(abort))); }
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_ERROR, "PR 衝突同步無法開始：" + Diagnostics.safe(Diagnostics.describe(e)));
+            if (store.claimState(task.id(), Task.State.RESUME_QUEUED, Task.State.PR_CREATED)) task.state(Task.State.PR_CREATED);
+            notifyOnce(task, flow, "failed:" + flow.publishedHead, trigger.equals("排程偵測") ? null : trigger,
+                    "PR " + flow.prUrl + " 與 " + base + " 衝突，但系統無法開始自動同步（已計入第 " + flow.pullRequestSyncRounds + "／" + max
+                            + " 輪，沒有啟動任何 agent）：" + Diagnostics.clip(Diagnostics.safe(e.getMessage()), 800));
+        }
+    }
     public void approve(Task task, String user, Consumer<Runnable> enqueue) {
         if (!props.allowedUsers().contains(user)) return;
         if (!store.claimState(task.id(), Task.State.AWAIT_PR_APPROVAL, Task.State.PUBLISH_RUNNING)) return;
@@ -2055,6 +2192,7 @@ public class FlowEngine {
             if (reason != null || !head.equals(flow.approvalHead) || !workspaces.clean(task.id())) throw new IllegalStateException("發布前證據／工作區已變更：" + reason);
             if (!Objects.equals(flow.origin, workspaces.origin(task.id())) || !Objects.equals(flow.branch, workspaces.currentBranch(task.id()))
                     || !flow.snapshot.definition().project().baseBranch().equals(workspaces.baseBranch(task.id()))) throw new SecurityException("Git 發布目標與配置快照不一致");
+            if (flow.prUrl != null) { updatePullRequest(task, flow, head); return; }
             var result = publisher.publish(task.id(), "任務 #" + task.id() + " " + Diagnostics.clip(task.requestText().replace('\n', ' '), 90),
                     prBody(task, flow), flow.branch);
             flow.prUrl = result.prUrl(); flow.publishedHead = head; store.saveFlow(task.id(), flow);
@@ -2062,6 +2200,24 @@ public class FlowEngine {
             slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), result.prUrl());
         } catch (PullRequestPublisher.PublishException e) { publishFailed(task, flow, e); }
         catch (Exception e) { waitHumanForError(task, flow, "推分支、開 PR 沒有完成，任務沒有發布出去；確認下面的原因後，需要重新核准 PR。", e); }
+    }
+    /**
+     * 已開過 PR 的任務一律推回同一個 PR，不再開新 PR（PR 衝突同步，{@link PullRequestSync}）。
+     * 遠端必須仍是系統上次推的 commit；推完不代表 GitHub 已重新判斷，排程下次查到可合併時才說「不再衝突」。
+     */
+    private void updatePullRequest(Task task, FlowRun flow, String head) throws PullRequestPublisher.PublishException {
+        var round = flow.pullRequestSync;
+        String expected = round != null ? round.parentHead() : flow.publishedHead;
+        publisher.update(task.id(), flow.branch, flow.prUrl, expected);
+        flow.publishedHead = head; flow.pullRequestSync = null;
+        flow.pullRequestNotice = PullRequestSync.pushedNotice(head);
+        store.saveFlow(task.id(), flow);
+        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "已推回既有 PR " + flow.prUrl
+                + (round == null ? "" : "（同步第 " + round.round() + " 輪）") + "：" + expected + " → " + head);
+        state(task, Task.State.PR_CREATED, "已推回既有 PR，等待 GitHub 重新判斷能否合併：" + flow.prUrl + IssueTracker.summary(flow));
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id()
+                + " 已把解完衝突、重新驗收與審查通過的 commit 推回同一個 PR：" + flow.prUrl + "\ncommit=" + head
+                + "\nGitHub 確認不再衝突後會再通知。");
     }
     /**
      * 驗收負責人在 Slack 命令「開 PR」（文字指令、停止訊息按鈕或 agent 的 publish 選項）。
@@ -2188,7 +2344,8 @@ public class FlowEngine {
         audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_ERROR, "推分支、開 PR 失敗：" + Diagnostics.safe(Diagnostics.describe(e)));
         if (aborted(task)) return;
         state(task, Task.State.AWAIT_PR_APPROVAL, "任務 #" + task.id() + " 開 PR 失敗，等待重新核准 PR");
-        String message = "任務 #" + task.id() + " 推分支、開 PR 沒有完成，任務還沒有發布出去；實作、驗收與審查結果都保留。\n"
+        String message = "任務 #" + task.id() + (flow.prUrl != null ? " 推回既有 PR " + flow.prUrl + " 沒有完成" : " 推分支、開 PR 沒有完成")
+                + "，任務還沒有發布出去；實作、驗收與審查結果都保留。\n"
                 + "原因：" + Diagnostics.clip(Diagnostics.safe(e.getMessage()), 1500)
                 + "\n修正上面的原因後，直接再按一次核准即可，不必重跑任何步驟（核准前仍會重新檢查證據與 commit）。\ncommit=" + flow.approvalHead;
         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), message, SlackBlocks.approvalBlocks(task.id(), message));

@@ -10,6 +10,23 @@
 - 使用者要求：為修改另開分支或 worktree 的任務，完成後直接合併回 main 並 push。已寫入 AGENTS.md（只適用開發本專案的 AI 工具，不改變 orchestrator 對目標專案的 PR 核准閘門）。
 - 已核對的文件：agent/ai-tools（只描述規則來源與同步，無需改）、agent/index。無缺漏。docs build 未過，原因是工作區另一項未提交工作的 PullRequestSync.java、PullRequestMonitor.java 尚未列入目錄樹，與本規則無關。
 
+## 2026-10-23 已開 PR 衝突同步＋主 repo 先 fetch（Claude Code，來源完成、未 commit／未部署）
+
+- 依使用者核准的計畫 A＋B（使用者選「自動偵測＋手動指令」「通過即自動推送」）。
+- B：WorkspaceManager.refreshOrigin（fetch --prune、60 秒節流、失敗不擋）；ConfiguredExecutor.remoteFreshness 在主 repo 執行的節點提示遠端記錄時間或「無法確認最新狀態」。
+- A：新增 flow/PullRequestSync（判斷、主線實作節點、換手額度 8、固定指示）、task/PullRequestMonitor（每 10 分鐘查 PR_CREATED）、「同步 PR #編號」指令；PullRequestPublisher.status／update（推回前核對遠端 head、一般 push）；WorkspaceManager.mergeBase／mergeProblem／pathsChangedFromAutoMerge／abortMerge；FlowEngine.checkPullRequest／startPullRequestSync、實作後合併核對、approval 自動推回、已開 PR 一律 updatePullRequest；FlowRun 新增 pullRequestSync／pullRequestSyncRounds／pullRequestClosed／pullRequestNotice；Autonomy 新增 pullRequestSyncRounds／pullRequestSyncAutoPush；TaskStore.pullRequestTaskIds；bestpartner 開啟 2 輪＋自動推回。
+- 設計調整：node-web 有兩個實作節點，解衝突節點改為「主線上第一個 IMPLEMENTATION」；Codex 不能寫 .git 時由 commitAssignedImplementation 代為提交合併 commit；寫入稽核改以自動合併結果為起點。
+- 測試：新增 PullRequestSyncTest 9、PullRequestMonitorTest 1、WorkspaceManagerTest 4（真 git 衝突）、FlowEngineTest 5、ConfiguredExecutorTest 2，TeamCatalogTest 更新 1。本機完整 831 項僅 3 項既有 Windows 環境失敗（symlink、/bin/sh、CRLF）。Linux 驗證見下一行。
+- 已核對的文件：configurable-team、engineering-workflow、failure-reporting、review-gate、data-model、agent/configuration、agent/operations、agent/system-map、catalog、project-tree。已修正：以上全部（configurable-team 的兩條已知問題改寫為新行為）。docs build 通過。
+- 未做：commit、部署、真實端對端（部署後中止 #1056，等 monitor 或送「同步 PR #1055」驗證 PR #6）。
+
+## 2026-10-23 #1056「修正 PR 衝突問題」分析（Claude Code，僅分析，未改程式／未動線上任務）
+
+- 事實：衝突的是 #1055 開的 PR #6（feature/ai-team-task-1055@522c2a9 → dev）。使用者先合併 PR #5（1044），dev 前進到 df9f7f4；兩個 PR 都從舊 dev 2216d6d 分出。暫存 clone 以 merge-tree 計算，唯一衝突檔是 docs-site/docs/getting-started/installation.md（暫存目錄已刪）。
+- 經過：intake／design 在主 repo 讀 19:03 的舊 origin refs（非工作區節點不 fetch），先誤判為「合併 1044」被使用者中斷更正，再猜衝突在 ddl 檔頭；design 遇額度暫停約 68 分；plan（QA）以缺 gh／git 拓撲操作回報 BLOCKED；triage route=human，推薦真人自行在 GitHub 解衝突。
+- 程式缺口：非工作區節點遠端狀態過時；PR_CREATED 後無 PR 狀態追蹤；發布只能開新 PR，無「更新既有 PR 分支」流程；「PR 不再衝突」應由系統以 GitHub API 產生收據，而非要求 agent 工具。
+- 已核對的文件：configurable-team、engineering-workflow（PR_CREATED 段）、agent/system-map。發現的缺漏：上述兩項行為未記載。已修正：configurable-team 新增兩條已知問題。docs build 通過。
+
 ## 2026-10-23 dynamic-api、spring-starters 開啟延後驗收（Claude Code）
 
 - 使用者要求兩份配置加 autonomy、只開 deferUnverifiable（其餘 0／false），驗證後依序部署三個實例。

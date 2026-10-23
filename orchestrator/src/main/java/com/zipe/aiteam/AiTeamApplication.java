@@ -30,6 +30,8 @@ public class AiTeamApplication implements CommandLineRunner {
     private com.zipe.aiteam.runtime.RuntimeRegistry runtimes;
     @org.springframework.beans.factory.annotation.Autowired
     private com.zipe.aiteam.task.QuotaAutoResume quotaAutoResume;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.zipe.aiteam.task.PullRequestMonitor pullRequestMonitor;
 
     public AiTeamApplication(AiTeamProperties props, SlackListener listener,
                              TaskStore store, TaskOrchestrator orchestrator,
@@ -125,6 +127,7 @@ public class AiTeamApplication implements CommandLineRunner {
 
         // SocketModeApp.start() 會阻塞，因此不能等 ApplicationReadyEvent 才啟動。
         quotaAutoResume.start();
+        pullRequestMonitor.start();
 
         Runtime.getRuntime().addShutdownHook(new Thread(listener::stop));
         listener.start();

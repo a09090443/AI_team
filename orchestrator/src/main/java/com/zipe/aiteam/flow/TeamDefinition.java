@@ -76,9 +76,17 @@ public record TeamDefinition(int version, String id, Project project, Map<String
      * @param requirementChangeOptions 分流可提出 change_requirements 選項：需求負責人按下即等同「核准需求變更」
      * @param channelCommandRouting    頻道頂層訊息「#編號 已知指令」視為該任務的補充，不另開新任務
      * @param deferUnverifiable        驗收環境驗不了的驗收項目由測試計畫列為延後、不停給真人，PR 逐項列出（2026-10-23）；舊配置缺欄位時為 false
+     * @param pullRequestSyncRounds    已開 PR 與基準衝突時，回原任務解衝突並推回同一分支的每個 PR 輪數上限（0..3，0＝停用；#1056）
+     * @param pullRequestSyncAutoPush  同步輪的證據全部通過時直接推回原 PR，不再停在核准 PR；首次開 PR 仍須真人核准
      */
     public record Autonomy(int modelTimeoutRecoveries, int maxTimeoutSeconds, int verificationContinuations,
-                           boolean requirementChangeOptions, boolean channelCommandRouting, boolean deferUnverifiable) {
+                           boolean requirementChangeOptions, boolean channelCommandRouting, boolean deferUnverifiable,
+                           int pullRequestSyncRounds, boolean pullRequestSyncAutoPush) {
+        public Autonomy(int modelTimeoutRecoveries, int maxTimeoutSeconds, int verificationContinuations,
+                        boolean requirementChangeOptions, boolean channelCommandRouting, boolean deferUnverifiable) {
+            this(modelTimeoutRecoveries, maxTimeoutSeconds, verificationContinuations, requirementChangeOptions,
+                    channelCommandRouting, deferUnverifiable, 0, false);
+        }
         public Autonomy(int modelTimeoutRecoveries, int maxTimeoutSeconds, int verificationContinuations,
                         boolean requirementChangeOptions, boolean channelCommandRouting) {
             this(modelTimeoutRecoveries, maxTimeoutSeconds, verificationContinuations, requirementChangeOptions, channelCommandRouting, false);

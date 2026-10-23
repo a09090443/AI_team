@@ -142,6 +142,112 @@ class WorkspaceManagerTest {
         assertThat(manager.uncommittedPaths("1301")).contains("target/qa-docs/docs-site/package-lock.json");
     }
 
+    /** 在主 repo 提交並推到 origin，模擬 GitHub 上的基準分支前進（例如另一個 PR 被合併）。 */
+    private String advanceBase(String file, String content) throws Exception {
+        run(repo, "git", "config", "user.email", "base@test");
+        run(repo, "git", "config", "user.name", "base");
+        Files.writeString(repo.resolve(file), content, StandardCharsets.UTF_8);
+        run(repo, "git", "add", file);
+        run(repo, "git", "commit", "--quiet", "-m", "基準前進 " + file);
+        run(repo, "git", "push", "--quiet", "origin", "master");
+        return out(repo, "git", "rev-parse", "HEAD");
+    }
+
+    private String prCommit(Path ws) throws Exception {
+        Files.writeString(ws.resolve("README.md"), "PR 的修改\n", StandardCharsets.UTF_8);
+        Files.writeString(ws.resolve("pr.txt"), "pr\n", StandardCharsets.UTF_8);
+        run(ws, "git", "add", ".");
+        run(ws, "git", "commit", "--quiet", "-m", "PR 修改");
+        return out(ws, "git", "rev-parse", "HEAD");
+    }
+
+    @Test
+    void 已開PR同步_合併最新基準後只列真衝突_解完才通過核對() throws Exception {
+        Path ws = manager.provision(task("1401"));
+        String parent = prCommit(ws);
+        advanceBase("README.md", "基準的修改\n");
+        String baseSha = advanceBase("base.txt", "base\n");
+
+        var merge = manager.mergeBase("1401", repo, "master", parent);
+
+        assertThat(merge.upToDate()).isFalse();
+        assertThat(merge.baseSha()).isEqualTo(baseSha);
+        assertThat(merge.conflicts()).containsExactly("README.md");
+        // 基準帶進來的檔案不算角色的修改，否則基準改過受保護路徑就會被誤判越權。
+        assertThat(manager.pathsChangedFromAutoMerge("1401", parent, baseSha)).doesNotContain("base.txt", "pr.txt");
+        assertThat(manager.mergeProblem("1401", parent, baseSha, merge.conflicts())).contains("MERGE_HEAD");
+
+        Files.writeString(ws.resolve("README.md"), "PR 的修改\n基準的修改\n", StandardCharsets.UTF_8);
+        run(ws, "git", "add", "README.md");
+        run(ws, "git", "commit", "--quiet", "--no-edit");
+
+        assertThat(manager.pathsChangedFromAutoMerge("1401", parent, baseSha)).containsExactly("README.md");
+        assertThat(manager.mergeProblem("1401", parent, baseSha, merge.conflicts())).isNull();
+        // 之後的驗收範圍是 PR 對新基準的實際差異。
+        assertThat(manager.changedPathsSinceBase("1401")).containsExactlyInAnyOrder("README.md", "pr.txt");
+    }
+
+    @Test
+    void 已開PR同步_殘留衝突標記或改了衝突檔以外的檔案都不通過() throws Exception {
+        Path ws = manager.provision(task("1402"));
+        String parent = prCommit(ws);
+        String baseSha = advanceBase("README.md", "基準的修改\n");
+        var merge = manager.mergeBase("1402", repo, "master", parent);
+        run(ws, "git", "add", "README.md");
+        run(ws, "git", "commit", "--quiet", "--no-edit");
+        assertThat(manager.mergeProblem("1402", parent, baseSha, merge.conflicts())).contains("衝突標記").contains("README.md");
+
+        Files.writeString(ws.resolve("README.md"), "解好了\n", StandardCharsets.UTF_8);
+        Files.writeString(ws.resolve("pr.txt"), "順手改了別的\n", StandardCharsets.UTF_8);
+        run(ws, "git", "add", ".");
+        run(ws, "git", "commit", "--quiet", "--amend", "--no-edit");
+        assertThat(manager.mergeProblem("1402", parent, baseSha, merge.conflicts())).contains("衝突檔以外").contains("pr.txt");
+
+        // 合併 commit 之後又多一個 commit：HEAD 不再是兩個指定上層的合併 commit。
+        Files.writeString(ws.resolve("extra.txt"), "x\n", StandardCharsets.UTF_8);
+        run(ws, "git", "add", "extra.txt");
+        run(ws, "git", "commit", "--quiet", "-m", "多一個 commit");
+        assertThat(manager.mergeProblem("1402", parent, baseSha, merge.conflicts())).contains("合併 commit");
+    }
+
+    @Test
+    void 已開PR同步_沒有衝突時由系統直接完成合併_工作區不是已發布commit時拒絕() throws Exception {
+        Path ws = manager.provision(task("1403"));
+        String parent = prCommit(ws);
+        assertThat(manager.mergeBase("1403", repo, "master", parent).upToDate()).isTrue();
+
+        String baseSha = advanceBase("base.txt", "base\n");
+        assertThatThrownBy(() -> manager.mergeBase("1403", repo, "master", "0".repeat(40))).hasMessageContaining("已發布");
+
+        var merge = manager.mergeBase("1403", repo, "master", parent);
+        assertThat(merge.conflicts()).isEmpty();
+        assertThat(manager.mergeProblem("1403", parent, baseSha, List.of())).isNull();
+        assertThat(ws.resolve("base.txt")).exists();
+    }
+
+    @Test
+    void 主repo遠端記錄_60秒內不重複fetch_失敗時回報過時() throws Exception {
+        var first = manager.refreshOrigin(repo);
+        assertThat(first.ok()).isTrue();
+        Path other = tmp.resolve("other");
+        run(tmp, "git", "clone", "--quiet", origin.toString(), other.toString());
+        run(other, "git", "config", "user.email", "o@test"); run(other, "git", "config", "user.name", "o");
+        Files.writeString(other.resolve("new.txt"), "n\n");
+        run(other, "git", "add", "."); run(other, "git", "commit", "--quiet", "-m", "遠端前進");
+        run(other, "git", "push", "--quiet", "origin", "master");
+        String before = out(repo, "git", "rev-parse", "refs/remotes/origin/master");
+
+        assertThat(manager.refreshOrigin(repo).at()).isEqualTo(first.at());
+        assertThat(out(repo, "git", "rev-parse", "refs/remotes/origin/master")).isEqualTo(before);
+
+        Path broken = tmp.resolve("broken");
+        run(tmp, "git", "clone", "--quiet", origin.toString(), broken.toString());
+        run(broken, "git", "remote", "set-url", "origin", tmp.resolve("missing.git").toString());
+        var failed = manager.refreshOrigin(broken);
+        assertThat(failed.ok()).isFalse();
+        assertThat(failed.at()).isNull();
+    }
+
     @Test
     void provision_應建立獨立的_clone_並切到任務分支() throws Exception {
         Path ws = manager.provision(task("1001"));

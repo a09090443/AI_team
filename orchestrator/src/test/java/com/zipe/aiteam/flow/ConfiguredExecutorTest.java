@@ -245,6 +245,28 @@ class ConfiguredExecutorTest {
         when(runtime.escalationPins(any())).thenReturn(List.of());
         executor = new ConfiguredExecutor(props, new RuntimeRegistry(List.of(runtime)), mock(ExecutionSandbox.class), workspace, store, preflight);
     }
+    @Test void readOnlyNodeInTheMainRepositoryFetchesFirstAndToldHowFreshTheRemoteIs() throws Exception {
+        // #1056：intake／design 讀到舊的 origin/dev，猜錯衝突檔。主 repo 執行前先更新，並告訴 agent 記錄的時間。
+        flow.node = "intake";
+        AtomicReference<AgentRuntime.RuntimeRequest> captured = new AtomicReference<>();
+        when(runtime.execute(any(), any())).thenAnswer(c -> { captured.set(c.getArgument(0)); return null; });
+        when(workspace.refreshOrigin(repo.toAbsolutePath().normalize()))
+                .thenReturn(new WorkspaceManager.Freshness(true, java.time.Instant.parse("2026-10-23T14:06:00Z")));
+        executor.execute(new Task("42", "c", "t", "u", "修正 PR 衝突"), flow, flow.snapshot.definition().nodes().get("intake"));
+        assertThat(captured.get().prompt()).contains("主 repo 遠端記錄（origin/*）已於 2026-10-23 22:06:00（台北時間） 更新");
+
+        when(workspace.refreshOrigin(any())).thenReturn(new WorkspaceManager.Freshness(false, null));
+        executor.execute(new Task("42", "c", "t", "u", "修正 PR 衝突"), flow, flow.snapshot.definition().nodes().get("intake"));
+        assertThat(captured.get().prompt()).contains("更新失敗").contains("無法確認最新狀態");
+    }
+    @Test void workspaceNodesDoNotFetchTheMainRepository() throws Exception {
+        Path ws = tmp.resolve("ws"); Files.createDirectories(ws.resolve(".git"));
+        flow.node = "implementation"; flow.workspaceReady = true;
+        when(workspace.pathFor("42")).thenReturn(ws);
+        when(runtime.execute(any(), any())).thenReturn(null);
+        executor.execute(new Task("42", "c", "t", "u", "做登入"), flow, flow.snapshot.definition().nodes().get("implementation"));
+        verify(workspace, never()).refreshOrigin(any());
+    }
     @Test void consultAnswersReadOnlyWithoutTouchingTheAskersCheckpoint() throws Exception {
         flow.snapshot = ConsultationTest.collaborative(flow.snapshot, 1, 4);
         flow.node = "plan"; flow.visits.put("plan", 1);

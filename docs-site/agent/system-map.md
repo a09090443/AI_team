@@ -66,6 +66,7 @@ Slack @主機器人 需求
   → verification  QA（tester）逐情境執行並附證據
   → review        Code Reviewer（inspector）獨立審查
   → approval      [真人核准 PR] → 推分支、開 PR → 狀態 PR_CREATED
+  （選用）PR 與基準衝突 → 回原任務 implementation 解衝突 → 驗證／驗收／審查 → 推回同一個 PR（PullRequestSync）
 ```
 
 典型配置中，design、plan、implementation、verification、review 節點受阻（`blocked`）時交給 **triage**（PM 分流）；
@@ -83,13 +84,16 @@ agent 不能自行指定角色或跳到任意節點。
 - 用完時停止訊息會說明原因並提供真的可用的選項（延長授權、受控恢復、改用新任務繼續）。
 - 負責人新的真人輸入只往 PR 核准走時（「移出範圍」裁定待決問題、「開 PR」補跑審查），沿 `next` 到核准節點的固定步數另給一次有界額度，
   任何節點受阻就收回（`OwnerIssueDecision`，2026-10-23）。
+- PR 衝突同步每輪另有固定 8 次換手額度，整輪上限已用完的舊任務也能完成一輪，不重設歷史計數（`PullRequestSync`，2026-10-23）。
+- 在主 repo 執行的唯讀節點，派工前先 fetch 遠端記錄（60 秒內不重複），提示寫明記錄時間（`WorkspaceManager.refreshOrigin`，2026-10-23）。
 - 流程重走時，前次結果仍然有效（同 commit、前置結果相同、需求沒變或只刪減、沒有新問題）的設計、計畫、實作直接沿用，不呼叫 agent、不計換手（`ReceiptReuse`，2026-10-23）。
 
 ### 人工閘門（永遠需要真人）
 
 - 測試計畫核准（除非專案設定自動核准且通過機械檢查）
 - 需求變更核准
-- PR 核准。**計畫核准不等於 PR 核准**；核准收據綁定配置、需求基準與計畫版本
+- PR 核准。**計畫核准不等於 PR 核准**；核准收據綁定配置、需求基準與計畫版本。
+  例外：已核准開出的 PR 衝突同步後，若配置開啟 `pullRequestSyncAutoPush` 且證據全部通過，就直接推回同一個 PR（使用者 2026-10-23 同意）
 - `PR_CREATED` 只表示自動開發管線結束，**不代表已合併、發布或產品驗收**
 
 只有任務提出者（`requester_user_id`，即驗收負責人）能核准計畫、需求變更與 PR。

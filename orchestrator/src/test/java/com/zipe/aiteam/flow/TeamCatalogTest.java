@@ -166,8 +166,8 @@ class TeamCatalogTest {
     @Test void bestpartnerEnablesAutonomyOthersDoNot() throws Exception {
         Files.createDirectories(tmp.resolve(".git"));
         assertThat(TeamCatalog.load(Path.of("teams/bestpartner.json"), key -> tmp.toString()).definition().project().autonomy())
-                .isEqualTo(new TeamDefinition.Autonomy(2, 3600, 2, true, true, true));
-        // dynamic-api、spring-starters 只開延後驗收（2026-10-23）；node-web 是範例配置，維持停用。
+                .isEqualTo(new TeamDefinition.Autonomy(2, 3600, 2, true, true, true, 2, true));
+        // dynamic-api、spring-starters 只開延後驗收（2026-10-23），PR 衝突同步未開；node-web 是範例配置，維持停用。
         for (String team : java.util.List.of("spring-starters", "dynamic-api"))
             assertThat(TeamCatalog.load(Path.of("teams/" + team + ".json"), key -> tmp.toString()).definition().project().autonomy())
                     .isEqualTo(new TeamDefinition.Autonomy(0, 0, 0, false, false, true));

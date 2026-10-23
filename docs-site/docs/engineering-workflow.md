@@ -252,9 +252,63 @@ Slack 明示「尚未確認合併／發布／產品驗收」。它是本段自�
 推送或開 PR 本身失敗（token、權限、網路）時留在 `AWAIT_PR_APPROVAL` 並貼出錯誤原文，修好後再按核准即可；
 發布前證據或 Git 目標不符時才停給人，停在 approval 節點時可按「重新進入核准 PR」，詳見 [失敗回報](failure-reporting.md)。
 
+PR 開出去之後若與基準衝突，可以由原任務自動同步，見下一節。PR 合併或關閉後，系統只會停止追蹤，不改變任務狀態。
 尚未串接合併事件、發布版本、產品驗收結果、回滾或部署監控；沒有可靠來源就不產生 MERGED／RELEASED 等成功狀態。
 導入這些功能前需先定義目標 repo 的發布方法與真人責任，不自行新增自動合併或部署權限。
 舊版本 jar 不認得 PR_CREATED；產生新版任務後回退須用升級前備份，不讓舊 jar 直接讀新版資料。
+
+### 已開 PR 的衝突同步（2026-10-23）
+
+起因 #1056：使用者合併任務 1044 的 PR 後，任務 1055 已開的 PR 跟 dev 衝突。原本的流程只能另開任務、另開新 PR，原 PR 一定解不了，最後交給真人。
+PR 是系統自己開的，分支與工作區都還在，因此改由原任務接著處理（`PullRequestSync`、`FlowEngine.checkPullRequest`）。
+
+**開關**：`project.autonomy.pullRequestSyncRounds`（0～3，0 或缺欄位＝停用）與 `pullRequestSyncAutoPush`。
+開關讀管理者**目前**的配置，因為舊任務快照沒有這兩個欄位；同步開始時把當下的授權記在同步輪（`FlowRun.pullRequestSync.autoPush`）。
+配置驗證要求主線（entry 沿 next）上有 gate=IMPLEMENTATION 的節點。
+
+**偵測**：
+- `PullRequestMonitor` 每 10 分鐘以 `AI_TEAM_GITHUB_TOKEN` 查一次 `PR_CREATED` 任務的 PR（`PullRequestPublisher.status`，GitHub `GET /pulls/{n}`）；
+- 需求負責人也可以送「同步 PR #編號」立即觸發，兩者走同一套判斷（`PullRequestSync.assess`）。
+
+| GitHub 狀態 | 處理 |
+|---|---|
+| 已合併或已關閉 | 記 `pullRequestClosed`，之後不再查 |
+| mergeable 為 null（GitHub 還在計算） | 下次再查 |
+| 可合併 | 不處理；上一輪推回後第一次確認可合併時，通知一次「不再衝突」 |
+| 衝突（mergeable=false、dirty），且來源分支、head 與基準都和系統紀錄相同 | 開始同步，見下方 |
+| 衝突，但分支或 head 被其他人動過，或 base 不同 | 說明一次，不自動處理，不蓋過他人的推送 |
+| 衝突，但這個 PR 的同步輪數已用完 | 說明一次，請真人處理 |
+
+**同步一輪**：
+1. 任務 `PR_CREATED → RESUME_QUEUED`。合併前就失敗也計入輪數，排程才不會反覆重試同一個失敗。
+2. 系統在原任務工作區以 `git merge --no-ff --no-commit` 併入 fetch 後的最新基準（`WorkspaceManager.mergeBase`），衝突檔由 git 查得。
+   不 rebase、不改寫既有 commit。
+3. `comparisonBase` 與工作區的 `ai-team.base-sha` 改為新的基準 commit，驗收範圍、檔案比對與獨立驗證都只看 PR 對新基準的實際差異。
+4. 從主線第一個實作節點開始。系統在脈絡寫入 PR、兩側 SHA 與衝突檔，要求只改衝突段落、兩側修改都保留。
+   能寫 .git 的角色自己 `git commit --no-edit`；Codex 這類沙箱不能寫 .git 的角色只改檔案，由系統代為提交合併 commit。
+5. 實作後由系統核對（`WorkspaceManager.mergeProblem`），不採信自陳。不通過就照一般受阻路由處理：
+   - HEAD 是「原 PR commit＋基準 commit」的合併 commit；
+   - 衝突檔沒有殘留衝突標記；
+   - 衝突檔以外的內容與 git 自動合併結果相同。
+
+   這一輪的寫入稽核以 git 自動合併結果為起點（`pathsChangedFromAutoMerge`），基準帶進來的變更（例如別的 PR 改過的 `.claude/**`）不算角色的修改。
+6. 沿用原任務的需求基準、測試計畫與計畫核准，接著照主線重跑系統獨立驗證、QA 驗收與審查。
+   每輪另有固定的 8 次換手額度（`FlowLimits` 例外），整輪上限已用完的舊任務也能完成一輪；歷史計數不重設。
+7. 到 approval 節點時，證據全部通過才會往下：
+   - `pullRequestSyncAutoPush=true`：直接推回；
+   - 否則停在「核准 PR」，訊息寫明會推回既有 PR。
+
+   推回（`PullRequestPublisher.update`）前會再查一次 PR，要求仍開啟、來源分支相同、遠端 head 仍是上次推的 commit；
+   推送是一般 push、不加 force，不呼叫開 PR 的 API。
+8. 推回後回到 `PR_CREATED`，`publishedHead` 改成新 commit；GitHub 確認可合併後通知一次。
+
+**邊界**：
+- 第一次開 PR 一律要真人核准，不變。
+- 自動推回是使用者在 2026-10-23 同意的例外：只限同步輪、需求與計畫沒變、證據全部通過，而且只推到原本已核准開出的那個 PR。
+- 延後驗收項目與原 PR 相同，因為計畫沒有變。
+- 衝突檔位在受保護路徑時，實作角色改不了，會照一般受阻路由停下。
+- 已開過 PR 的任務一律推回同一個 PR，不會再開新 PR。
+- 只處理系統開出的 PR（`flow.prUrl`），不處理真人開的 PR。
 
 ## 尚待真實端對端驗收
 

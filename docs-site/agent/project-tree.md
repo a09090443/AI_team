@@ -182,13 +182,14 @@ agent_team/
 │   │   │   ├── OwnerIssueDecision.java # 負責人裁定待決問題移出範圍，沿用驗收往 PR 核准走
 │   │   │   ├── ReceiptReuse.java     # 流程重走時沿用前次仍有效的設計、計畫、實作結果
 │   │   │   ├── DeferredAcceptance.java # 驗收環境驗不了的驗收項目在計畫延後、PR 列出
+│   │   │   ├── PullRequestSync.java  # 已開 PR 與基準衝突時回原任務解衝突、推回同一個 PR 的判斷與核對
 │   │   │   ├── NodeInput.java        # 節點輸入指紋（判斷是否為相同輸入重跑）
 │   │   │   ├── ToolTrust.java        # 工具被拒卻宣稱完成時作廢結論
 │   │   │   ├── SystemFailure.java    # 區分系統沒跑起來與工作本身有問題
 │   │   │   ├── ErrorExplainer.java   # 請 agent 把系統錯誤翻成白話
 │   │   │   └── PrReport.java         # PR 內文的驗收紀錄 Markdown
 │   │   ├── publish/
-│   │   │   └── PullRequestPublisher.java # 推分支與開 PR（唯一需真人核准才發生的對外動作）
+│   │   │   └── PullRequestPublisher.java # 推分支與開 PR、查詢 PR 狀態、推回既有 PR
 │   │   ├── runtime/                  # 各 agent CLI 的 adapter
 │   │   │   ├── AgentRuntime.java     # 廠商無關的執行介面與能力宣告
 │   │   │   ├── RuntimeRegistry.java  # 依 id 取用 runtime
@@ -235,6 +236,7 @@ agent_team/
 │   │   │   ├── ReviewGate.java       # 發布前的審查硬性條件
 │   │   │   ├── TriageGate.java       # PM 分流報告的檢查
 │   │   │   ├── QuotaAutoResume.java  # 額度用盡後的自動續跑排程
+│   │   │   ├── PullRequestMonitor.java # 每 10 分鐘檢查已開 PR 是否與基準衝突
 │   │   │   ├── QuotaMessage.java     # 額度訊息呈現
 │   │   │   ├── QuotaRetryTime.java   # 解析供應商解禁時間
 │   │   │   └── TaipeiTime.java       # 給人看的時間換算為台北時間

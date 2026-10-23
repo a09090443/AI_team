@@ -138,9 +138,12 @@ runtime 清理精確 sandbox unit 的 cgroup，stdout／stderr 及 session check
 | `requirementChangeOptions` | true | human_decision 選項多一種 `change_requirements`：需求負責人按下即送「核准需求變更 <問題與選項>」，回到需求節點重訂基準（見[計畫核准按鈕](plan-approval-buttons.md)）。提示同時要求範圍變更一律用它，不可用 decide，也不可自己把未解問題改成 EXCLUDED。 |
 | `channelCommandRouting` | true | 頻道頂層訊息「#編號 已知指令」或「補充 #編號 …」轉給該任務處理（回覆貼在原討論串），不另開新任務。已知指令：檢視配置更新、核准配置更新、狀態、檢視完整報告、檢視測試計畫、核准需求變更、核准測試計畫。只限同頻道、白名單使用者；別的任務討論串裡的指令照舊拒絕。 |
 | `deferUnverifiable`（2026-10-23，缺欄位為 false） | true | 測試計畫可把「需要驗收節點操作契約沒有的能力才能驗」的驗收項目（實際部署探測、外部系統、真實資料庫、專案外檔案）列入 `deferred_acceptance`，算作已涵蓋、不停給真人；驗收提示說明它們不屬本次驗收，核准 PR 訊息與 PR 說明逐項列出「延後驗收」。見[工程流程](engineering-workflow.md#延後驗收與沿用前次結果2026-10-23)。 |
+| `pullRequestSyncRounds`（2026-10-23，0～3，缺欄位為 0） | 2 | 系統開出的 PR 與基準衝突時，回原任務解衝突、重驗並推回同一個 PR，每個 PR 最多這麼多輪。讀目前配置，不需配置遷移。見[已開 PR 的衝突同步](engineering-workflow.md#已開-pr-的衝突同步2026-10-23)。 |
+| `pullRequestSyncAutoPush`（2026-10-23，缺欄位為 false） | true | 同步輪的證據全部通過時直接推回原 PR，不停在核准 PR；首次開 PR 仍要真人核准。 |
 
 另外 `modelTimeoutRecoveries` 大於 0 時，每個節點的脈絡會加上「本階段時限 N 分鐘，與本次變更無關的長檢查不要執行」，讓 agent 自己安排優先順序（2026-10-23 起只隨逾時接續啟用；只開延後驗收的團隊不加）。
 
-不變的邊界：不擴權、不放寬受保護路徑；需求變更與 PR 仍要真人核准（change_requirements 只是讓負責人按一次就送出核准）；
+不變的邊界：不擴權、不放寬受保護路徑；需求變更與首次開 PR 仍要真人核准（change_requirements 只是讓負責人按一次就送出核准；
+`pullRequestSyncAutoPush` 只適用於已核准開出的 PR 的衝突同步輪）；
 所有自動動作都有上限並寫稽核紀錄（RECOVERY）。舊任務需經「檢視配置更新／核准配置更新」取得 autonomy（已列為可遷移欄位）。
 驗證：程式測試（AutonomousRecoveryTest、FlowEngineTest、BaselineVerifierTest、HumanOptionsTest、TriageRoutingTest 等）通過；真實任務端對端尚未實測。

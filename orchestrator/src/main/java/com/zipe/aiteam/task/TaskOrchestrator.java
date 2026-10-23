@@ -1267,6 +1267,12 @@ public class TaskOrchestrator {
         flowEngine.resumeApprovedPlan(task, this::enqueue);
     }
     public boolean channelCommandRouting() { return flowEngine != null && flowEngine.channelCommandRouting(); }
+    /** 已開 PR 的衝突同步：排程（byUser=null）與「同步 PR #編號」共用；判斷與權限都在流程引擎。 */
+    public void checkPullRequest(Task task, String byUser) {
+        if (flowEngine != null && flowEngine.owns(task.id())) { flowEngine.checkPullRequest(task, byUser, this::enqueue); return; }
+        if (byUser != null) slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                "任務 #" + task.id() + " 是舊版管線任務，不支援 PR 衝突同步。");
+    }
 
     public void requestTriage(Task task, String feedback, String byUser) {
         if (flowEngine != null && flowEngine.owns(task.id())) { flowEngine.resume(task, feedback, byUser, this::enqueue); return; }
