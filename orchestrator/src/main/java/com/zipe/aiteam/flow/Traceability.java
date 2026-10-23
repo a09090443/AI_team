@@ -116,6 +116,12 @@ public final class Traceability {
                 }
             }
         }
+        // 依 project.autonomy.deferUnverifiable 延後的驗收項目算作已涵蓋（DeferredAcceptance）；未開啟時為空集合。
+        Set<String> deferred;
+        try { deferred = DeferredAcceptance.deferred(plan, flow, acceptanceOwners); }
+        catch (IllegalArgumentException e) { return e.getMessage(); }
+        coveredAcceptance.addAll(deferred);
+        deferred.forEach(id -> covered.add(acceptanceOwners.get(id)));
         expected.removeAll(covered);
         if (!expected.isEmpty()) return "測試計畫遺漏需求：" + new TreeSet<>(expected);
         if (!acceptanceOwners.isEmpty()) {
@@ -152,6 +158,8 @@ public final class Traceability {
                     changed |= removed.add(entry.getKey());
             }
         } while (changed);
+        // 先全部存下再移除：存的時候要記錄各自前置結果的摘要。
+        for (String key : removed) ReceiptReuse.retire(flow, key);
         for (String key : removed) { flow.receipts.remove(key); flow.heads.remove(key); }
         Node current = flow.snapshot.definition().nodes().get(id);
         // 審查只讀取驗收前已產生的系統收據；重做其他階段才使收據失效。

@@ -112,6 +112,7 @@ App-Level Token 留空**：發言與交接 tag 使用同一個角色身分，不
 | 共用工作規則（`sharedInstructions`） | ✓ | ✓ | ✓ | ✓ |
 | 角色諮詢與共享看板（`collaboration`／`consultRoles`） | ✓ | ✓ | ✓ | —（範例，作為對照組） |
 | 自主恢復（`project.autonomy`） | ✓ | — | — | — |
+| 驗收環境驗不了的項目自動延後（`project.autonomy.deferUnverifiable`） | ✓ | — | — | — |
 | 自主派工（`candidateRoles`） | design、implementation | design、implementation | — | — |
 | 跨 runtime 改派（`protectedPathFallback`） | ✓ | ✓ | — | — |
 | 服務建置路線（`service` 節點、`serviceTarget`） | ✓ | — | — | — |

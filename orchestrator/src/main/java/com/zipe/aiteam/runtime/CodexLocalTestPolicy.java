@@ -65,11 +65,21 @@ final class CodexLocalTestPolicy {
         try { return JSON.writeValueAsString(value); }
         catch (Exception e) { throw new IllegalArgumentException("無法編碼沙箱路徑", e); }
     }
-    static final String TCP_PROBE = "const net=require('net');let done=false;"
+    /**
+     * 與 ConfiguredExecutor.LOOPBACK_NO_PROXY 相同：Codex network proxy 清空 NO_PROXY，Node 的 fetch 連 localhost 會被 proxy 拒絕；
+     * 預檢與固定操作都在指令本身帶上這組環境變數。
+     */
+    static final List<String> LOOPBACK_NO_PROXY = List.of("env", "NO_PROXY=localhost,127.0.0.1,::1", "no_proxy=localhost,127.0.0.1,::1");
+    /** TCP 往返之後再以 fetch 連 localhost 的 HTTP 服務：#1055 原始 TCP 可通，但走環境 proxy 的 HTTP 被擋，舊預檢抓不到。 */
+    static final String TCP_PROBE = "const net=require('net'),http=require('http');let done=false;"
             + "const s=net.createServer(c=>c.end('ok'));"
             + "const fail=e=>{console.error(e);process.exit(24)};s.on('error',fail);"
+            + "const httpProbe=()=>{const h=http.createServer((q,r)=>r.end('ok'));h.on('error',fail);"
+            + "h.listen(0,'127.0.0.1',async()=>{try{const r=await fetch('http://localhost:'+h.address().port+'/');"
+            + "if(await r.text()!=='ok')fail('bad http response')}catch(e){fail('local-http: '+((e.cause&&e.cause.message)||e.message))}"
+            + "h.close(()=>console.log('local-http-ok'))})};"
             + "s.listen(0,'127.0.0.1',()=>{const c=net.connect(s.address().port,'127.0.0.1');"
             + "c.on('error',fail);c.on('data',d=>{if(d.toString()!=='ok')fail('bad response');done=true});"
-            + "c.on('close',()=>s.close(()=>{if(!done)fail('missing response');console.log('local-tcp-ok')}))});"
+            + "c.on('close',()=>s.close(()=>{if(!done)fail('missing response');console.log('local-tcp-ok');httpProbe()}))});"
             + "setTimeout(()=>fail('timeout'),5000).unref()";
 }

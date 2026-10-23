@@ -163,4 +163,42 @@ class TraceabilityTest {
         Traceability.invalidate(flow, "review");
         assertThat(flow.independentEvidence).isNotNull();
     }
+
+    void enableDeferral() throws Exception {
+        ObjectNode definition = mapper.valueToTree(flow.snapshot.definition());
+        ((ObjectNode) definition.path("project")).set("autonomy", mapper.readTree(
+                "{\"modelTimeoutRecoveries\":0,\"maxTimeoutSeconds\":0,\"verificationContinuations\":0,"
+                        + "\"requirementChangeOptions\":false,\"channelCommandRouting\":false,\"deferUnverifiable\":true}"));
+        flow.snapshot = new TeamDefinition.Snapshot("defer", mapper.treeToValue(definition, TeamDefinition.class),
+                flow.snapshot.repository(), flow.snapshot.assets());
+    }
+    ObjectNode deferPlainLog(String reason) throws Exception {
+        ObjectNode deferredPlan = plan.deepCopy();
+        ObjectNode scenario = (ObjectNode) deferredPlan.path("scenarios").get(0);
+        scenario.putArray("requirement_ids").add("R1"); scenario.putArray("acceptance_ids").add("R1-DELIVER");
+        deferredPlan.putArray("deferred_acceptance").addObject().put("acceptance_id", "R2-PLAIN")
+                .put("reason", reason).put("needs", "正式環境的日誌");
+        return deferredPlan;
+    }
+    String planCheck(ObjectNode candidate) { flow.receipts.put("plan", candidate); return Traceability.planReason(candidate, flow); }
+    /** #1053～#1055：驗收環境驗不了的項目在計畫延後就算涵蓋，不停給真人；未開啟時照舊算遺漏。 */
+    @Test void unverifiableAcceptanceCanBeDeferredOnlyWhenEnabled() throws Exception {
+        ObjectNode deferredPlan = deferPlainLog("本環境沒有正式日誌");
+        assertThat(planCheck(deferredPlan)).contains("遺漏");
+        enableDeferral();
+        assertThat(planCheck(deferredPlan)).isNull();
+        assertThat(planCheck(deferPlainLog(" "))).contains("缺少 reason");
+        ObjectNode unknown = deferPlainLog("x"); ((ObjectNode) unknown.path("deferred_acceptance").get(0)).put("acceptance_id", "R9-X");
+        assertThat(planCheck(unknown)).contains("未知");
+        ObjectNode both = deferPlainLog("x"); ObjectNode twice = (ObjectNode) both.path("scenarios").get(0);
+        twice.withArray("requirement_ids").add("R2"); twice.withArray("acceptance_ids").add("R2-PLAIN");
+        assertThat(planCheck(both)).contains("不能同時寫情境");
+
+        flow.receipts.put("plan", deferredPlan);
+        assertThat(DeferredAcceptance.lines(flow)).singleElement().asString().contains("R2-PLAIN", "log 不含明文密碼", "正式環境的日誌");
+        assertThat(FlowEngine.prBody(new com.zipe.aiteam.task.Task("42", "c", "t", "u", "寄信"), flow))
+                .contains("## 延後驗收（本環境無法驗證）", "R2-PLAIN");
+        JsonNode schema = mapper.readTree(DeferredAcceptance.extendSchema("{\"type\":\"object\",\"properties\":{},\"required\":[]}"));
+        assertThat(schema.path("required").toString()).contains("deferred_acceptance");
+    }
 }

@@ -224,7 +224,7 @@ public class CodexRuntime implements AgentRuntime {
         if (req.sandboxPolicy().localTestNetwork()) {
             probe.addAll(CodexLocalTestPolicy.sandboxArguments(req, statePaths(props.userHome())));
             probe.addAll(List.of("-C", req.workingDirectory().toAbsolutePath().toString(), "--", "sh", "-ec",
-                    "pwd; node -e \"$1\"; shift; for path do test -w \"$path\" || { printf 'not writable: %s\\n' \"$path\"; exit 23; }; done",
+                    "pwd; " + String.join(" ", CodexLocalTestPolicy.LOOPBACK_NO_PROXY) + " node -e \"$1\"; shift; for path do test -w \"$path\" || { printf 'not writable: %s\\n' \"$path\"; exit 23; }; done",
                     "local-test-preflight", CodexLocalTestPolicy.TCP_PROBE));
             CodexLocalTestPolicy.commandWrites(req, statePaths(props.userHome())).forEach(p -> probe.add(p.toString()));
         } else probe.addAll(List.of("-P", ":workspace", "-C", req.workingDirectory().toAbsolutePath().toString(), "--", "/bin/pwd"));

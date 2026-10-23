@@ -115,6 +115,8 @@ public class ConfiguredExecutor {
                 : flow.snapshot.assets().get(node.schema());
         if (!flow.dialogue && node.gate() == Gate.TEST_PLAN && OperationContract.inspectAvailable(flow.snapshot.definition()))
             schema = FileComparison.extendSchema(schema);
+        boolean deferUnverifiable = node.gate() == Gate.TEST_PLAN && DeferredAcceptance.enabled(flow);
+        if (deferUnverifiable) schema = DeferredAcceptance.extendSchema(schema);
         StringBuilder context = new StringBuilder("配置版本：" + flow.snapshot.revision() + "\n專案：" + flow.snapshot.definition().project().name()
                 + "\n指定角色：" + role.name() + "\n工作目錄：" + cwd + "\n本階段契約：" + node.gate() + "；權限：" + node.scope() + "\n使用者需求：\n" + task.requestText()
                 + "\n建置規範：" + (ServiceDelivery.serviceStage(flow, node) ? "依 serviceTarget 及本階段核准操作建置既有服務。" : flow.snapshot.definition().project().buildInstructions())
@@ -162,7 +164,8 @@ public class ConfiguredExecutor {
         if (!flow.dialogue && node.gate() == Gate.IMPLEMENTATION && flow.snapshot.definition().project().verification() != null)
             context.append(DocOnlyChanges.implementationNotice(flow.snapshot.definition().project().verification().docOnlyPaths()));
         if (!flow.dialogue && node.gate() == Gate.VERIFICATION) context.append(changedFiles(task, flow));
-        if (!flow.dialogue) context.append(commandPatterns(role, runtime, OperationContract.forNode(flow.snapshot.definition(), flow.node)));
+        if (!flow.dialogue) context.append(commandPatterns(role, runtime, OperationContract.forNode(flow.snapshot.definition(), flow.node),
+                node.localTestNetwork()));
         if (!flow.dialogue) context.append(protectedPathNotice(flow.snapshot.definition(), flow.node, node.role(), runtimes::require));
         // 同一角色常同時負責訂計畫與驗收，角色提示會提到驗收要引用 plan_revision；
         // 但 plan_revision 是系統在計畫完成後依計畫內容計算的，訂計畫時本來就不存在。
@@ -178,7 +181,12 @@ public class ConfiguredExecutor {
                     .append("不是本階段的輸入，不得因為沒有收到 plan_revision 而回報受阻。");
         context.append("\n系統固定需求基準 baseline_revision：").append(flow.baselineRevision)
                 .append("\n真人需求／驗收負責人：").append(flow.acceptanceOwner)
-                .append("\n系統獨立驗證收據（不是模型自陳）：").append(receiptView(flow, node));
+                .append("\n系統獨立驗證收據（不是模型自陳）：").append(receiptView(flow, node))
+                .append(receiptReuseNotice(flow, node));
+        if (!flow.dialogue && node.gate() == Gate.VERIFICATION && !DeferredAcceptance.lines(flow).isEmpty())
+            context.append("\n測試計畫已依專案設定延後下列驗收項目（本環境無法驗證，PR 會逐項列出）：\n・")
+                    .append(String.join("\n・", DeferredAcceptance.lines(flow)))
+                    .append("\n它們不屬於本次驗收：不要為它們寫情境結果，也不要列進 uncertainties。");
         context.append("\n若系統獨立驗證收據含管理者固定命令、exitCode=0 且版本仍有效，"
                 + "它就是該完整建置操作的主要證據；不得只因本節點操作契約未重複提供同一命令而回報受阻。"
                 + "本節點若補了測試，不要自己 commit，在 summary 列出新增或修改的測試路徑即可：允許路徑內的修改由系統自動提交，"
@@ -228,7 +236,8 @@ public class ConfiguredExecutor {
         store.saveCheckpoint(cp);
         boolean requirementChange = !flow.dialogue && AutonomousRecovery.requirementChangeOptions(flow);
         var request = new AgentRuntime.RuntimeRequest(task.id(), flow.node, cwd, prompt, context + FailureReport.INSTRUCTIONS
-                        + (requirementChange ? FailureReport.REQUIREMENT_CHANGE_INSTRUCTIONS : ""),
+                        + (requirementChange ? FailureReport.REQUIREMENT_CHANGE_INSTRUCTIONS : "")
+                        + (deferUnverifiable ? DeferredAcceptance.INSTRUCTIONS : ""),
                 flow.dialogue ? List.of("Read", "Grep", "Glob") : role.tools(), FailureReport.extendSchema(schema, requirementChange), cp.sessionId(),
                 node.maxTurns(), Duration.ofSeconds(timeoutSeconds), selectedPolicy, cp.model(), role.reasoningEffort());
         java.time.Instant started = java.time.Instant.now();
@@ -302,17 +311,32 @@ public class ConfiguredExecutor {
     }
 
     static String commandPatterns(Role role, AgentRuntime runtime, Map<String, Operation> operations) {
+        return commandPatterns(role, runtime, operations, false);
+    }
+
+    /**
+     * localTestNetwork 節點的固定操作前綴。Codex 的 network proxy 會把 NO_PROXY 清空並設 NODE_USE_ENV_PROXY=1，
+     * Node 的 fetch 連 localhost 也被送進 proxy 而遭拒（#1055 的 Vitest 每輪中止）；Codex 的 shell_environment_policy 會被 proxy 覆蓋，
+     * 只有寫在指令本身的環境變數有效（codex-cli 0.156.1 於 VM 實測）。只放行 loopback，外連仍經 proxy 被拒。
+     */
+    static final List<String> LOOPBACK_NO_PROXY = List.of("env", "NO_PROXY=localhost,127.0.0.1,::1", "no_proxy=localhost,127.0.0.1,::1");
+
+    static String commandPatterns(Role role, AgentRuntime runtime, Map<String, Operation> operations, boolean localTestNetwork) {
         // 本階段配置的固定操作是管理者明確授予的，必須列為可執行 ——
         // 只列角色樣式時，#1016 的驗收 agent 讀到「只能 mvn／git／ls」，就不敢執行已授予的
         // 文件隔離驗收操作（mkdir、git archive、npm），整段驗收自判受阻；上一輪沒有這段提示時是跑得成功的。
         List<String> granted = new ArrayList<>(), unusable = new ArrayList<>();
         operations.forEach((id, op) -> {
-            String line = id + "：在 `" + op.directory() + "` 執行 `" + String.join(" ", op.argv()) + "`";
+            List<String> shown = new ArrayList<>(localTestNetwork ? LOOPBACK_NO_PROXY : List.of());
+            shown.addAll(op.argv());
+            String line = id + "：在 `" + op.directory() + "` 執行 `" + String.join(" ", shown) + "`";
             (runtime.permitsCommand(role.tools(), op.argv()) ? granted : unusable).add(line);
         });
         StringBuilder text = new StringBuilder();
         if (!granted.isEmpty()) text.append("\n本階段已授予的固定操作，照 argv 原樣執行即可，不需其他授權：\n・")
                 .append(String.join("\n・", granted));
+        if (!granted.isEmpty() && localTestNetwork)
+            text.append("\n開頭的 `env NO_PROXY=…` 讓測試連本機（localhost）時不經沙箱的 proxy；照原樣保留，不要拿掉，也不要加入其他主機。");
         if (!unusable.isEmpty()) text.append("\n下列固定操作有配置，但你這個角色的指令權限執行不了；這是配置缺口，"
                 + "請如實回報並寫進 also_needed，不要自行改寫成其他指令：\n・").append(String.join("\n・", unusable));
         // Codex／opencode 不以指令樣式過濾，限制來自沙箱的寫入範圍；對它們列樣式只會誤導。
@@ -452,6 +476,25 @@ public class ConfiguredExecutor {
             + "close（負責人在系統外收尾）；successor（改用新任務）。"
             + "若指令本身在此環境不可能通過（例如配置的測試依賴不存在的路徑或服務），那是配置缺口，寫進 also_needed 交管理者修改配置，"
             + "不得做成選擇題。不得提供「接受失敗後繼續驗收」「接受無法核實」之類的 decide 選項，選了也只會讓流程原地重跑。";
+
+    /**
+     * 驗收時明列系統已在全新 clone 通過的固定指令，請 QA 直接引用、不要在沙箱重跑。
+     * #1055 的 tester 每輪照計畫重跑 npm ci（約 3 分鐘）、建置與 Vitest，Vitest 又被沙箱擋下，每輪多一次分流來回。
+     */
+    static String receiptReuseNotice(FlowRun flow, Node node) {
+        var receipt = flow.independentEvidence;
+        if (node.gate() != Gate.VERIFICATION || receipt == null || receipt.docOnly()) return "";
+        List<String> passed = new ArrayList<>();
+        if (receipt.decisions() != null) {
+            for (var d : receipt.decisions()) if (d.action() != VerificationPlan.Action.SKIP) passed.add(String.join(" ", d.argv()));
+        } else for (var c : receipt.commands()) if (c.exitCode() == 0) passed.add(String.join(" ", c.argv()));
+        if (passed.isEmpty()) return "";
+        return "\n系統已在 commit " + receipt.head() + " 的全新 clone 以結束碼 0 執行（或重用相同輸入的通過結果）下列固定指令：\n・"
+                + String.join("\n・", passed)
+                + "\n計畫中與這些指令做同一件事的操作（同一套件的安裝、建置、同一組測試），直接引用這份收據作為證據，不要在沙箱重跑："
+                + "command 寫「receipt：<上面的指令>」，evidence 寫收據的 commit 與結束碼。只執行收據沒有涵蓋的情境"
+                + "（例如讀檔核對、文件站副本建置、收據沒有的測試）。commit 與目前 HEAD 不同時不能引用。";
+    }
 
     /** REPORT 等階段本來就不產生系統收據；顯示 null 會被誤讀成「查無建置證據」。 */
     static String receiptView(FlowRun flow, Node node) {

@@ -9,7 +9,8 @@
       "maxTimeoutSeconds": 3600,
       "verificationContinuations": 2,
       "requirementChangeOptions": true,
-      "channelCommandRouting": true
+      "channelCommandRouting": true,
+      "deferUnverifiable": true
     },
     "operations": {
       "backend-compile": {
@@ -554,7 +555,7 @@
     "repositoryEnv": "AI_TEAM_REPO",
     "baseBranch": "dev",
     "buildInstructions": "依 repo 的 AGENTS.md 與 .claude/rules/（單一事實來源）；套件名是 tw.zipe.bastpartner。後端用 PATH 上的 gradle（與 gradlew 同為 8.14.5），一律 -p bestpartner-service --no-daemon，使用已宣告的 backend-* 操作；前端以 npm --prefix bestpartner-ui ci／run build／run test；文件以 npm --prefix docs-site ci／run build。改動 Kotlin、命名、i18n 或版本設定後，以 bash scripts/harness-drift-scan.sh 確認「新漂移 0 項」。不使用 pwsh、npx 或絕對路徑替代。VM 沒有 PostgreSQL 與 Docker：@QuarkusTest 類測試在此環境一定連不上資料庫，不得以修改設定或關閉測試來讓它通過。後端檢查（backend-compile、後端測試、harness-drift-scan）只在本次變更含 bestpartner-service/**（Kotlin、resources、Gradle 設定）或版本設定時執行；只改 docs/docker/**、Dockerfile、compose、nginx 設定、bestpartner-ui/**、docs-site/** 或其他非 Kotlin 檔時一律不執行，報告寫明「未涉及後端，未執行後端檢查」，不得以「含 Dockerfile」為由補跑（#1053 因此逾時）。",
-    "testInstructions": "先制定情境測試計畫，再驗收；不得只看單元測試數量。後端只執行 qa-backend-test-a、qa-backend-test-b 與 qa-backend-test-code-executor（共 23 個不需資料庫的測試類別，含 ArchitectureTest；CodeExecutorTest 的無窮迴圈逾時測試在負載下不穩定，所以單獨執行，單獨仍逾時才算失敗）；需要 PostgreSQL、外部 API 金鑰或 Google 憑證的情境一律標為「無法核實」並說明原因，不得宣稱通過，也不得改寫成 mock 後宣稱等同。前端依序 qa-ui-install、qa-ui-build（vue-tsc 型別檢查＋建置）、qa-ui-test（vitest）。另以 bash scripts/harness-drift-scan.sh 確認「新漂移 0 項」（只讀）。實作階段可以連網下載依賴（含升級套件版本），backend-*、ui-install 等實作操作會把套件寫進共用快取（Gradle 為 GRADLE_USER_HOME，npm 為 ~/.npm）。QA 的 localTestNetwork 沙箱不連外，所以 qa-* 操作以 --offline 使用同一份快取；QA 遇到快取缺件時，判定為實作階段尚未執行對應建置（例如 backend-compile、ui-install），退回實作補跑，不是維運問題，也不得繞過沙箱。 純文字變更只核對內容及必要一致性，不無條件執行後端／前端回歸。後端（qa-backend-* 與 harness-drift-scan）只在變更含 bestpartner-service/** 或版本設定時執行；未涉及後端時不跑，情境標明「未涉及後端」，不視為缺漏、也不以後端快取缺件退回實作。文件站依序 qa-docs-dir、qa-docs-clean、qa-docs-snapshot、qa-docs-extract、qa-docs-install、qa-docs-build，在 target/qa-docs 副本驗證最終 HEAD；實作先執行 docs-install／docs-build 準備快取。原 docs-site 唯讀，快取缺件交回實作，不略過必要檢查。",
+    "testInstructions": "先制定情境測試計畫，再驗收；不得只看單元測試數量。後端只執行 qa-backend-test-a、qa-backend-test-b 與 qa-backend-test-code-executor（共 23 個不需資料庫的測試類別，含 ArchitectureTest；CodeExecutorTest 的無窮迴圈逾時測試在負載下不穩定，所以單獨執行，單獨仍逾時才算失敗）；需要 PostgreSQL、外部 API 金鑰或 Google 憑證的情境一律標為「無法核實」並說明原因，不得宣稱通過，也不得改寫成 mock 後宣稱等同。前端依序 qa-ui-install、qa-ui-build（vue-tsc 型別檢查＋建置）、qa-ui-test（vitest）；系統獨立驗證收據在目前 commit 已通過的前端安裝、建置、測試與後端測試直接引用收據，不在沙箱重跑，只補收據沒有涵蓋的情境。另以 bash scripts/harness-drift-scan.sh 確認「新漂移 0 項」（只讀）。實作階段可以連網下載依賴（含升級套件版本），backend-*、ui-install 等實作操作會把套件寫進共用快取（Gradle 為 GRADLE_USER_HOME，npm 為 ~/.npm）。QA 的 localTestNetwork 沙箱不連外，所以 qa-* 操作以 --offline 使用同一份快取；QA 遇到快取缺件時，判定為實作階段尚未執行對應建置（例如 backend-compile、ui-install），退回實作補跑，不是維運問題，也不得繞過沙箱。 純文字變更只核對內容及必要一致性，不無條件執行後端／前端回歸。後端（qa-backend-* 與 harness-drift-scan）只在變更含 bestpartner-service/** 或版本設定時執行；未涉及後端時不跑，情境標明「未涉及後端」，不視為缺漏、也不以後端快取缺件退回實作。文件站依序 qa-docs-dir、qa-docs-clean、qa-docs-snapshot、qa-docs-extract、qa-docs-install、qa-docs-build，在 target/qa-docs 副本驗證最終 HEAD；實作先執行 docs-install／docs-build 準備快取。原 docs-site 唯讀，快取缺件交回實作，不略過必要檢查。",
     "protectedPaths": [
       "bestpartner-service/src/main/**",
       "**/build.gradle.kts",
@@ -679,6 +680,7 @@
       "qaOnlyPaths": [
         "docs-site/**",
         "docs/sql/**",
+        "docs/docker/**",
         ".env.example"
       ]
     },

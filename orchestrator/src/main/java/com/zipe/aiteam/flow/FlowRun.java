@@ -108,6 +108,11 @@ public class FlowRun {
      * 讓分流停下前補充待決說明不會使先前的驗收失效（#1055）。最多保留 50 筆。
      */
     public Map<String,String> issueRevisionAliases = new LinkedHashMap<>();
+    /**
+     * 被清掉的前次收據（節點 → report／head／baseline／configuration／actionable_issues），供流程重走時原樣沿用（{@link ReceiptReuse}）。
+     * 只是候選，不是有效收據；每個節點只留最近一份，沿用後移除。
+     */
+    public Map<String,JsonNode> priorReceipts = new LinkedHashMap<>();
     public String issueContext = "";
     /** One approved requirements-change cycle; agents cannot grant this themselves. */
     public boolean issueScopeChangeAuthorized;

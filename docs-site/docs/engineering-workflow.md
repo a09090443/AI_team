@@ -50,6 +50,22 @@ Linux 完整測試 619 項、0 失敗、0 錯誤、11 略過，兩實例啟動�
   不重設 `transitions`；任何節點受阻即收回。負責人「開 PR」補跑審查也用同一套額度。
 - 只要還有其他未通過項目（OPEN 的 REPAIR、失敗情境、HEAD 改變或工作區不乾淨），按鈕就不出現，照舊重跑或核准需求變更。
 - 分流的共用提示（`FailureReport`）同步說明：只差待決問題時系統會附按鈕，選項不必再提供「移到後續任務」。
+
+#### 延後驗收與沿用前次結果（2026-10-23）
+
+起因 #1053～#1055：一個只改部署設定與文件的任務花 48 小時，需求跑 13 次、設計 9 次、計畫 11 次、實作 19 次、驗收 8 次。
+
+- **延後驗收**（`project.autonomy.deferUnverifiable`，`DeferredAcceptance`）：開啟時測試計畫 schema 多必填陣列 `deferred_acceptance`
+  （acceptance_id、reason、needs）。需要驗收節點操作契約沒有的能力才能驗的項目列入其中，`Traceability.planReason` 算作已涵蓋；
+  ID 必須存在、reason／needs 不得空白、不得同時有情境。驗收提示說明它們不屬本次驗收、不列 uncertainties；核准 PR 訊息與 PR 說明逐項列出。未開啟的團隊不變。
+- **沿用前次結果**（`ReceiptReuse`，所有團隊）：`Traceability.invalidate` 與需求重訂清掉收據前先存進 `FlowRun.priorReceipts`。
+  主線節點（entry 沿 next）要啟動時，配置版本相同、工作區乾淨且（工作區節點）HEAD 相同、前置結果（需求以外）摘要相同、報告重新通過閘門時，
+  直接恢復收據、往下走，不呼叫 agent、不計換手。另外：設計（唯讀 REPORT）與實作要求需求基準相同或只刪減、沒有新增待處理問題；
+  實作還要求目前 HEAD 上沒有 REPAIR 被驗收或審查判為 OPEN；計畫要求需求基準完全相同。分流不沿用。沿用時稽核與 Slack 會註明。
+  沿用後仍經系統獨立驗證、驗收與審查；實作其實要改時會在那裡被抓到，直接退回實作（此時收據有效、不會再沿用）。
+  限制：需求重訂時模型改寫措辭也會使基準摘要不同，此時只有「只刪減」的比對能沿用設計，計畫與實作照常重跑。
+- **驗收引用系統收據**（`ConfiguredExecutor.receiptReuseNotice`）：驗收提示列出系統在目前 commit 已以結束碼 0 執行或重用的固定指令，
+  要求同一工作直接引用收據（command 寫「receipt：<指令>」），不在沙箱重跑。
 - 承接完整複製清單與 `issueEvidence` 歷史證據，不複製有效驗收／核准；新任務先核實已有成果，再補未完成項。
   明確從唯讀問答挑選單項建立的子任務仍是局部範圍，顯示來源總數與未涵蓋項數，不假稱整體完成，也不擅自擴張授權。
 - 最多 100 個問題、清單 96000 字元；提示中的清單與歷史證據最多 128000 字元。超限明示停止，不截斷後宣稱全部處理。
@@ -175,7 +191,7 @@ Slack 會說明「只改了文件，依專案設定略過建置與測試」，QA
 - Slack 會貼「依變更檔案判定：執行 X、略過 Y、重用 Z」；QA／審查收到的收據說明略過與重用是系統依實際變更的決定，不是查無建置證據，
   QA 專屬路徑仍須依計畫驗證；PR 說明分列執行、略過（原因）與重用（來源 commit）。QA 逐項驗收、程式審查與 PR 真人核准照常。
 - bestpartner 設定：兩個 Gradle 指令範圍 `bestpartner-service/**`，三個前端指令範圍 `bestpartner-ui/**`，
-  `qaOnlyPaths` 為 `docs-site/**`、`docs/sql/**`、`.env.example`（使用者 2026-10-17 決定）；`bestpartner-mcp-servers/**`、`scripts/**`、`skills/**` 不屬於任何範圍，改到時全跑。
+  `qaOnlyPaths` 為 `docs-site/**`、`docs/sql/**`、`docs/docker/**`、`.env.example`（使用者 2026-10-17 決定；`docs/docker/**` 於 2026-10-23 加入：#1055 只改 SIT compose 檔仍因它不屬任何範圍而全跑、多跑約 26 分鐘後端測試，部署定義由 QA 讀檔與服務部署驗證）；`bestpartner-mcp-servers/**`、`scripts/**`、`skills/**` 不屬於任何範圍，改到時全跑。
   設定屬新快照，既有任務仍用舊快照（但重用是程式行為，所有任務都適用）。
 - 指令使用空白環境加少量明確變數、獨立 HOME，不把 Slack/GitHub token 或 CLI session 透過環境傳入。
 - 不讀個人 Maven/npm 設定；相依套件下載快取只用下方的獨立驗證專用快取，第一次建置仍可能很慢。私有依賴可能受阻，不可用複製整包憑證來解決。

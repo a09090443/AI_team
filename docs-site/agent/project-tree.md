@@ -180,6 +180,8 @@ agent_team/
 │   │   │   ├── TaskGoal.java         # 停止訊息／狀態卡開頭的一行任務目標
 │   │   │   ├── OwnerPublish.java     # 驗收負責人命令開 PR 的條件判斷與審查提醒等級放行
 │   │   │   ├── OwnerIssueDecision.java # 負責人裁定待決問題移出範圍，沿用驗收往 PR 核准走
+│   │   │   ├── ReceiptReuse.java     # 流程重走時沿用前次仍有效的設計、計畫、實作結果
+│   │   │   ├── DeferredAcceptance.java # 驗收環境驗不了的驗收項目在計畫延後、PR 列出
 │   │   │   ├── NodeInput.java        # 節點輸入指紋（判斷是否為相同輸入重跑）
 │   │   │   ├── ToolTrust.java        # 工具被拒卻宣稱完成時作廢結論
 │   │   │   ├── SystemFailure.java    # 區分系統沒跑起來與工作本身有問題

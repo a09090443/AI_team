@@ -1155,6 +1155,7 @@ class FlowEngineTest {
     String deniedAt;
     boolean provisioned;
     boolean workspaceClean;
+    boolean editBaseline;
     String workspaceHead;
     String dirtyPath = "base-spring-boot-starter/src/test/java/com/example/MailTest.java";
     @BeforeEach void setup(TestInfo info) throws Exception {
@@ -1290,7 +1291,7 @@ class FlowEngineTest {
             if (flow.node.equals("triage")) ((ObjectNode)report).put("route", mode.equals("repair") ? "verification"
                     : mode.equals("dirtyVerification") ? "verification"
                     : mode.equals("automaticRepair") ? "implementation" : mode.equals("change") ? "requirements"
-                    : mode.equals("replan") ? "plan" : "human");
+                    : mode.startsWith("replan") ? "plan" : "human");
             if (mode.startsWith("review") && node.gate() == TeamDefinition.Gate.REVIEW)
                 ((ObjectNode) report).withArray("findings").addObject()
                         .put("severity", mode.equals("reviewHigh") ? "HIGH" : "INFO").put("detail", "Jackson 版本低於需求");
@@ -1315,6 +1316,13 @@ class FlowEngineTest {
                     [{"tool_name":"command_execution","failure_kind":"COMMAND_FAILURE",
                       "tool_input":{"command":"git diff --check"},"reason":"exit_code=2; new blank line at EOF"}]
                     """);
+            // 真實流程的修復會產生新 commit、重訂的計畫或需求內容會不同；沿用前次結果（ReceiptReuse）只在輸入完全相同時發生。
+            if (mode.equals("automaticRepair") && flow.node.equals("implementation")
+                    && calls.stream().anyMatch(s -> s.startsWith("verification:"))) workspaceHead = "head-repair";
+            if (mode.equals("replan") && node.gate() == TeamDefinition.Gate.TEST_PLAN && flow.visits.getOrDefault("plan", 0) > 1)
+                ((ObjectNode) report.path("scenarios").get(0)).put("method", "補上缺漏情境後的方法");
+            if (editBaseline && flow.node.equals("intake") && !flow.baselineHistory.isEmpty())
+                ((ObjectNode) report.path("requirements").get(0)).put("description", "寄送郵件並記錄寄送結果");
             if (IssueTracker.enabled(flow)) {
                 ObjectNode tracked = (ObjectNode) report;
                 tracked.put("issue_revision", IssueTracker.revision(flow));
@@ -2536,12 +2544,41 @@ class FlowEngineTest {
         List<Runnable> jobs = new ArrayList<>(); engine.approve(task, "u", jobs::add); jobs.get(0).run();
         verifyNoInteractions(publisher); assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
     }
+    /** #1055：需求變更核准後基準內容沒變、commit 也沒變，計畫與實作直接沿用，只重跑驗收與審查。 */
+    @Test void unchangedBaselineAfterOwnerApprovalReusesPlanAndImplementation() {
+        mode = "blocked"; engine.run(task); mode = "change";
+        List<Runnable> jobs = new ArrayList<>(); engine.resume(task, "需要重新確認需求", "u", jobs::add); jobs.removeFirst().run();
+        calls.clear(); clearInvocations(audit);
+        mode = "normal"; engine.resume(store.find("42").orElseThrow(), "核准需求變更 內容不變，只是確認", "u", jobs::add); jobs.getFirst().run();
+        assertThat(calls).containsExactly("intake:coordinator", "verification:tester", "review:security_auditor");
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        verify(audit).record(eq("42"), eq(AuditLog.ACTOR_SYSTEM), eq(AuditLog.ACTION_RECOVERY), contains("沿用節點 implementation 前次結果"));
+        assertThat(store.flow("42").orElseThrow().priorReceipts).doesNotContainKeys("plan", "implementation", "frontend");
+    }
+
+    /** 計畫重訂後內容沒變：實作的輸入與 commit 都相同，不重跑實作。 */
+    @Test void identicalReplanSkipsImplementationButNewCommitDoesNot() {
+        mode = "blocked"; engine.run(task); mode = "replanSame"; calls.clear();
+        List<Runnable> jobs = new ArrayList<>(); engine.resume(task, "測試計畫缺漏", "u", jobs::add); jobs.getFirst().run();
+        assertThat(calls).containsExactly("triage:coordinator", "plan:tester", "verification:tester", "review:security_auditor");
+
+        // 沿用要求同一個 commit：HEAD 改變就照常執行。
+        var flow = store.flow("42").orElseThrow();
+        ReceiptReuse.retire(flow, "implementation");
+        TeamDefinition.Node implementation = flow.snapshot.definition().nodes().get("implementation");
+        assertThat(ReceiptReuse.reusable(flow, "implementation", implementation, workspaceHead, true)).isNotNull();
+        assertThat(ReceiptReuse.reusable(flow, "implementation", implementation, "other-head", true)).isNull();
+        assertThat(ReceiptReuse.reusable(flow, "implementation", implementation, workspaceHead, false)).isNull();
+        assertThat(ReceiptReuse.reusable(flow, "triage", flow.snapshot.definition().nodes().get("triage"), workspaceHead, true)).isNull();
+    }
+
     @Test void planRepairRerunsImplementationAndVerification() {
         mode = "blocked"; engine.run(task); mode = "replan"; calls.clear();
         List<Runnable> jobs = new ArrayList<>(); engine.resume(task, "測試計畫缺漏", "u", jobs::add); jobs.getFirst().run();
         assertThat(calls).containsExactly("triage:coordinator", "plan:tester", "implementation:builder", "frontend:frontend", "verification:tester", "review:security_auditor");
     }
     @Test void baselineChangeRequiresExplicitOwnerApprovalAndKeepsHistory() {
+        editBaseline = true;
         mode = "blocked"; engine.run(task); mode = "change";
         List<Runnable> jobs = new ArrayList<>(); engine.resume(task, "需要重新確認需求", "u", jobs::add); jobs.removeFirst().run();
         Task saved = store.find("42").orElseThrow();

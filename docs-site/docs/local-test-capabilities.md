@@ -26,7 +26,13 @@ Codex runtime、LIMITED 範圍、VERIFICATION 閘門、且宣告 node 工具。�
 （2026-10-04 起；原本其他節點缺目錄即失敗，見[配置式團隊](configurable-team.md)）。wildcard 不猜測缺少的目錄，
 路徑祖先或本身是 symlink 時停止。
 
-呼叫模型前，以相同內外層設定測試 localhost TCP 往返及可寫路徑（unit 最長 25 秒、客戶端最長 30 秒），
+**localhost 的 HTTP 要帶 NO_PROXY（2026-10-23，#1055）**：Codex 啟用 network proxy 時，指令環境的 `NO_PROXY` 被清空、`NODE_USE_ENV_PROXY=1`，
+Node 的 fetch 連 `localhost`／`127.0.0.1` 也會送進 proxy 而被拒（`Network access to "localhost" was blocked`），Vitest 因此每輪中止；
+原始 TCP 不經 proxy，所以舊預檢抓不到。`shell_environment_policy` 會被 proxy 覆蓋，只有寫在指令本身的環境變數有效（codex-cli 0.156.1 於 VM 實測）。
+因此系統列給 `localTestNetwork` 節點的固定操作一律加上前綴 `env NO_PROXY=localhost,127.0.0.1,::1 no_proxy=localhost,127.0.0.1,::1`（`ConfiguredExecutor.LOOPBACK_NO_PROXY`），
+只放行 loopback，外連仍被拒（實測）。配置裡的 argv 不變。
+
+呼叫模型前，以相同內外層設定測試 localhost TCP 往返、帶上述前綴以 fetch 連 localhost HTTP（2026-10-23 新增），以及可寫路徑（unit 最長 25 秒、客戶端最長 30 秒），
 失敗就停止，不略過不相容的 CLI、不退回無沙箱。於 Codex 0.153.4 實測；未宣稱所有 CLI／OS 版本都支援。
 官方設定背景：[權限設定](https://learn.chatgpt.com/docs/permissions)。
 

@@ -686,3 +686,10 @@ bestpartner `implementation.timeoutSeconds` 改 3600，`buildInstructions`／`te
 - 換手上限不重設，改給「沿 next 到核准節點」的一次性有界額度，任何受阻即收回；同樣套用到「開 PR」補跑審查。
 - 未核實事項不併入裁定一起放行，仍由「開 PR」逐項列出放行，避免一顆按鈕默默放行兩種不同的保證。
 - 只更新待決項目說明的清單變動記為版本別名，不讓分流停下前的補充說明使驗收失效；待修項目任何變動仍使驗收失效。
+
+## 2026-10-23 簡單任務的效率修正
+
+- 驗收環境驗不了的驗收項目改為計畫階段自動延後、PR 逐項列出（使用者選擇），以 project.autonomy.deferUnverifiable 開關；PR 核准仍是真人閘門。
+- Codex 本機測試網路以「指令前綴 NO_PROXY」解決 localhost 被 proxy 擋，而不是放寬 proxy 或網域；配置 argv 不變，只改系統呈現給模型的指令。
+- 沿用前次結果採保守條件（同 commit、前置結果摘要相同、需求沒變或只刪減、沒有新問題），不嘗試語意比對需求措辭；錯誤沿用的代價由下游驗收／審查兜底。
+- compose 等部署定義列為 QA 專屬路徑只改 bestpartner 配置，不改 DocOnlyChanges 的強制全跑規則。

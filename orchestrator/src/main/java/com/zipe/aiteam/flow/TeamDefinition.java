@@ -75,9 +75,15 @@ public record TeamDefinition(int version, String id, Project project, Map<String
      * @param verificationContinuations 獨立／基準驗證用完總時限時，沿用已通過指令自動續驗的輪數上限（0..3）
      * @param requirementChangeOptions 分流可提出 change_requirements 選項：需求負責人按下即等同「核准需求變更」
      * @param channelCommandRouting    頻道頂層訊息「#編號 已知指令」視為該任務的補充，不另開新任務
+     * @param deferUnverifiable        驗收環境驗不了的驗收項目由測試計畫列為延後、不停給真人，PR 逐項列出（2026-10-23）；舊配置缺欄位時為 false
      */
     public record Autonomy(int modelTimeoutRecoveries, int maxTimeoutSeconds, int verificationContinuations,
-                           boolean requirementChangeOptions, boolean channelCommandRouting) {}
+                           boolean requirementChangeOptions, boolean channelCommandRouting, boolean deferUnverifiable) {
+        public Autonomy(int modelTimeoutRecoveries, int maxTimeoutSeconds, int verificationContinuations,
+                        boolean requirementChangeOptions, boolean channelCommandRouting) {
+            this(modelTimeoutRecoveries, maxTimeoutSeconds, verificationContinuations, requirementChangeOptions, channelCommandRouting, false);
+        }
+    }
     /** 管理者核准的部署目標與檢查操作；模型不能用報告自行指定其他主機。 */
     public record ServiceTarget(String name, Map<String, String> checks) {}
     /** 管理者固定的 argv；不能由模型的 command 欄位提供。 */

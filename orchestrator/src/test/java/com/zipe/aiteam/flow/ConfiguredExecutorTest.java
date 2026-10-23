@@ -431,6 +431,35 @@ class ConfiguredExecutorTest {
                 .contains("不以樣式白名單限制").doesNotContain("只能執行下列樣式");
     }
 
+    /** #1055：Codex 的 network proxy 會擋 localhost 的 HTTP；本機測試網路節點的固定操作要帶 NO_PROXY 前綴。 */
+    @Test void localTestNetworkOperationsCarryTheLoopbackNoProxyPrefix() throws Exception {
+        var definition = springDefinition();
+        AgentRuntime codex = mock(AgentRuntime.class);
+        when(codex.permitsCommand(any(), any())).thenReturn(true);
+        var operations = OperationContract.forNode(definition, "verification");
+        String local = ConfiguredExecutor.commandPatterns(definition.roles().get("tester"), codex, operations, true);
+        assertThat(local).contains("env NO_PROXY=localhost,127.0.0.1,::1 no_proxy=localhost,127.0.0.1,::1 mkdir -p target/qa-docs")
+                .contains("不要拿掉");
+        assertThat(ConfiguredExecutor.commandPatterns(definition.roles().get("tester"), codex, operations, false)).doesNotContain("NO_PROXY");
+    }
+
+    /** #1055：系統已在全新 clone 通過的指令列給 QA，請它引用收據、不要在沙箱重跑。 */
+    @Test void verificationIsToldWhichCommandsTheSystemAlreadyPassed() throws Exception {
+        var flow = new FlowRun(TeamCatalog.load(Path.of("teams/spring-starters.json"), key -> repo.toString()));
+        var decisions = List.of(
+                new VerificationPlan.Decision(0, List.of("npm", "ci"), VerificationPlan.Action.RUN, "", List.of(), "f0", "l0", "s0", null),
+                new VerificationPlan.Decision(1, List.of("npm", "test"), VerificationPlan.Action.REUSE, "", List.of(), "f1", "l1", "s1", "h0"),
+                new VerificationPlan.Decision(2, List.of("gradle", "test"), VerificationPlan.Action.SKIP, "未涉及", List.of(), "f2", null, null, null));
+        flow.independentEvidence = new IndependentVerifier.Receipt("h1", "b", "c", "s", "e", List.of(), null, null, decisions, List.of(), "42");
+        var verification = flow.snapshot.definition().nodes().values().stream()
+                .filter(n -> n.gate() == TeamDefinition.Gate.VERIFICATION).findFirst().orElseThrow();
+        String notice = ConfiguredExecutor.receiptReuseNotice(flow, verification);
+        assertThat(notice).contains("commit h1").contains("・npm ci").contains("・npm test").doesNotContain("gradle test").contains("不要在沙箱重跑");
+        var review = flow.snapshot.definition().nodes().values().stream()
+                .filter(n -> n.gate() == TeamDefinition.Gate.REVIEW).findFirst().orElseThrow();
+        assertThat(ConfiguredExecutor.receiptReuseNotice(flow, review)).isEmpty();
+    }
+
     @Test void claudeRolesStillSeeTheirPatternsAndAnyOperationTheyCannotRun() throws Exception {
         var definition = springDefinition();
         var claude = new ClaudeCodeRuntime(null, null);

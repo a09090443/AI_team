@@ -34,6 +34,17 @@ class VerificationPlanTest {
         assertThat(VerificationPlan.select(spec, List.of("docs/install.sh")).fullRun()).isTrue();
         assertThat(VerificationPlan.select(spec, List.of("bestpartner-service/src/main/resources/prompt.md")).needs(0)).isTrue();
     }
+    /** #1055：只改部署定義、nginx 與規則文件，實際配置不再因 compose 檔誤跑後端測試。 */
+    @Test void bestpartnerDeploymentDefinitionsDoNotTriggerBackendTests(@org.junit.jupiter.api.io.TempDir java.nio.file.Path tmp) throws Exception {
+        java.nio.file.Files.createDirectories(tmp.resolve(".git"));
+        var real = TeamCatalog.load(java.nio.file.Path.of("teams/bestpartner.json"), key -> tmp.toString()).definition().project().verification();
+        var selection = VerificationPlan.select(real, List.of("docs/docker/bestpartner-sit/docker-compose.yml",
+                "bestpartner-ui/nginx/default.conf", ".claude/rules/build-and-run.md", "README.md"));
+        assertThat(selection.fullRun()).as(selection.fullRunReason()).isFalse();
+        assertThat(selection.needs(0)).isFalse();
+        assertThat(selection.needs(1)).isFalse();
+        assertThat(selection.needs(4)).isTrue();
+    }
     @Test void unknownOrUnscopedChangesRunEverything() {
         assertThat(VerificationPlan.select(spec, null).fullRun()).isTrue();
         assertThat(VerificationPlan.select(spec, List.of()).fullRun()).isTrue();

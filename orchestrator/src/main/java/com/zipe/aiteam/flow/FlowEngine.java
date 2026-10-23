@@ -359,7 +359,7 @@ public class FlowEngine {
                     state(task, Task.State.AWAIT_PR_APPROVAL, "任務 #" + task.id() + " 等待人工核准 PR");
                     String message = "任務 #" + task.id() + " 已完成配置中的檢查，請核准才會推分支與開 PR（不代表產品已交付）。\ncommit=" + head
                             + "\n需求基準=" + flow.baselineRevision + "\n需求／驗收負責人=<@" + flow.acceptanceOwner + ">"
-                            + IssueTracker.summary(flow) + TeamBoard.summary(flow) + reviewSuggestions(flow, 8);
+                            + IssueTracker.summary(flow) + DeferredAcceptance.summary(flow) + TeamBoard.summary(flow) + reviewSuggestions(flow, 8);
                     slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), message, SlackBlocks.approvalBlocks(task.id(), message));
                     return;
                 }
@@ -405,6 +405,21 @@ public class FlowEngine {
                                 "任務 #" + task.id() + "：「" + flow.node + "」需要的「" + redo + "」結果不成立，"
                                         + "系統自動退回「" + redo + "」重做，這一步不需要你處理。\n原因：" + Diagnostics.clip(invalid, 400));
                         flow.node = redo;
+                        store.saveFlow(task.id(), flow);
+                        continue;
+                    }
+                    // 前次結果仍然有效（同 commit、需求沒變或只刪減、沒有新問題）：原樣沿用，不呼叫 agent、不計換手。
+                    String reuseHead = flow.workspaceReady && workspaces.exists(task.id()) ? workspaces.headSha(task.id()) : null;
+                    JsonNode reused = ReceiptReuse.reusable(flow, flow.node, node, reuseHead,
+                            reuseHead != null && workspaces.clean(task.id()));
+                    if (reused != null) {
+                        String reusedNode = flow.node;
+                        String next = ReceiptReuse.restore(flow, reusedNode, node, reused, reuseHead);
+                        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY, "沿用節點 " + reusedNode
+                                + " 前次結果（commit=" + reuseHead + "，需求基準未變或只刪減、沒有新問題），未重跑；接著 " + next);
+                        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id() + "：「" + reusedNode
+                                + "」的前次結果仍然有效（同一個 commit，需求沒有新增或修改），直接沿用，不重跑。");
+                        flow.node = next;
                         store.saveFlow(task.id(), flow);
                         continue;
                     }
@@ -479,6 +494,8 @@ public class FlowEngine {
                     if (node.gate() == Gate.REQUIREMENTS && flow.baselineRevision != null) {
                         JsonNode previous = Traceability.baseline(flow);
                         if (previous != null) flow.baselineHistory.add(previous.deepCopy());
+                        // 先存下來：需求只刪減或沒變時，設計、計畫、實作可原樣沿用（ReceiptReuse）。
+                        for (String id : List.copyOf(flow.receipts.keySet())) ReceiptReuse.retire(flow, id);
                         flow.baselineRevision = null; flow.changeAuthorized = false;
                         flow.receipts.clear(); flow.heads.clear();
                     }
@@ -1221,9 +1238,14 @@ public class FlowEngine {
                 + "驗收在這個環境無法核實下列項目（例如需要外部 API 金鑰、資料庫），系統閘門原本擋下發布，由驗收負責人以「開 PR」放行。"
                 + "合併前請在具備對應環境時實測：\n\n"
                 + String.join("\n", unverified.stream().map(line -> "- " + line).toList());
+        List<String> deferredLines = DeferredAcceptance.lines(flow);
+        String deferred = deferredLines.isEmpty() ? "" : "\n\n## 延後驗收（本環境無法驗證）\n\n"
+                + "測試計畫依專案設定（project.autonomy.deferUnverifiable）把下列驗收項目延後，本次驗收沒有涵蓋。"
+                + "核准或合併前請確認是否另行驗證：\n\n"
+                + String.join("\n", deferredLines.stream().map(line -> "- " + line.replace("\n", " ")).toList());
         return "- 配置版本：`" + flow.snapshot.revision() + "`\n- 需求基準：`" + flow.baselineRevision
                 + "`\n- 驗收負責人：" + flow.acceptanceOwner
-                + "\n\n## 需求\n\n" + task.requestText() + uncertain + waiver + review
+                + "\n\n## 需求\n\n" + task.requestText() + deferred + uncertain + waiver + review
                 + "\n\n## 驗收紀錄\n\n" + PrReport.receipts(flow)
                 + "\n## 系統獨立驗證\n\n" + PrReport.independent(flow.independentEvidence);
     }

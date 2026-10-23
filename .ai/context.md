@@ -27,6 +27,8 @@
 
 ## 正在進行
 
+- **2026-10-23 簡單任務效率五項修正（Claude Code，最高優先）**：來源完成、未 commit／未部署。延後驗收（deferUnverifiable）、Codex 測試指令帶 NO_PROXY、驗收引用系統收據、ReceiptReuse 沿用前次結果、bestpartner qaOnlyPaths 加 docs/docker/**。下一步：Linux 完整驗證、commit，部署需使用者同意；部署後以下一個小任務對照耗時。細節見 progress 同日條目。
+
 - **2026-10-23 負責人裁定待決問題（Claude Code，最高優先）**：commit 2e61dab 已部署 bestpartner 並真實驗證：#1055 按「移出範圍」後 agent 自行修好審查發現的 2 個缺陷，21:47 停在 AWAIT_PR_APPROVAL（commit 522c2a9）。下一步：負責人核准 PR；可另行處理驗證範圍誤跑後端測試與 tester 沙箱 localhost 問題。
 
 - **三實例統一版本已部署（2026-10-23，Claude Code）**：main e8e8799（含 Codex 分支 codex/direct-ssh-deployment、phase1、共用規則；三個已部署專案啟用 collaboration）JAR 0b7efa1a…，starters／bestpartner／dynamic-api 依序部署成功，Linux verify 791 項 0 失敗。Codex 分支的工作已併入 main，之後以 main 為準。dynamic-api 部署後的基準驗證 15:55 排入、結果待確認；starters 基準有 MailServiceSmtpsScenariosTest 既有失敗。基準驗證改用驗證鍵（d95714a，JAR d8e04353…）已部署三實例，starters 重啟實測不再重跑；dynamic-api 最後一次重跑 17:32 排入。
