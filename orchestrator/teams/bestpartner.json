@@ -850,6 +850,7 @@
     "boardMaxEntries": 100
   },
   "entry": "intake",
+  "sharedInstructions": "prompts/shared.md",
   "maxTransitions": 24,
   "nodes": {
     "intake": {

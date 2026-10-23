@@ -302,6 +302,7 @@ class ConfiguredExecutorTest {
         assertThat(request.allowedTools()).contains("Bash(npm *)").doesNotContain("Bash(mvn *)");
         assertThat(request.prompt()).contains("Node Web", "TypeScript", "新增畫面");
         assertThat(Files.readString(request.systemPromptFile())).isEqualTo(flow.snapshot.assets().get("prompts/implement.md")
+                + "\n\n【團隊共用工作規則】\n" + flow.snapshot.assets().get("prompts/shared.md")
                 + "\n\n" + flow.snapshot.assets().get(IssueTracker.CONTRACT));
         verify(store).saveCheckpoint(argThat(cp -> cp.role().equals("frontend") && cp.runtime().equals("claude-code")));
     }

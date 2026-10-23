@@ -7,10 +7,19 @@ import java.util.Map;
 /** 管理者配置，不接受 agent 修改。角色 ID 不帶任何流程語意。 */
 public record TeamDefinition(int version, String id, Project project, Map<String, Role> roles,
                              String entry, int maxTransitions, Map<String, Node> nodes,
-                             @JsonInclude(JsonInclude.Include.NON_NULL) Collaboration collaboration) {
+                             @JsonInclude(JsonInclude.Include.NON_NULL) Collaboration collaboration,
+                             /**
+                              * 選填：所有角色共用的工作規則檔（配置目錄內相對路徑），附在每個正式階段的角色提示之後。
+                              * 序列化時省略 null，未設定的配置 revision 不變。
+                              */
+                             @JsonInclude(JsonInclude.Include.NON_NULL) String sharedInstructions) {
     public TeamDefinition(int version, String id, Project project, Map<String, Role> roles,
                           String entry, int maxTransitions, Map<String, Node> nodes) {
-        this(version, id, project, roles, entry, maxTransitions, nodes, null);
+        this(version, id, project, roles, entry, maxTransitions, nodes, null, null);
+    }
+    public TeamDefinition(int version, String id, Project project, Map<String, Role> roles,
+                          String entry, int maxTransitions, Map<String, Node> nodes, Collaboration collaboration) {
+        this(version, id, project, roles, entry, maxTransitions, nodes, collaboration, null);
     }
     /**
      * 角色諮詢與共享看板的上限；未設定代表整個功能關閉（舊快照一律如此）。

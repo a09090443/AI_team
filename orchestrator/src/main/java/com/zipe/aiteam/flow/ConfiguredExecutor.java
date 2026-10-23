@@ -69,6 +69,8 @@ public class ConfiguredExecutor {
         Files.createDirectories(root);
         Path prompt = root.resolve(flow.node + ".md");
         String system = flow.snapshot.assets().get(role.prompt());
+        String shared = flow.snapshot.definition().sharedInstructions();
+        if (!flow.dialogue && shared != null) system += "\n\n【團隊共用工作規則】\n" + flow.snapshot.assets().get(shared);
         if (!flow.dialogue) system += skillInstructions(flow.snapshot, node);
         if (!flow.dialogue && node.instructions() != null) system += "\n\n【本次階段指示，優先於角色的一般工作說明】\n" + flow.snapshot.assets().get(node.instructions());
         if (flow.dialogue) system = "你是 " + role.name() + "。本次僅唯讀對話，不是正式驗收或派工，禁止寫檔、執行測試、commit 或開 PR。"

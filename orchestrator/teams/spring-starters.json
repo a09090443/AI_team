@@ -158,6 +158,7 @@
     }
   },
   "entry": "intake",
+  "sharedInstructions": "prompts/shared.md",
   "maxTransitions": 24,
   "nodes": {
     "intake": {
@@ -191,7 +192,7 @@
       "writablePaths": [],
       "plan": null,
       "next": "plan",
-      "blocked": "human",
+      "blocked": "triage",
       "routes": {
         "ready": "plan",
         "human": "human"

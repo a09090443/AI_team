@@ -31,6 +31,7 @@ public class TeamCatalog {
         Path root = file.toAbsolutePath().getParent().toRealPath();
         Map<String,String> assets = new TreeMap<>();
         for (Role role : definition.roles().values()) readAsset(root, role.prompt(), assets);
+        if (definition.sharedInstructions() != null) readAsset(root, definition.sharedInstructions(), assets);
         for (Node node : definition.nodes().values()) if (node.kind() == Kind.AGENT) {
             if (node.instructions() != null) readAsset(root, node.instructions(), assets);
             if (node.skills() != null) for (String skill : node.skills()) readAsset(root, skill, assets);

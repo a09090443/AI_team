@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.*;
+import java.util.List;
 import static org.assertj.core.api.Assertions.*;
 
 class TeamCatalogTest {
@@ -41,13 +42,25 @@ class TeamCatalogTest {
         assertThatThrownBy(() -> validate(json)).hasMessageContaining("不得重複");
     }
 
-    @Test void bestpartnerDesignBlockCanBeTriagedWithoutBypassingPrerequisites() throws Exception {
-        var definition = mapper.readValue(Files.readString(Path.of("teams/bestpartner.json")), TeamDefinition.class);
-        TeamCatalog.validate(definition);
-        assertThat(definition.nodes().get("design").blocked()).isEqualTo("triage");
-        assertThat(definition.nodes().get("design").routes()).containsEntry("human", "human");
-        assertThat(definition.nodes().get("triage").routes()).containsEntry("design", "design").containsEntry("plan", "plan");
-        assertThat(definition.nodes().get("implementation").requires()).contains("plan");
+    @Test void designBlockCanBeTriagedWithoutBypassingPrerequisites() throws Exception {
+        for (String team : List.of("bestpartner", "dynamic-api", "spring-starters")) {
+            var definition = mapper.readValue(Files.readString(Path.of("teams/" + team + ".json")), TeamDefinition.class);
+            TeamCatalog.validate(definition);
+            assertThat(definition.nodes().get("design").blocked()).as(team).isEqualTo("triage");
+            assertThat(definition.nodes().get("design").routes()).as(team).containsEntry("human", "human");
+            assertThat(definition.nodes().get("triage").routes()).as(team).containsEntry("design", "design").containsEntry("plan", "plan");
+            assertThat(definition.nodes().get("implementation").requires()).as(team).contains("plan");
+        }
+    }
+    @Test void sharedInstructionsAreFrozenForEveryBundledTeamAndOmittedWhenUnset() throws Exception {
+        Files.createDirectories(tmp.resolve(".git"));
+        for (String team : List.of("bestpartner", "dynamic-api", "spring-starters", "node-web")) {
+            var snapshot = TeamCatalog.load(Path.of("teams/" + team + ".json"), key -> tmp.toString());
+            assertThat(snapshot.definition().sharedInstructions()).as(team).isEqualTo("prompts/shared.md");
+            assertThat(snapshot.assets().get("prompts/shared.md")).as(team).contains("任務效率", "工作分類");
+        }
+        var config = config(); config.remove("sharedInstructions");
+        assertThat(mapper.writeValueAsString(mapper.treeToValue(config, TeamDefinition.class))).doesNotContain("sharedInstructions");
     }
     @Test void springBuilderCanBuildDocsWithoutBroadNpmOrPmWriteAccess() throws Exception {
         var definition = mapper.readValue(Files.readString(Path.of("teams/spring-starters.json")), TeamDefinition.class);

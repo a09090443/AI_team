@@ -601,3 +601,9 @@ CRITICAL 等其他寫法不放行。放行寫成帶 `owner_waiver` 的 receipt�
 ## 2026-10-18 dynamic-api 後端測試編譯錯誤的處理
 
 - 使用者決定：配置維持不變（後端測試仍在 QA 操作與系統獨立驗證內），服務啟動後的第一個任務就在 #dynamic-api 請 AI 團隊修 ResponseRepositoryTest（findByPrimaryKey 少傳 ServiceType）。理由：問題在 repo 本身，修好後驗證範圍不必再調整；不為了綠燈暫時移除測試。
+
+## 2026-10-23 角色共用規則改由配置檔集中提供
+
+- 使用者核准方案 A：精簡提示詞並抽出共用規則、效率規則補到其他角色、修簡體字、spring-starters design 受阻改交分流。
+- 新增頂層選填 `sharedInstructions`（配置目錄內的規則檔），而不是寫成 Java 常數：規則屬於可調整的團隊配置，改內容不需重建 JAR，各專案也能指向自己的版本，符合通用性目標。null 不序列化，未設定的配置 revision 不變。
+- 只附在正式階段，不附在唯讀對話與諮詢回答，避免把派工規則帶進不該做事的情境。四份內附配置都啟用，代價是部署後的新快照舊 JAR 讀不了，回滾需搭配 DB 備份。

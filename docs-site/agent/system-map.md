@@ -66,8 +66,9 @@ Slack @主機器人 需求
   → approval      [真人核准 PR] → 推分支、開 PR → 狀態 PR_CREATED
 ```
 
-bestpartner 的 design、plan、implementation、verification、review 節點受阻（`blocked`）時交給 **triage**（PM 分流）；
-intake 與 triage 受阻則交真人。實際依任務保存的配置快照，舊快照的 design 可能直接交真人。分流只能回傳配置中既有的 route：
+bestpartner、dynamic-api 與 spring-starters 的 design、plan、implementation、verification、review 節點受阻（`blocked`）時交給 **triage**（PM 分流）；
+intake 與 triage 受阻則交真人。實際依任務保存的配置快照，舊快照的 design 可能直接交真人（spring-starters 在 2026-10-23 前建立的任務即是）。
+四份配置都以 `sharedInstructions` 載入 `prompts/shared.md`，所有角色共用同一份工作分類、任務效率與協作規則。分流只能回傳配置中既有的 route：
 `implementation`、`verification`、`plan`、`design`、`requirements`（回到 intake 改需求）或 `human`。
 agent 不能自行指定角色或跳到任意節點。
 
@@ -122,7 +123,7 @@ agent 不能自行指定角色或跳到任意節點。
 
 | 路徑 | 內容 |
 |---|---|
-| `orchestrator/teams/*.json` | 團隊配置：`spring-starters.json`（Java starters）、`node-web.json`（Node 範例） |
+| `orchestrator/teams/*.json` | 團隊配置：`bestpartner.json`（唯一啟用 `collaboration`）、`dynamic-api.json`、`spring-starters.json`（Java starters）、`node-web.json`（Node 範例） |
 | `orchestrator/teams/prompts/`、`schemas/` | 配置式節點的提示與輸出 schema |
 | `orchestrator/prompts/`、`orchestrator/schemas/` | legacy 五角色的提示與 schema |
 | `orchestrator/src/main/resources/schema.sql` | SQLite DDL 唯一來源 |

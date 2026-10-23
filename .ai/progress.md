@@ -1,5 +1,19 @@
 # 工作進度（Codex 與 Claude Code 共用）
 
+## 2026-10-23 精簡提示詞並抽出共用規則（Claude Code，來源完成、未部署、未 commit）
+
+- 新增 TeamDefinition.sharedInstructions，TeamCatalog 凍結進快照資產，ConfiguredExecutor 在正式階段附「【團隊共用工作規則】」；新增 teams/prompts/shared.md（工作分類、任務效率、協作與自主），四份配置都啟用。
+- 精簡 intake、triage、design、plan、implement、verify、review：移除重複的文件任務分類規則，各角色補上對應的效率要求；修正 review／design／verify 的 3 處簡體字。prompts 總行數 175。
+- spring-starters design 受阻改交 triage。
+- 測試：TeamCatalogTest（新增共用規則凍結與 null 不序列化、design 受阻檢查擴及三份配置）、ConfiguredExecutorTest（系統提示含共用規則）等 219 項通過。完整 Maven 712 項，失敗仍是修改前同樣 4 項 Windows 環境相關測試（symlink、/bin/sh、逾時訊息、WorkspaceManager），未在 Linux 確認；check-source（Python 以 shim 略過）與 docs build 通過。
+- 已核對的文件：configurable-team、agent/configuration、data-model、system-map、pm-triage、project-tree、catalog（code 已涵蓋 teams/，不需改）。已修正的文件：上述前六份。
+
+## 2026-10-23 檢查專案是否符合 AI agent team 概念（Claude Code，只做評估）
+
+- 依使用者要求檢查協作／交接、自動解決問題、效率與各角色提示詞；結論與建議回報給使用者，提示詞與流程尚未修改。
+- 主要發現：所有任務固定走 intake→design→plan→implementation→verification→review→approval，沒有簡單任務的短路線；角色諮詢／看板只在 bestpartner 啟用且未部署；intake／triage 受阻與 spring-starters design 受阻直接交真人；提示詞累積大量事件補丁，文件任務規則在 6 份提示重複；review／design／verify 有 3 處簡體字。
+- 已核對的文件：agent/system-map、pm-triage、configurable-team（文件任務段）、teams/prompts 全部、四份 teams 配置。已修正的文件：system-map 程式碼地圖原本只列 spring-starters／node-web，補上 bestpartner 與 dynamic-api。
+
 ## 2026-10-23 定義專案終極目標（Claude Code，文件修改、未 commit）
 
 - 依使用者要求，在 AGENTS.md 開頭新增「專案終極目標」：agent 自主協作、不需真人介入、通用於不同專案，並列出自主不等於擴權與通用性的具體原則；docs-site/agent/index.md「這個專案是什麼」加入摘要。

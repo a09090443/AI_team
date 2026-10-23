@@ -59,10 +59,15 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
   "roles": { "<角色 ID>": { "...": "角色設定" } },
   "entry": "intake",
   "maxTransitions": 24,
+  "sharedInstructions": "prompts/shared.md",
   "collaboration": { "consultPerVisit": 2, "consultPerTask": 12, "questionsPerRound": 2, "boardMaxEntries": 100 },
   "nodes": { "<節點 ID>": { "...": "節點設定" } }
 }
 ```
+
+`sharedInstructions` 是選填欄位：所有角色共用的工作規則檔（配置目錄內相對路徑），建立快照時一併凍結，
+正式階段附在角色提示之後、技能與本次階段指示之前（「【團隊共用工作規則】」區塊）；唯讀對話與諮詢回答不附。
+沒設定時不序列化，revision 不變。四份內附配置都指向 `prompts/shared.md`。
 
 `collaboration` 是選填欄位，用來啟用角色諮詢與共享看板，各欄位的上限如下：
 

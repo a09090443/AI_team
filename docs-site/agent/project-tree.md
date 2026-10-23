@@ -247,6 +247,7 @@ agent_team/
 │   │   ├── dynamic-api.json          # dynamic-api 實例（Spring Boot＋Gradle、Next.js）；未配置服務建置節點
 │   │   ├── node-web.json             # Node 專案範例配置
 │   │   ├── prompts/                  # 節點提示
+│   │   │   ├── shared.md             # 所有角色共用的工作分類、任務效率與協作規則（sharedInstructions）
 │   │   │   ├── intake.md             # 需求整理（PM）
 │   │   │   ├── design.md             # 設計（Architecture）
 │   │   │   ├── plan.md               # 測試計畫（QA）
