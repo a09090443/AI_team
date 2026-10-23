@@ -23,9 +23,11 @@
 > 換手前務必更新這份檔案。內容只寫「現在正在做什麼、卡在哪、下一步」，
 > 長期結論寫 `decisions.md`，已完成的寫 `progress.md`。舊內容查 git 歷史，不要在這裡累積流水帳。
 
-最後更新：2026-10-22（Claude Code）
+最後更新：2026-10-23（Claude Code）
 
 ## 正在進行
+
+- **2026-10-23 合併 main 並部署 bestpartner（最高優先）**：codex/direct-ssh-deployment 30ab8fb（含 68d3c30 與 main 的 phase1 角色諮詢／共享看板），JAR a500f7ec…、PID 181771，備份 orchestrator-backup.P0B3PG；Linux 789 項 0 失敗。bestpartner 的 collaboration 已上線，但尚未做真實端對端驗證。下一步：在 bestpartner 開一個小需求，觀察 Slack 是否出現諮詢問答、接續有沒有計次，以及核准訊息是否帶看板摘要；main 尚未包含本分支的 11＋2 個 commit，之後再決定是否合回 main。
 
 - **phase1 已併入 main（2026-10-23，Claude Code）**：使用者要求不等 Linux 驗證直接併入並 push。Windows 完整 Maven 711 項有 4 項失敗（OperationContractTest symlink 權限、QuotaExceededTest 找不到 /bin/sh、RuntimeDiagnosticsTest 逾時訊息、WorkspaceManagerTest 未提交修改），疑為 Windows 環境問題，**尚未在 Linux 確認**；下一步在 Linux 隔離環境重跑。dynamic-api 配置以 main 版為準；諮詢功能未部署到任何 VM。
 

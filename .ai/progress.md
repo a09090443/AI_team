@@ -1,5 +1,13 @@
 # 工作進度（Codex 與 Claude Code 共用）
 
+## 2026-10-23 合併 main 並部署 bestpartner（Claude Code，使用者授權部署與 push）
+
+- 先把本工作樹 10-21～10-22 已部署但未提交的修改 commit 成 68d3c30，再將 main 併入（30ab8fb）。衝突：FlowEngine（順序為先對帳長作業、再處理諮詢請求、最後檢查 ServiceSupport 交付條件）、service-delivery.md（保留已部署的新版內容）、.ai 交接檔（兩邊並存）。
+- 驗證：本機 Maven 789 項中 3 項是既有的 Windows 環境失敗；Linux 隔離建置 /home/agent/collab-build.Dzu5HB（git archive 加 core.autocrlf=false，tar SHA 53dbcf9c…，兩端一致，CR 檔案數 0）：check-source 與 Python 97 項通過，mvn clean verify 789 項 0 失敗／錯誤、12 略過，JAR a500f7ec…。四份團隊配置都用候選 JAR 驗證通過。docs build 通過。
+- 部署：等 #1055 implementation 結束（14:07 進入 AWAIT_HUMAN）才執行 deploy-orchestrator.sh。bestpartner PID 181771，備份 orchestrator-backup.P0B3PG，log 在 /home/agent/collab-deploy-20261023.log。六表與所有工作區前後一致，沙箱與工具鏈自檢通過，六個角色 Socket Mode 已啟動，ERROR 0，只有既有的共用 token WARN；ai-team-ssh-deploy active。另外兩個實例仍是 28679cb5…，沒有動。
+- 上線內容：角色諮詢與共享看板（只有 bestpartner 啟用 collaboration），以及 intake／triage 的任務效率說明。線上 teams 與候選版本的實質差異只有這三項，其餘只是 CRLF 差異。
+- 證據等級：已部署，程式測試通過；諮詢與看板尚未做真實 Slack 端對端驗證。既有任務保留原快照，要套用新規則須改用新任務或做配置遷移。
+
 ## 2026-10-23 定義專案終極目標（Claude Code，文件修改、未 commit）
 
 - 依使用者要求，在 AGENTS.md 開頭新增「專案終極目標」：agent 自主協作、不需真人介入、通用於不同專案，並列出自主不等於擴權與通用性的具體原則；docs-site/agent/index.md「這個專案是什麼」加入摘要。
