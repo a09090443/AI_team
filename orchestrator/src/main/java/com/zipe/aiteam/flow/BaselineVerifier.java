@@ -7,12 +7,16 @@ import com.zipe.aiteam.sandbox.SandboxPolicy;
 import com.zipe.aiteam.workspace.WorkspaceManager;
 import org.springframework.stereotype.Component;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -28,6 +32,9 @@ import java.util.concurrent.TimeUnit;
  * 執行環境與任務的獨立驗證相同（全新 checkout、釘住版控檔、systemd 沙箱、專用快取、共用總時限），
  * 差別是失敗後繼續跑其餘指令，好讓管理者一次看到全貌。結果以 JSON 存在 baseline-verification/，
  * 不寫資料庫、不改 FlowRun，JAR 回滾不受影響。
+ *
+ * 結果以「驗證鍵」加基準 commit 索引，而不是整份配置的 revision：只改提示詞、角色或流程時
+ * 基準結果不會變，不需要再跑一輪 20～40 分鐘的全套驗證。驗證鍵見 {@link #verificationKey}。
  */
 @Component
 public class BaselineVerifier {
@@ -39,9 +46,16 @@ public class BaselineVerifier {
 
     public record Result(List<String> argv, Outcome outcome, Integer exitCode, String log, String summary) {}
 
-    /** error 非 null 表示沒能開始跑指令（例如沒有配置驗證指令、取不到基準分支）。 */
+    /**
+     * error 非 null 表示沒能開始跑指令（例如沒有配置驗證指令、取不到基準分支）。
+     * configuration 是執行當下的配置 revision，只供顯示；verificationKey 才是判斷要不要重跑的依據（舊結果沒有這個欄位）。
+     */
     public record Report(String configuration, String branch, String sha, String startedAt, String completedAt,
-                         List<Result> results, String error) {
+                         List<Result> results, String error, String verificationKey) {
+        public Report(String configuration, String branch, String sha, String startedAt, String completedAt,
+                      List<Result> results, String error) {
+            this(configuration, branch, sha, startedAt, completedAt, results, error, null);
+        }
         public boolean passed() { return error == null && results != null && results.stream().allMatch(r -> r.outcome() == Outcome.PASS); }
         public List<Result> problems() {
             return results == null ? List.of() : results.stream().filter(r -> r.outcome() != Outcome.PASS).toList();
@@ -67,24 +81,78 @@ public class BaselineVerifier {
         return workspaces.baseRef(Path.of(snapshot.repository()), snapshot.definition().project().baseBranch());
     }
 
-    /** 這個配置版本與基準 commit 是否已有結果；啟動時用來決定要不要再跑。 */
+    /** 目前驗證鍵與基準 commit 是否已有結果；啟動時用來決定要不要再跑。 */
     public boolean alreadyVerified(String sha) {
-        return sha != null && Files.isRegularFile(file(catalog.snapshot().revision(), sha));
+        return sha != null && Files.isRegularFile(file(currentKey(), sha));
+    }
+
+    /**
+     * 會改變基準結果的輸入：驗證指令與總時限、自動續驗輪數、指令用到的工具（解析後的實際檔案、大小與修改時間）。
+     * 提示詞、角色、流程節點、權限等不在內，改了也不重跑。
+     */
+    public static String verificationKey(TeamDefinition definition, String toolchain) {
+        var spec = definition.project().verification();
+        var autonomy = definition.project().autonomy();
+        Map<String, Object> input = new LinkedHashMap<>();
+        input.put("commands", spec == null ? null : spec.commands());
+        input.put("timeoutSeconds", spec == null ? null : spec.timeoutSeconds());
+        input.put("verificationContinuations", autonomy == null ? 0 : autonomy.verificationContinuations());
+        input.put("toolchain", toolchain);
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(MAPPER.writeValueAsBytes(input)));
+        } catch (Exception e) { throw new IllegalStateException("無法計算基準驗證鍵", e); }
+    }
+
+    /** 驗證指令用到的工具（argv 第一個元素與 git）在 PATH 上解析到的實際檔案；升級工具會改變結果。 */
+    static String toolchain(TeamDefinition definition, String path, String javaHome) {
+        var spec = definition.project().verification();
+        java.util.Set<String> tools = new LinkedHashSet<>(List.of("git"));
+        if (spec != null && spec.commands() != null)
+            for (List<String> argv : spec.commands()) if (!argv.isEmpty()) tools.add(argv.getFirst());
+        StringBuilder out = new StringBuilder();
+        for (String tool : tools) out.append(tool).append('=').append(describe(resolve(tool, path))).append('\n');
+        out.append("JAVA_HOME=").append(javaHome == null ? "-" : describe(Path.of(javaHome).resolve("bin").resolve("java")));
+        return out.toString();
+    }
+
+    private static Path resolve(String tool, String path) {
+        if (tool.contains("/")) return Path.of(tool);
+        if (path != null) for (String dir : path.split(java.io.File.pathSeparator)) {
+            if (dir.isBlank()) continue;
+            Path candidate = Path.of(dir).resolve(tool);
+            if (Files.isExecutable(candidate)) return candidate;
+        }
+        return null;
+    }
+
+    private static String describe(Path file) {
+        if (file == null) return "MISSING";
+        try {
+            Path real = file.toRealPath();
+            return real + ":" + Files.size(real) + ":" + Files.getLastModifiedTime(real).toMillis();
+        } catch (Exception e) { return "MISSING"; }
+    }
+
+    private String currentKey() { return key(catalog.snapshot().definition()); }
+
+    private static String key(TeamDefinition definition) {
+        return verificationKey(definition, toolchain(definition, System.getenv("PATH"), System.getenv("JAVA_HOME")));
     }
 
     public Report run() throws Exception {
         var snapshot = catalog.snapshot();
         String revision = snapshot.revision();
+        String key = currentKey();
         String started = Instant.now().toString();
         var spec = snapshot.definition().project().verification();
         if (spec == null || spec.commands() == null || spec.commands().isEmpty())
             return save(new Report(revision, null, null, started, Instant.now().toString(), List.of(),
-                    "配置沒有 project.verification 驗證指令，不做基準驗證"));
+                    "配置沒有 project.verification 驗證指令，不做基準驗證", key));
         WorkspaceManager.BaseRef base;
         try { base = currentBase(); }
         catch (Exception e) {
             return save(new Report(revision, snapshot.definition().project().baseBranch(), null, started, Instant.now().toString(),
-                    List.of(), "取不到基準分支的最新 commit：" + e.getMessage()));
+                    List.of(), "取不到基準分支的最新 commit：" + e.getMessage(), key));
         }
         sandbox.requireReadyForCodeChanges();
         Path root = props.homePath().resolve("verification-runs").resolve(ID).toAbsolutePath().normalize();
@@ -106,7 +174,7 @@ public class BaselineVerifier {
                     repo, home, setup, run.resolve("checkout.log"), deadline);
         } catch (Exception e) {
             return save(new Report(revision, base.branch(), base.sha(), started, Instant.now().toString(), List.of(),
-                    "無法準備基準分支的全新 checkout：" + e.getMessage()));
+                    "無法準備基準分支的全新 checkout：" + e.getMessage(), key));
         }
         var policy = new SandboxPolicy(List.of(writable, verifier.dependencyCache()), IndependentVerifier.pinsFor(repo), 4096, 200, 256);
         List<Result> results = new ArrayList<>();
@@ -142,19 +210,19 @@ public class BaselineVerifier {
                 results.add(new Result(argv, Outcome.ERROR, null, log.toString(), e.getMessage()));
             }
         }
-        return save(new Report(revision, base.branch(), base.sha(), started, Instant.now().toString(), List.copyOf(results), null));
+        return save(new Report(revision, base.branch(), base.sha(), started, Instant.now().toString(), List.copyOf(results), null, key));
     }
 
-    /** 目前配置版本最新的一份結果。 */
+    /** 目前驗證鍵最新的一份結果。 */
     public Optional<Report> latest() {
-        return latest(catalog.snapshot().revision());
+        return latest(currentKey());
     }
 
-    Optional<Report> latest(String revision) {
+    Optional<Report> latest(String key) {
         Path dir = directory();
-        if (revision == null || !Files.isDirectory(dir)) return Optional.empty();
+        if (key == null || !Files.isDirectory(dir)) return Optional.empty();
         try (var files = Files.list(dir)) {
-            return files.filter(p -> p.getFileName().toString().startsWith(revision + "-") && p.toString().endsWith(".json"))
+            return files.filter(p -> p.getFileName().toString().startsWith(key + "-") && p.toString().endsWith(".json"))
                     .map(BaselineVerifier::read).flatMap(Optional::stream)
                     .max(Comparator.comparing(r -> r.completedAt() == null ? "" : r.completedAt()));
         } catch (Exception e) {
@@ -163,11 +231,11 @@ public class BaselineVerifier {
     }
 
     /**
-     * 給 agent 的系統事實：這個配置版本最新的基準驗證有失敗時才有內容。
+     * 給 agent 的系統事實：任務快照的驗證指令最新的基準驗證有失敗時才有內容。
      * 讓 PM 從需求階段就知道「這些指令在還沒改任何東西時就過不了」，而不是等系統獨立驗證才發現。
      */
-    public String notice(String revision) {
-        return latest(revision).filter(r -> !r.passed()).map(BaselineVerifier::agentNotice).orElse("");
+    public String notice(TeamDefinition definition) {
+        return latest(key(definition)).filter(r -> !r.passed()).map(BaselineVerifier::agentNotice).orElse("");
     }
 
     static String agentNotice(Report report) {
@@ -224,7 +292,7 @@ public class BaselineVerifier {
 
     private Report save(Report report) throws Exception {
         Files.createDirectories(directory());
-        Files.writeString(file(report.configuration(), report.sha()), MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(report));
+        Files.writeString(file(report.verificationKey(), report.sha()), MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(report));
         return report;
     }
 
@@ -232,11 +300,11 @@ public class BaselineVerifier {
         return props.homePath().resolve("baseline-verification").toAbsolutePath().normalize();
     }
 
-    private Path file(String revision, String sha) {
-        if (revision == null || !revision.matches("[0-9a-f]{16,128}")) throw new IllegalArgumentException("無效配置版本");
-        String key = sha == null ? "none" : sha;
-        if (!key.matches("none|[0-9a-f]{40,64}")) throw new IllegalArgumentException("無效 commit");
-        return directory().resolve(revision + "-" + key + ".json");
+    private Path file(String key, String sha) {
+        if (key == null || !key.matches("[0-9a-f]{16,128}")) throw new IllegalArgumentException("無效驗證鍵");
+        String commit = sha == null ? "none" : sha;
+        if (!commit.matches("none|[0-9a-f]{40,64}")) throw new IllegalArgumentException("無效 commit");
+        return directory().resolve(key + "-" + commit + ".json");
     }
 
     private static Optional<Report> read(Path path) {

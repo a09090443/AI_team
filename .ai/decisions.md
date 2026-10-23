@@ -671,3 +671,10 @@ bestpartner `implementation.timeoutSeconds` 改 3600，`buildInstructions`／`te
 - 使用者核准方案 A：精簡提示詞並抽出共用規則、效率規則補到其他角色、修簡體字、spring-starters design 受阻改交分流。
 - 新增頂層選填 `sharedInstructions`（配置目錄內的規則檔），而不是寫成 Java 常數：規則屬於可調整的團隊配置，改內容不需重建 JAR，各專案也能指向自己的版本，符合通用性目標。null 不序列化，未設定的配置 revision 不變。
 - 只附在正式階段，不附在唯讀對話與諮詢回答，避免把派工規則帶進不該做事的情境。四份內附配置都啟用，代價是部署後的新快照舊 JAR 讀不了，回滾需搭配 DB 備份。
+
+## 2026-10-23 基準驗證以驗證鍵決定是否重跑
+
+- 只改提示詞的部署讓三個實例各重跑一次 20～52 分鐘的全套驗證，因為結果以整份配置 revision 索引。使用者要求改成只在驗證指令、基準 commit 或工具鏈改變時重跑。
+- 驗證鍵＝SHA-256（verification.commands、timeoutSeconds、autonomy.verificationContinuations、工具鏈）。工具鏈取每條指令執行檔與 git 在服務 PATH 上解析到的實際檔案路徑、大小、修改時間，加上 JAVA_HOME 的 java；不跑 `--version`，避免啟動時多開程序。取捨：路徑、大小、時間都不變的工具替換偵測不到，需要時用 Slack「基準驗證」手動重跑。
+- 舊結果以 revision 命名，不做相容讀取：部署後各實例多跑一次即可，避免為一次性遷移加程式碼。
+- 同日決定：三個已部署專案都啟用 collaboration；node-web 是範例配置，維持未啟用作為對照組。

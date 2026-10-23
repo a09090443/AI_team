@@ -36,11 +36,11 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 | `AI_TEAM_BASE_BRANCH`、`AI_TEAM_BRANCH_PREFIX` | 基準分支（留空自動偏好 `develop`）與任務分支前綴 |
 | `AI_TEAM_GIT_USER_NAME`、`AI_TEAM_GIT_USER_EMAIL` | agent commit 署名，寫在工作區 local config |
 | `AI_TEAM_MAX_CONCURRENCY` | 實例內 legacy 階段的並行槽上限；中央工作迴圈仍依序執行，單獨調高不會讓 v2 任務平行；訂閱帳號建議 1 |
-| `AI_TEAM_RESUME_OPERATION_TASK` | 2026-10-20 已部署 bestpartner。只在一次啟動指定一個數字 task ID，將符合條件的舊 AWAIT_HUMAN 排回原長作業；須同 activeNode、乾淨工作區與有效同 HEAD journal。不是批次掃描或核准開關，用後移除，勿常駐 env.sh／team.env |
+| `AI_TEAM_RESUME_OPERATION_TASK` | 2026-10-20 已部署。只在一次啟動指定一個數字 task ID，將符合條件的舊 AWAIT_HUMAN 排回原長作業；須同 activeNode、乾淨工作區與有效同 HEAD journal。不是批次掃描或核准開關，用後移除，勿常駐 env.sh／team.env |
 | `AI_TEAM_TASK_TIMEOUT_SECONDS`、`AI_TEAM_GIT_TIMEOUT_SECONDS` | 全域逾時覆寫（0＝用各階段設定）與 git 逾時 |
 | `AI_TEAM_PROGRESS_INTERVAL_SECONDS` | 進度卡更新秒數，預設 300、最小 30；**不能設成空字串** |
 | `AI_TEAM_REPORT_DETAIL` | `brief`（預設）或 `full`；完整報告可用 `補充 #<id> 檢視完整報告 [節點]` 叫出 |
-| `AI_TEAM_BASELINE_VERIFY` | `on`（預設）或 `off`。on 時服務啟動會在「目前配置＋基準分支最新 commit」還沒有結果時自動跑一次[基準驗證](/docs/baseline-verification)；off 只關掉自動觸發，Slack「基準驗證」指令照樣可用 |
+| `AI_TEAM_BASELINE_VERIFY` | `on`（預設）或 `off`。on 時服務啟動會在「目前驗證指令／工具鏈＋基準分支最新 commit」還沒有結果時自動跑一次（只改提示詞、角色或流程不會觸發）[基準驗證](/docs/baseline-verification)；off 只關掉自動觸發，Slack「基準驗證」指令照樣可用 |
 | `AI_TEAM_EXPLAINER_MODEL`、`AI_TEAM_EXPLAINER_ENABLED` | 系統錯誤白話說明所用模型（預設 haiku）與開關；布林值不能設成空字串 |
 | `AI_TEAM_MODEL_<角色>`、`AI_TEAM_RUNTIME_<角色>`、`AI_TEAM_CODE_REVIEW` | **僅 legacy 模式**；配置式模式改在 JSON 的 `roles` 設定 |
 
@@ -156,7 +156,7 @@ bash deploy/bootstrap/check-source.sh
 ## 自主恢復（project.autonomy）
 
 選填，null＝停用。欄位 `modelTimeoutRecoveries`（0～3）、`maxTimeoutSeconds`（0～3600）、`verificationContinuations`（0～3）、
-`requirementChangeOptions`、`channelCommandRouting`；目前只有 bestpartner 啟用（2／3600／2／true／true）。可原地配置遷移。
+`requirementChangeOptions`、`channelCommandRouting`；各實例的啟用狀態見[實例一覽](/docs/configurable-team#各專案實例的功能啟用狀態)（啟用中的值為 2／3600／2／true／true）。可原地配置遷移。
 行為與邊界見 [失敗回報](/docs/failure-reporting)「管理者授權的自主恢復」一節。
 
 ## 服務建置與指定腳本
@@ -185,7 +185,7 @@ bash deploy/bootstrap/check-source.sh
 plan 的 protected_path_changes 明列需跨 runtime 改派的檔案；不新增權限，仍須符合節點 protectedPathFallback.paths。詳見[配置流程](/docs/configurable-team)。尚未部署。
 
 
-### 2026-10-19 部署脈絡（已部署 bestpartner）
+### 2026-10-19 部署脈絡（已部署）
 
 實例可放 service-context/&lt;target&gt;.json，提供不含機密的宿主程式、設定路徑、啟動指令與歷史收據索引；詳見 [服務建置](/docs/service-delivery)。此檔僅供說明，不增加操作權限。
 
@@ -194,7 +194,7 @@ plan 的 protected_path_changes 明列需跨 runtime 改派的檔案；不新增
 
 Agent VM 的 systemd 固定部署執行器已啟用，以 SSH 公鑰直連 dev VM；網路、公鑰、主機指紋、受限入口與 health 已實測，不需要 Windows broker。#1046 的舊 skill 快照須新任務承接；dev VM 曾 heartbeat 停止，經使用者核准重啟後已重新驗證健康與8088入口，當機根因待查。本輪未重部署產品或續跑 Slack。詳見 [直連部署](/docs/direct-ssh-deployment)。
 
-## 長作業恢復的設定邊界（2026-10-20 已部署 bestpartner）
+## 長作業恢復的設定邊界（2026-10-20 已部署）
 
 AI_TEAM_RESUME_OPERATION_TASK 在一般 recoverOnStartup 之後讀取，只接受單一數字任務編號；限定配置流程、非角色對話、AWAIT_HUMAN、node=activeNode、乾淨工作區與有效同 HEAD journal。由中央佇列排 RESUME_QUEUED；不是套用新快照、重新核准計畫或核准 PR。管理者應先以固定 executor --reconcile 驗證原成功收據，用後清除變數；程式不會自動修改你的 env 檔。
 
@@ -202,16 +202,16 @@ AI_TEAM_RESUME_OPERATION_TASK 在一般 recoverOnStartup 之後讀取，只接�
 
 標準佈局下，Java 依 AI_TEAM_HOME、Python 依 workspace 的 home 定位 operation-jobs、operation-cancellations、operation-executor-heartbeat。journal 不在模型工作區；自訂 workspaces 位置時須核對兩者是否指向同一實例 home，不可假稱任意佈局已實測。可信 prepare/start 只在 task／activeNode／target／HEAD 相符時重用，health 仍須核對 start release。詳見[直連部署](/docs/direct-ssh-deployment)。
 
-此契約已部署 bestpartner；未修改 env.sh／team.env，正式恢復使用一次性啟動變數。實測範圍與任務結果見直連部署紀錄。
+此契約已部署；未修改 env.sh／team.env，正式恢復使用一次性啟動變數。實測範圍與任務結果見直連部署紀錄。
 
 
-## 服務追問支援（已部署bestpartner）
+## 服務追問支援（已部署）
 
 home/service-context/&lt;target&gt;.json可設定access_endpoints陣列（1～4筆），每筆audience、url、probe_url；url為使用者完整入口，probe_url為Agent VM受控實測位置。config_file沿用既有SSH設定引用；auto_repair_existing_release=true允許固定工具只修復已部署active應用，不build或動資料。沒有設定不自動推定URL或新增主機。HTTP探測不跟隨redirect，不接受憑證/query/fragment URL。
 
 AI_TEAM_RESUME_DIALOGUE_TASK只在一次啟動指定舊AWAIT_HUMAN、dialogue=true且有parent的單一對話ID；已COMPLETED服務對話僅在保存答案含不可執行的執行前綴建議時允許校正，走原中央佇列重新回答同一問題；不更換快照、不重開部署、用後移除。service-support/&lt;task&gt;保存current.json與health/diagnose/repair原job；dialogue-evidence/&lt;task&gt;是已清理來源之結案對話的證據資料夾，不是產品clone。
 
 
-### 持久診斷期限（已部署bestpartner）
+### 持久診斷期限（已部署）
 
 沒有新增環境變數或team.json欄位。Linux support worker的job.json記錄600秒deadline，Java等待上限610秒；remote每次操作另有180秒查詢界線，期限不因worker重啟延長。重啟恢復限定有效診斷服務角色對話，或原activeNode且乾淨同HEAD的SERVICE階段；不會改env.sh或既有快照。中央槽維持循序執行。

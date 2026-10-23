@@ -104,7 +104,7 @@ class ConfiguredExecutorTest {
         when(workspace.pathFor("42")).thenReturn(taskRepo); when(workspace.exists("42")).thenReturn(true);
         flow.workspacePath = taskRepo.toString(); flow.node = "triage";
         var baseline = mock(BaselineVerifier.class);
-        when(baseline.notice(flow.snapshot.revision())).thenReturn("\n基準驗證結果（系統事實，非建議）：gradle test 程式或測試失敗");
+        when(baseline.notice(flow.snapshot.definition())).thenReturn("\n基準驗證結果（系統事實，非建議）：gradle test 程式或測試失敗");
         executor.baseline = baseline;
         AtomicReference<AgentRuntime.RuntimeRequest> captured = new AtomicReference<>();
         when(runtime.execute(any(), any())).thenAnswer(c -> { captured.set(c.getArgument(0)); return null; });

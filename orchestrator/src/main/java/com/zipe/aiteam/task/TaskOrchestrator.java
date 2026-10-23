@@ -235,8 +235,8 @@ public class TaskOrchestrator {
     // ------------------------------------------------------------------ 基準驗證
 
     /**
-     * 接入專案（第一次啟動）或部署新配置（重啟）後，若「目前配置版本＋基準分支最新 commit」還沒有基準驗證結果，就排一次。
-     * 只換 JAR、配置與基準都沒變時不重跑。失敗只記 log，不影響啟動。
+     * 接入專案（第一次啟動）或部署後，若「目前驗證鍵（驗證指令、總時限、續驗輪數、工具鏈）＋基準分支最新 commit」還沒有基準驗證結果，就排一次。
+     * 只換 JAR、只改提示詞／角色／流程時不重跑。失敗只記 log，不影響啟動。
      */
     void scheduleBaselineOnStartup() {
         if (baseline == null || !baseline.enabled() || !props.baselineVerifyOnStart()) return;
@@ -245,10 +245,10 @@ public class TaskOrchestrator {
         try {
             var base = baseline.currentBase();
             if (baseline.alreadyVerified(base.sha())) {
-                log.info("基準驗證：配置與基準 {}@{} 已有結果，不重跑", base.branch(), base.sha());
+                log.info("基準驗證：驗證指令、工具鏈與基準 {}@{} 已有結果，不重跑", base.branch(), base.sha());
                 return;
             }
-            requestBaseline(channel, AuditLog.ACTOR_SYSTEM, "服務啟動後，目前配置與基準分支 " + base.branch() + " 的最新 commit 還沒有基準驗證結果");
+            requestBaseline(channel, AuditLog.ACTOR_SYSTEM, "服務啟動後，目前的驗證指令／工具鏈與基準分支 " + base.branch() + " 的最新 commit 還沒有基準驗證結果");
         } catch (Exception e) {
             log.warn("啟動時無法排程基準驗證：{}", Diagnostics.describe(e));
         }

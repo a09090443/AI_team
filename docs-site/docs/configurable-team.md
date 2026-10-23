@@ -105,12 +105,13 @@ App-Level Token 留空**：發言與交接 tag 使用同一個角色身分，不
 ## 各專案實例的功能啟用狀態
 
 所有功能都是通用的，由配置欄位開關，程式不針對任何專案。新專案只要新增一份配置，就能依需要啟用下列任一項。
-下表只記錄目前內附配置的啟用狀態（2026-10-23 來源），不是功能限制：
+下表只記錄目前內附配置的啟用狀態（2026-10-23），不是功能限制：
 
 | 功能（配置欄位） | bestpartner | dynamic-api | spring-starters | node-web |
 |---|---|---|---|---|
 | 共用工作規則（`sharedInstructions`） | ✓ | ✓ | ✓ | ✓ |
-| 角色諮詢與共享看板（`collaboration`／`consultRoles`） | ✓（未部署） | — | — | — |
+| 角色諮詢與共享看板（`collaboration`／`consultRoles`） | ✓ | ✓ | ✓ | —（範例，作為對照組） |
+| 自主恢復（`project.autonomy`） | ✓ | — | — | — |
 | 自主派工（`candidateRoles`） | design、implementation | design、implementation | — | — |
 | 跨 runtime 改派（`protectedPathFallback`） | ✓ | ✓ | — | — |
 | 服務建置路線（`service` 節點、`serviceTarget`） | ✓ | — | — | — |
@@ -160,7 +161,7 @@ Preview 部署節點、外部 VM 權限與部署收據尚未實作，所以此�
 `orchestrator/teams/dynamic-api.json`（2026-10-17）供第三個實例使用，專案為
 [a09090443/dynamic-api](https://github.com/a09090443/dynamic-api)（Spring Boot 3.2.5／Java 17＋Gradle 後端、Next.js 15 管理介面、
 Docusaurus 文件，基準分支 `master`）。以 bestpartner 為範本，角色、模型與審查／分流節點相同；
-**未啟用**角色諮詢與共享看板（`collaboration`／`consultRoles`，目前只在 bestpartner 啟用；第一階段已合併到 main，尚未部署）。其他差異如下：
+2026-10-23 起與 bestpartner 一樣啟用角色諮詢與共享看板（諮詢對象相同）。其他差異如下：
 
 | 項目 | 內容與理由 |
 |---|---|
@@ -424,7 +425,7 @@ plan 與 verification 固定由 tester 負責。node-web 範例仍經 builder／
   沒用到協作的任務，舊 JAR 仍讀得到；**用過協作的任務，舊 JAR 讀不到**，回滾時必須搭配部署前的 DB 備份。
 - 進行中的任務不會自動套用，要用「改用新任務繼續」。
 
-目前只在 bestpartner 啟用：
+2026-10-23 起三個已部署專案都啟用（bestpartner、dynamic-api 相同；spring-starters 沒有 infrastructure 角色，其餘相同）：
 - design 可諮詢 builder／tester。
 - plan 可諮詢 architect／builder／infrastructure。
 - implementation 可諮詢 architect／tester。
@@ -432,7 +433,8 @@ plan 與 verification 固定由 tester 負責。node-web 範例仍經 builder／
 - review 只可諮詢 architect。
 - triage 可諮詢 architect／builder／tester／infrastructure。
 
-spring-starters、node-web 尚未啟用。**目前證據等級：只有程式測試通過，尚未做真實 Slack／CLI 端對端驗證。**
+node-web 是範例配置，維持未啟用，也作為測試的對照組。被諮詢的角色必須有 `capabilities`，所以 spring-starters 的 architect／builder／tester 同時補上能力描述。
+**目前證據等級：程式測試通過並已部署，尚未做真實 Slack／CLI 端對端驗證。**
 
 ## 快照與相容策略
 

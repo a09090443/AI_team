@@ -1,5 +1,13 @@
 # 工作進度（Codex 與 Claude Code 共用）
 
+## 2026-10-23 三實例部署統一版本並全面啟用角色諮詢；基準驗證改用驗證鍵（Claude Code）
+
+- 使用者要求部署到所有專案、先合併 Codex 分支、全部啟用 collaboration。合併 codex/direct-ssh-deployment 進 main（cd05b2e，提示詞保留精簡版並加入 Codex 的狀態式段落）；spring-starters、dynamic-api 啟用 collaboration 與 consultRoles，spring-starters 補 capabilities；node-web 為範例維持未啟用並作為測試對照組（e8e8799）。
+- 部署：見 deploy-2026-09-06-v2「2026-10-23 三實例統一版本」。JAR 0b7efa1a…；starters PID192910、bestpartner PID202391、dynamic-api PID212498，部署腳本檢查全部通過。
+- 發現：Windows 的 git archive 會套用 autocrlf，打包的 .sh 為 CRLF 導致 check-source 在 Linux 失敗；改用 `git -c core.autocrlf=false archive`。
+- 基準驗證改用驗證鍵：BaselineVerifier.verificationKey（commands、timeoutSeconds、verificationContinuations、工具鏈實際檔案）取代配置 revision；notice 改收 TeamDefinition。BaselineVerifierTest 新增 2 項，相關 57 項通過。**未部署**。
+- 已核對的文件：baseline-verification、configurable-team、deploy-2026-09-06-v2、agent/configuration、agent/operations、agent/system-map。已修正：上述全部；入口文件的「已部署 bestpartner」標記改為「已部署」（三實例同版本）。
+
 ## 2026-10-23 入口文件改為通用寫法（Claude Code，未 commit）
 
 - 使用者指出 system-map 以專案清單描述團隊配置，與「AI team 適用不同專案」不符。

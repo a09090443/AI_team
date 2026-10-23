@@ -15,8 +15,20 @@
 
 | 觸發 | 條件 |
 |---|---|
-| 服務啟動（`TaskOrchestrator.scheduleBaselineOnStartup`） | `AI_TEAM_BASELINE_VERIFY` 不是 `off`、配置式團隊已啟用、`AI_TEAM_CHANNEL_ID` 有設定，而且「目前配置版本＋基準分支最新 commit」還沒有結果。接入新專案（第一次啟動）與部署新配置（revision 改變）都會觸發；只換 JAR、配置與基準都沒變時不重跑 |
+| 服務啟動（`TaskOrchestrator.scheduleBaselineOnStartup`） | `AI_TEAM_BASELINE_VERIFY` 不是 `off`、配置式團隊已啟用、`AI_TEAM_CHANNEL_ID` 有設定，而且「目前驗證鍵＋基準分支最新 commit」還沒有結果（見下方「何時重跑」）。接入新專案（第一次啟動）、改驗證指令、升級工具或基準分支有新 commit 時觸發；只換 JAR、只改提示詞／角色／流程時不重跑 |
 | Slack `@主機器人 基準驗證` | 白名單使用者，在設定的頻道任何地方送出；不建立任務。基準分支有新合併、或修好問題後想重新確認時使用 |
+
+### 何時重跑（2026-10-23 起）
+
+結果以**驗證鍵**索引（`BaselineVerifier.verificationKey`），不再用整份配置的 revision。驗證鍵是下列輸入的 SHA-256：
+
+- `project.verification.commands` 與 `timeoutSeconds`；
+- `project.autonomy.verificationContinuations`（影響逾時後會不會續驗）；
+- 工具鏈：每條指令的執行檔（argv 第一個元素）與 `git` 在服務 PATH 上解析到的實際檔案、大小與修改時間，以及 `JAVA_HOME` 的 java。
+
+提示詞、角色、模型、流程節點、權限等改變不影響基準結果，所以不重跑。起因是 2026-10-23 只改提示詞的部署，
+讓每個實例各重跑一次 20～47 分鐘的全套驗證。改用驗證鍵後，第一次啟動找不到舊格式（以 revision 命名）的結果，會再跑一次；
+之後才開始省時間。工具升級但路徑、大小與修改時間都沒變的情況偵測不到，需要時用 Slack「基準驗證」手動重跑。
 
 兩者都會先在頻道貼一則根訊息，結果貼在它的討論串。工作走**中央佇列**，不與任務同時執行（避免搶 VM 記憶體），
 佇列通知顯示「基準驗證」而不是任務編號。
@@ -44,7 +56,7 @@ systemd unit 名稱是 `<字首>check-0-<uuid>`：任務從 1001 起，`0` 不�
 
 ## 結果存在哪裡
 
-`<安裝目錄>/baseline-verification/<配置版本>-<基準 commit>.json`（取不到 commit 時為 `-none`），內容含配置版本、
+`<安裝目錄>/baseline-verification/<驗證鍵>-<基準 commit>.json`（取不到 commit 時為 `-none`；2026-10-23 前的檔案以配置版本命名），內容含驗證鍵、執行當下的配置版本、
 基準分支與 commit、起訖時間、逐條結果與紀錄路徑。紀錄檔在 `verification-runs/0/`。
 **不寫資料庫、不改 `FlowRun`**，所以 JAR 回滾不受影響；目前不自動清理，與任務驗證現場相同。
 
