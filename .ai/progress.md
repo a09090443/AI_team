@@ -1,5 +1,10 @@
 # 工作進度（Codex 與 Claude Code 共用）
 
+## 2026-10-23 三實例部署效率修正與延後驗收（Claude Code）
+
+- 使用者要求驗證後依序部署三個實例。commit 8269d27，Linux 810 項 0 失敗，JAR 5fc7db7b…；starters 23:45（PID 274064）、bestpartner 23:49（PID 277417）、dynamic-api 23:51（PID 280953），備份與檢查見 deploy-2026-09-06-v2 同日段落。bestpartner 因 dev 有新 commit 排入基準驗證，其餘不重跑。
+- 已修正的文件：deploy-2026-09-06-v2。下一步：以下一個小型任務對照 #1053～#1055 的耗時與停頓次數。
+
 ## 2026-10-23 dynamic-api、spring-starters 開啟延後驗收（Claude Code）
 
 - 使用者要求兩份配置加 autonomy、只開 deferUnverifiable（其餘 0／false），驗證後依序部署三個實例。
