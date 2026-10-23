@@ -27,7 +27,7 @@
 
 ## 正在進行
 
-- **三實例統一版本已部署（2026-10-23，Claude Code）**：main e8e8799（含 Codex 分支 codex/direct-ssh-deployment、phase1、共用規則；三個已部署專案啟用 collaboration）JAR 0b7efa1a…，starters／bestpartner／dynamic-api 依序部署成功，Linux verify 791 項 0 失敗。Codex 分支的工作已併入 main，之後以 main 為準。dynamic-api 部署後的基準驗證 15:55 排入、結果待確認；starters 基準有 MailServiceSmtpsScenariosTest 既有失敗。基準驗證改用驗證鍵（只在驗證指令、時限、續驗輪數、工具鏈或基準 commit 改變時重跑）已在來源完成並測試，**尚未部署**；部署後各實例會因舊結果用 revision 命名而再跑一次。
+- **三實例統一版本已部署（2026-10-23，Claude Code）**：main e8e8799（含 Codex 分支 codex/direct-ssh-deployment、phase1、共用規則；三個已部署專案啟用 collaboration）JAR 0b7efa1a…，starters／bestpartner／dynamic-api 依序部署成功，Linux verify 791 項 0 失敗。Codex 分支的工作已併入 main，之後以 main 為準。dynamic-api 部署後的基準驗證 15:55 排入、結果待確認；starters 基準有 MailServiceSmtpsScenariosTest 既有失敗。基準驗證改用驗證鍵（d95714a，JAR d8e04353…）已部署三實例，starters 重啟實測不再重跑；dynamic-api 最後一次重跑 17:32 排入。
 
 - **2026-10-22 自主恢復 project.autonomy 已部署 bestpartner（最高優先，取代下方同日逾時修正條目的狀態）**：JAR a809f7e5…、PID 98701、配置 13e4b047…，備份 orchestrator-backup.ybvDA2；758 項測試通過。來源在本工作樹未 commit。下一步：負責人對 #1053 檢視／核准配置更新（離線預覽已確認可遷移）後續跑，觀察自動接續／續驗首次真實行為；#1054 待中止。細節見 progress 2026-10-22。
 
