@@ -67,4 +67,23 @@ class TeamMigrationTest {
         ((ObjectNode)target.path("nodes").path("verification")).put("maxVisits",4);
         assertThatThrownBy(()->TeamMigration.preview(original,snapshot())).isInstanceOf(IllegalArgumentException.class);
     }
+    @Test void autonomyPolicyIsMigratable() throws Exception {
+        ((ObjectNode)target.path("project")).set("autonomy", mapper.readTree("{\"modelTimeoutRecoveries\":2,\"maxTimeoutSeconds\":3600,"
+                + "\"verificationContinuations\":2,\"requirementChangeOptions\":true,\"channelCommandRouting\":true}"));
+        var next = snapshot(); var preview = TeamMigration.preview(original, next);
+        assertThat(preview.changes()).singleElement().asString().startsWith("project.autonomy：null → ");
+        var flow = new FlowRun(original);
+        TeamMigration.apply(flow, next, preview.token());
+        assertThat(AutonomousRecovery.of(flow)).isNotNull();
+    }
+    @Test void nodeTimeoutIsMigratableResourceLimit() throws Exception {
+        int before = original.definition().nodes().get("implementation").timeoutSeconds();
+        ((ObjectNode)target.path("nodes").path("implementation")).put("timeoutSeconds", 3600);
+        var next = snapshot(); var preview = TeamMigration.preview(original, next);
+        assertThat(preview.changes()).containsExactly("nodes.implementation.timeoutSeconds：" + before + " → 3600");
+        var flow = new FlowRun(original); flow.node = "implementation"; flow.visits.put("implementation", 1);
+        TeamMigration.apply(flow, next, preview.token());
+        assertThat(flow.snapshot.definition().nodes().get("implementation").timeoutSeconds()).isEqualTo(3600);
+        assertThat(flow.visits.get("implementation")).isEqualTo(1);
+    }
 }

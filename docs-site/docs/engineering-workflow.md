@@ -112,6 +112,8 @@ Node 範例依序 `npm ci`、`npm test`、`npm run build`；需依實際 repo �
   起因是 #1044：每輪都從空的 HOME 開始，第一個 Gradle 指令就要 16～19 分鐘，四次驗證分別花 27～30 分鐘，貼著上限。
   第一次使用要建立快取，仍然會慢；之後的效果要以 VM 實測為準。
 - **超時不算測試失敗（2026-10-17 起）**：超過期限時拋出 `IndependentVerifier.VerificationTimeout`，交給真人處理，不交回實作。
+  2026-10-22 起，配置啟用 `project.autonomy.verificationContinuations` 時（目前 bestpartner），本輪有通過的指令就在同一個 clone 從被中止的指令接著跑，
+  不開新 clone、不以重用代替（指令之間有依賴，例如 npm ci 裝的 node_modules）；沒有進展或輪數用完才交給真人（見[失敗回報](failure-reporting.md)）。
   指令非零結束時，如果剩餘時間已不到 3 秒（systemd `RuntimeMaxSec` 以整秒向下取整，可能早約一秒砍掉），也一律算超時。
   修正前，#1044 在 00:42 的 `npm test` 被 systemd 砍掉、log 是空的，卻被當成測試失敗，派回實作多跑了一輪。
 - 只開放獨立驗證目錄，釘住新 clone 的所有版控檔與 `.git`；不開放原任務工作區寫入。repo 含 symlink 暫時拒絕，需管理者評估。

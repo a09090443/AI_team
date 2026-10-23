@@ -175,3 +175,8 @@ OperationJobs 驗證 task／node／HEAD 與結果綁定；ConfiguredExecutor 注
 ### 服務追問與來源清理（已部署bestpartner）
 
 ConfiguredExecutor在結案來源已清理時建立dialogue-evidence，保持非產品來源標示；ServiceSupport從非機密service-context啟動固定support.py，從service-support取得新探測/修復證據。模型收到歷史收據與新診斷，FlowEngine驗證入口並必要時自動改寫回覆；原任務驗收不被對話覆寫。root SSH新增repair只操作已存在active應用，沒有新來源建置。原對話可透過AI_TEAM_RESUME_DIALOGUE_TASK正式續跑。
+
+
+### 模型前持久診斷（已部署bestpartner）
+
+FlowEngine先執行固定ServiceSupport worker並用StageProgress回報，再呼叫ConfiguredExecutor。worker以Linux flock保護每task診斷，原子保存job/current與原repair ID；模型改寫只讀結果。FlowEngine.recover僅對有效、身分相符的執行中服務對話，或乾淨同HEAD/activeNode的SERVICE階段排回原任務，不更換快照或父任務。ConfiguredExecutor依任務狀態產生對話system與目前能力摘要；未新增角色權限或並行。

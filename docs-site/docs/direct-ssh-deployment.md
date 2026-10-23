@@ -181,3 +181,14 @@ service-context access_endpoints分開Windows完整入口與Agent VM探測位址
 - 第一輪模型答案留下不可執行的結案續跑命令，已補機械回覆自修與正式已完成對話校正資格。00:13:29最終#1049=COMPLETED，Infrastructure回覆正確完整入口/使用位置/Agent實測證據，明示「不需要重新派工」，必要時只問新的瀏覽器錯誤。Slack發言沒有ERROR，6角色Socket Mode正常，固定SSH執行器active。
 - 完整證據：~/support-build-20261020/orchestrator/full-build.log（首輪另存full-build-first.log）、~/support-deploy-reply.log、~/support-maintenance-reply-20261021、實例service-support/1049/current.json與logs/1049。原對話前一輪答案留在歷史，不刪除或偽造成一直正確。
 - 本次真實實測的是來源清理後的自動網址診斷/回覆；沒有注入產品中斷，repair故障路徑以回歸測試驗證。固定repair已安裝，不代表所有主機故障或使用者電腦網路都能自動修復。
+
+
+### 2026-10-21 狀態式決策與持久診斷已部署bestpartner
+
+- 使用者明確要求部署；只升級bestpartner。最終JAR SHA256 `a4e66bbfb90997e6124cb2d1593ff12021bc12cf6ff7f78ee0b36dc9776cb806`、PID70717，新配置版本`ca2973b2eb5bda52e4bd8b0feaf83e1626d3ffad7f2b0ce8dbec7886cd57b749`。備份`~/ai-team-bestpartner/orchestrator-backup.qk7iNY`、維護快照`~/decision-maintenance-20261021.C9NQPV`、候選`~/decision-candidate-20261021.D7Bb9N`。本輪來源未commit/push/merge。
+- 最新來源完整Linux verify735項0失敗/錯誤、12略過，原隔離目錄`~/decision-tests-20261021.gsI92A/orchestrator/full-build.log`；255來源一致，固定工具97項Linux與16平台fixture通過。這次完整驗證取代先前只有734項全量/後續局部驗證的證據邊界，沒有宣稱乾淨VM重建通過。
+- 新JAR、8份角色提示及service-build skill逐檔核對；保留線上所有teams JSON、env.sh/team.env與service-context。六個角色Socket Mode已啟動，Spring/沙箱工具鏈通過、啟動ERROR0、SSH executor active。
+- 六張任務表與全部既有任務工作區前後完全一致；三實例資料/設定相同，另外兩實例JAR未變。原1048部署作業仍只有3筆，沒有重播1049或重建/重啟目標產品。Windows維護端`http://127.0.0.1:8088/view/chat` HEAD200。
+- 第一輪shell暫存腳本因Windows CRLF在set階段停止，尚未切換；正規化LF後，發現舊部署快照的sqlite3 CLI -json持續占CPU超過2分鐘，仍在切換前。停止本輪唯讀快照，改`deploy/deploy-orchestrator.sh`以Python唯讀交易逐列雜湊六表；大型中文/引號/換行、穩定重讀及各表變更偵測共14次雜湊在6.61秒通過。修正後重新完整受控升級成功，舊失敗日誌與備份保留，不改任務資料。
+- 部署日誌`~/decision-deploy-20261021.log`；前兩次證據`decision-deploy-shell-format-20261021.log`、`decision-deploy-snapshot-20261021.log`。僅本次啟動AI_TEAM_BASELINE_VERIFY=off避免無關產品回歸，未改env檔。未發新Slack訊息、未注入產品故障；已核實連線/資產/資料完整性，不冒稱新模型問答或所有故障E2E已通過。
+- 原Slack串可直接@Infrastructure描述服務/網址問題，系統套用新版診斷及回覆守門；新任務載入新角色提示。舊任務角色資產保留快照，不由部署覆寫。

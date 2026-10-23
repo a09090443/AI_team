@@ -1,6 +1,6 @@
 # 服務建置與開發分流
 
-**2026-10-20 規格修正**：日常部署改為 Agent VM 經 SSH 公鑰直連目標 VM，Windows 不再作為必要執行節點；已授權測試環境的逐版manifest人工核准已取消，正常更新由agent自行完成固定prepare/start/health。bestpartner 已完成網路／公鑰初始化並啟用固定執行器，曾驗 health HTTP200；dev VM 曾無回應，核准重啟後已重驗健康與8088入口，根因待查。未重部署產品或進行 Slack 端對端驗證，詳見 [SSH 直連部署](direct-ssh-deployment.md)。以下 Windows broker 的執行方式屬已被取代的歷史實作與證據，不是新規格。
+**現行規格與部署狀態（2026-10-21）**：日常部署由 Agent VM 經 SSH 公鑰直連目標 VM，Windows 不再作必要執行節點；已授權測試環境的逐版manifest人工核准已取消。bestpartner已部署持久長作業恢復與服務追問診斷，#1048已正式完成、#1049已回覆正確入口；實測與限制見[SSH直連部署](direct-ssh-deployment.md)。本輪新增的狀態式決策與診斷worker恢復已部署bestpartner，見本文後段。以下Windows broker執行方式明列為被取代的歷史實作，不是現行操作。
 
 bestpartner 的 `intake` 可選 `route=service`，交給既有 Infrastructure Agent：
 
@@ -66,7 +66,7 @@ Agent 停止或完成後不接受新的部署操作；已經執行中的系統�
 更換主機時建立新的主機設定與獨立狀態目錄，更新身分及登入引用即可沿用 skill；不自動搬遷舊機資料。`client_path` 指向 Agent 端安裝的 skill client，無須改 skill 本文。
 
 每個請求保存收據，重送同一 ID 不重做；發現中斷的執行紀錄時保留現場，不能盲目重跑。
-接單後的長操作不會因輪詢心跳暫停被判離線；客體單次操作上限 1200 秒、client 等待 1500 秒，整個 SERVICE 節點仍受 1800 秒限制。
+接單後的長操作不會因輪詢心跳暫停被判離線；客體單次操作上限 1200 秒、client 等待 1500 秒，整個 SERVICE 節點仍受該節點 `timeoutSeconds` 限制（目前配置為 1800 秒，節點上限 3600 秒）。
 
 `prepare` 支援程式中的 Ubuntu jammy／noble／resolute 清單，使用 [Docker 官方 apt 安裝來源](https://docs.docker.com/engine/install/ubuntu/)。
 現有衝突容器套件、Compose 低於 2.30 會停止並說明，不擅自移除既有 runtime。
@@ -185,3 +185,46 @@ bestpartner 的範本為 `deploy/service-context/bestpartner-dev.example.json`�
 管理者核對環境路徑後將其放到 bestpartner 實例的 `service-context/bestpartner-dev.json`。
 這不會自動啟動 broker、部署產品或將 #1046 改成成功；恢復工具後仍須續跑原任務取得本次 prepare/start/health 結果。
 新 JAR 會在每次執行時讀取此說明與資料庫，既有等待任務續跑亦適用，不改原快照／授權或完成閘門。
+
+## 2026-10-21 部署流程與提示詞評估（原始提案）
+
+以#1046至#1049既有收據、部署紀錄及目前來源評估；本次未重新連線VM或重播Slack任務，不代表新的現場健康檢查。
+持久作業、同ID對帳、來源清理後證據對話、入口診斷及回覆校正已部署bestpartner；其他實例與全部故障組合不能據此視為已驗收。
+
+發現仍需改善的提示衝突：ConfiguredExecutor對話system共用開頭仍建議「@角色 執行」，後面的DIALOGUE_REPLY_RULES與COMPLETED脈絡才禁止結案續跑；ServiceSupport會攔截部分不適用建議，但來源指示仍應依狀態產生，不能只靠答案改寫。這是修正前發現，後續來源修正狀態見下節。direct-agent-requests原文字仍要求可複製執行指令，已修正為現行回覆規則。
+
+建議依下列順序推進：
+
+1. 系統提供一致的狀態與能力摘要：任務狀態、來源/目標/版本、原job結果與時間、目前健康、使用者入口、可用下一步；提示只選擇系統允許的動作，不自行發明指令或核准要求。不同任務/來源成功不可互用。
+2. 服務與PM分流採共同診斷順序：先對帳pending，再分類來源缺件、建置失敗、資源不足、SSH或工具錯誤、應用健康、使用者入口；每次修復須說明證據、具體改變及重驗條件。同根因且沒有新證據時不原樣重試，也不因不知道根因直接交真人。
+3. 依任務狀態組合對話system，移除前後衝突；回覆先回答問題與已採動作，清楚標出Agent內部探測與使用者端尚未核實的邊界。可執行下一步應由能力/狀態決定，不只比對文字。
+4. ServiceSupport.collect目前最多同步等600秒；OperationJobs等待亦保留中央執行槽。建議診斷/修復也採持久作業、進度與恢復；若要讓其他工作並行，須另設同目標互斥與佇列語意，不能只取消等待。
+5. 建立故障情境評估：冷建置逾時、SSH回覆遺失、服務中斷、來源清理後追問、內部200而使用者不可達、重複事件、重啟後恢復。衡量原任務完成率、人工介入、重複部署、恢復時間、錯誤建議與證據一致性；模型測試與真實故障演練分開記錄。
+
+角色提示調整優先為service/service-triage、共用對話system、intake；實作/QA/review只補共通證據與範圍原則，不把部署操作塞進所有角色。skill維護程序，project配置維護主機/操作/入口；狀態、互斥、重試預算與成功條件由程式執行。新提示對既有快照的生效須遵守配置遷移，不直接覆寫任務快照。
+
+
+## 狀態式決策與持久診斷（2026-10-21 已部署bestpartner）
+
+- ConfiguredExecutor依父任務狀態組合對話system；COMPLETED/PR_CREATED不產生執行前綴，等待或執行中也不猜測續跑指令。每個角色收到系統task/state/node/gate/configuration、target與可用操作摘要；對話明列不能由聊天續跑父任務或改產品。原job/版本/入口/觀察時間仍取自既有可信證據，不以模型記憶代替。
+- service/service-triage/intake與一般triage按「原job對帳→來源封裝/建置/資源/SSH或工具/應用健康/使用者入口→具體修正→重驗」決策；實作/QA/review補證據位置與範圍原則。提示不新增權限、節點或驗收。
+- 固定support診斷移至FlowEngine呼叫模型前，StageProgress回報診斷階段；ConfiguredExecutor只讀保存結果，不會因答案改寫重做修復。已有pending部署先交原OperationJobs對帳，不另啟動診斷修復。
+- support.py --job為Linux固定worker，以每task程序鎖與原子job.json保存generation/phase/deadline；協調器停止等待不殺遠端job。重啟後只對原STAGE_RUNNING/RESUME_QUEUED服務角色對話，或同activeNode、乾淨且同HEAD的SERVICE階段；相符task/parent/target/generation且未過期限的job排回中央佇列；一般對話、已取消/完成任務不因此自動重跑。沿用原修復ID及最多兩次預算。
+- 相同診斷證據下已失敗的repair不原樣再試；repair-policy.json記錄證據指紋。新診斷證據才可使用剩餘次數，未確認原repair結果先對帳。診斷失敗不視為已找到應用根因，也不自動重建產品。
+- 正式對話回覆對COMPLETED/PR_CREATED父任務檢查不可用執行前綴，涵蓋非網址問題；改寫一次仍不合格則提供可信診斷或誠實說明缺少新證據。
+- 中央執行槽仍保留，不新增並行或更換快照；既有任務的角色資產依既有配置遷移流程生效。2026-10-21已部署bestpartner；真實產品故障演練尚未執行，故障評估以程式回歸與Linux隔離測試另記結果。
+
+
+### 故障評估與證據層級
+
+| 情境 | 目前驗證位置 | 應觀察的結果 |
+|---|---|---|
+| 模型逾時、遠端晚到成功 | FlowEngineTest／OperationJobsTest既有回歸 | 同任務接結果、不新增start、不重設計次 |
+| 診斷worker中斷及重複呼叫 | test_service_support.py Linux實際子程序/程序鎖 | 原deadline不延長、復原後重複呼叫不再probe、無repair |
+| 未確認repair | test_service_support.py | 先查原repair、不另送health/新repair |
+| 相同證據下repair已失敗 | test_service_support.py | 不原樣重試，保留剩餘預算及原因 |
+| 新診斷進行中仍有舊200 | ServiceSupportTest | 舊端點結果不能成為目前健康 |
+| 結案後非網址追問 | ConfiguredExecutorTest／FlowEngineTest | 狀態式指示、攔截不可執行命令，不動父任務 |
+| 使用者入口不可達但內部200 | 既有probe/入口回歸；#1049歷史實測 | 說明觀察位置，不重啟健康應用 |
+
+真實產品停機、SSH斷線與協調器整體重啟的聯合演練尚未在本輪執行。評估應記錄原task ID、終態、人工介入次數、start/repair ID數、恢復耗時與回覆校正次數；可由既有audit、operation-jobs、support job與Slack紀錄彙整，本輪未新增常駐統計或監控服務。不要以固定工具測試通過宣稱全部模型已實測遵守新提示。

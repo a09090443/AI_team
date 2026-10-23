@@ -283,6 +283,14 @@ public final class HumanOptions {
                     if (hint == null) continue;
                     result.add(new Option(DECISION, label, consequence + "（" + hint + "）", PUBLISH_COMMAND));
                 }
+                // 範圍變更直接送核准指令（project.autonomy 開放時）：#1053 的「網址檢查改到部署時」做成 decide，
+                // 按下去不算核准，分流自己把問題降為排除又被擋，任務白停一次。未開放的專案照舊當 decide。
+                case ACTION_CHANGE_REQUIREMENTS -> {
+                    if (repeated) continue;
+                    result.add(AutonomousRecovery.requirementChangeOptions(flow) || approvesChange
+                            ? new Option(DECISION, "核准：" + label, consequence + CHANGE_NOTICE, "核准需求變更 " + choice)
+                            : new Option(DECISION, label, consequence, "負責人決定：" + choice));
+                }
                 default -> {
                     if (repeated) continue;
                     result.add(approvesChange
@@ -298,6 +306,8 @@ public final class HumanOptions {
     public static final String ACTION_CLOSE = "close";
     public static final String ACTION_SUCCESSOR = "successor";
     public static final String ACTION_PUBLISH = "publish";
+    public static final String ACTION_CHANGE_REQUIREMENTS = "change_requirements";
+    static final String CHANGE_NOTICE = "（按下即由你核准這項需求變更，只限需求負責人；系統回到需求階段重訂基準，下游依新基準重跑。）";
     /** 負責人結案：任務中止但保留工作區；後面接所選的問題與選項，只作紀錄。 */
     public static final String CLOSE_COMMAND = "負責人結案";
     static final String CLOSE_NOTICE = "（系統直接結案：任務中止、不再派送任何節點，工作區保留供你確認；"

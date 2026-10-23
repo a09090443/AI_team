@@ -260,6 +260,20 @@ class ConfiguredExecutorTest {
         when(workspace.uncommittedPaths("41")).thenReturn(List.of());
         assertThat(executor.parentWorkspaceState(flow)).contains("沒有未提交的修改");
     }
+    @Test void closedAndUnknownParentNeverReceiveExecutionCommand() {
+        for(var state:List.of(Task.State.COMPLETED,Task.State.PR_CREATED,Task.State.STAGE_RUNNING,Task.State.AWAIT_HUMAN))
+            assertThat(ConfiguredExecutor.dialogueInstructions("QA",state)).doesNotContain("執行 <要做的事>","@QA 執行");
+        assertThat(ConfiguredExecutor.dialogueInstructions("QA",Task.State.PR_CREATED)).contains("原任務已結案");
+        assertThat(ConfiguredExecutor.dialogueInstructions("QA",null)).contains("沒有原任務");
+    }
+    @Test void dialogueFactsDescribeStateWithoutGrantingProductOperations() {
+        var parent=new Task("41","c","t","u","done");parent.state(Task.State.COMPLETED);
+        when(store.find("41")).thenReturn(Optional.of(parent));
+        flow.dialogue=true;flow.parentId="41";
+        var facts=executor.executionFacts(new Task("42","c","t","u","status"),flow,flow.snapshot.definition().nodes().get("triage"));
+        assertThat(facts).contains("COMPLETED","ANSWER_FROM_EVIDENCE","\"can_resume_parent\":false","\"can_modify_product\":false")
+                .doesNotContain("\"operations\"");
+    }
     @Test void dialogueRepliesMustBePlainAndEndWithWhatTheUserCanDo() {
         assertThat(ConfiguredExecutor.DIALOGUE_REPLY_RULES).contains("第一句直接回答問題").contains("用白話")
                 .contains("不可只看最新 commit").contains("你可以怎麼做").contains("不確定就說不確定");

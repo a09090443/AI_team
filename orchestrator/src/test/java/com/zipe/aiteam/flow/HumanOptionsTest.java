@@ -258,6 +258,31 @@ class HumanOptionsTest {
                 .contains("選擇：另開任務處理").contains("照現況完成");
     }
 
+    @Test void requirementChangeOptionSendsTheApprovalOnlyWhenAutonomyAllowsIt() throws Exception {
+        flow.node = "triage";
+        var report = (com.fasterxml.jackson.databind.node.ObjectNode) decisionReport();
+        ((com.fasterxml.jackson.databind.node.ObjectNode) report.path("human_decision").path("options").get(1))
+                .put("action", HumanOptions.ACTION_CHANGE_REQUIREMENTS);
+        flow.receipts.put("triage", report);
+        // 未開放的專案照舊當 decide：不會因為 agent 填了新 action 就變成核准。
+        assertThat(HumanOptions.options(task, flow, true, true, null)).filteredOn(o -> HumanOptions.DECISION.equals(o.kind()))
+                .extracting(HumanOptions.Option::command).allSatisfy(c -> assertThat(c).startsWith("負責人決定："));
+
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var definition = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.valueToTree(flow.snapshot.definition());
+        ((com.fasterxml.jackson.databind.node.ObjectNode) definition.path("project")).set("autonomy", mapper.readTree(
+                "{\"modelTimeoutRecoveries\":0,\"maxTimeoutSeconds\":0,\"verificationContinuations\":0,"
+                        + "\"requirementChangeOptions\":true,\"channelCommandRouting\":false}"));
+        flow.snapshot = new TeamDefinition.Snapshot("autonomy", mapper.treeToValue(definition, TeamDefinition.class),
+                flow.snapshot.repository(), flow.snapshot.assets());
+        var decisions = HumanOptions.options(task, flow, true, true, null).stream()
+                .filter(o -> HumanOptions.DECISION.equals(o.kind())).toList();
+        // #1053：範圍變更的按鈕直接送「核准需求變更」，按下去就回需求階段，不再白停一次。
+        assertThat(decisions.get(0).command()).startsWith("負責人決定：");
+        assertThat(decisions.get(1).label()).isEqualTo("核准：這次一起支援");
+        assertThat(decisions.get(1).command()).startsWith("核准需求變更 smtps 要一起支援嗎？").contains("選擇：這次一起支援");
+    }
+
     @Test void decisionCommandsCanNeverBeMistakenForAnApprovalCommand() throws Exception {
         flow.node = "triage";
         var report = (com.fasterxml.jackson.databind.node.ObjectNode) decisionReport();

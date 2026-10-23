@@ -81,6 +81,47 @@ class BaselineVerifierTest {
         assertThat(ran).hasSize(2);
     }
 
+    void enableAutonomy() throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var definition = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.valueToTree(snapshot.definition());
+        ((com.fasterxml.jackson.databind.node.ObjectNode) definition.path("project")).set("autonomy", mapper.readTree(
+                "{\"modelTimeoutRecoveries\":0,\"maxTimeoutSeconds\":0,\"verificationContinuations\":2,"
+                        + "\"requirementChangeOptions\":false,\"channelCommandRouting\":false}"));
+        snapshot = new TeamDefinition.Snapshot("b".repeat(64), mapper.treeToValue(definition, TeamDefinition.class),
+                snapshot.repository(), snapshot.assets());
+        when(catalog.snapshot()).thenReturn(snapshot);
+    }
+    /** 第一次跑到 timeoutAt 指令時用完總時限，之後都通過。 */
+    void stubTimeoutOnce(String timeoutAt) throws Exception {
+        int[] left = {1};
+        doAnswer(c -> {
+            List<String> argv = c.getArgument(1); Path cwd = c.getArgument(2); Path log = c.getArgument(5);
+            if (argv.contains("init")) Files.createDirectories(Path.of(argv.getLast()).resolve(".git"));
+            else if (!argv.getFirst().equals("git")) {
+                ran.add(argv); Files.createDirectories(cwd);
+                if (String.join(" ", argv).equals(timeoutAt) && left[0]-- > 0) throw new IndependentVerifier.VerificationTimeout(argv, log);
+                Files.writeString(log, "ok");
+            }
+            return null;
+        }).when(verifier).execute(eq(BaselineVerifier.ID), anyList(), any(), any(), any(), any(), anyLong());
+    }
+
+    @Test void autonomyContinuesTheRemainingCommandsAfterAProductiveRound() throws Exception {
+        enableAutonomy(); stubTimeoutOnce("npm test");
+        var report = baseline.run();
+        // #1053：五條指令 1800 秒跑不完；前一輪有通過的就給剩下的一個新總時限。
+        assertThat(report.passed()).isTrue();
+        assertThat(ran).containsExactly(List.of("npm", "ci"), List.of("npm", "test"), List.of("npm", "test"), List.of("npm", "run", "build"));
+        assertThat(report.results().get(1).summary()).contains("自動續驗第 1 輪");
+    }
+
+    @Test void autonomyDoesNotContinueARoundThatPassedNothing() throws Exception {
+        enableAutonomy(); stubTimeoutOnce("npm ci");
+        var report = baseline.run();
+        assertThat(report.results()).extracting(BaselineVerifier.Result::outcome).containsExactly(
+                BaselineVerifier.Outcome.TIMEOUT, BaselineVerifier.Outcome.SKIPPED, BaselineVerifier.Outcome.SKIPPED);
+    }
+
     @Test void missingBaseBranchIsRecordedWithoutRunningAnything() throws Exception {
         when(workspaces.baseRef(any(), any())).thenThrow(new WorkspaceManager.WorkspaceException("unknown revision"));
         var report = baseline.run();

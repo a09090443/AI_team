@@ -840,6 +840,31 @@ class FlowEngineTest {
         assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
     }
 
+    @Test void delegatedPartReportingPartialStillHandsOverToThePrimaryImplementer() throws Exception {
+        // #1054：codex 兩次都改好並提交受保護檔案，卻因 PARTIAL 被當成整個實作的結果，主實作段一次都沒跑。
+        mode = "protectedRulePartial";
+        enableProtectedPathFallback();
+        when(workspace.uncommittedPaths("42")).thenReturn(List.of(".claude/rules/api-endpoints.md"), List.of());
+        when(workspace.auditPaths(eq("42"), anyString())).thenReturn(List.of(".claude/rules/api-endpoints.md"), List.of());
+
+        engine.run(task);
+
+        assertThat(calls).containsSubsequence("implementation:builder_codex", "implementation:builder");
+        assertThat(store.flow(task.id()).orElseThrow().delegatedParts).containsKey("implementation");
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+    }
+
+    @Test void partialDelegatedPartThatChangedNothingIsNotTreatedAsDone() throws Exception {
+        mode = "protectedRulePartial";
+        enableProtectedPathFallback();
+        when(workspace.auditPaths(eq("42"), anyString())).thenReturn(List.of());
+
+        engine.run(task);
+
+        assertThat(calls).contains("implementation:builder_codex").doesNotContain("implementation:builder");
+        assertThat(store.flow(task.id()).orElseThrow().delegatedParts).doesNotContainKey("implementation");
+    }
+
     @Test void delegatedPartTouchingAnythingOutsideTheAllowedPathsStops() throws Exception {
         // 改派段只准動允許範圍：連一般檔案（例如 .agents/ 的 skill）也不行，那是原角色的工作。
         mode = "protectedRule";
@@ -1041,6 +1066,45 @@ class FlowEngineTest {
                 .isEqualTo(FlowEngine.OperationDisposition.STOP);
         verifyNoInteractions(executor,publisher);
     }
+    @Test void closedParentRejectsUnsupportedExecutionAdviceForAnyQuestion() {
+        var parent=new Task("1048","c","t","u","deploy");parent.state(Task.State.PR_CREATED);store.save(parent);
+        FlowRun f=store.flow(task.id()).orElseThrow();f.dialogue=true;f.parentId="1048";
+        assertThat(engine.dialogueReplyReason(task,f,"請輸入 @QA Agent 執行 重跑測試")).contains("已結案");
+        assertThat(engine.dialogueReplyReason(task,f,"原任務已完成，未進行新的部署。")).isNull();
+    }
+    @Test void restartQueuesPersistedServiceDialogueWithoutChangingParentOrCounts() throws Exception {
+        enableService(true);when(props.homePath()).thenReturn(tmp);
+        FlowRun f=store.flow(task.id()).orElseThrow();f.dialogue=true;f.dialogueRole="builder";f.parentId="1048";f.node="dialogue";
+        f.transitions=12;store.saveFlow(task.id(),f);task.state(Task.State.STAGE_RUNNING);store.save(task);
+        var target=f.snapshot.definition().project().serviceTarget().name();
+        var context=tmp.resolve("service-context");Files.createDirectories(context);
+        var registration=mapper.createObjectNode().put("target",target);registration.putArray("access_endpoints").addObject();
+        Files.writeString(context.resolve(target+".json"),registration.toString());
+        var path=tmp.resolve("service-support/42/job.json");Files.createDirectories(path.getParent());
+        Files.writeString(path,mapper.createObjectNode().put("version",1).put("task","42").put("parent","1048").put("target",target)
+                .put("state","RUNNING").put("generation",engine.supportGeneration(task,f)).put("deadline",java.time.Instant.now().getEpochSecond()+60).toString());
+        List<Runnable> queued=new ArrayList<>();engine.recover(task,queued::add);
+        assertThat(queued).hasSize(1);assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.RESUME_QUEUED);
+        assertThat(store.flow("42").orElseThrow().transitions).isEqualTo(12);
+        verifyNoInteractions(executor,publisher);
+    }
+    @Test void serviceDiagnosticRestartRequiresSameCleanSource() throws Exception {
+        enableService(true);when(props.homePath()).thenReturn(tmp);
+        FlowRun f=store.flow(task.id()).orElseThrow();f.node="service";f.activeNode="service";f.workspaceReady=true;
+        f.transitions=8;f.visits.put("service",1);store.saveFlow(task.id(),f);
+        task.state(Task.State.STAGE_RUNNING);store.save(task);
+        var registration=mapper.createObjectNode().put("target","test-host");registration.putArray("access_endpoints").addObject();
+        Files.createDirectories(tmp.resolve("service-context"));Files.writeString(tmp.resolve("service-context/test-host.json"),registration.toString());
+        var path=tmp.resolve("service-support/42/job.json");Files.createDirectories(path.getParent());
+        Files.writeString(path,mapper.createObjectNode().put("version",1).put("task","42").put("parent","42").put("target","test-host")
+                .put("generation",engine.supportGeneration(task,f)).put("state","RUNNING").put("deadline",java.time.Instant.now().getEpochSecond()+60).toString());
+        List<Runnable> queued=new ArrayList<>();engine.recover(task,queued::add);
+        assertThat(queued).hasSize(1);assertThat(store.flow("42").orElseThrow().transitions).isEqualTo(8);
+        queued.clear();workspaceHead="head2";task.state(Task.State.STAGE_RUNNING);store.save(task);
+        engine.recover(task,queued::add);
+        assertThat(queued).isEmpty();assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        verifyNoInteractions(executor,publisher);
+    }
     @Test void serviceDialogueCorrectsWrongUrlWithoutHumanOrDeploying() throws Exception {
         when(props.homePath()).thenReturn(tmp);mode="dialogueWrongUrl";
         FlowRun f=store.flow(task.id()).orElseThrow();f.dialogue=true;f.dialogueRole="coordinator";f.node="dialogue";
@@ -1152,6 +1216,13 @@ class FlowEngineTest {
                 store.saveCheckpoint(new Checkpoint("42", flow.node, "claude-code", "sonnet", "saved-session", "context", "head1", "quota"));
                 throw new QuotaExceeded("usage_limit_reached");
             }
+            if (mode.startsWith("modelTimeout") && flow.node.equals("implementation")
+                    && (mode.equals("modelTimeoutAlways") || calls.stream().filter("implementation:builder"::equals).count() == 1)) {
+                store.saveCheckpoint(new Checkpoint("42", flow.node, "claude-code", "sonnet", "impl-session", "context", "head1", null));
+                throw new com.zipe.aiteam.runtime.RuntimeTimedOut("claude-code", java.time.Duration.ofSeconds(1800),
+                        tmp.resolve("stdout"), tmp.resolve("stderr"), new com.zipe.aiteam.sandbox.SandboxUnitCleanup.Result(
+                                com.zipe.aiteam.sandbox.SandboxUnitCleanup.Status.CONFIRMED, "ai-team-test.service", "test"));
+            }
             if (mode.startsWith("serviceOperationTimeout") && flow.node.equals("service")
                     && calls.stream().filter(v -> v.startsWith("service:")).count()==1) {
                 operationJob(flow,"SUCCEEDED");
@@ -1203,6 +1274,11 @@ class FlowEngineTest {
                 ((ObjectNode)report).putArray("protected_path_changes").add(".claude/rules/api-endpoints.md");
             if (mode.startsWith("protectedRule") && flow.node.equals("intake"))
                 ((ObjectNode)report).put("summary", "把 `.claude/rules/api-endpoints.md` 第 49 行的 all 改成 admin");
+            // #1054：改派段照指示不建置，如實回報 PARTIAL／verify_passed=false。
+            if (mode.equals("protectedRulePartial") && flow.node.equals("implementation") && node.role().equals("builder_codex")) {
+                ((ObjectNode)report).put("status", "PARTIAL");
+                ((ObjectNode)report.path("quality_gate")).put("verify_passed", false);
+            }
             if (mode.startsWith("question") && flow.node.equals("intake")) {
                 ((ObjectNode)report).put("route", "question").put("summary", "API 共 69 個，文件寫 68 個");
                 ((ObjectNode)report).putArray("requirements");
@@ -1295,6 +1371,63 @@ class FlowEngineTest {
         assets.put(IssueTracker.CONTRACT, IssueTracker.INSTRUCTIONS);
         flow.snapshot = new TeamDefinition.Snapshot("tracked", flow.snapshot.definition(), flow.snapshot.repository(), assets);
         store.saveFlow(task.id(), flow);
+    }
+    void enableAutonomy() throws Exception {
+        var flow = store.flow(task.id()).orElseThrow();
+        ObjectNode definition = mapper.valueToTree(flow.snapshot.definition());
+        ((ObjectNode) definition.path("project")).set("autonomy", mapper.readTree(
+                "{\"modelTimeoutRecoveries\":2,\"maxTimeoutSeconds\":3600,\"verificationContinuations\":2,"
+                        + "\"requirementChangeOptions\":true,\"channelCommandRouting\":true}"));
+        flow.snapshot = new TeamDefinition.Snapshot("autonomy", mapper.treeToValue(definition, TeamDefinition.class),
+                flow.snapshot.repository(), flow.snapshot.assets());
+        store.saveFlow(task.id(), flow);
+    }
+    @Test void modelTimeoutResumesTheSameSessionOnceWithLongerLimit() throws Exception {
+        enableAutonomy(); mode = "modelTimeout";
+        engine.run(task);
+        // #1053：實作跑到時限被砍，工作沒遺失；系統沿用原 session 接著做，不必等人按「繼續執行」。
+        assertThat(calls.stream().filter("implementation:builder"::equals)).hasSize(2);
+        assertThat(resumed).contains("implementation:impl-session");
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        var flow = store.flow("42").orElseThrow();
+        assertThat(flow.visits.get("implementation")).isEqualTo(1);
+        assertThat(AutonomousRecovery.timeoutSeconds(flow, "implementation",
+                flow.snapshot.definition().nodes().get("implementation"))).isEqualTo(3600);
+        assertThat(flow.context).contains("系統自動接續");
+    }
+    @Test void modelTimeoutWithoutAutonomyStillStopsForHuman() {
+        mode = "modelTimeout";
+        engine.run(task);
+        assertThat(calls.stream().filter("implementation:builder"::equals)).hasSize(1);
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
+    }
+    @Test void modelTimeoutWithoutProgressStopsInsteadOfLooping() throws Exception {
+        enableAutonomy(); mode = "modelTimeoutAlways";
+        engine.run(task);
+        // 兩輪之間工作區沒有任何變化：同一指紋只接續一次，第二次逾時就停給人。
+        assertThat(calls.stream().filter("implementation:builder"::equals)).hasSize(2);
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
+    }
+    @Test void verificationContinuationInsideTheVerifierIsReportedOnce() throws Exception {
+        enableAutonomy();
+        doAnswer(c -> {
+            FlowRun f = c.getArgument(1);
+            // 續驗在 IndependentVerifier 內、同一個 clone 完成（見 IndependentVerifierTest）；引擎只負責回報。
+            f.systemRetries.put(AutonomousRecovery.VERIFY_KEY + workspaceHead, 1);
+            return new IndependentVerifier.Receipt(workspaceHead, f.baselineRevision, f.snapshot.revision(), "start", "end", List.of());
+        }).when(verifier).verify(any(), any());
+        engine.run(task);
+        verify(verifier, times(1)).verify(any(), any());
+        verify(slack).post(any(), eq("c"), eq("t"), contains("自動續驗了 1 輪"));
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+    }
+    @Test void verificationTimeoutWithoutProgressStillStops() throws Exception {
+        enableAutonomy();
+        doThrow(new IndependentVerifier.VerificationTimeout(List.of("npm", "ci"), tmp.resolve("check-0.log")))
+                .when(verifier).verify(any(), any());
+        engine.run(task);
+        verify(verifier, times(1)).verify(any(), any());
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
     }
     @Test void issueQuestionMisclassificationRepairsItselfWithoutHuman() {
         enableIssueTracking(); mode = "issueQuestion";

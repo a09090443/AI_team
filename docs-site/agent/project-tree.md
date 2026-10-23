@@ -154,6 +154,7 @@ agent_team/
 │   │   │   ├── TeamCatalog.java      # 啟動時載入團隊配置與 prompt／schema 資產
 │   │   │   ├── TeamMigration.java    # 舊任務的受控配置遷移（僅執行能力設定）
 │   │   │   ├── AutomaticHandoff.java # 有證據的受阻事件自動交接與延長授權
+│   │   │   ├── AutonomousRecovery.java # project.autonomy：逾時自動接續、驗證續驗、需求變更按鈕與指令導回
 │   │   │   ├── ContractRecovery.java # 恢復被系統規則誤判的前置契約
 │   │   │   ├── DocOnlyChanges.java   # 純文件變更判定（略過建置測試）與強制全跑名單
 │   │   │   ├── ProtectedPathFallback.java # 受保護路徑改派實作者：判定、禁止清單與事後核對
@@ -168,7 +169,7 @@ agent_team/
 │   │   │   ├── OperationJobs.java   # 跨專案持久作業日誌、檢查點與明確取消
 │   │   │   ├── ServiceDelivery.java # 服務建置目標、可用性檢查與完成契約
 │   │   │   ├── ServiceDeploymentContext.java # 同目標部署歷史與非機密宿主恢復入口
-│   │   │   ├── ServiceSupport.java # 結案後部署證據、入口診斷與回覆檢查
+│   │   │   ├── ServiceSupport.java # 持久診斷等待、結案後證據與回覆檢查
 │   │   │   ├── OperationContract.java # 專案操作契約（operations）
 │   │   │   ├── OperationPreflight.java # 各階段沙箱內的操作預檢
 │   │   │   ├── PathRules.java        # 專案相對路徑與 ** 比對
@@ -355,7 +356,7 @@ agent_team/
 │   │   ├── restore.sh                # 還原到新目錄
 │   │   ├── test-bootstrap.sh         # bootstrap fixture 測試
 │   │   └── test-linux-platform.sh    # 平台辨識 fixture 測試
-│   ├── deploy-orchestrator.sh        # 通用受控部署（隔離目錄建好的 JAR、src/main、teams）
+│   ├── deploy-orchestrator.sh        # 通用受控部署與六表逐列快照（隔離 JAR、src/main、teams）
 │   ├── deploy-jar-safe.sh            # 只換 JAR 的受控部署，失敗自動回復
 │   ├── engineering-v2-team.env       # 既有 VM 的 team.env（指定 AI_TEAM_DEFINITION）
 │   └── test-maven-settings.xml       # 測試用空白 Maven settings

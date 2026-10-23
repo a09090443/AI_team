@@ -118,7 +118,8 @@ public class TeamCatalog {
                 require(!n.localTestNetwork() || (n.scope() == Scope.LIMITED && n.gate() == Gate.VERIFICATION
                         && "codex".equals(d.roles().get(n.role()).runtime()) && d.project().requiredTools().contains("node")),
                         "本機測試網路只支援 Codex LIMITED 驗收，並須宣告 node 工具：" + id);
-                require(n.maxVisits() >= 1 && n.maxVisits() <= 3 && n.timeoutSeconds() >= 1 && n.timeoutSeconds() <= 1800 && n.maxTurns() >= 1 && n.maxTurns() <= 80, "節點資源上限無效：" + id);
+                // 節點逾時上限 3600 秒：#1053 實作含安裝、建置與前端測試，30 分鐘不夠；獨立驗證仍維持 1800 秒。
+                require(n.maxVisits() >= 1 && n.maxVisits() <= 3 && n.timeoutSeconds() >= 1 && n.timeoutSeconds() <= 3600 && n.maxTurns() >= 1 && n.maxTurns() <= 80, "節點資源上限無效：" + id);
                 require(n.scope() == Scope.READ_ONLY || n.workspace(), "寫入只能在獨立工作區：" + id);
                 require(n.scope() != Scope.WORKSPACE || n.gate() == Gate.IMPLEMENTATION, "產品寫入必須通過實作品質驗證：" + id);
                 require(n.gate() != Gate.REVIEW || (n.scope() == Scope.READ_ONLY && n.workspace()), "審查必須唯讀工作區：" + id);
@@ -194,6 +195,12 @@ public class TeamCatalog {
             }
             VerificationPlan.validate(verification);
         }
+        var autonomy = d.project().autonomy();
+        if (autonomy != null)
+            require(autonomy.modelTimeoutRecoveries() >= 0 && autonomy.modelTimeoutRecoveries() <= 3
+                    && autonomy.maxTimeoutSeconds() >= 0 && autonomy.maxTimeoutSeconds() <= 3600
+                    && autonomy.verificationContinuations() >= 0 && autonomy.verificationContinuations() <= 3,
+                    "project.autonomy 上限無效：模型逾時接續與驗證續驗各 0～3 次，maxTimeoutSeconds 0～3600");
         Set<String> reached = new HashSet<>(); visit(d, d.entry(), reached);
         require(reached.size() == d.nodes().size(), "存在不可到達節點，請修正流程");
     }

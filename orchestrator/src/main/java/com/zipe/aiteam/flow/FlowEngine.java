@@ -37,6 +37,11 @@ public class FlowEngine {
     }
     public boolean enabled() { return catalog.enabled(); }
     public boolean owns(String id) { return store.flow(id).isPresent(); }
+    /** 目前載入的配置是否開放「頻道頂層 #編號 指令」導回原任務（project.autonomy.channelCommandRouting）。 */
+    public boolean channelCommandRouting() {
+        try { return catalog.enabled() && AutonomousRecovery.channelCommandRouting(catalog.snapshot().definition()); }
+        catch (Exception e) { return false; }
+    }
     public void prepare(Task task) {
         FlowRun flow = new FlowRun(catalog.snapshot()); flow.acceptanceOwner = task.requesterUserId();
         store.saveFlow(task.id(), flow);
@@ -500,7 +505,19 @@ public class FlowEngine {
                         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id()
                                 + " 正由系統在全新 clone 執行獨立驗證；收據會先交驗收角色核對。");
                         try (var progress = new StageProgress(slack, store, task, "系統獨立驗證", props.progressIntervalSeconds(), true)) {
-                            flow.independentEvidence = verifier.verify(task, flow);
+                            // 自動續驗在 verify 內、同一個 clone 進行（AutonomousRecovery.claimVerificationContinuation）；這裡只回報用了幾輪。
+                            String verifiedHead = workspaces.headSha(task.id());
+                            int roundsBefore = AutonomousRecovery.verificationRounds(flow, verifiedHead);
+                            try { flow.independentEvidence = verifier.verify(task, flow); }
+                            finally {
+                                int rounds = AutonomousRecovery.verificationRounds(flow, verifiedHead) - roundsBefore;
+                                if (rounds > 0) {
+                                    audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY, "獨立驗證用完總時限，依 project.autonomy 在同一個 clone 自動續驗 "
+                                            + rounds + " 輪（上限 " + AutonomousRecovery.of(flow).verificationContinuations() + "）；已通過的指令不重跑");
+                                    slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id()
+                                            + " 系統獨立驗證用完時限後，依管理者授權在同一個環境自動續驗了 " + rounds + " 輪，已通過的指令沒有重跑。");
+                                }
+                            }
                         } catch (IndependentVerifier.CheckFailed failed) {
                             // 被中斷的驗證也會以非零結束，不能當成程式錯誤交回實作。
                             if (interruptRequests.containsKey(task.id())) throw failed;
@@ -532,6 +549,8 @@ public class FlowEngine {
                 if (aborted(task)) return;
                 if (result == null && interruptRequests.containsKey(task.id()) && stopForInterrupt(task, flow)) return;
                 if (result == null) {
+                    collectServiceSupport(task,flow,runner);
+                    if(aborted(task) || stopForInterrupt(task,flow))return;
                     try (var progress = new StageProgress(slack, store, task,
                             flow.snapshot.definition().roles().get(runner.role()).executionLabel() + "／" + flow.node, props.progressIntervalSeconds(), true)) {
                         result = executor.execute(task, flow, runner);
@@ -761,6 +780,7 @@ public class FlowEngine {
                                 "長作業對帳受阻，保留現場：" + Diagnostics.describe(reconciliationFailure));
                     }
                 }
+                if (autonomousTimeoutRecovery(task, flow, timedOut)) return;
             }
             QuotaExceeded quota = QuotaExceeded.find(e);
             com.zipe.aiteam.runtime.RuntimeUsageError usage = com.zipe.aiteam.runtime.RuntimeUsageError.find(e);
@@ -854,6 +874,46 @@ public class FlowEngine {
         }
     }
     /**
+     * 模型逾時、也沒有長作業可接續時，依 project.autonomy 自動接續原 session（與按「繼續執行」相同：
+     * activeNode 保留、不計次），時限改用 autonomy.maxTimeoutSeconds。#1053 實作寫完檔案後只是時間不夠，
+     * 卻要等人回來按一次繼續。次數與「沒有進展就停」的判斷在 {@link AutonomousRecovery}。
+     */
+    private boolean autonomousTimeoutRecovery(Task task, FlowRun flow, RuntimeTimedOut timedOut) {
+        if (flow.dialogue || flow.node == null || !flow.node.equals(flow.activeNode) || aborted(task)) return false;
+        Node node = AgentDispatch.effective(flow, flow.node);
+        if (node == null) return false;
+        String fingerprint = "no-workspace", workspace = null;
+        try {
+            if (node.workspace() && flow.workspaceReady && workspaces.exists(task.id())) {
+                String head = workspaces.headSha(task.id());
+                List<String> dirty = workspaces.uncommittedPaths(task.id());
+                fingerprint = head + ":" + (dirty.isEmpty() ? "clean" : workspaces.uncommittedFingerprint(task.id()));
+                workspace = "HEAD=" + head + (dirty.isEmpty() ? "，沒有未提交修改"
+                        : "，未提交修改 " + dirty.size() + " 個：" + Diagnostics.clip(String.join("、", dirty), 800));
+            }
+        } catch (Exception e) {
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY,
+                    "無法讀取工作區現況，不自動接續逾時節點：" + Diagnostics.describe(e));
+            return false;
+        }
+        int attempt = AutonomousRecovery.claimTimeoutRecovery(flow, flow.node, fingerprint);
+        if (attempt == 0) return false;
+        int limit = AutonomousRecovery.of(flow).modelTimeoutRecoveries();
+        int elapsed = (int) Math.max(1, timedOut.timeout().toMinutes());
+        int next = Math.max(1, AutonomousRecovery.timeoutSeconds(flow, flow.node, node) / 60);
+        flow.context = FlowContext.append(flow.context, AutonomousRecovery.timeoutContext(elapsed, next, workspace));
+        store.saveFlow(task.id(), flow);
+        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY,
+                "模型逾時自動接續（project.autonomy）：節點 " + flow.node + "，第 " + attempt + "／" + limit
+                        + " 次，沿用原 session，時限 " + next + " 分鐘；未重設計數、未新增權限或核准。"
+                        + Diagnostics.describe(timedOut));
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id() + "：「" + stepName(flow)
+                + "」跑了約 " + elapsed + " 分鐘碰到時限，工作沒有遺失。依管理者授權的自主恢復，系統自動接著做"
+                + "（第 " + attempt + "／" + limit + " 次，時限 " + next + " 分鐘），這一步不需要你處理。");
+        run(task);
+        return true;
+    }
+    /**
      * 整節點改派的舊任務（2026-10-04 前已記在 flow.roleOverrides）沿用原決定，中途不換規則。
      * 新的改派判定走 {@link #runDelegatedPart} 的分段改派。
      */
@@ -922,8 +982,14 @@ public class FlowEngine {
         if (result.permissionDenials() != null && !result.permissionDenials().isEmpty())
             audit.record(task.id(), fb.role(), AuditLog.ACTION_DENIED, Diagnostics.toolFailures(result.permissionDenials()));
         JsonNode report = result.isError() ? null : result.structuredOutput();
-        boolean completed = report != null && FailureReport.blockingReason("generic", report) == null
-                && "SUCCESS".equals(report.path("status").asText()) && !report.hasNonNull("boundary_conflict");
+        // 改派段本來就只做一部分：照指示不建置、如實填 PARTIAL 不是未完成。#1054 的 codex 兩次都把三份規則改好並提交，
+        // 卻因 status=PARTIAL 被當成整個實作的結果，主實作段一次都沒跑，流程在分流與實作之間空轉。
+        // PARTIAL 只在受保護檔案確實有改（本輪提交或本任務先前已提交）時才算完成，避免什麼都沒改就放行。
+        String partStatus = report == null ? "" : report.path("status").asText();
+        boolean reported = report != null && FailureReport.blockingReason("generic", report) == null
+                && !report.hasNonNull("boundary_conflict");
+        boolean completed = reported && ("SUCCESS".equals(partStatus)
+                || ("PARTIAL".equals(partStatus) && delegatedFilesChanged(task, flow, need.delegated(), files)));
         if (!completed) {
             audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "分段改派的改派段未完成，以它的報告作為節點 " + flow.node + " 的結果");
             return result;
@@ -938,6 +1004,13 @@ public class FlowEngine {
                 && Objects.equals(checkpoint.model(), Objects.toString(role.model(), ""));
     }
     /** 改派段的變更必須全部落在允許範圍；通過後由系統代為提交（Codex 沙箱不能寫 .git）。回傳改派段變更的檔案。 */
+    /** 改派段要改的受保護檔案，這一輪有提交，或本任務先前就已提交過（重跑的改派段沒有新變更是正常的）。 */
+    private boolean delegatedFilesChanged(Task task, FlowRun flow, List<String> delegated, List<String> committedNow) throws Exception {
+        if (!committedNow.isEmpty()) return true;
+        if (flow.comparisonBase == null) return false;
+        List<String> changed = workspaces.auditPaths(task.id(), flow.comparisonBase);
+        return delegated.stream().anyMatch(changed::contains);
+    }
     private List<String> auditDelegatedPart(Task task, FlowRun flow, Node node, Node delegate) throws Exception {
         if (flow.beforeHead == null) throw new SecurityException("缺少改派段的起始 commit，不能核實寫入範圍");
         List<String> changed = workspaces.auditPaths(task.id(), flow.beforeHead);
@@ -1976,6 +2049,19 @@ public class FlowEngine {
     public void recover(Task task) { recover(task, null); }
     public void recover(Task task, Consumer<Runnable> enqueue) {
         FlowRun flow = store.flow(task.id()).orElseThrow();
+        var serviceTarget=flow.snapshot.definition().project().serviceTarget();
+        Node interrupted=AgentDispatch.effective(flow,flow.node);
+        boolean serviceDiagnostic=ServiceSupport.serviceDialogue(flow)
+                || (!flow.dialogue && interrupted!=null && interrupted.gate()==Gate.SERVICE
+                    && flow.node.equals(flow.activeNode) && flow.workspaceReady && operationWorkspaceClean(task));
+        if(enqueue!=null && serviceDiagnostic && serviceTarget!=null
+                && (task.state()==Task.State.STAGE_RUNNING || task.state()==Task.State.RESUME_QUEUED)
+                && ServiceSupport.recoverable(props.homePath(),task.id(),flow.dialogue?flow.parentId:task.id(),serviceTarget.name())
+                && supportGeneration(task,flow).equals(ServiceSupport.job(props.homePath(),task.id()).path("generation").asText())) {
+            if(!store.claimState(task.id(),task.state(),Task.State.RESUME_QUEUED))return;
+            audit.record(task.id(),AuditLog.ACTOR_SYSTEM,AuditLog.ACTION_RECOVERY,"服務重啟接回同身分與來源的持久診斷，不重開部署或更改父任務");
+            queue(enqueue,task,()->run(store.find(task.id()).orElseThrow()));return;
+        }
         if (enqueue != null && (task.state().isRunning() || task.state()==Task.State.RESUME_QUEUED) && flow.node.equals(flow.activeNode)
                 && !operationBatch(task, flow).empty()) {
             enqueueOperationRecovery(task, flow, enqueue, "服務重啟後接回原長作業與檢查點，不重新提交已成功操作");
@@ -2076,11 +2162,47 @@ public class FlowEngine {
         audit.record(task.id(),AuditLog.ACTOR_SYSTEM,AuditLog.ACTION_RECOVERY,"依使用者要求恢復原對話與問題，套用系統診斷修正，未改原任務快照");
         queue(enqueue,task,()->run(store.find(task.id()).orElseThrow()));
     }
+    String supportGeneration(Task task,FlowRun flow) {
+        String generation=flow.transitions+":"+flow.visits.getOrDefault(flow.node,0)+":"+flow.supplements;
+        if(flow.dialogue)return generation;
+        try{return generation+":"+workspaces.headSha(task.id())+":"+operationBatch(task,flow).fingerprint();}
+        catch(com.zipe.aiteam.workspace.WorkspaceManager.WorkspaceException e) {
+            throw new IllegalStateException("診斷來源無法核對，保留原作業",e);
+        }
+    }
+    private void collectServiceSupport(Task task,FlowRun flow,Node node) {
+        var target=flow.snapshot.definition().project().serviceTarget();
+        if(target==null || !ServiceSupport.configured(props.homePath(),target.name()))return;
+        if(node.gate()!=Gate.SERVICE && !ServiceSupport.serviceDialogue(flow))return;
+        if(!flow.dialogue && operationBatch(task,flow).pending())return;
+        String generation=supportGeneration(task,flow);
+        try(var progress=new StageProgress(slack,store,task,"服務入口診斷與既有版本修復（尚未呼叫模型）",props.progressIntervalSeconds(),true)) {
+            audit.record(task.id(),AuditLog.ACTOR_SYSTEM,AuditLog.ACTION_RECOVERY,"模型前固定診斷開始，generation="+generation);
+            String outcome=ServiceSupport.collect(props.homePath(),task.id(),flow.dialogue?flow.parentId:task.id(),target.name(),generation,
+                    () -> aborted(task)||interruptRequests.containsKey(task.id()));
+            flow.context=FlowContext.append(flow.context,Diagnostics.clip(outcome,16000));store.saveFlow(task.id(),flow);
+            audit.record(task.id(),AuditLog.ACTOR_SYSTEM,AuditLog.ACTION_RECOVERY,"固定診斷已返回，結果保存在service-support/"+task.id());
+        }
+    }
+    String dialogueReplyReason(Task task,FlowRun flow,String answer) {
+        boolean closed=flow.parentId!=null && store.find(flow.parentId)
+                .map(t -> t.state()==Task.State.COMPLETED || t.state()==Task.State.PR_CREATED).orElse(false);
+        if(closed && ServiceSupport.unsupportedFollowup(answer))
+            return "原任務已結案，沒有可續跑的操作；請直接回答問題，不提供執行前綴或臆造指令。";
+        return ServiceSupport.replyReason(props.homePath(),task.id(),task.requestText(),answer);
+    }
+    private String dialogueFallback(Task task, FlowRun flow) {
+        if(ServiceSupport.current(props.homePath(),task.id()).has("endpoints"))
+            return ServiceSupport.verifiedReply(props.homePath(),task.id());
+        return "目前沒有足夠的新證據確認這個問題，原任務與部署結果保留。請補充目前看到的完整錯誤訊息，系統才能繼續定位；本次對話沒有重新部署或續跑原任務。";
+    }
     private void runDialogue(Task task, FlowRun flow) throws Exception {
         Role role = flow.snapshot.definition().roles().get(flow.dialogueRole);
         Node node = new Node(Kind.AGENT, flow.dialogueRole, null, Scope.READ_ONLY, Gate.REPORT, false, List.of(), null,
                 "end", "human", Map.of(), List.of(), 1, 900, 20, null);
         state(task, Task.State.STAGE_RUNNING, role.name() + " 唯讀對話處理中");
+        collectServiceSupport(task,flow,node);
+        if(aborted(task) || stopForInterrupt(task,flow))return;
         task.continuation(store.checkpoint(task.id()).filter(c -> c.role().equals(flow.node)).orElse(null));
         AgentRuntime.RuntimeResult result;
         try (var progress = new StageProgress(slack, store, task, role.executionLabel() + "／唯讀對話", props.progressIntervalSeconds())) {
@@ -2092,22 +2214,22 @@ public class FlowEngine {
         audit.record(task.id(), flow.dialogueRole, AuditLog.ACTION_RUNTIME, "配置角色唯讀對話", result.costEstimate(), result.sessionId());
         if (result.isError() || block != null || result.structuredOutput().path("answer").asText().isBlank()) throw new IllegalStateException("對話未完成：" + block);
         String answer=result.structuredOutput().path("answer").asText();
-        String replyProblem=ServiceSupport.replyReason(props.homePath(),task.id(),task.requestText(),answer);
+        String replyProblem=dialogueReplyReason(task,flow,answer);
         if(replyProblem!=null) {
             flow.context=FlowContext.append(flow.context,replyProblem);store.saveFlow(task.id(),flow);
-            audit.record(task.id(),AuditLog.ACTOR_SYSTEM,AuditLog.ACTION_RECOVERY,"對話缺少可用入口，沿同一問題自動修正回覆");
+            audit.record(task.id(),AuditLog.ACTOR_SYSTEM,AuditLog.ACTION_RECOVERY,"對話建議或入口不符合目前狀態，沿同一問題自動修正回覆");
             try {
                 var corrected=executor.execute(task,flow,node);
                 audit.record(task.id(),flow.dialogueRole,AuditLog.ACTION_RUNTIME,"同一對話自動修正入口回覆",corrected.costEstimate(),corrected.sessionId());
                 String correctedBlock=FailureReport.blockingReason("generic",corrected.structuredOutput());
                 String candidate=corrected.structuredOutput().path("answer").asText();
                 if(!corrected.isError()&&correctedBlock==null&&!candidate.isBlank()
-                        &&ServiceSupport.replyReason(props.homePath(),task.id(),task.requestText(),candidate)==null) {
+                        &&dialogueReplyReason(task,flow,candidate)==null) {
                     result=corrected;answer=candidate;
-                } else answer=ServiceSupport.verifiedReply(props.homePath(),task.id());
+                } else answer=dialogueFallback(task,flow);
             } catch(Exception failure) {
                 if(Thread.currentThread().isInterrupted())throw failure;
-                answer=ServiceSupport.verifiedReply(props.homePath(),task.id());
+                answer=dialogueFallback(task,flow);
             }
             var delivered=((com.fasterxml.jackson.databind.node.ObjectNode)result.structuredOutput()).deepCopy().put("answer",answer);
             store.saveStage(task.id(),new StageOutcome(flow.node,result.sessionId(),delivered,result.costEstimate(),0));

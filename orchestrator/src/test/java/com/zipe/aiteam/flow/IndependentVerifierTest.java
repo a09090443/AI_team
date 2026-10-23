@@ -21,6 +21,8 @@ class IndependentVerifierTest {
     List<List<String>> calls = new ArrayList<>();
     List<SandboxPolicy> policies = new ArrayList<>();
     boolean fail;
+    String timeoutOnceAt;
+    List<Path> commandDirs = new ArrayList<>();
     String exitLog;
     String head = "a".repeat(40);
     @BeforeEach void setup() throws Exception {
@@ -38,6 +40,10 @@ class IndependentVerifierTest {
                 if (argv.contains("clone")) Files.createDirectories(Path.of(argv.getLast()).resolve(".git"));
                 if (argv.contains("checkout")) Files.writeString(cwd.resolve("package.json"), "{}");
                 Files.writeString(log, "observed execution");
+                if (!argv.getFirst().equals("git")) commandDirs.add(cwd);
+                if (timeoutOnceAt != null && String.join(" ", argv).equals(timeoutOnceAt)) {
+                    timeoutOnceAt = null; throw new VerificationTimeout(argv, log);
+                }
                 if (fail && argv.getFirst().equals("npm")) throw new IllegalStateException("exit=1; log=" + log);
                 if (exitLog != null && argv.getFirst().equals("npm")) {
                     Files.writeString(log, exitLog);
@@ -97,6 +103,33 @@ class IndependentVerifierTest {
         when(workspace.compareFiles("42", flow.comparisonBase, head, List.of("README.md")))
                 .thenReturn(List.of(new WorkspaceManager.FileIdentity("README.md", "100644 blob abc", "100644 blob def")));
         assertThatThrownBy(this::verifyNow).isInstanceOf(IndependentVerifier.CheckFailed.class);
+    }
+    void enableAutonomy() throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var definition = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.valueToTree(flow.snapshot.definition());
+        ((com.fasterxml.jackson.databind.node.ObjectNode) definition.path("project")).set("autonomy", mapper.readTree(
+                "{\"modelTimeoutRecoveries\":0,\"maxTimeoutSeconds\":0,\"verificationContinuations\":2,"
+                        + "\"requirementChangeOptions\":false,\"channelCommandRouting\":false}"));
+        flow.snapshot = new TeamDefinition.Snapshot(flow.snapshot.revision(), mapper.treeToValue(definition, TeamDefinition.class),
+                flow.snapshot.repository(), flow.snapshot.assets());
+    }
+    @Test void autonomyContinuesInTheSameCloneSoEarlierInstallsStillExist() throws Exception {
+        // #1054：續驗第二輪開了新 clone、重用 npm ci，build 找不到 vue-tsc。續驗必須留在同一個目錄、從被中止的那條重跑。
+        enableAutonomy();
+        var commands = flow.snapshot.definition().project().verification().commands();
+        timeoutOnceAt = String.join(" ", commands.get(1));
+        verifyNow();
+        assertThat(calls.stream().filter(c -> c.contains("clone"))).hasSize(1);
+        assertThat(calls.subList(2, calls.size())).containsExactly(commands.get(0), commands.get(1), commands.get(1), commands.get(2));
+        assertThat(commandDirs).allMatch(commandDirs.getFirst()::equals);
+        assertThat(flow.independentEvidence.commands()).hasSize(3).allMatch(c -> c.exitCode() == 0);
+        assertThat(AutonomousRecovery.verificationRounds(flow, head)).isEqualTo(1);
+    }
+    @Test void autonomyDoesNotContinueWhenNothingPassedThisRound() throws Exception {
+        enableAutonomy();
+        timeoutOnceAt = String.join(" ", flow.snapshot.definition().project().verification().commands().get(0));
+        assertThatThrownBy(this::verifyNow).isInstanceOf(IndependentVerifier.VerificationTimeout.class);
+        assertThat(AutonomousRecovery.verificationRounds(flow, head)).isZero();
     }
     @Test void usesFreshCloneAndConfiguredCommandsNotModelCommands() throws Exception {
         verifyNow();

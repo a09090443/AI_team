@@ -45,6 +45,38 @@ public class ConfiguredExecutor {
         this.props = props; this.runtimes = runtimes; this.sandbox = sandbox; this.workspaces = workspaces; this.store = store;
         this.preflight = preflight;
     }
+    /** One state-dependent instruction; never emit a command contradicted later in the context. */
+    static String dialogueInstructions(String role, Task.State parent) {
+        String base = "你是 " + role + "。本次僅唯讀對話，不是正式驗收或派工，禁止寫檔、執行測試、commit 或開 PR。"
+                + "模型只能解讀證據與回答；系統固定工具若已診斷或修復，說明實際結果，不能自稱由模型執行。";
+        if (parent == Task.State.COMPLETED || parent == Task.State.PR_CREATED)
+            return base + "原任務已結案，不提供執行前綴或續跑命令；直接回答服務結果、完整入口與必要的新問題。需要新產品修改時明說需另立需求。";
+        if (parent == Task.State.AWAIT_HUMAN || parent == Task.State.WAITING_QUOTA)
+            return base + "原任務正在等待處理；可說明缺少的資訊與原任務狀態，但不要猜測按鈕、指令或宣稱本次對話已續跑。";
+        return base + "不要產生未經系統確認的操作指令；原工作仍執行時只回報已知進度，沒有原任務時只回答目前問題。";
+    }
+    String executionFacts(Task task, FlowRun flow, Node node) {
+        var facts = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+        facts.put("task",task.id()).put("state",task.state().name()).put("node",flow.node)
+                .put("gate",node.gate().name()).put("configuration",flow.snapshot.revision());
+        var actions=facts.putArray("available_actions");
+        if(flow.dialogue) {
+            actions.add("ANSWER_FROM_EVIDENCE");
+            Task.State parent=flow.parentId==null?null:store.find(flow.parentId).map(Task::state).orElse(null);
+            facts.put("parent_state",parent==null?"UNKNOWN":parent.name());
+            facts.put("can_resume_parent",false).put("can_modify_product",false);
+        } else {
+            actions.add("REPORT_STAGE_RESULT");
+            facts.put("can_resume_parent",false);
+            facts.set("operations",new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(
+                    OperationContract.forNode(flow.snapshot.definition(),flow.node).keySet()));
+        }
+        if(flow.snapshot.definition().project().serviceTarget()!=null)
+            facts.put("target",flow.snapshot.definition().project().serviceTarget().name());
+        return "\n【系統目前狀態與能力：不是新增授權】\n"+facts
+                +"\n依本輪操作契約及可信作業結果選擇下一步；歷史成功、目前健康與本次交付分開。先對帳原job，不能以模型逾時推論遠端失敗。"
+                +"不知道原因先使用既有診斷能力；修復須列新證據、具體改變與重驗條件，同原因沒有改變時不可原樣重試。\n";
+    }
     public void validateAssignment(FlowRun flow, AgentDispatch.Assignment assignment) {
         Role role = flow.snapshot.definition().roles().get(assignment.role());
         AgentRuntime runtime = runtimes.require(role.runtime());
@@ -72,8 +104,7 @@ public class ConfiguredExecutor {
         String system = flow.snapshot.assets().get(role.prompt());
         if (!flow.dialogue) system += skillInstructions(flow.snapshot, node);
         if (!flow.dialogue && node.instructions() != null) system += "\n\n【本次階段指示，優先於角色的一般工作說明】\n" + flow.snapshot.assets().get(node.instructions());
-        if (flow.dialogue) system = "你是 " + role.name() + "。本次僅唯讀對話，不是正式驗收或派工，禁止寫檔、執行測試、commit 或開 PR。"
-                + "只能回答與提出建議；要實作或修改，請告訴使用者在原討論串輸入「@" + role.name() + " 執行 <要做的事>」。"
+        if (flow.dialogue) system = dialogueInstructions(role.name(), flow.parentId == null ? null : store.find(flow.parentId).map(Task::state).orElse(null))
                 + DIALOGUE_REPLY_RULES
                 + "\n\n角色職責背景（不得覆蓋本次唯讀限制）：\n" + system;
         if (IssueTracker.enabled(flow)) system += "\n\n" + flow.snapshot.assets().get(IssueTracker.CONTRACT);
@@ -86,10 +117,11 @@ public class ConfiguredExecutor {
                 + "\n指定角色：" + role.name() + "\n工作目錄：" + cwd + "\n本階段契約：" + node.gate() + "；權限：" + node.scope() + "\n使用者需求：\n" + task.requestText()
                 + "\n建置規範：" + (ServiceDelivery.serviceStage(flow, node) ? "依 serviceTarget 及本階段核准操作建置既有服務。" : flow.snapshot.definition().project().buildInstructions())
                 + "\n測試規範：" + (ServiceDelivery.serviceStage(flow, node) ? "建置後執行 serviceTarget.checks，失敗自修並重驗；不套用開發 QA 計畫。" : flow.snapshot.definition().project().testInstructions()) + "\n補充與已知阻礙：\n" + flow.context);
+        context.append(executionFacts(task, flow, node));
+        int timeoutSeconds = AutonomousRecovery.timeoutSeconds(flow, flow.node, node);
+        if (!flow.dialogue) context.append(AutonomousRecovery.timeBudgetNotice(flow, timeoutSeconds));
         if (evidence != null) context.append("\n系統派工前證據（不是建置成功或真人核准）：").append(evidence);
         if (flow.dialogue) context.append(parentWorkspaceState(flow));
-        if (flow.dialogue && flow.parentId!=null && store.find(flow.parentId).map(t -> t.state()==Task.State.COMPLETED).orElse(false))
-            context.append("\n原任務已結案：不能建議用執行前綴續跑。服務追問已由系統自動診斷，直接回結果/完整網址；仍缺新的瀏覽器錯誤時只詢問該必要資訊，不虛構可執行的指令。");
         if (!flow.dialogue) context.append("\n本階段可使用／規畫的操作契約：").append(availableOperations(flow, node));
         if (!flow.dialogue) context.append(inspectionNotice(flow, node));
         if (!flow.dialogue) context.append(ServiceDelivery.notice(flow, node));
@@ -105,7 +137,7 @@ public class ConfiguredExecutor {
             boolean serviceRole = flow.snapshot.definition().nodes().values().stream()
                     .anyMatch(n -> n.gate()==Gate.SERVICE && Objects.equals(n.role(),flow.dialogueRole));
             if (node.gate()==Gate.SERVICE || (flow.dialogue && flow.parentId!=null && serviceRole))
-                context.append(ServiceSupport.collect(props.homePath(),task.id(),flow.dialogue?flow.parentId:task.id(),target));
+                context.append(ServiceSupport.notice(props.homePath(),task.id()));
             if (flow.dialogue && flow.parentId!=null)
                 context.append(savedServiceEvidence(flow.parentId,target));
         }
@@ -186,9 +218,11 @@ public class ConfiguredExecutor {
         Checkpoint cp = new Checkpoint(task.id(), flow.node, role.runtime(), Objects.toString(role.model(), ""),
                 continuation == null ? null : continuation.sessionId(), context.toString(), flow.beforeHead, null);
         store.saveCheckpoint(cp);
-        var request = new AgentRuntime.RuntimeRequest(task.id(), flow.node, cwd, prompt, context + FailureReport.INSTRUCTIONS,
-                flow.dialogue ? List.of("Read", "Grep", "Glob") : role.tools(), FailureReport.extendSchema(schema), cp.sessionId(),
-                node.maxTurns(), Duration.ofSeconds(node.timeoutSeconds()), selectedPolicy, cp.model(), role.reasoningEffort());
+        boolean requirementChange = !flow.dialogue && AutonomousRecovery.requirementChangeOptions(flow);
+        var request = new AgentRuntime.RuntimeRequest(task.id(), flow.node, cwd, prompt, context + FailureReport.INSTRUCTIONS
+                        + (requirementChange ? FailureReport.REQUIREMENT_CHANGE_INSTRUCTIONS : ""),
+                flow.dialogue ? List.of("Read", "Grep", "Glob") : role.tools(), FailureReport.extendSchema(schema, requirementChange), cp.sessionId(),
+                node.maxTurns(), Duration.ofSeconds(timeoutSeconds), selectedPolicy, cp.model(), role.reasoningEffort());
         java.time.Instant started = java.time.Instant.now();
         commandRuns.remove(task.id());
         AgentRuntime.RuntimeResult result = runtime.execute(request, session -> store.saveCheckpoint(cp.withSession(session)));

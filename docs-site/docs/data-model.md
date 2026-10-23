@@ -431,3 +431,16 @@ fingerprint 由作業 id、state、sourceHead、errorKind 組合計算 SHA256，
 service-support/&lt;對話或service task&gt;/current.json是本次固定工具診斷：target、parent、observed_at、endpoints、healthy、repair_attempted、operations。endpoint含audience、url、probe_url、probe_origin、user_route_verified（Agent VM probe固定false）、http_status與healthy；operations保存受限SSH收據。health/diagnose/repair.json保存原id/action/target與result，repair另外持久attempts、最多兩次。
 
 dialogue-evidence/&lt;對話task&gt;/deployment-evidence.txt保存已結案來源清理時的歷史脈絡，附明確「非產品repository」說明；獨立.git只供runtime對話資料夾運作，不是原程式或其commit。沒有改Task/FlowRun欄位或原始schema。備份需包含service-support及service-context才能保存診斷與入口對應。
+
+
+### 持久診斷檢查點（已部署bestpartner）
+
+新增非DB檔案service-support/<task>/job.json：version=1、task、parent、target、generation（transitions/visits/supplements，正式SERVICE另含來源HEAD及服務作業指紋）、started_at、deadline、updated_at、state（RUNNING/COMPLETED/FAILED）、phase。job.lock是Linux程序互斥；current.json新增task/generation，完成結果須匹配job身分與generation，進行中的舊結果不能當目前健康。repair-policy.json的fingerprint是diagnose證據SHA256，用於攔截相同證據下已失敗修復的原樣重試；原repair.json的ID/attempts仍是對帳與預算依據。沒有修改schema.sql或FlowRun序列化欄位。備份須包含以上檔案。
+
+## 2026-10-22：project.autonomy 與自主恢復記帳
+
+TeamDefinition.Project 新增選填 `autonomy`（modelTimeoutRecoveries、maxTimeoutSeconds、verificationContinuations、requirementChangeOptions、
+channelCommandRouting），寫在 flow_run 的 snapshot.definition；舊快照缺欄位解析為 null（不啟用）。新 JAR 存回的快照一律帶 `"autonomy"` 鍵，
+舊 JAR 讀到未知欄位會失敗，回滾須搭配部署前 DB 備份（與 serviceTarget 相同）。
+自主恢復的次數放在既有 `FlowRun.systemRetries`（Map<String,Integer>），鍵為 `autonomy-timeout:<節點>:<HEAD:未提交指紋>`、
+`autonomy-timeout-total`、`autonomy-timeout-extended:<節點>`、`autonomy-verify:<commit>`；沒有新增 FlowRun 欄位或資料表。

@@ -29,6 +29,14 @@ public class SlackListener {
     private static final Logger log = LoggerFactory.getLogger(SlackListener.class);
     private static final Pattern MENTION = Pattern.compile("<@[A-Z0-9]+>");
     static final Pattern BASELINE = Pattern.compile("^基準驗證\\s*$");
+    /** 頻道頂層的「#編號 指令」。#1054：「#1053 檢視配置更新」打在頂層、少了「補充」，被開成新任務。 */
+    static final Pattern BARE_COMMAND = Pattern.compile("^#(\\d+)\\s+([\\s\\S]+)$");
+    static final java.util.List<String> ROUTABLE_COMMANDS = java.util.List.of(
+            "檢視配置更新", "核准配置更新", "狀態", "檢視完整報告", "檢視測試計畫", "核准需求變更", "核准測試計畫");
+    static boolean routable(String command) {
+        String value = command.trim();
+        return ROUTABLE_COMMANDS.stream().anyMatch(c -> value.equals(c) || value.startsWith(c + " "));
+    }
     static String unwrapCommand(String text) {
         String value = text.trim();
         String candidate = value;
@@ -220,9 +228,11 @@ public class SlackListener {
             orchestrator.requestBaseline(e.getChannel(), e.getUser(), "由 <@" + e.getUser() + "> 手動要求");
             return;
         }
+        boolean topLevel = e.getThreadTs() == null;
         var triage = Pattern.compile("^(處理|補充)\\s+#(\\d+)(?:\\s+([\\s\\S]+))?$").matcher(text);
         if (triage.matches()) {
             Task existing = orchestrator.lookup(triage.group(2)).orElse(null);
+            if (topLevel && triage.group(3) != null && routeToTask(existing, e, threadTs, triage.group(3))) return;
             if (existing == null || !existing.slackChannel().equals(e.getChannel()) || !existing.slackThreadTs().equals(threadTs)) {
                 notifier.post(SlackNotifier.Identity.SYSTEM, e.getChannel(), threadTs, "請在該任務原討論串送出處理／補充指令，未建立或變更任務。");
                 return;
@@ -234,8 +244,24 @@ public class SlackListener {
             orchestrator.requestTriage(existing, triage.group(3) == null ? "請 PM 分析並處理 QA 的阻礙。" : triage.group(3), e.getUser());
             return;
         }
+        var bare = BARE_COMMAND.matcher(text);
+        if (topLevel && role == SlackNotifier.Identity.SYSTEM && bare.matches() && routable(bare.group(2))
+                && routeToTask(orchestrator.lookup(bare.group(1)).orElse(null), e, threadTs, bare.group(2).trim())) return;
         if (role == SlackNotifier.Identity.SYSTEM) orchestrator.createAndSubmit(e.getChannel(), threadTs, e.getUser(), text);
         else orchestrator.requestRole(role, e.getChannel(), threadTs, e.getUser(), text);
+    }
+
+    /**
+     * project.autonomy.channelCommandRouting 開啟時，頻道頂層對既有任務下的指令轉回該任務處理（回覆仍貼在原討論串），
+     * 不另開新任務。只限同頻道、白名單使用者（前面已檢查）；別的任務討論串裡的指令照舊拒絕。
+     */
+    private boolean routeToTask(Task existing, AppMentionEvent e, String threadTs, String command) {
+        if (existing == null || !existing.slackChannel().equals(e.getChannel()) || !orchestrator.channelCommandRouting()) return false;
+        audit.record(existing.id(), e.getUser(), AuditLog.ACTION_RECEIVED, "頻道頂層指令轉回原任務：" + command);
+        notifier.post(SlackNotifier.Identity.SYSTEM, e.getChannel(), threadTs, "已把這則指令轉給任務 #" + existing.id()
+                + "，結果會貼在該任務原本的討論串；沒有建立新任務。");
+        orchestrator.requestTriage(existing, command, e.getUser());
+        return true;
     }
 
     private void registerPlanActions(App app) {

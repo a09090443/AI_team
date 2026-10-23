@@ -54,6 +54,25 @@ class TriageRoutingTest {
         verify(app, never()).abort(any(), any());
         verify(app, never()).createAndSubmit(any(), any(), any(), any());
     }
+    // #1054：「#1053 檢視配置更新」打在頻道頂層、少了「補充」，被開成新任務。
+    @Test void topLevelTaskCommandIsRoutedBackWhenAutonomyAllows() { topLevel("<@BOT> #1053 檢視配置更新", true, "檢視配置更新"); }
+    @Test void topLevelSupplementIsRoutedBackWhenAutonomyAllows() { topLevel("<@BOT> 補充 #1053 狀態", true, "狀態"); }
+    @Test void topLevelTaskCommandStillCreatesTaskWithoutAutonomy() { topLevel("<@BOT> #1053 檢視配置更新", false, null); }
+    @Test void unknownTextAfterTaskNumberIsStillANewRequest() { topLevel("<@BOT> #1053 幫我加一個登入頁", true, null); }
+    void topLevel(String text, boolean routing, String routed) {
+        var props = mock(AiTeamProperties.class); when(props.allowedUsers()).thenReturn(Set.of("u")); when(props.channelId()).thenReturn("c");
+        var store = mock(TaskStore.class); when(store.markEventSeen("event")).thenReturn(true);
+        var app = mock(TaskOrchestrator.class); Task task = new Task("1053", "c", "t", "u", "ui");
+        when(app.lookup("1053")).thenReturn(Optional.of(task)); when(app.channelCommandRouting()).thenReturn(routing);
+        var listener = new SlackListener(props, app, mock(SlackNotifier.class), store, mock(AuditLog.class));
+        var event = mock(AppMentionEvent.class); when(event.getChannel()).thenReturn("c"); when(event.getTs()).thenReturn("top");
+        when(event.getUser()).thenReturn("u"); when(event.getText()).thenReturn(text);
+        ReflectionTestUtils.invokeMethod(listener, "handleMention", "event", event);
+        if (routed != null) {
+            verify(app).requestTriage(task, routed, "u");
+            verify(app, never()).createAndSubmit(any(), any(), any(), any());
+        } else verify(app, never()).requestTriage(any(), any(), any());
+    }
     @Test void openPrCommandInOriginalThreadSendsThePublishCommand() { openPr("t", "<@BOT> 開 PR #1022", true); }
     @Test void openPrCommandAcceptsCodeFormattingAndNoSpace() { openPr("t", "<@BOT> `開PR #1022`", true); }
     @Test void openPrCommandFromAnotherThreadIsRejected() { openPr("other", "<@BOT> 開 PR #1022", false); }

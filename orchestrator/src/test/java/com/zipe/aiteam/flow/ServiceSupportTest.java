@@ -10,6 +10,26 @@ class ServiceSupportTest {
   Path p=home.resolve("service-support/1049/current.json");Files.createDirectories(p.getParent());
   Files.writeString(p,"{\"healthy\":true,\"endpoints\":[{\"audience\":\"Windows host\",\"url\":\"http://127.0.0.1:8088/view/chat\",\"probe_url\":\"http://172.30.46.20/view/chat\",\"http_status\":200}]}" );
  }
+ @Test void persistedDiagnosticsOnlyRecoverMatchingIdentityAndLiveDeadline() throws Exception {
+  var dir=home.resolve("service-context");Files.createDirectories(dir);
+  Files.writeString(dir.resolve("sit.json"),"{\"target\":\"sit\",\"access_endpoints\":[{}]}");
+  var job=home.resolve("service-support/1049/job.json");Files.createDirectories(job.getParent());
+  var data=new ObjectMapper().createObjectNode().put("version",1).put("task","1049").put("parent","1048")
+          .put("target","sit").put("state","RUNNING").put("deadline",java.time.Instant.now().getEpochSecond()+60);
+  Files.writeString(job,data.toString());
+  assertThat(ServiceSupport.recoverable(home,"1049","1048","sit")).isTrue();
+  assertThat(ServiceSupport.recoverable(home,"1049","1111","sit")).isFalse();
+  Files.writeString(job,data.put("deadline",1).toString());
+  assertThat(ServiceSupport.recoverable(home,"1049","1048","sit")).isFalse();
+ }
+ @Test void oldHealthyEvidenceIsNotCurrentWhileNewDiagnosticIsRunning() throws Exception {
+  evidence();Path file=home.resolve("service-support/1049/job.json");
+  Files.writeString(file,"{\"state\":\"RUNNING\",\"generation\":\"new\"}");
+  assertThat(ServiceSupport.current(home,"1049").path("healthy").asBoolean()).isFalse();
+  assertThat(ServiceSupport.current(home,"1049").has("endpoints")).isFalse();
+  Files.writeString(file,"{\"state\":\"COMPLETED\",\"generation\":\"new\"}");
+  assertThat(ServiceSupport.current(home,"1049").has("endpoints")).isFalse();
+ }
  @Test void wrongUrlAnswerIsAutomaticallyRejected() throws Exception {
   evidence();assertThat(ServiceSupport.replyReason(home,"1049","網址無法打開","請開http://172.30.46.20/" )).contains("完整入口");
   assertThat(ServiceSupport.replyReason(home,"1049","網址無法打開","請在Windows開http://127.0.0.1:8088/view/chat")).isNull();

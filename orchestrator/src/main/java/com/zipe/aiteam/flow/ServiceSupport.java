@@ -22,34 +22,85 @@ public final class ServiceSupport {
         }
         catch(Exception e){return false;}
     }
+    static boolean serviceDialogue(FlowRun flow) {
+        return flow.dialogue && flow.parentId!=null && flow.snapshot.definition().project().serviceTarget()!=null
+                && flow.snapshot.definition().nodes().values().stream()
+                    .anyMatch(n -> n.gate()==TeamDefinition.Gate.SERVICE && Objects.equals(n.role(),flow.dialogueRole));
+    }
+    private static String unavailable(Path dir,String reason) {
+        try {
+            Path temporary=Files.createTempFile(dir,".support-",".json");
+            Files.writeString(temporary,JSON.createObjectNode().put("healthy",false).put("error",reason).toString());
+            Files.move(temporary,dir.resolve("current.json"),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
+        }catch(Exception ignored){ /* Without matching generation current() still rejects stale evidence. */ }
+        return "\n系統診斷未完成，現在健康未知；保留原job，不另建部署。原因="+reason;
+    }
+    static JsonNode job(Path home,String task) {
+        if(home==null || task==null || !task.matches("[0-9]+"))return JSON.createObjectNode();
+        Path file=home.resolve("service-support").resolve(task).resolve("job.json");
+        try { if(!Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS)||Files.size(file)>32768
+                || !file.toRealPath().equals(file.toAbsolutePath().normalize()))return JSON.createObjectNode();
+            return JSON.readTree(file.toFile());
+        }catch(Exception e){return JSON.createObjectNode();}
+    }
+    public static boolean recoverable(Path home,String task,String parent,String target) {
+        JsonNode job=job(home,task);
+        return configured(home,target) && job.path("version").asInt()==1
+                && task.equals(job.path("task").asText()) && parent.equals(job.path("parent").asText())
+                && target.equals(job.path("target").asText())
+                && Set.of("RUNNING","COMPLETED","FAILED").contains(job.path("state").asText())
+                && job.path("deadline").asLong()>java.time.Instant.now().getEpochSecond();
+    }
     public static String collect(Path home,String task,String parent,String target) {
+        return collect(home,task,parent,target,"default",()->false);
+    }
+    /** Independent fixed worker owns the lock/checkpoint. JVM shutdown does not discard its remote job IDs. */
+    public static String collect(Path home,String task,String parent,String target,String generation,java.util.function.BooleanSupplier cancelled) {
         if(!configured(home,target))return "";
         if(!task.matches("[0-9]+")||!parent.matches("[0-9]+"))throw new IllegalArgumentException("診斷任務編號不合法");
         Path dir=home.resolve("service-support").resolve(task);
         Process process=null;
+        long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(610);
         try {
             Files.createDirectories(dir);
             if(!dir.toRealPath().equals(dir.toAbsolutePath().normalize()))throw new IllegalStateException("診斷路徑不符");
             Path script=home.resolve("teams/skills/service-build/scripts/support.py");
             if(!Files.isRegularFile(script,LinkOption.NOFOLLOW_LINKS))throw new IllegalStateException("固定診斷工具不存在");
-            Path output=dir.resolve("current.json"),error=dir.resolve("diagnostic.stderr.log");
-            Files.writeString(output,"{\"healthy\":false,\"error\":\"SUPPORT_PENDING\"}");
-            process=new ProcessBuilder("python3",script.toString(),home.toString(),task,parent,target)
-                    .redirectOutput(output.toFile()).redirectError(error.toFile()).start();
-            if(!process.waitFor(600,TimeUnit.SECONDS)) {
-                process.destroyForcibly();process.waitFor(3,TimeUnit.SECONDS);
-                Files.writeString(output,"{\"healthy\":false,\"error\":\"SUPPORT_TIMEOUT\"}");
+            while(System.nanoTime()<deadline) {
+                if(cancelled.getAsBoolean())return "\n系統停止等待；保留原診斷作業，未重新部署。";
+                JsonNode saved=job(home,task);
+                boolean matching=saved.path("version").asInt()==1 && task.equals(saved.path("task").asText()) && parent.equals(saved.path("parent").asText())
+                        && target.equals(saved.path("target").asText()) && generation.equals(saved.path("generation").asText());
+                if(matching && Set.of("COMPLETED","FAILED").contains(saved.path("state").asText()))return notice(home,task);
+                if(matching && saved.path("deadline").asLong()<=java.time.Instant.now().getEpochSecond())
+                    return "\n系統診斷已逾時，保留原作業ID；目前健康未知，不自動另建修復。";
+                if(process!=null && !process.isAlive() && process.exitValue()!=0 && process.exitValue()!=75)
+                    return unavailable(dir,"SUPPORT_WORKER_UNAVAILABLE");
+                if(process==null || !process.isAlive())
+                    process=new ProcessBuilder("python3",script.toString(),home.toString(),task,parent,target,"--job",generation)
+                            .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                            .redirectError(ProcessBuilder.Redirect.appendTo(dir.resolve("diagnostic.stderr.log").toFile())).start();
+                Thread.sleep(1000);
             }
-            return notice(home,task);
-        } catch(InterruptedException e){if(process!=null)process.destroyForcibly();Thread.currentThread().interrupt();throw new IllegalStateException("診斷已中斷",e);}
-        catch(Exception e){return "\n系統服務診斷未完成，不能宣稱目前健康或要求重新部署。原因類別="+e.getClass().getSimpleName();}
+            return unavailable(dir,"SUPPORT_WAIT_UNCONFIRMED");
+        } catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException("診斷等待已中斷，持久作業保留",e);}
+        catch(Exception e){return unavailable(dir,"SUPPORT_CHECK_UNAVAILABLE");}
     }
     public static JsonNode current(Path home,String task) {
         if(home==null||task==null||!task.matches("[0-9]+"))return JSON.createObjectNode();
         Path file=home.resolve("service-support").resolve(task).resolve("current.json");
         try {if(!Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS)||Files.size(file)>65536
                     ||System.currentTimeMillis()-Files.getLastModifiedTime(file).toMillis()>600000)return JSON.createObjectNode();
-            return JSON.readTree(file.toFile());}catch(Exception e){return JSON.createObjectNode();}
+            JsonNode evidence=JSON.readTree(file.toFile()),saved=job(home,task);
+            if(!saved.isEmpty()) {
+                if(!Set.of("COMPLETED","FAILED").contains(saved.path("state").asText()))
+                    return JSON.createObjectNode().put("healthy",false).put("error","SUPPORT_PENDING");
+                if(saved.path("state").asText().equals("COMPLETED") &&
+                        (!saved.path("generation").equals(evidence.path("generation"))
+                        || !saved.path("target").equals(evidence.path("target"))
+                        || !saved.path("parent").equals(evidence.path("parent"))))return JSON.createObjectNode();
+            }
+            return evidence;}catch(Exception e){return JSON.createObjectNode();}
     }
     public static String notice(Path home,String task) {
         JsonNode evidence=current(home,task);

@@ -125,6 +125,29 @@ class TeamCatalogTest {
         var config = config(); config.put("maxTransitions", 999);
         assertThatThrownBy(() -> validate(config)).hasMessageContaining("1..64");
     }
+    @Test void nodeTimeoutAllowsOneHourButNotMore() throws Exception {
+        var config = config(); ((ObjectNode)config.path("nodes").path("implementation")).put("timeoutSeconds", 3600);
+        validate(config);
+        ((ObjectNode)config.path("nodes").path("implementation")).put("timeoutSeconds", 3601);
+        assertThatThrownBy(() -> validate(config)).hasMessageContaining("節點資源上限無效");
+    }
+    @Test void autonomyIsOptionalButBounded() throws Exception {
+        var config = config();
+        ((ObjectNode)config.path("project")).set("autonomy", mapper.readTree("{\"modelTimeoutRecoveries\":2,\"maxTimeoutSeconds\":3600,"
+                + "\"verificationContinuations\":2,\"requirementChangeOptions\":true,\"channelCommandRouting\":true}"));
+        validate(config);
+        ((ObjectNode)config.path("project").path("autonomy")).put("modelTimeoutRecoveries", 4);
+        assertThatThrownBy(() -> validate(config)).hasMessageContaining("project.autonomy");
+        ((ObjectNode)config.path("project").path("autonomy")).put("modelTimeoutRecoveries", 2).put("maxTimeoutSeconds", 3601);
+        assertThatThrownBy(() -> validate(config)).hasMessageContaining("project.autonomy");
+    }
+    @Test void bestpartnerEnablesAutonomyOthersDoNot() throws Exception {
+        Files.createDirectories(tmp.resolve(".git"));
+        assertThat(TeamCatalog.load(Path.of("teams/bestpartner.json"), key -> tmp.toString()).definition().project().autonomy())
+                .isEqualTo(new TeamDefinition.Autonomy(2, 3600, 2, true, true));
+        for (String team : java.util.List.of("spring-starters", "node-web", "dynamic-api"))
+            assertThat(TeamCatalog.load(Path.of("teams/" + team + ".json"), key -> tmp.toString()).definition().project().autonomy()).isNull();
+    }
     @Test void broadCacheWriteRejected() throws Exception {
         var config = config(); ((ObjectNode)config.path("project")).putArray("cachePaths").add(".ssh");
         assertThatThrownBy(() -> validate(config)).hasMessageContaining("快取");

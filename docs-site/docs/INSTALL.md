@@ -333,7 +333,7 @@ HEAD 的授權碼。原驗收負責人確認仍是既定範圍內可修復問題
 三件事先講清楚，免得驗收時誤判成故障：
 
 - 遷移**只接受執行能力設定**（`requiredTools`／`cachePaths`／建置與測試說明／`operations`／
-  各角色 `tools`／節點 `writablePaths`、`localTestNetwork`）與**同一 runtime 內的角色模型**。
+  各角色 `tools`／節點 `writablePaths`、`localTestNetwork`、`timeoutSeconds`／`project.autonomy`）與**同一 runtime 內的角色模型**。
   換模型後下一步一律開新對話，不以新模型接續舊 session。改 runtime、路由、角色、
   基準分支或核准政策一律拒絕，訊息是「請另建任務」——這是設計，不是 bug。
 - 套用遷移會清掉舊的計畫核准與一次性恢復授權，所以第 4 步不能省。
@@ -416,7 +416,7 @@ Slack 相關問題見 [建立 Slack App](slack-agent-apps.md#疑難排解)。
 | `ssh host 'claude --version'` 找不到指令 | Ubuntu 的 `~/.bashrc` 開頭對非互動式 shell 會直接 return。自動化一律自行 `export PATH` 或用絕對路徑；bootstrap 的啟動腳本已自行設定 PATH |
 | 下載極慢、IP 每次重開機都變 | VirtualBox 橋接到 Wi-Fi 網卡。改用 NAT + 埠轉發（§1 的 `127.0.0.1:2223`）；VM 執行中新增轉發用 `controlvm … natpf1`，`modifyvm` 需要獨占鎖，常出現 `already locked for a session` |
 | `Cannot access central in offline mode` | `mvn dependency:go-offline` 只是盡力預熱，不保證抓齊傳遞相依；實際建置不要加 `-o` |
-| 兩個實例同時停掉、log 最後是 `HikariPool-1 - Shutdown completed`，任務卡在 `STAGE_RUNNING` | `Linger=no`，最後一個登入 session 結束後 systemd 停掉了 user manager（journal 有 `user@1000.service: State 'stop-sigterm' timed out. Killing.`）。2026-10-07 新 VM 先凍結約 7.5 分鐘（kernel `rcu_preempt kthread starved`），之後 session 被移除就發生了。處理：開啟 linger（§4），再以 `service.sh start` 啟動。啟動時系統會把卡住的任務改成 `AWAIT_HUMAN`（「服務重啟中斷」），不自動重跑，要負責人在 Slack 決定是否重跑 |
+| 兩個實例同時停掉、log 最後是 `HikariPool-1 - Shutdown completed`，任務卡在 `STAGE_RUNNING` | `Linger=no`，最後一個登入 session 結束後 systemd 停掉了 user manager（journal 有 `user@1000.service: State 'stop-sigterm' timed out. Killing.`）。2026-10-07 新 VM 先凍結約 7.5 分鐘（kernel `rcu_preempt kthread starved`），之後 session 被移除就發生了。處理：開啟 linger（§4），再以 `service.sh start` 啟動。啟動時先依有效長作業或持久診斷檢查點受控恢復；沒有可核對檢查點的中斷任務才改成 `AWAIT_HUMAN`，由負責人在 Slack 決定下一步，不能把重啟當成重新部署 |
 | 遠端重啟後服務不見了 | 在單一 SSH 指令裡「停舊的再起新的」，中途斷線就只剩停止。分兩步各自確認，或用 `service.sh` 並在啟動後檢查 `status` |
 
 ## 文件優先序
@@ -426,6 +426,15 @@ Slack 相關問題見 [建立 Slack App](slack-agent-apps.md#疑難排解)。
 舊版安裝手冊已移除（需要時查 git 歷史），不要混搭舊指令。
 
 
-## 服務執行工具（2026-10-10）
+## 服務執行工具（2026-10-21）
 
-安裝程式也放置 `teams/skills/service-build/scripts/client.py`。若啟用 bestpartner 自動 SIT 建置，另依 [服務建置](/docs/service-delivery) 設定 Windows VirtualBox 宿主機 broker；一般 Linux orchestrator 安裝不會自行取得 dev VM 的登入權限。
+安裝程式也放置 `teams/skills/service-build/scripts/client.py`。bestpartner 自動 SIT 建置依[服務建置](/docs/service-delivery)與[SSH直連部署](/docs/direct-ssh-deployment)，由Agent VM的固定執行器經已登錄SSH公鑰直接連到目標VM；日常部署不需Windows broker。一般Linux orchestrator安裝不會自行取得其他VM的登入權限，主機初次設定依上述文件完成。
+
+
+## 升級既有 Orchestrator
+
+使用`deploy/deploy-orchestrator.sh <隔離來源根目錄>`，以AI_TEAM_HOME指定既有實例。候選JAR、src/main及teams必須來自隔離建置；orchestrator/full-build.log須是該候選來源的完整成功驗證紀錄。不得在執行中target做clean/build，也不打包env.sh或CLI登入檔。更新提示/skill時先保留線上teams JSON，再只覆蓋本輪已核對的資產；既有任務仍保留原快照。
+
+升級前確認無執行中或排隊任務，備份JAR、teams與SQLite，核對全部任務工作區；切換後檢查Spring、沙箱、角色Socket Mode及資料一致性，失敗由腳本回復程式與資產。task/flow_run/task_checkpoint/direct_request/stage_result/quota_retry六表以唯讀交易逐列JSON編碼後雜湊，避免SQLite CLI輸出大型JSON時長時間占用CPU；快照只保存雜湊，不輸出任務或憑證內容。
+
+由Windows傳送shell腳本時，先把CRLF正規化為LF並執行bash -n。此流程只升級協調器，不重建目標產品、不續跑任務、不核准新計畫或PR。

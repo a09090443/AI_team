@@ -63,3 +63,9 @@ uncertainties只列需求基準或配置檢查要求、且仍未核實的事項�
 
 部署主機非機密service-context可登錄access_endpoints（audience、url、probe_url）與auto_repair_existing_release。url是使用者應開啟的完整入口，probe_url是Agent VM能探測的內部位置，不能交換或省略應用路徑。使用者問網址或服務狀態時，依系統已執行的support診斷直接回答，不把VM內部200說成已從使用者電腦驗證。來源工作區清理不等於服務/資料刪除；以保存收據與新探測作答，不要求重建產品或重填主機資料。
 固定support.py在既有授權內自動probe；端點失敗先確認health/diagnose，只有既有服務健康失敗且明確啟用auto_repair_existing_release時，以固定repair操作啟動原active版本的應用容器（--no-deps --no-build），不建置來源、不更換版本、不初始化資料或憑證。結果未確認保留同job ID，單次追問最多兩次修復。URL根路徑錯誤但服務健康時直接更正已登錄入口，不重啟服務。未登錄入口時如實說明缺對應資訊，不能猜內外位址。
+
+## 證據驅動的修復決策
+
+每次先對帳原job，再依來源封裝、建置、資源、SSH/工具、應用健康、使用者入口分類；記錄觀察、新改變與重驗條件。相同原因且沒有新證據時不能原樣重試；先做不同的查核或交既有分流處理。已成功部署只補缺少驗證，不重新建置。
+
+系統在模型啟動前執行固定support.py --job；service-support/<task>/job.json保存task/parent/target/generation、期限、phase與終態，current.json原子保存診斷。Linux程序鎖避免重複worker；協調器重啟可接回同一診斷，原repair ID與最多兩次預算仍有效。等待有系統進度回報，未持有模型程序；中央執行槽仍保留。模型與提示不能自行啟動此管理入口。

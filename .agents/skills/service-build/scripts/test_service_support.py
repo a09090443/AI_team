@@ -1,5 +1,6 @@
 from contextlib import closing
 import json
+import os
 import sys
 from pathlib import Path
 import sqlite3
@@ -13,6 +14,104 @@ import guest
 import ssh_target
 
 class SupportTests(unittest.TestCase):
+    def setUp(self):
+        support.DEADLINE=None
+    def tearDown(self):
+        support.DEADLINE=None
+    def worker(self,home,generation="one"):
+        with patch.dict(sys.modules,{'fcntl':SimpleNamespace(LOCK_EX=1,LOCK_NB=2,flock=lambda *args:None)}):
+            return support.job(home,"1049","1048","sit",generation)
+    def test_worker_duplicate_generation_reuses_result_without_new_probe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home,e=self.fixture(tmp)
+            with patch.object(support,"run",return_value=dict(healthy=True,operations=[],endpoints=[e])) as run:
+                self.worker(home);self.worker(home)
+            self.assertEqual(1,run.call_count)
+            job=json.loads((home/"service-support/1049/job.json").read_text())
+            self.assertEqual("COMPLETED",job["state"])
+            self.assertTrue(json.loads((home/"service-support/1049/current.json").read_text())["healthy"])
+    def test_worker_restart_preserves_deadline_and_reconciles_same_generation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home,e=self.fixture(tmp)
+            with patch.object(support,"run",side_effect=[dict(healthy=False,operations=[dict(exit_code=75)]),dict(healthy=True,operations=[])]):
+                self.worker(home)
+                old=json.loads((home/"service-support/1049/job.json").read_text())
+                self.worker(home)
+            new=json.loads((home/"service-support/1049/job.json").read_text())
+            self.assertEqual("RUNNING",old["state"]);self.assertEqual("COMPLETED",new["state"])
+            self.assertEqual(old["deadline"],new["deadline"]);self.assertEqual(old["started_at"],new["started_at"])
+    def test_worker_deadline_never_starts_another_remote_action(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home,e=self.fixture(tmp)
+            path=home/"service-support/1049/job.json"
+            support.client.atomic_json(path,dict(version=1,task="1049",parent="1048",target="sit",generation="one",state="RUNNING",deadline=1))
+            with patch.object(support,"run") as run:self.worker(home)
+            run.assert_not_called();self.assertEqual("FAILED",json.loads(path.read_text())["state"])
+    @unittest.skipUnless(os.name=="posix","Linux process lock")
+    def test_real_lock_rejects_duplicate_worker(self):
+        import fcntl
+        with tempfile.TemporaryDirectory() as tmp:
+            home,e=self.fixture(tmp);directory=home/"service-support/1049";directory.mkdir(parents=True)
+            with (directory/"job.lock").open("a+") as stream:
+                fcntl.flock(stream,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                with patch.object(support,"run") as run:
+                    self.assertEqual(75,support.job(home,"1049","1048","sit","one"))
+                run.assert_not_called()
+    @unittest.skipUnless(os.name=="posix","Linux worker process and flock")
+    def test_real_worker_interruption_recovers_same_deadline_and_cached_result(self):
+        import subprocess
+        import threading
+        from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
+        arrived=threading.Event();release=threading.Event();requests=[]
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                requests.append(self.path);arrived.set();release.wait(10)
+                try:self.send_response(200);self.end_headers()
+                except OSError:pass
+            def log_message(self,*args):pass
+        server=ThreadingHTTPServer(("127.0.0.1",0),Handler)
+        thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+        process=None
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                home,e=self.fixture(tmp);config_path=home/"service-context/sit.json"
+                config=json.loads(config_path.read_text());config["access_endpoints"][0]["probe_url"]="http://127.0.0.1:%s/view/chat"%server.server_port
+                config_path.write_text(json.dumps(config))
+                command=[sys.executable,str(Path(support.__file__).resolve()),str(home),"1049","1048","sit","--job","one"]
+                process=subprocess.Popen(command,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+                self.assertTrue(arrived.wait(10))
+                path=home/"service-support/1049/job.json";before=json.loads(path.read_text())
+                process.terminate();process.communicate(timeout=10);process=None;release.set()
+                subprocess.run(command,check=True,capture_output=True,timeout=15)
+                after=json.loads(path.read_text());self.assertEqual("COMPLETED",after["state"])
+                self.assertEqual(before["deadline"],after["deadline"])
+                subprocess.run(command,check=True,capture_output=True,timeout=10)
+                self.assertEqual(2,len(requests)) # interrupted probe + recovered probe; cached replay adds none
+                result=json.loads((home/"service-support/1049/current.json").read_text())
+                self.assertTrue(result["healthy"]);self.assertFalse(result["repair_attempted"])
+        finally:
+            release.set()
+            if process is not None:process.kill();process.communicate(timeout=10)
+            server.shutdown();server.server_close();thread.join(timeout=5)
+    def test_same_failed_repair_without_new_diagnostic_is_not_retried(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home,e=self.fixture(tmp)
+            diagnosis=dict(exit_code=0,evidence=['DIAGNOSIS: unhealthy app'])
+            with patch.object(support,"probe",return_value=dict(e,healthy=False)),patch.object(support.ssh_client,"config",return_value=dict(target="sit")),patch.object(support,"remote",side_effect=[dict(exit_code=1),diagnosis,dict(exit_code=1)]):
+                support.run(home,"1049","1048","sit")
+            support.client.atomic_json(home/"service-support/1049/repair.json",dict(result=dict(exit_code=1)))
+            with patch.object(support,"probe",return_value=dict(e,healthy=False)),patch.object(support.ssh_client,"config",return_value=dict(target="sit")),patch.object(support,"remote",side_effect=[dict(exit_code=1),diagnosis]) as remote:
+                result=support.run(home,"1049","1048","sit")
+            self.assertEqual(2,remote.call_count);self.assertFalse(result['repair_attempted'])
+            self.assertEqual("SAME_DIAGNOSTIC_AFTER_FAILED_REPAIR",result['retry_suppressed'])
+    def test_pending_repair_is_reconciled_before_new_health_or_repair(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home,e=self.fixture(tmp)
+            support.client.atomic_json(home/"service-support/1049/repair.json",dict(id='a'*32))
+            with patch.object(support,"probe") as probe,patch.object(support.ssh_client,"config",return_value=dict(target="sit")),patch.object(support,"remote",return_value=dict(exit_code=75)) as remote:
+                result=support.run(home,"1049","1048","sit")
+            probe.assert_not_called();self.assertEqual(['repair'],[c.args[3] for c in remote.call_args_list])
+            self.assertEqual("OPERATION_PENDING",result['diagnosis']['category'])
     def fixture(self,home):
         home=Path(home);(home/"service-context").mkdir()
         endpoint=dict(audience="Windows host",url="http://127.0.0.1:8088/view/chat",probe_url="http://172.30.46.20/view/chat")

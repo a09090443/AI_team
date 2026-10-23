@@ -124,3 +124,22 @@ Gate.SERVICE 不能以設定檔產出宣稱完成；啟動或健康檢查失敗�
 runtime 清理精確 sandbox unit 的 cgroup，stdout／stderr 及 session checkpoint 保留；獨立部署 executor／遠端 root job 不因模型 timeout 被殺。真人中斷產生精確 job 的取消要求；傳輸中斷或模型回合結束不等於取消，取消未確認則保留未知狀態。執行器獨立 heartbeat 區分任務未啟動與離線；連線使用 closing，避免舊版 SQLite FD 累積。
 
 此恢復契約已部署 bestpartner。Linux cgroup與獨立SSH背景health已實測，真實模型逾時／重啟／取消的所有故障組合尚未全面演練；#1048須以正式流程最終狀態為準。
+
+## 管理者授權的自主恢復（project.autonomy，2026-10-22，#1053）
+
+`project.autonomy` 是選填的團隊配置，目前只有 bestpartner 啟用；沒設定（null）時以下行為全部不啟用，照舊停下等人。
+起因是 #1053 一天內停了四次，每次都是系統自己能處理的事。實作在 `AutonomousRecovery`，次數記在 `systemRetries`，不新增 FlowRun 欄位。
+
+| 欄位 | bestpartner | 行為 |
+|---|---|---|
+| `modelTimeoutRecoveries`（0～3） | 2 | 模型逾時（`RuntimeTimedOut`、MODEL、cleanup=CONFIRMED）且長作業對帳沒有可接續的作業時，自動沿用原 session 接著做，等同按「繼續執行」：activeNode 保留、不計節點次數。每任務最多這麼多次；同一節點在同一工作區狀態（HEAD＋未提交指紋）只接續一次，兩輪之間沒有任何變化就停給人。flow.context 會加上「上一輪跑了多久、目前工作區、不要重做已通過步驟」的說明，Slack 貼一則通知。 |
+| `maxTimeoutSeconds`（0～3600） | 3600 | 自動接續過的節點之後改用這個時限（不會比節點原值短）。 |
+| `verificationContinuations`（0～3） | 2 | 系統獨立驗證用完 `verification.timeoutSeconds` 時，在**同一個 clone** 從被中止的那條指令重跑，剩下的指令給新的總時限（`IndependentVerifier.verify` 內）。這一輪至少要通過一條，否則停給人；同一 commit 最多續這麼多輪。2026-10-22 第一版改成「開新 clone、重用已通過的指令」，#1054 因此 npm ci 被重用、新目錄沒有 node_modules，build 出現 `vue-tsc: not found` 被誤判為程式失敗交回實作；同日改為同一 clone 續跑。基準驗證同樣在同一次執行內續跑剩下的指令，結果的 summary 註記「自動續驗第 N 輪後通過」。 |
+| `requirementChangeOptions` | true | human_decision 選項多一種 `change_requirements`：需求負責人按下即送「核准需求變更 <問題與選項>」，回到需求節點重訂基準（見[計畫核准按鈕](plan-approval-buttons.md)）。提示同時要求範圍變更一律用它，不可用 decide，也不可自己把未解問題改成 EXCLUDED。 |
+| `channelCommandRouting` | true | 頻道頂層訊息「#編號 已知指令」或「補充 #編號 …」轉給該任務處理（回覆貼在原討論串），不另開新任務。已知指令：檢視配置更新、核准配置更新、狀態、檢視完整報告、檢視測試計畫、核准需求變更、核准測試計畫。只限同頻道、白名單使用者；別的任務討論串裡的指令照舊拒絕。 |
+
+另外啟用時，每個節點的脈絡會加上「本階段時限 N 分鐘，與本次變更無關的長檢查不要執行」，讓 agent 自己安排優先順序。
+
+不變的邊界：不擴權、不放寬受保護路徑；需求變更與 PR 仍要真人核准（change_requirements 只是讓負責人按一次就送出核准）；
+所有自動動作都有上限並寫稽核紀錄（RECOVERY）。舊任務需經「檢視配置更新／核准配置更新」取得 autonomy（已列為可遷移欄位）。
+驗證：程式測試（AutonomousRecoveryTest、FlowEngineTest、BaselineVerifierTest、HumanOptionsTest、TriageRoutingTest 等）通過；真實任務端對端尚未實測。

@@ -103,7 +103,8 @@ Codex 沒有細粒度 CLI 工具白名單，不能把前置宣告當成命令限
 ```
 
 預覽比較任務快照與目前服務載入的配置，token 綁定來源、目標與完整目標內容。
-只允許工具、快取、建置／測試指引、operations 與 serviceTarget 的能力設定差異，以及同一 runtime 內的角色模型
+只允許工具、快取、建置／測試指引、operations、serviceTarget 與 autonomy（自主恢復政策，2026-10-22）的設定差異、節點的 `writablePaths`／`localTestNetwork`／`timeoutSeconds`
+（逾時只是資源上限，2026-10-22 起可遷移，#1053），以及同一 runtime 內的角色模型
 （2026-09-25 起，例如 `roles.builder.model："sonnet" → "opus"`）；
 角色集合、runtime、路由、基準分支、repo、提示／schema、保護路徑與核准政策若改變，
 拒絕原地遷移，需另建任務或另行設計受控遷移。大於 5000 字元的差異不截斷求核准。

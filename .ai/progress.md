@@ -1327,3 +1327,75 @@
 - 原task1048來源仍清理，實測是evidence-only資料夾/保存收據/新HTTP診斷，不重建舊workspace；原部署仍COMPLETED，jobs仍三筆，沒有start或產品重啟。repair_attempted=false（因服務健康），不能宣稱實際注入產品故障修復。Windows維護端另測8088/view/chat HEAD200；Agent證據仍正確標user_route_verified=false。
 - 兩輪safe六表/workspace一致，校正前後除1049外所有任務/兩實例資料逐列比對未變。證據路徑support-maintenance-reply-20261021、support-deploy-reply.log、support-build-20261020/orchestrator/full-build.log、實例service-support/1049/current.json。
 - 已核對與修正direct-agent-requests、direct-ssh-deployment、service-delivery、configuration、operations、system-map、data-model、catalog、project-tree；skill/service prompt及範本/鏡像同步。發現的落差與修正：入口資訊/探測位置未區分、來源清理阻斷追問、不可執行續跑建議；現皆有流程與回歸保護。所有真實故障組合/Windows端自動管理不在已驗收範圍。
+
+## 2026-10-21 部署流程與提示詞分析
+
+- 依使用者要求分析，未改程式/角色提示/線上配置，未部署或重播任務。已確認分支04cb0d9已推送origin，尚未合併main。
+- 核對direct-ssh-deployment、service-delivery、direct-agent-requests、catalog/project-tree、service/service-triage/triage/intake/implement/verify/review提示、service-build skill、ConfiguredExecutor/ServiceSupport及bestpartner節點。
+- 發現落差：direct-agent-requests仍要求可複製執行前綴，與新版結案回覆規則不一致；已修正該段。程式對話共用開頭與結案指引仍有衝突，記錄為待實作建議，不僅改文件合理化。
+- service-delivery追加狀態能力摘要、診斷決策、狀態式提示、持久診斷與故障評估建議，明示尚未實作。診斷同步600秒與等待保留中央槽屬目前能力界線。
+- 文件build結果待本輪驗證。
+- 本輪docs-site npm run build通過，含catalog/tree/鏡像一致性及斷鏈檢查。
+
+
+## 2026-10-21 狀態式決策與持久診斷：來源完成，未部署
+
+- 使用者核准依分析修改。基底04cb0d9已推送，本輪修改未commit/push/merge；未部署、未改線上環境/任務或發Slack，保留原產品與其他實例。
+- ConfiguredExecutor依父任務狀態組合對話system、提供task/state/node/gate/configuration/target與可用操作；消除無條件執行前綴。FlowEngine的回覆守門涵蓋結案後非網址提問；固定診斷先於模型執行，只有單一階段進度，改寫不重做修復。
+- ServiceSupport/support.py加入Linux程序鎖、原子job/current、generation/期限/狀態、原repair對帳、相同失敗診斷指紋抑制；相符有效服務對話可自動重啟接續，正式SERVICE另檢查乾淨同HEAD/activeNode，不改DB型別或快照。保留中央槽與既有root互斥；未擴充任意主機或root操作。8份提示補證據/分類/修復/重驗決策，skill鏡像同步。
+- Linux第一次完整verify734項0失敗/錯誤12略過；後續218項相關全過。最終增加SERVICE同HEAD恢復後，本機181項全過，Linux2項恢復正反測試verify全過；沒有宣稱最終735項全量重跑。Python97項Linux全過，包含真實worker被terminate後原期限復原與cache不再probe、真實flock、pending repair只對帳、同失敗證據不盲重試。check-source及16平台fixture、docs build、diff check均通過。
+- 最終255份來源與隔離目錄逐檔SHA一致（shell僅正規化LF）；證據/home/agent/decision-tests-20261021.gsI92A。最終隔離JAR SHA256 a4e66bbfb90997e6124cb2d1593ff12021bc12cf6ff7f78ee0b36dc9776cb806，未切換線上服務。第一輪封裝曾因Windows CRLF使bash拒絕，僅修測試包格式後重跑；遠端腳本末行CR也已正規化，不當成產品缺陷。
+- 已核對文件：agent/index、project-tree、catalog、direct-ssh-deployment、service-delivery、direct-agent-requests、operations/configuration/system-map/data-model、service-build skill。已修正：service-delivery、direct-agent-requests、operations/configuration/system-map/data-model、catalog/project-tree與skill；其他索引/直連歷史證據無需改動。
+- 發現缺漏/落差：共用提示仍無條件建議執行前綴；文件仍寫結案清理後退主repo/全對話重啟必失敗、服務文件頂部未反映1048/1049已完成。已修程式並同步文件，明確區分已部署舊版與本輪來源。持久診斷補正式SERVICE來源綁定與舊健康結果隔離，測試已覆蓋。
+- context-compression已將目標/修改/限制/證據/未完成部署與下一步整理至context，決策追加decisions。未做真實產品停機、SSH斷線、完整協調器重啟聯合故障/Slack模型演練；不得稱全部故障已自主驗收。
+
+
+## 2026-10-21 狀態式決策與持久診斷：已部署bestpartner
+
+- 使用者明確要求部署。最終來源再完整Linux verify735項0失敗/錯誤12略過，日誌decision-tests-20261021.gsI92A/orchestrator/full-build.log，已取代前輪734+局部驗證限制；JAR a4e66bbfb90997e6124cb2d1593ff12021bc12cf6ff7f78ee0b36dc9776cb806。Python97/16fixture、255來源一致與docs build通過。
+- 受控部署成功，bestpartner PID70717、配置ca2973b2eb5bda52e4bd8b0feaf83e1626d3ffad7f2b0ce8dbec7886cd57b749；備份orchestrator-backup.qk7iNY、維護decision-maintenance-20261021.C9NQPV、候選decision-candidate-20261021.D7Bb9N。JAR/8角色prompt/skill逐檔相符；六角色Socket Mode、Spring/沙箱與SSH executor通過，啟動ERROR0。
+- 六表與全部既存任務工作區前後一致；三實例資料/設定相同，其他兩實例JAR未變。保留teams JSON/env/team.env/service-context；Windows產品8088/view/chat HEAD200，未重建產品/續跑1049/新增Slack訊息。本輪未commit/push/merge。
+- 部署發現與修正：傳送暫存shell有CRLF，在set階段停止，未切換；正規化LF後，舊sqlite3 CLI -json快照占CPU逾2分鐘，仍在切換前。停止精確本輪唯讀SQLite程序68634，改deploy/deploy-orchestrator.sh快照為Python唯讀交易逐列雜湊六表，保持完整性/順序/空表界線、不輸出內容。bash -n與大型Unicode/引號/換行、穩定讀取及逐表變更/復原14次驗證6.61秒通過；重新部署後全部比對通過。舊失敗日誌與orchestrator-backup.5cvw8s保留。
+- 已核對文件：INSTALL、direct-ssh-deployment、service-delivery、direct-agent-requests、operations/configuration/system-map/data-model、catalog/project-tree。已修正：上述文件與索引；INSTALL仍指向舊Windows broker/一律人工恢復已改現行直連/檢查點規則，新增既有實例安全升級/逐列快照說明，其他文件更新已部署狀態與真實證據。
+- 本輪只實測安全升級、資產、啟動/連線與資料保留，不冒稱新版模型對話或真實產品故障修復E2E已驗收。新任務載入新提示；原串追問可直接描述問題，舊任務快照未覆寫。
+
+## 2026-10-22：#1053 實作逾時修正並部署 bestpartner（Claude Code）
+
+- 原因：#1053 需求變更核准後跑到實作，builder 寫完部署檔與文件、前端與文件站檢查都通過後，又自行補跑後端編譯／漂移掃描／測試，08:19 撞上 1800 秒逾時（exit 137），停在 AWAIT_HUMAN。工作區有未提交成果與測試殘留 `bestpartner-service/D:/`。
+- 修改：`TeamCatalog` 節點逾時上限 1800→3600；`TeamMigration` 允許 `nodes.*.timeoutSeconds`；bestpartner `implementation.timeoutSeconds`=3600，`buildInstructions`／`testInstructions` 只在變更含 `bestpartner-service/**` 或版本設定時跑後端。新增 TeamCatalogTest、TeamMigrationTest 各 1 項。
+- 驗證（程式測試，非真實端對端）：VM 隔離 `~/timeout-build-20261022`（LF 封裝 tar 85e643af…）完整 Maven verify 737 項 0 失敗／錯誤 12 略過、check-source 通過；本機 docs build 通過。
+- 部署：`~/timeout-deploy-20261022`（teams 用線上原檔，只換 bestpartner.json，保住 prompt bytes 讓舊快照可原地遷移；線上 prompts／skills 有部分 CRLF）。JAR a4e66bbf…→6614ba57…，PID 89509，配置 ca2973b2…→baecbf49…，備份 `orchestrator-backup.lcsi4C`，log `~/timeout-deploy-20261022.log`；六表與工作區前後一致、0 ERROR、沙箱自檢通過。starters／dynamic-api 未部署（JAR 28679cb5…）。啟動後依新配置自動排入基準驗證。
+- 封裝注意：`git archive` 在 autocrlf=true 工作樹會輸出 CRLF，需加 `-c core.autocrlf=false -c core.eol=lf`；第一次封裝因此 check-source 失敗並重做，未切換線上。
+- 未完成：#1053 尚未遷移配置與續跑（需負責人在 Slack 送「檢視配置更新／核准配置更新」）；新指引與 3600 秒尚未有真實任務實證。
+- 已核對文件：configurable-team、cross-project-execution、INSTALL、local-test-capabilities、service-delivery、agent/configuration、engineering-workflow、baseline-verification。已修正：前六份（engineering-workflow／baseline-verification 講的是獨立驗證 1800 秒，仍正確）。
+
+## 2026-10-22：自主恢復 project.autonomy 實作並部署 bestpartner（Claude Code）
+
+- 新增 `flow/AutonomousRecovery`；改 TeamDefinition（Project.autonomy、Autonomy record）、TeamCatalog（上限驗證）、TeamMigration（autonomy 可遷移）、
+  FlowEngine（模型逾時自動接續、獨立驗證續驗、channelCommandRouting 查詢）、BaselineVerifier（同次執行續驗）、ConfiguredExecutor（時限＝autonomy 延長值、時限提示、change_requirements 指示與 schema）、
+  FailureReport（extendSchema 旗標）、HumanOptions（change_requirements→核准需求變更）、SlackListener／TaskOrchestrator（頂層 #編號 指令導回）；bestpartner.json 啟用 2／3600／2／true／true。
+- 測試：新增 AutonomousRecoveryTest，擴充 FlowEngineTest（逾時接續／無進展停止／未啟用照舊停／驗證續驗與無進展）、BaselineVerifierTest、HumanOptionsTest、TeamCatalogTest、TeamMigrationTest、TriageRoutingTest。
+  VM 隔離 `~/autonomy-final-20261022`（tar fd743b86…）完整 Maven verify 758 項 0 失敗／錯誤 12 略過、check-source 通過；本機 docs build 通過。程式測試通過，真實 Slack 端對端尚未實測。
+- 部署：`~/autonomy-deploy-20261022`（teams 沿用線上原檔，只換 bestpartner.json）。JAR 6614ba57…→a809f7e5…，PID 98701，配置 baecbf49…→13e4b047…，
+  備份 `orchestrator-backup.ybvDA2`，log `~/autonomy-deploy-20261022.log`；六表與工作區一致、0 ERROR、沙箱自檢與 6 個 Socket Mode 正常。另兩實例未動。
+- 以新 JAR 類別離線對 #1053 快照跑 TeamMigration.preview：ca2973b2→13e4b047，差異 buildInstructions、testInstructions、autonomy、implementation.timeoutSeconds，可原地遷移。
+- 待辦：負責人在 #1053 原討論串（或頂層 #1053 指令，已導回）檢視／核准配置更新後續跑；#1054 為誤開任務待中止；新配置會再排一次基準驗證。
+- 已核對文件：failure-reporting、configurable-team、engineering-workflow、baseline-verification、plan-approval-buttons、cross-project-execution、INSTALL、data-model、agent/configuration、agent/operations、project-tree、catalog。已修正：以上全部（新增 failure-reporting「管理者授權的自主恢復」節）。
+## 2026-10-22：分段改派 PARTIAL 判定修正並部署 bestpartner（Claude Code）
+
+- 現象：#1054 實作的 builder_codex 改派段兩次都改好並提交三份 .claude/rules（de91259），但照指示不建置而回報 status=PARTIAL／verify_passed=false；
+  runDelegatedPart 只認 SUCCESS，判「改派段未完成」並把它當整個實作結果，主實作段 builder 從未執行，分流↔實作空轉。負責人 15:47 UTC 中斷於 triage。
+- 修正：FlowEngine 改派段在無受阻、無 boundary_conflict 時，SUCCESS 或 PARTIAL（受保護檔案本輪有提交或本任務先前已提交，delegatedFilesChanged）即算完成；
+  ProtectedPathFallback.partNotice 明講 status／verify_passed 只代表這一段。新增 FlowEngineTest 2 項。所有使用 protectedPathFallback 的專案適用。
+- 驗證：VM ~/partfix-20261022（tar 4be1e7fa…）Maven verify 760 項 0 失敗、check-source 通過；docs build 通過。程式測試，真實續跑待負責人操作。
+- 部署：JAR a809f7e5…→78244c65…，PID 114928，配置仍 13e4b047…（teams 未變），備份 orchestrator-backup.rnqeW5；六表與工作區一致、0 ERROR。
+- 已核對／修正文件：multi-runtime.md（分段改派判定）。
+## 2026-10-23：獨立驗證續驗改為同一 clone 接續並部署 bestpartner（Claude Code）
+
+- 現象：#1054 獨立驗證 16:44 UTC 首次觸發 autonomy 續驗，但第一版在 FlowEngine 以新 clone 重跑並重用已通過的 npm ci，新目錄沒有 node_modules，
+  build「vue-tsc: not found」被判 CheckFailed 交回實作；builder 正確查出原因並回報需管理者修正，17:04 停在 AWAIT_HUMAN。屬本人前一版 B 設計瑕疵。
+- 修正：續驗移入 IndependentVerifier.verify，在同一 clone 從被中止的指令以新總時限重跑（同 BaselineVerifier）；FlowEngine 只在事後回報輪數。
+  移除未用的 passedAt；新增 IndependentVerifierTest 2 項、改寫 FlowEngineTest 1 項。文件 failure-reporting／engineering-workflow／configuration 已改並註明第一版問題。
+- 驗證：VM ~/verifyfix-20261022（tar 5e8ce463…）Maven verify 761 項 0 失敗、check-source 通過；docs build 通過。
+- 部署（#1054 停下後自動執行）：JAR 78244c65…→8f895e5c…，PID 132799，配置仍 13e4b047…，備份 orchestrator-backup.dLSBGv；六表與工作區一致、0 ERROR。
+- 待辦：負責人在 #1054 補充續跑以重新驗收；HEAD 2b0116a 程式不需再改。

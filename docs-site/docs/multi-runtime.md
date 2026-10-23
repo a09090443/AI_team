@@ -80,7 +80,10 @@ stdout／stderr 保留，既有 sessionStarted callback 與 checkpoint 介面維
    只做唯讀查核就回報 BLOCKED（受保護文件一個也沒改，稽核顯示「改派段未完成」）。
    系統以 `auditPaths` 核對，變更必須**全部**落在 `paths` 內且逐檔列於 `protected_path_changes`（`partViolations`，連 `.agents/`、一般檔案也不行），越界即 `SecurityException`；
    通過後系統代為提交，結果記在 `FlowRun.delegatedParts`（起始 commit、提交後 commit、檔案、摘要）。
-   改派段回報未完成（`status` 不是 SUCCESS、有 `boundary_conflict` 或 `execution_status` 受阻）時，以它的報告當本節點結果，照一般受阻流程處理，不執行第二段。
+   改派段回報未完成（`status` 不是 SUCCESS／PARTIAL、有 `boundary_conflict` 或 `execution_status` 受阻）時，以它的報告當本節點結果，照一般受阻流程處理，不執行第二段。
+   2026-10-22 起（#1054）`status=PARTIAL` 也算完成，前提是受保護檔案本輪有提交、或本任務先前已提交（`FlowEngine.delegatedFilesChanged`）：
+   改派段照指示不建置，如實填 PARTIAL／`verify_passed=false` 不代表沒做完。舊判定只認 SUCCESS，#1054 的 codex 兩次改好三份規則仍被當成整個實作的結果，
+   主實作段從未執行、流程在分流與實作間空轉。`partNotice` 同時明講 status 只代表這一段、verify_passed 依 `git diff --check` 等檢查判定。
 2. 主實作段：原角色收到「受保護檔案已在 commit X 完成、不要修改」的說明（`primaryNotice`），完成其餘變更與建置測試；節點報告以這一段為準。
 
 同一輪續跑（例如額度用完後恢復）時，`delegatedParts` 的起始 commit 等於本輪起始 commit 就略過改派段，checkpoint 只交給 runtime 相符的那一段；

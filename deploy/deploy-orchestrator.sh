@@ -40,14 +40,25 @@ for team in "$build"/teams/*.json; do
 done
 
 snapshot() {
-  sqlite3 -readonly -json "$root/ai-team.db" '
-    select * from task order by id;
-    select * from flow_run order by task_id;
-    select * from task_checkpoint order by task_id;
-    select * from direct_request order by task_id;
-    select * from stage_result order by task_id,role;
-    select * from quota_retry order by task_id;' | sha256sum
+  # Stream rows in a read-only transaction. sqlite3 CLI -json can spend minutes escaping large flow snapshots.
+  python3 - "$root/ai-team.db" <<'SNAPSHOT'
+from contextlib import closing
+from pathlib import Path
+import hashlib, json, sqlite3, sys
+checksum = hashlib.sha256()
+tables = {"task": "id", "flow_run": "task_id", "task_checkpoint": "task_id",
+          "direct_request": "task_id", "stage_result": "task_id,role", "quota_retry": "task_id"}
+uri = Path(sys.argv[1]).resolve().as_uri() + "?mode=ro"
+with closing(sqlite3.connect(uri, uri=True)) as db:
+    db.execute("BEGIN")
+    for table, order in tables.items():
+        checksum.update(table.encode() + b"\0")
+        for row in db.execute("select * from " + table + " order by " + order):
+            checksum.update(json.dumps(row, ensure_ascii=False, separators=(",", ":")).encode() + b"\n")
+print(checksum.hexdigest())
+SNAPSHOT
 }
+
 workspace_snapshot() {
   for ws in "$root"/workspaces/task-*/; do
     [ -d "$ws/.git" ] || continue

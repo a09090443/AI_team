@@ -174,12 +174,23 @@ public class IndependentVerifier {
         execute(task.id(), List.of("git", "-c", "core.hooksPath=/dev/null", "checkout", "--detach", head), repo, home, setupPolicy, run.resolve("checkout.log"), deadline);
         var policy = new SandboxPolicy(List.of(writable, dependencyCache()), pinsFor(repo), 4096, 200, 256);
         List<CommandResult> results = new ArrayList<>();
+        int passedThisRound = 0;
         for (int i = 0; i < decisions.size(); i++) {
             VerificationPlan.Decision decision = decisions.get(i);
             if (decision.action() != VerificationPlan.Action.RUN) continue;
             Path log = run.resolve("check-" + i + ".log");
-            try { execute(task.id(), decision.argv(), repo, home, policy, log, deadline); }
-            catch (CommandExit exit) { throw classify(exit); }
+            while (true) {
+                try { execute(task.id(), decision.argv(), repo, home, policy, log, deadline); break; }
+                catch (CommandExit exit) { throw classify(exit); }
+                catch (VerificationTimeout timeout) {
+                    // project.autonomy：這一輪有通過的指令，就在同一個 clone 給剩下的指令新的總時限，從被中止的那條重跑。
+                    // 不能開新 clone 重用已通過的指令：npm ci 裝好的 node_modules 只在這個目錄，#1054 續驗第二輪因此 vue-tsc: not found。
+                    if (AutonomousRecovery.claimVerificationContinuation(flow, head, 0, passedThisRound) == 0) throw timeout;
+                    deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(spec.timeoutSeconds());
+                    passedThisRound = 0;
+                }
+            }
+            passedThisRound++;
             CommandResult result = new CommandResult(decision.argv(), 0, log.toString(), hash(log));
             results.add(result);
             decisions.set(i, new VerificationPlan.Decision(i, decision.argv(), decision.action(), decision.reason(), decision.matched(),

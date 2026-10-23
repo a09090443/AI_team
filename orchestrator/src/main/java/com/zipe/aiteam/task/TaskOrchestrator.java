@@ -1266,6 +1266,8 @@ public class TaskOrchestrator {
         if (flowEngine == null || !flowEngine.owns(id)) throw new IllegalArgumentException("指定任務不是配置流程");
         flowEngine.resumeApprovedPlan(task, this::enqueue);
     }
+    public boolean channelCommandRouting() { return flowEngine != null && flowEngine.channelCommandRouting(); }
+
     public void requestTriage(Task task, String feedback, String byUser) {
         if (flowEngine != null && flowEngine.owns(task.id())) { flowEngine.resume(task, feedback, byUser, this::enqueue); return; }
         if (com.zipe.aiteam.flow.HumanOptions.PUBLISH_COMMAND.equals(feedback)) {
