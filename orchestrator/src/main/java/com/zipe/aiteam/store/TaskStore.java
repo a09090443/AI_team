@@ -89,6 +89,22 @@ public class TaskStore {
         }, taskId).stream().findFirst();
     }
 
+    /** 同頻道、同服務目標的歷史階段報告；只讀已執行的 SERVICE 節點，不把分流敘述當收據。 */
+    public record ServiceHistory(String taskId, String completedAt, String report) {}
+    public List<ServiceHistory> serviceHistory(String channel, String target, String excludeTask) {
+        return jdbc.query("""
+                SELECT a.task_id,a.completed_at,a.result
+                FROM stage_attempt a JOIN task t ON t.id=a.task_id JOIN flow_run f ON f.task_id=a.task_id
+                WHERE t.slack_channel=? AND a.task_id<>? AND json_valid(a.result)
+                  AND json_extract(f.data,'$.snapshot.definition.project.serviceTarget.name')=?
+                  AND json_extract(a.result,'$.target')=?
+                  AND EXISTS (SELECT 1 FROM json_each(f.data,'$.snapshot.definition.nodes') n
+                              WHERE n.key=a.role AND json_extract(n.value,'$.gate')='SERVICE')
+                ORDER BY a.id DESC LIMIT 12
+                """, (rs, n) -> new ServiceHistory(rs.getString(1), rs.getString(2), rs.getString(3)),
+                channel, excludeTask, target, target);
+    }
+
     public void saveFlow(String id, com.zipe.aiteam.flow.FlowRun flow) {
         try {
             jdbc.update("INSERT INTO flow_run(task_id,data) VALUES (?,?) ON CONFLICT(task_id) DO UPDATE SET data=excluded.data", id, mapper.writeValueAsString(flow));

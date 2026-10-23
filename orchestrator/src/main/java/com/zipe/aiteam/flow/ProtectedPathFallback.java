@@ -131,7 +131,10 @@ public final class ProtectedPathFallback {
                 + " 之下的部分。需求的其餘變更（包含 .agents/、程式碼、建置檔、其他文件）由 " + primaryName + " 在你之後完成，"
                 + "你不要修改，也不要執行建置或測試操作；修改到允許範圍以外的任何檔案都會讓本次作廢。不得修改 " + DENIED + " 之下的任何檔案。"
                 + "你的沙箱不能寫入 .git：不要 commit，系統核對後代為提交。summary 列出改了哪些檔案、各改了什麼；"
-                + "execution_status 只依這些受保護檔案是否改好判定，不因其餘工作尚未完成或沒有建置證據而回報 BLOCKED。";
+                + "execution_status 只依這些受保護檔案是否改好判定，不因其餘工作尚未完成或沒有建置證據而回報 BLOCKED。"
+                // #1054：codex 照實填 PARTIAL／verify_passed=false，舊判定因此認定改派段未完成，主實作段一直沒跑。
+                + "status 也只代表你這一段：受保護檔案都改好（或已是需求要的內容）就填 SUCCESS，不要因為其餘工作由別人做而填 PARTIAL；"
+                + "quality_gate.verify_passed 依你對這些檔案做的檢查（例如 git diff --check）判定，不需要建置或測試證據。";
     }
 
     /** 給分段改派中原角色的說明：受保護檔案已完成，不要動。 */

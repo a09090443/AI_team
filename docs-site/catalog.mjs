@@ -35,7 +35,7 @@ export const docs = [
     status: 'current',
     summary: '新 VM 從系統前置、工具鏈、CLI 登入、沙箱、Slack 設定到分層驗收的唯一安裝程序；不是一鍵安裝。',
     readWhen: '要在新機安裝、升級既有服務，或確認某個安裝步驟的正確做法。',
-    code: ['deploy/bootstrap/', 'deploy/env.sh.template'],
+    code: ['deploy/bootstrap/', 'deploy/env.sh.template', 'deploy/deploy-orchestrator.sh', 'deploy/deploy-jar-safe.sh'],
   },
   {
     id: 'rebuild-verification',
@@ -123,13 +123,22 @@ export const docs = [
     code: ['orchestrator/src/main/java/com/zipe/aiteam/flow/OperationContract.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/TeamMigration.java'],
   },
   {
+    id: 'direct-ssh-deployment',
+    title: 'Agent VM 以 SSH 直連部署',
+    category: 'workflow',
+    status: 'current',
+    summary: 'Agent VM 直連目標、受限公鑰與固定操作；取代 Windows broker 的規格、一次性設定與未完成驗收。',
+    readWhen: '設定 SSH 直連部署、管理公鑰與主機指紋，或排查部署通道。',
+    code: ['orchestrator/src/main/java/com/zipe/aiteam/flow/ServiceSupport.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/OperationJobs.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/FlowEngine.java', 'orchestrator/src/main/java/com/zipe/aiteam/runtime/RuntimeTimedOut.java', 'orchestrator/src/main/java/com/zipe/aiteam/sandbox/SandboxUnitCleanup.java', '.agents/skills/service-build/', 'orchestrator/teams/skills/service-build/', 'orchestrator/teams/prompts/service.md', 'orchestrator/teams/prompts/service-triage.md', 'orchestrator/teams/bestpartner.json'],
+  },
+  {
     id: 'service-delivery',
     title: '服務建置與開發分流',
     category: 'workflow',
     status: 'current',
     summary: 'Infrastructure 建置既有服務、啟動後檢查、自動修復與必要主機資訊；不先進 QA 計畫。',
     readWhen: '建立測試環境、部署服務、設定 serviceTarget 或了解 SERVICE 完成條件。',
-    code: ['.agents/skills/service-build/', 'orchestrator/teams/skills/service-build/', 'orchestrator/src/main/java/com/zipe/aiteam/flow/ServiceDelivery.java', 'orchestrator/teams/prompts/service.md', 'orchestrator/teams/prompts/service-triage.md', 'orchestrator/teams/schemas/service.json'],
+    code: ['orchestrator/src/main/java/com/zipe/aiteam/flow/ConfiguredExecutor.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/FlowEngine.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/ServiceSupport.java', '.agents/skills/service-build/', 'orchestrator/teams/skills/service-build/', 'orchestrator/src/main/java/com/zipe/aiteam/flow/ServiceDelivery.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/ServiceDeploymentContext.java', 'orchestrator/src/main/java/com/zipe/aiteam/store/TaskStore.java', 'deploy/service-context/', 'orchestrator/teams/prompts/service.md', 'orchestrator/teams/prompts/service-triage.md', 'orchestrator/teams/schemas/service.json'],
   },
   {
     id: 'qa-scenario-workflow',
@@ -196,7 +205,7 @@ export const docs = [
     status: 'current',
     summary: 'execution_status 與八欄 failure_report、矛盾結果攔截、系統例外由 agent 白話說明。',
     readWhen: '處理角色回報 BLOCKED、階段失敗，或修改角色 schema。',
-    code: ['orchestrator/src/main/java/com/zipe/aiteam/task/FailureReport.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/ErrorExplainer.java', 'orchestrator/src/main/java/com/zipe/aiteam/runtime/ProviderAccessDenied.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/SystemFailure.java', 'orchestrator/src/main/java/com/zipe/aiteam/sandbox/ArgumentListTooLong.java'],
+    code: ['orchestrator/src/main/java/com/zipe/aiteam/task/FailureReport.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/ErrorExplainer.java', 'orchestrator/src/main/java/com/zipe/aiteam/runtime/ProviderAccessDenied.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/SystemFailure.java', 'orchestrator/src/main/java/com/zipe/aiteam/sandbox/ArgumentListTooLong.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/AutonomousRecovery.java'],
   },
   {
     id: 'review-gate',

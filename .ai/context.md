@@ -23,11 +23,51 @@
 > 換手前務必更新這份檔案。內容只寫「現在正在做什麼、卡在哪、下一步」，
 > 長期結論寫 `decisions.md`，已完成的寫 `progress.md`。舊內容查 git 歷史，不要在這裡累積流水帳。
 
-最後更新：2026-10-17（Claude Code）
+最後更新：2026-10-22（Claude Code）
 
 ## 正在進行
 
 - **phase1 已併入 main（2026-10-23，Claude Code）**：使用者要求不等 Linux 驗證直接併入並 push。Windows 完整 Maven 711 項有 4 項失敗（OperationContractTest symlink 權限、QuotaExceededTest 找不到 /bin/sh、RuntimeDiagnosticsTest 逾時訊息、WorkspaceManagerTest 未提交修改），疑為 Windows 環境問題，**尚未在 Linux 確認**；下一步在 Linux 隔離環境重跑。dynamic-api 配置以 main 版為準；諮詢功能未部署到任何 VM。
+
+- **2026-10-22 自主恢復 project.autonomy 已部署 bestpartner（最高優先，取代下方同日逾時修正條目的狀態）**：JAR a809f7e5…、PID 98701、配置 13e4b047…，備份 orchestrator-backup.ybvDA2；758 項測試通過。來源在本工作樹未 commit。下一步：負責人對 #1053 檢視／核准配置更新（離線預覽已確認可遷移）後續跑，觀察自動接續／續驗首次真實行為；#1054 待中止。細節見 progress 2026-10-22。
+
+- **2026-10-22 #1053 實作逾時修正已部署 bestpartner（最高優先）**：JAR 6614ba57…、PID 89509、配置 baecbf49…，備份 orchestrator-backup.lcsi4C；節點逾時上限 3600 且可原地遷移，bestpartner 實作 3600 秒、非 Kotlin 變更不跑後端。來源在本工作樹未 commit。下一步：負責人在 #1053 送 `補充 #1053 檢視配置更新`→`核准配置更新 <token>`，再續跑實作（提醒 builder 核對已寫檔案後提交、不跑後端、刪除 `bestpartner-service/D:/` 殘留）。細節見 progress 2026-10-22。
+
+- **2026-10-21 狀態式決策與持久診斷已部署bestpartner（本輪最高優先）**：使用者已明確要求部署，現在已完成。JAR a4e66bbfb90997e6124cb2d1593ff12021bc12cf6ff7f78ee0b36dc9776cb806，PID70717，配置ca2973b2…；備份orchestrator-backup.qk7iNY，維護decision-maintenance-20261021.C9NQPV，候選decision-candidate-20261021.D7Bb9N。本輪來源未commit/push/merge；基底04cb0d9已push。以下未部署/WIP紀錄由此取代。
+  - 已上線：3個Java主類、8份角色提示與service-build skill；狀態式system/能力摘要、模型前持久診斷/同失敗指紋抑制、原repair對帳與同身分/來源/期限的恢復。保留中央槽、舊任務快照，不新增權限或DB型別。新任務用新角色提示，原串服務追問用新版固定診斷與回覆守門。
+  - 驗證：部署前最新來源完整Linux735項0失敗/錯誤12略過（已實際全量重跑，取代先前僅734全量的限制）；Python97 Linux含真實worker中斷/鎖、來源/check-source/16fixture與docs build通過，255來源一致。上線8prompt/skill逐檔相符，六角色Socket Mode、Spring/沙箱/SSH executor正常，ERROR0。Windows8088/view/chat HEAD200。未發新Slack訊息或做新模型/產品故障E2E。
+  - 資料/範圍：六表與全部既有任務工作區前後一致；三實例資料/設定相同，另兩實例JAR未變。1048原jobs僅3筆，沒有續跑1049或重建/重啟產品。teams JSON、env.sh/team.env、service-context保留。
+  - 部署中修正：CRLF暫存腳本先在set階段停止，後正規化LF；舊sqlite3 -json唯讀快照占CPU逾2分鐘，線上仍舊版時停止本輪快照。已改deploy/deploy-orchestrator.sh以唯讀交易逐列雜湊六表；14次Unicode/引號/換行/逐表變更驗證6.61秒通過，再完整受控部署成功。新增INSTALL升級說明、修正舊broker與一律人工恢復的過期文件。
+  - 證據：/home/agent/decision-deploy-20261021.log、decision-maintenance-20261021.C9NQPV、decision-tests-20261021.gsI92A/orchestrator/full-build.log；前兩次失敗log/備份保留。僅本次baseline off，未改env。下一步照常Slack使用，不再重部署或重播1049；如需提交，僅處理本工作樹本輪變更，不夾帶D:/agent_team其他工作。
+
+
+- **2026-10-21 服務追問自主修正已完成（最高優先，取代下方WIP/分析狀態）**：6bb706a+d9ff79e已部署bestpartner，最終JAR95cb87fb…，備份i9gcOl/首輪Y8VX5g；未push/merge。Linux728項0失敗/錯誤11略過、本機174相關、Python90/來源/docs build通過，190來源一致。新ServiceSupport/support.py在模型外從註冊endpoint probe，必要時固定SSH修復active app不build/不動DB資料；dialogue已清理來源採明示證據repo、可信歷史收據與新診斷，失敗回覆會自動改寫/固定證據fallback。機械攔截缺完整userURL及不可執行結案續跑建議；正式AI_TEAM_RESUME_DIALOGUE_TASK可恢復AWAIT或僅校正有此壞建議的COMP服務對話，不改父任務/快照。
+  - #1049原問題已由真實Infrastructure於00:13:29COMPLETED回答：Windows127.0.0.1:8088/view/chat、Agent172.30.46.20/view/chat200、明示不需重新派工；沒有錯誤說明器替代或發言ERROR。原1048source仍已清理、COMPLETED、jobs僅3筆；沒有新start/產品重啟，repairfalse因健康，不能宣稱真實中斷repair E2E已完成。Windows維護端HEAD200，Agent不冒稱從Windows驗證。其他任務與兩實例資料比對未變，6角色連線與SSH executor active。service-context已註冊內外URL/audience並啟用安全既有版本repair；root暫存credential已刪。最新完整證據見progress/direct-ssh-deployment。
+  - 後續使用者照常在原Slack串@Infrastructure描述服務問題，已註冊範圍可自動診斷/修復/回覆；不需要執行前綴重派已完成任務。未實測全部runtime/故障組合或使用者Windows網路自動管理，不重建產品來處理網址或對話錯誤。收尾文件build通過，完成驗證紀錄提交；不需再部署或重播1049。
+
+- **00:03 追問實測後的回覆校正補修（2026-10-21，最高優先）**：第一版6bb706a已部署JAR360e8279…，備份orchestrator-backup.Y8VX5g，safe六表/workspace一致；正式恢復1049後23:59:41COMPLETED並由Infrastructure回正確Windows完整url，原1048source仍刪除、證據folder正常、support.current健康200/repairfalse，其他任務與兩實例資料未變。但最後仍建議`@Infrastructure Agent 執行 檢查Windows轉送`，對COMP父任務不可執行。不能當全完成！已再修ServiceSupport.unsupportedFollowup/回覆guard與DIALOGUE_REPLY_RULES/父結案指引；resumeDialogueTask新增僅可校正COMP服務對話中已保存的不可執行建議（原AWAIT恢復仍有效），不手改DB、不新開任務。新174相關Java通過；Linux/home/agent/support-build-20261020重新完整verify中（session98824，已覆寫5個新Java/test來源，原726log另存full-build-first.log）。Java來源尚未commit。
+  - 下一步待728完整通過後：新safe deploy腳本B/C需改為support-maintenance-reply-20261021/support-candidate-reply-20261021以保留第一輪證據；保留現有teams JSON、tool scripts/prompt不變，僅新JAR。新resume腳本斷言1049已COMPLETED（不要用舊assertAWAIT），只一次AI_TEAM_RESUME_DIALOGUE_TASK=1049校正原問題。這次回覆不能給不可用執行命令，缺真實新瀏覽器錯誤只能問該資訊。safe前後一致通過才resume，實測model回答與Slack無發言錯誤。root工具fb5ccb6d…/guest1f443f2a…已更新不需重傳；不重部署產品。原source1048缺失是測試情境不修復。
+
+- **服務追問自主診斷修正實作中（2026-10-20，已授權）**：使用者明確要Slack agent自行修正並正確回答；已授權本輪實作/測試/部署並正式恢復#1049，未推送/合併。新增flow/ServiceSupport與source skill support.py，固定讀service-context access_endpoints(audience/url/probe_url)、自動HTTP probe、必要時SSH health/diagnose/repair原active版本（--no-deps --no-build、不動資料庫/資料）。未確認原job不換ID、同對話最多2次repair。ConfiguredExecutor結案來源已清理時使用home/dialogue-evidence/task真實診斷repo，明示非產品來源，注入管理資訊/可信歷史收據/新診斷；非結案工作區遺失仍拒絕冒充。FlowEngine對話缺正確完整URL自動改寫一次，再失敗由可信結果回覆；Service交付需本次端點健康且summary含userURL。正式續對話入口AI_TEAM_RESUME_DIALOGUE_TASK僅AWAIT_HUMAN有parent之dialogue。
+  - 主工作樹D:/agent_team-dynamicapi，HEAD101301e+本輪未提交來源/文件。Java相關172項、Python90項通過；新support tests含來源清理、原問題恢復、錯誤URL自修、健康服務不重啟、修復不build/不碰DB。source/mirrors已sync，新檔project-tree/catalog已登錄，tree排版已修。隔離包SHA70d21bcb…在Agent /home/agent/support-build-20261020，Linux check-source90通過，完整Maven verify正在跑（ssh exec session83738）。本輪未切換線上JAR/root工具，#1049仍AWAIT_HUMAN、#1048COMPLETED，產品Windows8088/view/chat200。
+  - 下一步：Linux完整通過後備份更新dev guest.py/ssh_target.py（新增repair協定，root只fixed入口）、受控部署bestpartner保留teams JSON/全六表與workspace一致性、非機密service-context登錄已知Windows127.0.0.1:8088/view/chat vsAgent172.30.46.20/view/chat且auto_repair_existing_release=true；safe-deploy前後一致通過才另一次啟動AI_TEAM_RESUME_DIALOGUE_TASK=1049恢復原追問，實測role回Slack正確URL與不重部署產品。源工作區1048已清理，不能手改DB/重建舊workspace。憑證暫存沿用private temp+雙重finally/guesttrap確保刪除，絕不print。追加docs/progress/decisions、docsbuild、commit不push。現行文件新增契約尚標待部署，待真實結果更新。
+
+- **網址/#1049追問分析（2026-10-20，僅分析）**：agent給172.30.46.20/（Windows不可達且VM內根路徑404）；正確Windows入口127.0.0.1:8088/view/chat實測200。#1048COMPLETED後，上輪最後重載23:27:56按既有purgeWorkspaces清掉task1048來源工作區；23:29:08追問#1049已收，23:29:12在verifiedWorkspace失敗，真正Infrastructure模型尚未執行，僅haiku錯誤說明器回覆並AWAIT_HUMAN。程式缺口是使用者入口契約/驗證、結案清理與對話要求衝突、部署證據未注入dialogue；不是dev產品停止。本輪只補direct-ssh/direct-agent現行已知問題文件，未修程式/部署/發Slack/恢復workspace或續跑1049。上輪「照常可派工」不可延伸為已驗收結案後追問。完整證據在progress。下一步待使用者修正指示；不要重部署產品解決對話錯誤。
+
+- **通用長作業恢復已部署、#1048完成（2026-10-20，Codex）**：工作樹D:/agent_team-dynamicapi，分支codex/direct-ssh-deployment。核心60cff26與後續歷史null相容/交付範圍修正已完成，未推送/合併。bestpartner JAR ad96be1c…，備份orchestrator-backup.yPNuTY；dev固定工具備份tool-backup-operation-20261020。Linux719項0失敗/錯誤、11略過（含真實cgroup）；Python78+check-source+docs build通過。Windows完整有平台限制，不宣稱全過。
+  - #1048經正式AI_TEAM_RESUME_OPERATION_TASK一次恢復：沿用verified prepare/start、原health a62bbfe9…綁原start bda3dcac…與同HEAD/source成功，沒有重建/新start、手改DB/快照/核准或重設計次。PM自行處理短暫離線與報告超出驗收範圍，最終COMPLETED/end、activeNode=null、transitions12。此最新狀態取代下方歷史AWAIT_HUMAN與尚未授權說法。
+  - 最終工具/prompt同步後正常重載（沒有resume變數），Spring/沙箱/6角色Socket Mode通過、ERROR0；executor PID29238/FD4/SQLite FD0/heartbeat正常；其他任務與兩實例資料比對未變。Windows8088/view/chat HTTP200。僅當次baseline off，未改env.sh/team.env。下一步：使用者照常在Slack派工，無需續跑1048或啟動Windows程式。詳細證據/限制見progress與direct-ssh-deployment；所有runtime/故障組合未全面實測，不宣稱乾淨VM重建成功。
+
+- **#1048已成功啟動但流程卡住（2026-10-20僅分析，Codex）**：新start bda3dcac…22:23:55 exit0，來源a0c53284…/release973bf406；外層Codex22:23:43先達30分鐘，22:24:01AWAIT_HUMAN。health a62bbfe9…22:24:08未接單；executor active，只處理STAGE_RUNNING，故誤報離線。首次build900秒逾時後agent已有自行診斷/重試。不是預算用完（8/24、repeats1/3）。另有SQLite連線未close/455 FD及歷史Too many open files。使用者要整體自主部署改善，先給分析與分階段方案，尚未授權本輪實作；不要重建已成功版本、不要偽造收據/修改快照。詳direct-ssh-deployment及progress。
+
+- **自主部署關卡已取消（2026-10-20，Codex）**：使用者明確要求取消我新增的逐版manifest人工核准，讓Slack agent自行部署。dev固定入口已取消清單比對，備份tool-backup-20261020-134631；Agent工具/提示/skill/service-context已更新，配置d1334fe3…/PID10731，備份autonomous-deploy-backup-20261020-134803。Windows/Linux Python36、Java75、check-source/docs build通過；#1048來源a0c53284…可接受無需更新清單。任務表/工作區前後一致；health ab1c03e9…及8088 HTTP200。#1048仍AWAIT_HUMAN，可原串續跑，不需另開任務；未發Slack訊息/重部署產品，不宣稱新一輪E2E。這項新指示取代下方所有要求管理者更新manifest的舊下一步。未推送。
+
+- **#1047 部署受阻（2026-10-19，Codex）**：AWAIT_HUMAN；prepare/diagnose成功，start在SSH前因HEAD2216d6d缺少版控docs/docker/sit而封裝失敗。已修正ssh_client明列來源缺件，不再泛稱SSH故障；Linux/Windows Python33項與check-source通過，helper已備份後更新至bestpartner、systemd active。未改任務快照/收據、未續跑或重部署產品。下一步需將經審閱SIT部署檔納入來源並提交、核對既有manifest，不能盲目按繼續或重啟VM。
+
+- **SSH 直連修正已部署（2026-10-19，Codex）**：分支 codex/direct-ssh-deployment，實作 f79f142（未推送）。Agent172.30.46.10 → SSH公鑰 → dev172.30.46.20；共享NAT ai-team-direct，2223/2224/8088入口保留，Windows broker數量0。bestpartner JAR45879bfd…/PID8844，備份orchestrator-backup.II8thl，安全部署任務/工作區完整前後比對通過；三實例維護前後六張任務表逐列一致。Agent ai-team-ssh-deploy.service active/enabled/linger=yes。Linux687項/Python30通過，docs build通過。dev收尾曾heartbeat停止，ACPI無效，使用者明確核准reset後恢復；新health d443693b…exit0、PostgreSQL/後端與Windows8088 HTTP200。核心警告有RCU/watchdog，根因未確認。下一步：在bestpartner頻道新任務承接#1046（舊skill快照不能直接替換），由新規則prepare/start/health；manifest不符先停下審閱，不清資料卷。不手改DB、不自動發Slack或續跑。完整證據見本worktree progress與direct-ssh-deployment文件。
+
+- **#1046 已部署（2026-10-19，Codex）**：bestpartner PID177129、JAR 4136d6fc…，來源 7b25f05，備份 orchestrator-backup.zgRG00；Linux 687項全過（11略過），資料／工作區前後一致、ERROR0、6角色連線。非機密 service-context 已安裝。此指引已由SSH直連規格取代；不再啟動Windows broker。任務仍 AWAIT_HUMAN，未啟動 broker、未續跑、未推送；其他實例 PID 未變。
+
 
 - **2026-10-18 23:25 代發 Slack（使用者授權「全部代發」）**：#dynamic-api 與 #spring-starters 各送「基準驗證」（量測暖快取耗時、確認 MailServiceSmtpsScenariosTest 是否不穩定）；#dynamic-api 開任務 #1003（修 ResponseRepositoryTest＋新增 backend/src/test/resources 測試專用設定，授權範圍寫在需求內），排在基準驗證之後。下一步：讀兩份新基準結果決定 timeoutSeconds 與 spring-starters 測試處理；追蹤 #1003（含新的指令紀錄核對與硬閘門行為）。
 

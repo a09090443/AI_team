@@ -108,6 +108,8 @@ public class CodexRuntime implements AgentRuntime {
         Path stderrLog = logDir.resolve(req.role() + ".codex.stderr.log");
         Path stdoutLog = logDir.resolve(req.role() + ".codex.jsonl");
 
+        String unit = props.unitPrefix() + req.taskId() + "-" + req.role()
+                + "-codex-" + java.util.UUID.randomUUID();
         Process process = null;
         try {
             Files.createDirectories(logDir);
@@ -126,8 +128,6 @@ public class CodexRuntime implements AgentRuntime {
                 Files.writeString(schemaFile, compatibleSchema(req.jsonSchema()), StandardCharsets.UTF_8);
             }
 
-            String unit = props.unitPrefix() + req.taskId() + "-" + req.role()
-                    + "-codex-" + (System.currentTimeMillis() / 1000);
             // Codex 額度訊息「try again at …」以本地時區輸出且不標時區；固定 UTC 才能精確換算成台北時間（QuotaRetryTime）。
             // 只套在 Codex 這個程序：systemd unit 不繼承 ProcessBuilder 的環境，所以用 env 前置。
             List<String> inner = new ArrayList<>(List.of("env", "TZ=UTC"));
@@ -159,11 +159,8 @@ public class CodexRuntime implements AgentRuntime {
             }
 
             if (!SessionCapture.await(process, req.timeout(), stdoutLog, sessionStarted)) {
-                process.destroyForcibly();
-                QuotaExceeded.check(id(), Files.readString(stdoutLog, StandardCharsets.UTF_8), stdoutLog.toString());
-                throw new RuntimeExecutionException(
-                        "Codex 超過設定逾時 " + req.timeout() + "，已送出強制終止。"
-                      + "耗時根因與 commit 狀態尚未確認。stdout：" + stdoutLog + "；stderr：" + stderrLog);
+                var cleanup = com.zipe.aiteam.sandbox.SandboxUnitCleanup.terminate(unit, process);
+                throw new RuntimeTimedOut(id(), req.timeout(), stdoutLog, stderrLog, cleanup);
             }
 
             String stdout = Files.readString(stdoutLog, StandardCharsets.UTF_8);
@@ -191,13 +188,13 @@ public class CodexRuntime implements AgentRuntime {
         } catch (RuntimeExecutionException e) {
             throw e;
         } catch (InterruptedException e) {
-            if (process != null) process.destroyForcibly();
+            var cleanup = com.zipe.aiteam.sandbox.SandboxUnitCleanup.terminate(unit, process);
             Thread.currentThread().interrupt();
-            throw new RuntimeExecutionException("執行被中斷", e);
+            throw new RuntimeExecutionException("執行被中斷；sandbox 清理=" + cleanup.status() + "；unit=" + unit, e);
         } catch (Exception e) {
-            if (process != null) process.destroyForcibly();
+            var cleanup = com.zipe.aiteam.sandbox.SandboxUnitCleanup.terminate(unit, process);
             throw new RuntimeExecutionException("無法執行 Codex；stdout=" + stdoutLog
-                    + "；stderr=" + stderrLog, e);
+                    + "；stderr=" + stderrLog + "；sandbox 清理=" + cleanup.status(), e);
         }
     }
 
@@ -231,8 +228,8 @@ public class CodexRuntime implements AgentRuntime {
                     "local-test-preflight", CodexLocalTestPolicy.TCP_PROBE));
             CodexLocalTestPolicy.commandWrites(req, statePaths(props.userHome())).forEach(p -> probe.add(p.toString()));
         } else probe.addAll(List.of("-P", ":workspace", "-C", req.workingDirectory().toAbsolutePath().toString(), "--", "/bin/pwd"));
-        List<String> wrapped = new ArrayList<>(sandbox.wrap(props.unitPrefix() + "codex-preflight-"
-                + java.util.UUID.randomUUID(), req.sandboxPolicy(), req.workingDirectory(), probe));
+        String unit = props.unitPrefix() + "codex-preflight-" + java.util.UUID.randomUUID();
+        List<String> wrapped = new ArrayList<>(sandbox.wrap(unit, req.sandboxPolicy(), req.workingDirectory(), probe));
         // 同時限制 unit 存活時間，避免用戶端逾時後留下 probe 子行程。
         if (wrapped.contains("--")) wrapped.addAll(wrapped.indexOf("--"),List.of("-p","RuntimeMaxSec=25","-p","KillMode=control-group"));
         Process process = com.zipe.aiteam.sandbox.ArgumentListTooLong.start(new ProcessBuilder(wrapped)
@@ -240,14 +237,19 @@ public class CodexRuntime implements AgentRuntime {
         try {
             process.getOutputStream().close();
             if (!process.waitFor(30, TimeUnit.SECONDS)) {
-                throw new RuntimeExecutionException("Codex 內層沙箱預檢逾時，尚未呼叫模型；證據：" + output);
+                throw new RuntimeTimedOut(id(), RuntimeTimedOut.Phase.PREFLIGHT, java.time.Duration.ofSeconds(30), output, output,
+                        com.zipe.aiteam.sandbox.SandboxUnitCleanup.terminate(unit, process));
             }
             if (process.exitValue() != 0) {
                 throw new RuntimeExecutionException("Codex 內層沙箱預檢失敗，尚未呼叫模型："
                         + Diagnostics.clip(Files.readString(output), 2000) + "；證據：" + output);
             }
+        } catch (InterruptedException e) {
+            var cleanup = com.zipe.aiteam.sandbox.SandboxUnitCleanup.terminate(unit, process);
+            Thread.currentThread().interrupt();
+            throw new RuntimeExecutionException("Codex 預檢被中斷；sandbox 清理=" + cleanup.status() + "；unit=" + unit, e);
         } finally {
-            if (process.isAlive()) process.destroyForcibly();
+            if (process.isAlive()) com.zipe.aiteam.sandbox.SandboxUnitCleanup.terminate(unit, process);
         }
     }
 
@@ -403,7 +405,6 @@ public class CodexRuntime implements AgentRuntime {
                     "Codex 的事件流裡沒有 thread.started，無法取得 session id。完整輸出：" + stdoutLog);
         }
 
-
         // 有錯誤事件而且完全沒有產出訊息時，讓原因浮上來，
         // 而不是回傳一個空字串讓上游以為 agent 只是沒話說。
         if (turnFailed || (lastMessage.isBlank() && !errors.isEmpty())) {
@@ -452,7 +453,6 @@ public class CodexRuntime implements AgentRuntime {
         return m + "（要求值）; tokens in=" + usage.path("input_tokens").asInt()
              + " out=" + usage.path("output_tokens").asInt();
     }
-
 
     /**
      * 把事件流裡的 error 事件濃縮成一句話，附在失敗訊息後面。

@@ -19,7 +19,7 @@ agent 自陳與 runtime 實際事件分開標示，不強迫模型杜撰未知�
 
 共用驗證會攔下 BLOCKED、缺漏的失敗回報，以及宣稱 COMPLETED 卻仍有
 FAILED/PARTIAL/FAIL/LOW、建置未過、越界或 reviewer 阻擋的矛盾結果。
-先保留 stage_result，再停止下游、保留現場並向 PM／需求提出者回報。
+先保留 stage_result，再停止下游、保留現場並向 PM／需求提出者回報。2026-10-20 來源新增的持久長作業例外：若有有效 pending journal，先由中央流程等待及對帳，再續同節點，不把 OPERATION_PENDING 的 BLOCKED 立即當成須人工處理；此版本已部署 bestpartner。
 核准及真正發布前也會檢查各階段報告；舊報告缺欄位需重新核實。
 
 執行例外以底層原因優先呈現並保留證據目錄、影響與處理者。
@@ -79,6 +79,8 @@ VM 供授權查核。格式檢查保證欄位存在，不保證 agent 自陳內�
 Linux 完整測試 636 項通過，2026-10-14 已部署 bestpartner 與 spring-starters（見[部署紀錄](/docs/deploy-2026-09-06-v2#2026-10-14-帳號或登入被拒的固定說明)）；尚未以真實停用帳號做端對端驗證。
 
 說明 agent 沒有任何工具，只看得到錯誤紀錄本身；紀錄沒寫出根因時，它只能照實寫「目前無法確定原因」。
+模型逾時由 typed timeout 與長作業對帳處理，不以「模型未啟動」退還計數；以下啟動／串流系統錯誤重試不能取代部署結果對帳。
+
 **系統層失敗的自動重試**（`SystemFailure.transientFailure`）：錯誤訊息符合已知的暫時性特徵
 （例如 `Failed to start transient service`、串流中斷），或是任何提到 `systemd-run` 的 IOException，就判定為系統沒跑起來，
 還原本輪計數後自動重試，最多 `RETRY_LIMIT`（2）次，用完才停給人。
@@ -108,3 +110,36 @@ Linux 完整測試 636 項通過，2026-10-14 已部署 bestpartner 與 spring-s
 Gate.SERVICE 不能以設定檔產出宣稱完成；啟動或健康檢查失敗時由 service_triage 交回原角色修正並重驗。
 缺少目標主機時在模型執行前明確說明，不把權限／環境缺口說成使用者未選擇驗收降級。
 機械驗證的欄位與 agent 自陳證據的限制見 [服務建置](service-delivery.md)。
+
+
+## 部署長作業逾時與對帳（2026-10-20 已部署 bestpartner）
+
+#1048 的歷史舊版先因模型逾時轉 AWAIT_HUMAN，之後才有 start 成功收據；未接單 health 又被誤稱執行器離線。此時間線保留於[SSH 直連部署](direct-ssh-deployment.md)，不能從模型逾時推論部署失敗。
+
+1. 工具等待預設 30 秒後回 OPERATION_PENDING，模型以 BLOCKED 交回。FlowEngine 以工作區外的可信 journal 判定是否等待，不只比對模型文字；保留中央執行槽，沒有模型長輪詢。
+2. 真正模型逾時拋 RuntimeTimedOut extends AgentRuntime.RuntimeExecutionException，可由 RuntimeTimedOut.find(Throwable) 取得。只有 phase=MODEL 且 cleanup=CONFIRMED 才先對帳；PREFLIGHT、清理 FAILED／UNKNOWN 或沒有有效 journal 不走此自動恢復。
+3. 對帳綁 task、node、HEAD 及已驗證結果；執行中查原 job，成功只補缺少步驟，失敗先診斷，UNCERTAIN 不改稱成功或另送 start。續同 activeNode 不新計次，不拿部分模型輸出當完成報告。
+4. 結果指紋限制同一檢查點只恢復一次；timeout 恢復另受 SystemFailure.RETRY_LIMIT（2）限制，避免未知作業造成無限模型重開。
+
+runtime 清理精確 sandbox unit 的 cgroup，stdout／stderr 及 session checkpoint 保留；獨立部署 executor／遠端 root job 不因模型 timeout 被殺。真人中斷產生精確 job 的取消要求；傳輸中斷或模型回合結束不等於取消，取消未確認則保留未知狀態。執行器獨立 heartbeat 區分任務未啟動與離線；連線使用 closing，避免舊版 SQLite FD 累積。
+
+此恢復契約已部署 bestpartner。Linux cgroup與獨立SSH背景health已實測，真實模型逾時／重啟／取消的所有故障組合尚未全面演練；#1048須以正式流程最終狀態為準。
+
+## 管理者授權的自主恢復（project.autonomy，2026-10-22，#1053）
+
+`project.autonomy` 是選填的團隊配置，目前只有 bestpartner 啟用；沒設定（null）時以下行為全部不啟用，照舊停下等人。
+起因是 #1053 一天內停了四次，每次都是系統自己能處理的事。實作在 `AutonomousRecovery`，次數記在 `systemRetries`，不新增 FlowRun 欄位。
+
+| 欄位 | bestpartner | 行為 |
+|---|---|---|
+| `modelTimeoutRecoveries`（0～3） | 2 | 模型逾時（`RuntimeTimedOut`、MODEL、cleanup=CONFIRMED）且長作業對帳沒有可接續的作業時，自動沿用原 session 接著做，等同按「繼續執行」：activeNode 保留、不計節點次數。每任務最多這麼多次；同一節點在同一工作區狀態（HEAD＋未提交指紋）只接續一次，兩輪之間沒有任何變化就停給人。flow.context 會加上「上一輪跑了多久、目前工作區、不要重做已通過步驟」的說明，Slack 貼一則通知。 |
+| `maxTimeoutSeconds`（0～3600） | 3600 | 自動接續過的節點之後改用這個時限（不會比節點原值短）。 |
+| `verificationContinuations`（0～3） | 2 | 系統獨立驗證用完 `verification.timeoutSeconds` 時，在**同一個 clone** 從被中止的那條指令重跑，剩下的指令給新的總時限（`IndependentVerifier.verify` 內）。這一輪至少要通過一條，否則停給人；同一 commit 最多續這麼多輪。2026-10-22 第一版改成「開新 clone、重用已通過的指令」，#1054 因此 npm ci 被重用、新目錄沒有 node_modules，build 出現 `vue-tsc: not found` 被誤判為程式失敗交回實作；同日改為同一 clone 續跑。基準驗證同樣在同一次執行內續跑剩下的指令，結果的 summary 註記「自動續驗第 N 輪後通過」。 |
+| `requirementChangeOptions` | true | human_decision 選項多一種 `change_requirements`：需求負責人按下即送「核准需求變更 <問題與選項>」，回到需求節點重訂基準（見[計畫核准按鈕](plan-approval-buttons.md)）。提示同時要求範圍變更一律用它，不可用 decide，也不可自己把未解問題改成 EXCLUDED。 |
+| `channelCommandRouting` | true | 頻道頂層訊息「#編號 已知指令」或「補充 #編號 …」轉給該任務處理（回覆貼在原討論串），不另開新任務。已知指令：檢視配置更新、核准配置更新、狀態、檢視完整報告、檢視測試計畫、核准需求變更、核准測試計畫。只限同頻道、白名單使用者；別的任務討論串裡的指令照舊拒絕。 |
+
+另外啟用時，每個節點的脈絡會加上「本階段時限 N 分鐘，與本次變更無關的長檢查不要執行」，讓 agent 自己安排優先順序。
+
+不變的邊界：不擴權、不放寬受保護路徑；需求變更與 PR 仍要真人核准（change_requirements 只是讓負責人按一次就送出核准）；
+所有自動動作都有上限並寫稽核紀錄（RECOVERY）。舊任務需經「檢視配置更新／核准配置更新」取得 autonomy（已列為可遷移欄位）。
+驗證：程式測試（AutonomousRecoveryTest、FlowEngineTest、BaselineVerifierTest、HumanOptionsTest、TriageRoutingTest 等）通過；真實任務端對端尚未實測。

@@ -34,6 +34,7 @@ final class SystemFailure {
 
     /** 只認明確的系統層訊號；認不出來的一律當成工作問題，交給人。 */
     static boolean transientFailure(Throwable error) {
+        if (com.zipe.aiteam.runtime.RuntimeTimedOut.find(error) != null) return false;
         // 參數超過作業系統上限每次必定重現；它的訊息也會提到 systemd-run，必須先排除。
         // #1029 被當暫時性失敗重試兩次，每次先重跑約 25 分鐘的獨立驗證才再失敗。
         Set<Throwable> checked = Collections.newSetFromMap(new IdentityHashMap<>());

@@ -36,6 +36,16 @@
   （Ubuntu 24.04 起預設 `kernel.apparmor_restrict_unprivileged_userns=1`），systemd **不會報錯，只會靜默略過**
   上述檔案系統防護。啟動時的 `selfTest()` 會實際嘗試越界寫入，把靜默失敗變成啟動失敗；它不是可有可無的健全性檢查。
 
+### 共用 timeout 與精確 unit 清理（2026-10-20 已部署 bestpartner）
+
+三個 adapter 的模型逾時統一拋 RuntimeTimedOut，繼承 AgentRuntime.RuntimeExecutionException，不改 execute 簽章。靜態 find(Throwable) 遍歷 cause chain（防循環），找不到回 null。可讀取 runtimeId、timeout、unit、stdoutLog、stderrLog、phase 與 cleanup；phase 為 MODEL 或 Codex 的 PREFLIGHT，cleanup 含 status／unit／detail。
+
+unit 由既有 wrap 使用的名稱加 UUID 識別本次執行。ExecutionSandbox 明確設定 KillMode=control-group、TimeoutStopSec=3s、SendSIGKILL=yes；逾時或 Interrupted 先由 SandboxUnitCleanup 停精確 user unit，必要時對同 unit 全部程序送 SIGKILL，檢查 unit／cgroup 後再回收 systemd-run launcher，保留 interrupt 旗標。CONFIRMED 表示已確認停止／cgroup 清空，FAILED 表示已觀察到清理未完成，UNKNOWN 表示無法確認；不能只看 launcher 結束就宣稱所有子程序終止。
+
+stdout／stderr 保留，既有 sessionStarted callback 與 checkpoint 介面維持。模型 timeout 不等於遠端操作失敗；FlowEngine 只有在 phase=MODEL、cleanup.status=CONFIRMED 且有有效 journal 時先對帳，再續同 activeNode。沒有全域 task kill，不停止獨立 Agent executor 或遠端 root job。詳見[長作業恢復](direct-ssh-deployment.md)。
+
+已部署 bestpartner。隔離 Linux 完整verify共719項、零失敗／錯誤、11略過，包含 AI_TEAM_SANDBOX_CLEANUP_SMOKE=true 的真實測試：清除本輪detached子程序、另一unit仍存活。獨立SSH health在提交連線結束後仍成功。這些不等同三個runtime與所有真實故障組合已全面演練。
+
 ### Claude Code 角色寫不了受保護路徑（已知限制）
 
 `ClaudeCodeRuntime` 固定以 `--permission-mode dontAsk` 執行。Claude Code 對一組**受保護路徑**的寫入
@@ -70,7 +80,10 @@
    只做唯讀查核就回報 BLOCKED（受保護文件一個也沒改，稽核顯示「改派段未完成」）。
    系統以 `auditPaths` 核對，變更必須**全部**落在 `paths` 內且逐檔列於 `protected_path_changes`（`partViolations`，連 `.agents/`、一般檔案也不行），越界即 `SecurityException`；
    通過後系統代為提交，結果記在 `FlowRun.delegatedParts`（起始 commit、提交後 commit、檔案、摘要）。
-   改派段回報未完成（`status` 不是 SUCCESS、有 `boundary_conflict` 或 `execution_status` 受阻）時，以它的報告當本節點結果，照一般受阻流程處理，不執行第二段。
+   改派段回報未完成（`status` 不是 SUCCESS／PARTIAL、有 `boundary_conflict` 或 `execution_status` 受阻）時，以它的報告當本節點結果，照一般受阻流程處理，不執行第二段。
+   2026-10-22 起（#1054）`status=PARTIAL` 也算完成，前提是受保護檔案本輪有提交、或本任務先前已提交（`FlowEngine.delegatedFilesChanged`）：
+   改派段照指示不建置，如實填 PARTIAL／`verify_passed=false` 不代表沒做完。舊判定只認 SUCCESS，#1054 的 codex 兩次改好三份規則仍被當成整個實作的結果，
+   主實作段從未執行、流程在分流與實作間空轉。`partNotice` 同時明講 status 只代表這一段、verify_passed 依 `git diff --check` 等檢查判定。
 2. 主實作段：原角色收到「受保護檔案已在 commit X 完成、不要修改」的說明（`primaryNotice`），完成其餘變更與建置測試；節點報告以這一段為準。
 
 同一輪續跑（例如額度用完後恢復）時，`delegatedParts` 的起始 commit 等於本輪起始 commit 就略過改派段，checkpoint 只交給 runtime 相符的那一段；

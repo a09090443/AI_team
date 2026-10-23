@@ -1,5 +1,7 @@
 # 服務建置與開發分流
 
+**現行規格與部署狀態（2026-10-21）**：日常部署由 Agent VM 經 SSH 公鑰直連目標 VM，Windows 不再作必要執行節點；已授權測試環境的逐版manifest人工核准已取消。bestpartner已部署持久長作業恢復與服務追問診斷，#1048已正式完成、#1049已回覆正確入口；實測與限制見[SSH直連部署](direct-ssh-deployment.md)。本輪新增的狀態式決策與診斷worker恢復已部署bestpartner，見本文後段。以下Windows broker執行方式明列為被取代的歷史實作，不是現行操作。
+
 bestpartner 的 `intake` 可選 `route=service`，交給既有 Infrastructure Agent：
 
 ```text
@@ -41,7 +43,7 @@ bestpartner 來源配置現在指定 `bestpartner-dev`，檢查為 `prepare`、`
 這個絕對路徑是此實例的部署設定；其他安裝位置必須調整 operations 與角色工具白名單。
 模型只在 `docs/docker/sit/.agent-service/` 寫入請求並等待收據，不直接取得管理者權限。
 
-### 可攜式 skill 與主機執行工具
+### 舊版 Windows broker 執行方式（切換前的歷史說明）
 
 `service-build` 的唯一來源在 `.agents/skills/service-build/`，同步腳本產生 Claude 與 Slack runtime 套件。
 `nodes.service.skills` 與 `service_triage.skills` 指定 SKILL.md 及 bestpartner 參考；載入時固定內容與版本，派工時注入模型提示，並非僅新增一份模型看不到的文件。
@@ -64,7 +66,7 @@ Agent 停止或完成後不接受新的部署操作；已經執行中的系統�
 更換主機時建立新的主機設定與獨立狀態目錄，更新身分及登入引用即可沿用 skill；不自動搬遷舊機資料。`client_path` 指向 Agent 端安裝的 skill client，無須改 skill 本文。
 
 每個請求保存收據，重送同一 ID 不重做；發現中斷的執行紀錄時保留現場，不能盲目重跑。
-接單後的長操作不會因輪詢心跳暫停被判離線；客體單次操作上限 1200 秒、client 等待 1500 秒，整個 SERVICE 節點仍受 1800 秒限制。
+接單後的長操作不會因輪詢心跳暫停被判離線；客體單次操作上限 1200 秒、client 等待 1500 秒，整個 SERVICE 節點仍受該節點 `timeoutSeconds` 限制（目前配置為 1800 秒，節點上限 3600 秒）。
 
 `prepare` 支援程式中的 Ubuntu jammy／noble／resolute 清單，使用 [Docker 官方 apt 安裝來源](https://docs.docker.com/engine/install/ubuntu/)。
 現有衝突容器套件、Compose 低於 2.30 會停止並說明，不擅自移除既有 runtime。
@@ -87,9 +89,10 @@ Agent 停止或完成後不接受新的部署操作；已經執行中的系統�
 - `checks` 完整涵蓋配置的檢查名稱與 operation_id，不重複、不捏造其他操作。
 - 每項 `status=PASS`、整數 `exit_code=0`、非空 `evidence`（本次 log 或工具呼叫 ID）。
 - 每項列 `acceptance_ids`；全部檢查合計涵蓋需求基準的所有原子驗收項目。
-- `uncertainties` 為空；缺項、失敗或僅產出檔案均不能完成。
+- `uncertainties` 為空；缺項、失敗或僅產出檔案均不能完成。僅將需求基準或配置檢查要求而仍未核實的事項放入此欄；未要求的登入、資料寫入或重啟測試在摘要說明驗證邊界，不自行新增阻擋項。原需求有要求時仍須完成。
+- 若service-context已登錄access_endpoints，固定support工具的本次探測須healthy，摘要須含使用者url完整路徑；不能以Agent VM內部根網址交付。端點診斷與既有版本自修規範見[直接追問](direct-agent-requests.md)。
 
-這是角色報告與配置的機械核對，**服務檢查證據仍由 agent 回報，並非系統另行登入主機做第二次驗證**。
+角色checks仍為報告與配置的機械核對；已登錄的入口另有固定工具實測，兩者不能互相冒充。系統probe由Agent VM進行，不等同已從使用者電腦驗證。
 不產生開發流程的 IndependentVerifier 收據、不開 PR；`COMPLETED` 只表示這次服務交付報告通過契約，
 不是日後持續健康保證。正式環境的監控、告警、回滾操作需另依目標主機設定。
 
@@ -161,16 +164,67 @@ Infrastructure 實際送出的 start `d55653d5fec64cfaae0421371a58b077` 已完�
 
 實測發現前版GRADLE_USER_HOME環境變數不足以使映像使用指定cache，目標快取目錄仍空；現已改獨立/build-cache掛載及明確--gradle-user-home，需在下一輪建置實測效益，不能說此次已靠持久快取完成。Windows20項測試與check-source通過。登入、資料寫入/重啟持久化、獨立health操作與新VM無人工介入驗收尚未完成；本次確定的是agent送出工具的建置/啟動與工具內健康檢查成功。
 
-## 2026-10-19 #1046：部署歷史與恢復入口缺漏
 
-#1046 的 prepare 兩次回 SERVICE_BROKER_OFFLINE（exit 75），請求
-`20db9ac9a6f54de49a63c60c3c5f51c0` 保留。這只證明本次部署通道未回應，不能證明舊服務已停止。
-#1036 的 start 收據 `d55653d5fec64cfaae0421371a58b077` 是 exit 0，當時已成功啟動並通過健康檢查；目前健康狀態仍須重查。
+## 部署歷史與恢復入口（2026-10-19，已部署 bestpartner）
 
-目前新任務注入本任務脈絡、serviceTarget 與 skill，不自動匯入同目標舊任務的部署收據。
-#1046 快照的 serviceTarget 只有目標名稱與檢查操作，沒有宿主啟動入口。這是已知的脈絡與操作說明缺口。
-恢復入口是 Windows 宿主機上的 `.agents/skills/service-build/scripts/broker.py`，搭配既有設定
-`C:/Users/zipe1/AppData/Local/AI-Team/service-build/bestpartner-dev.json`；不是要求手動執行產品 JAR。
-管理者確認 Python、依賴可用及同目標沒有其他 broker 後，以 `python <broker.py 的絕對路徑> <主機設定檔>` 啟動並保持運作，再在原任務續跑。
-agent 應區分「本次未完成」「過去已部署」「目前狀態未核實」，並明說在哪台機器、啟動哪個程式與設定檔；
-沒有具體入口時應列為管理資訊缺漏，不能只寫「請維運者啟動」。
+#1046 只取得本任務脈絡與目標名稱，未取得 #1036 的歷史成功與宿主啟動入口，
+所以錯把「本次未執行」描述成服務從未部署，並只要求維運者恢復工具。
+
+`TaskStore.serviceHistory` 讀取同實例資料庫、同頻道、同目標的最近 12 筆 SERVICE 階段報告，排除本任務與分流敘述。
+`ConfiguredExecutor` 在有 serviceTarget 的正式節點注入任務編號、時間、角色回報的狀態與檢查結束碼；
+這些是歷史角色報告，不代表目前健康或本次檢查通過，也不能當新主機操作授權。
+歷史查無資料不等於從未部署。沒有正式階段報告的舊工具收據，可由管理者登錄成帶來源的歷史摘要。
+
+另外讀取實例目錄 `$AI_TEAM_HOME/service-context/<target>.json`，這是管理者維運說明，不是模型生成的操作設定。
+允許欄位為 target、host、program、config_file、start_command、notes、history（at/task/outcome/evidence）。
+檔案上限 32 KiB，歷史最多 5 筆、文字欄位最多 1500 字元；目標不符、名稱非英數底線連字號或資料損毀時明示缺漏。
+所有欄位必須是不含 token、密碼及登入檔內容的資訊；未知欄位不注入。系統只呈現說明，不執行 start_command。
+無此檔仍可執行服務任務，但需如實說明恢復入口尚未配置，不可猜指令。
+
+bestpartner 的範本為 `deploy/service-context/bestpartner-dev.example.json`，包含已核對的 #1036 歷史收據索引及 Windows PowerShell 啟動方式。
+管理者核對環境路徑後將其放到 bestpartner 實例的 `service-context/bestpartner-dev.json`。
+這不會自動啟動 broker、部署產品或將 #1046 改成成功；恢復工具後仍須續跑原任務取得本次 prepare/start/health 結果。
+新 JAR 會在每次執行時讀取此說明與資料庫，既有等待任務續跑亦適用，不改原快照／授權或完成閘門。
+
+## 2026-10-21 部署流程與提示詞評估（原始提案）
+
+以#1046至#1049既有收據、部署紀錄及目前來源評估；本次未重新連線VM或重播Slack任務，不代表新的現場健康檢查。
+持久作業、同ID對帳、來源清理後證據對話、入口診斷及回覆校正已部署bestpartner；其他實例與全部故障組合不能據此視為已驗收。
+
+發現仍需改善的提示衝突：ConfiguredExecutor對話system共用開頭仍建議「@角色 執行」，後面的DIALOGUE_REPLY_RULES與COMPLETED脈絡才禁止結案續跑；ServiceSupport會攔截部分不適用建議，但來源指示仍應依狀態產生，不能只靠答案改寫。這是修正前發現，後續來源修正狀態見下節。direct-agent-requests原文字仍要求可複製執行指令，已修正為現行回覆規則。
+
+建議依下列順序推進：
+
+1. 系統提供一致的狀態與能力摘要：任務狀態、來源/目標/版本、原job結果與時間、目前健康、使用者入口、可用下一步；提示只選擇系統允許的動作，不自行發明指令或核准要求。不同任務/來源成功不可互用。
+2. 服務與PM分流採共同診斷順序：先對帳pending，再分類來源缺件、建置失敗、資源不足、SSH或工具錯誤、應用健康、使用者入口；每次修復須說明證據、具體改變及重驗條件。同根因且沒有新證據時不原樣重試，也不因不知道根因直接交真人。
+3. 依任務狀態組合對話system，移除前後衝突；回覆先回答問題與已採動作，清楚標出Agent內部探測與使用者端尚未核實的邊界。可執行下一步應由能力/狀態決定，不只比對文字。
+4. ServiceSupport.collect目前最多同步等600秒；OperationJobs等待亦保留中央執行槽。建議診斷/修復也採持久作業、進度與恢復；若要讓其他工作並行，須另設同目標互斥與佇列語意，不能只取消等待。
+5. 建立故障情境評估：冷建置逾時、SSH回覆遺失、服務中斷、來源清理後追問、內部200而使用者不可達、重複事件、重啟後恢復。衡量原任務完成率、人工介入、重複部署、恢復時間、錯誤建議與證據一致性；模型測試與真實故障演練分開記錄。
+
+角色提示調整優先為service/service-triage、共用對話system、intake；實作/QA/review只補共通證據與範圍原則，不把部署操作塞進所有角色。skill維護程序，project配置維護主機/操作/入口；狀態、互斥、重試預算與成功條件由程式執行。新提示對既有快照的生效須遵守配置遷移，不直接覆寫任務快照。
+
+
+## 狀態式決策與持久診斷（2026-10-21 已部署bestpartner）
+
+- ConfiguredExecutor依父任務狀態組合對話system；COMPLETED/PR_CREATED不產生執行前綴，等待或執行中也不猜測續跑指令。每個角色收到系統task/state/node/gate/configuration、target與可用操作摘要；對話明列不能由聊天續跑父任務或改產品。原job/版本/入口/觀察時間仍取自既有可信證據，不以模型記憶代替。
+- service/service-triage/intake與一般triage按「原job對帳→來源封裝/建置/資源/SSH或工具/應用健康/使用者入口→具體修正→重驗」決策；實作/QA/review補證據位置與範圍原則。提示不新增權限、節點或驗收。
+- 固定support診斷移至FlowEngine呼叫模型前，StageProgress回報診斷階段；ConfiguredExecutor只讀保存結果，不會因答案改寫重做修復。已有pending部署先交原OperationJobs對帳，不另啟動診斷修復。
+- support.py --job為Linux固定worker，以每task程序鎖與原子job.json保存generation/phase/deadline；協調器停止等待不殺遠端job。重啟後只對原STAGE_RUNNING/RESUME_QUEUED服務角色對話，或同activeNode、乾淨且同HEAD的SERVICE階段；相符task/parent/target/generation且未過期限的job排回中央佇列；一般對話、已取消/完成任務不因此自動重跑。沿用原修復ID及最多兩次預算。
+- 相同診斷證據下已失敗的repair不原樣再試；repair-policy.json記錄證據指紋。新診斷證據才可使用剩餘次數，未確認原repair結果先對帳。診斷失敗不視為已找到應用根因，也不自動重建產品。
+- 正式對話回覆對COMPLETED/PR_CREATED父任務檢查不可用執行前綴，涵蓋非網址問題；改寫一次仍不合格則提供可信診斷或誠實說明缺少新證據。
+- 中央執行槽仍保留，不新增並行或更換快照；既有任務的角色資產依既有配置遷移流程生效。2026-10-21已部署bestpartner；真實產品故障演練尚未執行，故障評估以程式回歸與Linux隔離測試另記結果。
+
+
+### 故障評估與證據層級
+
+| 情境 | 目前驗證位置 | 應觀察的結果 |
+|---|---|---|
+| 模型逾時、遠端晚到成功 | FlowEngineTest／OperationJobsTest既有回歸 | 同任務接結果、不新增start、不重設計次 |
+| 診斷worker中斷及重複呼叫 | test_service_support.py Linux實際子程序/程序鎖 | 原deadline不延長、復原後重複呼叫不再probe、無repair |
+| 未確認repair | test_service_support.py | 先查原repair、不另送health/新repair |
+| 相同證據下repair已失敗 | test_service_support.py | 不原樣重試，保留剩餘預算及原因 |
+| 新診斷進行中仍有舊200 | ServiceSupportTest | 舊端點結果不能成為目前健康 |
+| 結案後非網址追問 | ConfiguredExecutorTest／FlowEngineTest | 狀態式指示、攔截不可執行命令，不動父任務 |
+| 使用者入口不可達但內部200 | 既有probe/入口回歸；#1049歷史實測 | 說明觀察位置，不重啟健康應用 |
+
+真實產品停機、SSH斷線與協調器整體重啟的聯合演練尚未在本輪執行。評估應記錄原task ID、終態、人工介入次數、start/repair ID數、恢復耗時與回覆校正次數；可由既有audit、operation-jobs、support job與Slack紀錄彙整，本輪未新增常駐統計或監控服務。不要以固定工具測試通過宣稱全部模型已實測遵守新提示。

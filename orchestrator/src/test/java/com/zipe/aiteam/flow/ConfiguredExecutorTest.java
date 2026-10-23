@@ -27,6 +27,27 @@ class ConfiguredExecutorTest {
         assertThat(executor.workingDirectory(new Task("42", "c", "t", "u", "查核"), flow,
                 flow.snapshot.definition().nodes().get("triage"))).isEqualTo(repo);
     }
+    @Test void completedParentCanAnswerFromEvidenceAfterSourceCleanup() throws Exception {
+        var parent=new FlowRun(flow.snapshot);parent.workspaceReady=true;parent.workspacePath=repo.toString();
+        when(store.flow("1048")).thenReturn(Optional.of(parent));
+        var completed=new Task("1048","c","t","u","deploy");completed.state(com.zipe.aiteam.task.Task.State.COMPLETED);
+        when(store.find("1048")).thenReturn(Optional.of(completed));when(props.homePath()).thenReturn(tmp);
+        flow.dialogue=true;flow.parentId="1048";flow.context="saved deployment evidence";
+        Path evidence=executor.workingDirectory(new Task("1049","c","t","u","網址無法打開"),flow,flow.snapshot.definition().nodes().get("triage"));
+        assertThat(evidence).isEqualTo(tmp.resolve("dialogue-evidence/1049"));
+        assertThat(Files.readString(evidence.resolve("deployment-evidence.txt"))).contains("不是產品repository","saved deployment evidence");
+        assertThat(evidence.resolve(".git")).isDirectory();
+    }
+    @Test void serviceContextReachesTheRuntimePrompt() throws Exception {
+        flow = new FlowRun(TeamCatalog.load(Path.of("teams/bestpartner.json"), key -> repo.toString()));
+        flow.node = "intake";
+        when(store.serviceHistory("c", "bestpartner-dev", "42")).thenReturn(List.of(
+                new TaskStore.ServiceHistory("1036", "2026-10-11", "{\"service_status\":\"RUNNING\",\"checks\":[]}")));
+        AtomicReference<AgentRuntime.RuntimeRequest> captured = new AtomicReference<>();
+        when(runtime.execute(any(), any())).thenAnswer(c -> { captured.set(c.getArgument(0)); return null; });
+        executor.execute(new Task("42","c","t","u","部署"),flow,flow.snapshot.definition().nodes().get("intake"));
+        assertThat(captured.get().prompt()).contains("服務部署歷史與恢復入口", "1036", "2026-10-11", "目前未核實");
+    }
     @Test void preflightFailurePreventsAnyModelCall() throws Exception {
         flow.node = "triage";
         doThrow(new IllegalStateException("missing tool: unavailable")).when(preflight).check(anyString(), any(), any(), any(), any(), any());
@@ -287,6 +308,20 @@ class ConfiguredExecutorTest {
 
         when(workspace.uncommittedPaths("41")).thenReturn(List.of());
         assertThat(executor.parentWorkspaceState(flow)).contains("沒有未提交的修改");
+    }
+    @Test void closedAndUnknownParentNeverReceiveExecutionCommand() {
+        for(var state:List.of(Task.State.COMPLETED,Task.State.PR_CREATED,Task.State.STAGE_RUNNING,Task.State.AWAIT_HUMAN))
+            assertThat(ConfiguredExecutor.dialogueInstructions("QA",state)).doesNotContain("執行 <要做的事>","@QA 執行");
+        assertThat(ConfiguredExecutor.dialogueInstructions("QA",Task.State.PR_CREATED)).contains("原任務已結案");
+        assertThat(ConfiguredExecutor.dialogueInstructions("QA",null)).contains("沒有原任務");
+    }
+    @Test void dialogueFactsDescribeStateWithoutGrantingProductOperations() {
+        var parent=new Task("41","c","t","u","done");parent.state(Task.State.COMPLETED);
+        when(store.find("41")).thenReturn(Optional.of(parent));
+        flow.dialogue=true;flow.parentId="41";
+        var facts=executor.executionFacts(new Task("42","c","t","u","status"),flow,flow.snapshot.definition().nodes().get("triage"));
+        assertThat(facts).contains("COMPLETED","ANSWER_FROM_EVIDENCE","\"can_resume_parent\":false","\"can_modify_product\":false")
+                .doesNotContain("\"operations\"");
     }
     @Test void dialogueRepliesMustBePlainAndEndWithWhatTheUserCanDo() {
         assertThat(ConfiguredExecutor.DIALOGUE_REPLY_RULES).contains("第一句直接回答問題").contains("用白話")

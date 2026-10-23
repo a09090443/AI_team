@@ -116,14 +116,14 @@ public class OpenCodeRuntime implements AgentRuntime {
         Path stderrLog = logDir.resolve(req.role() + ".opencode.stderr.log");
         Path stdoutLog = logDir.resolve(req.role() + ".opencode.jsonl");
 
+        String unit = props.unitPrefix() + req.taskId() + "-" + req.role()
+                + "-opencode-" + java.util.UUID.randomUUID();
         Process process = null;
         try {
             Files.createDirectories(logDir);
             SessionCapture.preserve(stdoutLog);
             SessionCapture.preserve(stderrLog);
 
-            String unit = props.unitPrefix() + req.taskId() + "-" + req.role()
-                    + "-opencode-" + (System.currentTimeMillis() / 1000);
             List<String> cmd = sandbox.wrap(unit, req.sandboxPolicy(),
                     req.workingDirectory(), buildCommand(req));
 
@@ -147,11 +147,8 @@ public class OpenCodeRuntime implements AgentRuntime {
 
             if (!SessionCapture.await(process, req.timeout(), stdoutLog, sessionStarted,
                     OpenCodeRuntime::sessionOf)) {
-                process.destroyForcibly();
-                QuotaExceeded.check(id(), Files.readString(stdoutLog, StandardCharsets.UTF_8), stdoutLog.toString());
-                throw new RuntimeExecutionException(
-                        "opencode 超過設定逾時 " + req.timeout() + "，已送出強制終止。"
-                      + "耗時根因與 commit 狀態尚未確認。stdout：" + stdoutLog + "；stderr：" + stderrLog);
+                var cleanup = com.zipe.aiteam.sandbox.SandboxUnitCleanup.terminate(unit, process);
+                throw new RuntimeTimedOut(id(), req.timeout(), stdoutLog, stderrLog, cleanup);
             }
 
             String stdout = Files.readString(stdoutLog, StandardCharsets.UTF_8);
@@ -177,13 +174,13 @@ public class OpenCodeRuntime implements AgentRuntime {
         } catch (RuntimeExecutionException e) {
             throw e;
         } catch (InterruptedException e) {
-            if (process != null) process.destroyForcibly();
+            var cleanup = com.zipe.aiteam.sandbox.SandboxUnitCleanup.terminate(unit, process);
             Thread.currentThread().interrupt();
-            throw new RuntimeExecutionException("執行被中斷", e);
+            throw new RuntimeExecutionException("執行被中斷；sandbox 清理=" + cleanup.status() + "；unit=" + unit, e);
         } catch (Exception e) {
-            if (process != null) process.destroyForcibly();
+            var cleanup = com.zipe.aiteam.sandbox.SandboxUnitCleanup.terminate(unit, process);
             throw new RuntimeExecutionException("無法執行 opencode；stdout=" + stdoutLog
-                    + "；stderr=" + stderrLog, e);
+                    + "；stderr=" + stderrLog + "；sandbox 清理=" + cleanup.status(), e);
         }
     }
 

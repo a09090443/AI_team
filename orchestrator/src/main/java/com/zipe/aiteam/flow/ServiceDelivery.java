@@ -87,6 +87,8 @@ public final class ServiceDelivery {
                 + "無法修正則 BLOCKED 交分流。checks 只填本次實際操作的結果與 log／呼叫 ID，不能引用舊任務成功報告。"
                 + "只產出設定檔不能填 RUNNING；不得修改產品程式、建立未核准外部資源、刪除既有資料或輸出憑證。"
                 + "允許路徑內的檔案由系統核對後代為提交，不需要自行 commit。";
+        if (node.gate() == Gate.SERVICE) text += "\nchecks.operation_id只填配置中的原操作ID，不要附加冒號、job或請求ID；工作編號與收據ID放在evidence。"
+                + "持久作業回OPERATION_PENDING時先交回本輪模型，系統會等待後接續；不要把等待填成PASS，也不要重送已成功start。";
         return text;
     }
 

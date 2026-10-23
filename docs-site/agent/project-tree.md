@@ -67,8 +67,17 @@ agent_team/
 │       │   │   ├── bestpartner.md    # 產品部署契約與檢查限制
 │       │   │   └── host-setup.md     # SSH／VirtualBox 主機設定與換機
 │       │   ├── assets/
-│       │   │   └── host.example.json # 無憑證的主機設定範本
+│       │   │   ├── host.example.json # 無憑證的主機設定範本
+│       │   │   ├── direct-ssh.example.json # Agent VM 直連設定（只含金鑰引用）
+│       │   │   └── ai-team-ssh-deploy.service # Agent VM 自動部署服務範本
 │       │   └── scripts/
+│       │       ├── ssh_client.py     # Agent VM 固定 SSH 直連操作
+│       │       ├── ssh_executor.py   # 同機 systemd 執行器（不連 Windows）
+│       │       ├── support.py        # 系統受控入口探測與既有版本自動修復
+│       │       ├── ssh_target.py     # 目標 VM 的受限 SSH 入口
+│       │       ├── install-ssh-target.sh # 一次性目標公鑰與固定 sudo 設定
+│       │       ├── test_direct_ssh.py # 直連授權、收據與重試測試
+│       │       ├── test_service_support.py # 網址更正、追問授權與修復回歸測試
 │       │       ├── client.py         # Agent 固定操作入口與任務授權
 │       │       ├── broker.py         # 主機連線與固定操作執行
 │       │       ├── guest.py          # 目標環境安裝、建置、啟動與檢查
@@ -94,8 +103,17 @@ agent_team/
 │       │   │   ├── bestpartner.md    # 產品部署契約與檢查限制
 │       │   │   └── host-setup.md     # SSH／VirtualBox 主機設定與換機
 │       │   ├── assets/
-│       │   │   └── host.example.json # 無憑證的主機設定範本
+│       │   │   ├── host.example.json # 無憑證的主機設定範本
+│       │   │   ├── direct-ssh.example.json # Agent VM 直連設定（只含金鑰引用）
+│       │   │   └── ai-team-ssh-deploy.service # Agent VM 自動部署服務範本
 │       │   └── scripts/
+│       │       ├── ssh_client.py     # Agent VM 固定 SSH 直連操作
+│       │       ├── ssh_executor.py   # 同機 systemd 執行器（不連 Windows）
+│       │       ├── support.py        # 系統受控入口探測與既有版本自動修復
+│       │       ├── ssh_target.py     # 目標 VM 的受限 SSH 入口
+│       │       ├── install-ssh-target.sh # 一次性目標公鑰與固定 sudo 設定
+│       │       ├── test_direct_ssh.py # 直連授權、收據與重試測試
+│       │       ├── test_service_support.py # 網址更正、追問授權與修復回歸測試
 │       │       ├── client.py         # Agent 固定操作入口與任務授權
 │       │       ├── broker.py         # 主機連線與固定操作執行
 │       │       ├── guest.py          # 目標環境安裝、建置、啟動與檢查
@@ -138,6 +156,7 @@ agent_team/
 │   │   │   ├── TeamCatalog.java      # 啟動時載入團隊配置與 prompt／schema 資產
 │   │   │   ├── TeamMigration.java    # 舊任務的受控配置遷移（僅執行能力設定）
 │   │   │   ├── AutomaticHandoff.java # 有證據的受阻事件自動交接與延長授權
+│   │   │   ├── AutonomousRecovery.java # project.autonomy：逾時自動接續、驗證續驗、需求變更按鈕與指令導回
 │   │   │   ├── ContractRecovery.java # 恢復被系統規則誤判的前置契約
 │   │   │   ├── DocOnlyChanges.java   # 純文件變更判定（略過建置測試）與強制全跑名單
 │   │   │   ├── ProtectedPathFallback.java # 受保護路徑改派實作者：判定、禁止清單與事後核對
@@ -149,7 +168,10 @@ agent_team/
 │   │   │   ├── CommandEvidence.java # 實作自陳成功與 CLI 指令紀錄的結束碼交叉核對
 │   │   │   ├── BaselineVerifier.java # 基準分支上先跑驗證指令：接入／部署時警告管理者並告訴任務
 │   │   │   ├── FileComparison.java # 指定舊檔比對的計畫契約、路徑驗證與能力說明
+│   │   │   ├── OperationJobs.java   # 跨專案持久作業日誌、檢查點與明確取消
 │   │   │   ├── ServiceDelivery.java # 服務建置目標、可用性檢查與完成契約
+│   │   │   ├── ServiceDeploymentContext.java # 同目標部署歷史與非機密宿主恢復入口
+│   │   │   ├── ServiceSupport.java # 持久診斷等待、結案後證據與回覆檢查
 │   │   │   ├── OperationContract.java # 專案操作契約（operations）
 │   │   │   ├── OperationPreflight.java # 各階段沙箱內的操作預檢
 │   │   │   ├── PathRules.java        # 專案相對路徑與 ** 比對
@@ -176,11 +198,13 @@ agent_team/
 │   │   │   ├── SessionCapture.java   # 從 JSONL 事件流取出 session id
 │   │   │   ├── QuotaExceeded.java    # 辨識供應商額度錯誤
 │   │   │   ├── ProviderAccessDenied.java # 辨識帳號／登入被供應商拒絕，產生固定中文說明
+│   │   │   ├── RuntimeTimedOut.java # 模型逾時型別與精確unit清理證據
 │   │   │   ├── RuntimeUsageError.java # CLI 參數錯誤（未呼叫模型）
 │   │   │   └── Diagnostics.java      # 遮蔽後的診斷輸出與白話原因
 │   │   ├── sandbox/                  # 包在 runtime 外層的 systemd 執行沙箱
 │   │   │   ├── ArgumentListTooLong.java # 子行程參數超過作業系統上限時附上大小診斷，不重試
 │   │   │   ├── ExecutionSandbox.java # 把指令包成受限 systemd user unit
+│   │   │   ├── SandboxUnitCleanup.java # 單次runtime unit與子程序的有界清理
 │   │   │   ├── SandboxPolicy.java    # 單次執行的隔離條件（可寫路徑、網路、資源）
 │   │   │   └── TaskUnits.java        # 停掉某任務正在跑的 agent 與系統驗證
 │   │   ├── slack/                    # Slack 進入點、發言與版面
@@ -220,8 +244,14 @@ agent_team/
 │   │   ├── SpringWiringTest.java
 │   │   ├── agent/
 │   │   ├── flow/
+│   │   │   ├── OperationJobsTest.java # 跨專案作業日誌、來源綁定及取消
+│   │   │   └── ServiceSupportTest.java # 入口對應、對話回覆與交付閘門測試
 │   │   ├── runtime/
+│   │   │   ├── RuntimeTimedOutTest.java # 逾時型別與證據保存
+│   │   │   └── RuntimeCleanupIntegrationTest.java # 三runtime逾時及中斷清理
 │   │   ├── sandbox/
+│   │   │   ├── SandboxUnitCleanupTest.java # 精確unit清理與失敗狀態
+│   │   │   └── SandboxUnitCleanupLinuxTest.java # Linux cgroup實測、不影響其他unit
 │   │   ├── slack/
 │   │   ├── store/
 │   │   ├── task/
@@ -234,8 +264,17 @@ agent_team/
 │   │   │       │   ├── bestpartner.md
 │   │   │       │   └── host-setup.md
 │   │   │       ├── assets/
-│   │   │       │   └── host.example.json
+│   │   │       │   ├── host.example.json
+│   │   │       │   ├── direct-ssh.example.json # Agent VM 直連設定（只含金鑰引用）
+│   │   │       │   └── ai-team-ssh-deploy.service # Agent VM 自動部署服務範本
 │   │   │       └── scripts/
+│   │   │           ├── ssh_client.py     # Agent VM 固定 SSH 直連操作
+│   │   │           ├── ssh_executor.py   # 同機 systemd 執行器（不連 Windows）
+│   │   │           ├── support.py        # 系統受控入口探測與既有版本自動修復
+│   │   │           ├── ssh_target.py     # 目標 VM 的受限 SSH 入口
+│   │   │           ├── install-ssh-target.sh # 一次性目標公鑰與固定 sudo 設定
+│   │   │           ├── test_direct_ssh.py # 直連授權、收據與重試測試
+│   │   │           ├── test_service_support.py # 網址更正、追問授權與修復回歸測試
 │   │   │           ├── client.py
 │   │   │           ├── broker.py
 │   │   │           ├── guest.py
@@ -287,6 +326,8 @@ agent_team/
 ├── deploy/                           # 部署相關
 │   ├── README.md                     # deploy/ 目錄說明與 Slack 主 App 設定
 │   ├── env.sh.template               # 環境變數範本（複製為 ~/ai-team/env.sh，權限 600）
+│   ├── service-context/              # 管理者提供的非機密部署恢復說明範本
+│   │   └── bestpartner-dev.example.json # broker 入口與舊收據索引（需核對環境後安裝）
 │   ├── slack-app-manifest.yaml       # 主 App manifest
 │   ├── agent-manifests/              # 五個既有角色與 bestpartner Infrastructure Agent 的 Slack App manifest；子目錄為其他實例的 App 組
 │   │   ├── pm.yaml
@@ -318,7 +359,7 @@ agent_team/
 │   │   ├── restore.sh                # 還原到新目錄
 │   │   ├── test-bootstrap.sh         # bootstrap fixture 測試
 │   │   └── test-linux-platform.sh    # 平台辨識 fixture 測試
-│   ├── deploy-orchestrator.sh        # 通用受控部署（隔離目錄建好的 JAR、src/main、teams）
+│   ├── deploy-orchestrator.sh        # 通用受控部署與六表逐列快照（隔離 JAR、src/main、teams）
 │   ├── deploy-jar-safe.sh            # 只換 JAR 的受控部署，失敗自動回復
 │   ├── engineering-v2-team.env       # 既有 VM 的 team.env（指定 AI_TEAM_DEFINITION）
 │   └── test-maven-settings.xml       # 測試用空白 Maven settings

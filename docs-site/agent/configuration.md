@@ -36,6 +36,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 | `AI_TEAM_BASE_BRANCH`、`AI_TEAM_BRANCH_PREFIX` | 基準分支（留空自動偏好 `develop`）與任務分支前綴 |
 | `AI_TEAM_GIT_USER_NAME`、`AI_TEAM_GIT_USER_EMAIL` | agent commit 署名，寫在工作區 local config |
 | `AI_TEAM_MAX_CONCURRENCY` | 實例內 legacy 階段的並行槽上限；中央工作迴圈仍依序執行，單獨調高不會讓 v2 任務平行；訂閱帳號建議 1 |
+| `AI_TEAM_RESUME_OPERATION_TASK` | 2026-10-20 已部署 bestpartner。只在一次啟動指定一個數字 task ID，將符合條件的舊 AWAIT_HUMAN 排回原長作業；須同 activeNode、乾淨工作區與有效同 HEAD journal。不是批次掃描或核准開關，用後移除，勿常駐 env.sh／team.env |
 | `AI_TEAM_TASK_TIMEOUT_SECONDS`、`AI_TEAM_GIT_TIMEOUT_SECONDS` | 全域逾時覆寫（0＝用各階段設定）與 git 逾時 |
 | `AI_TEAM_PROGRESS_INTERVAL_SECONDS` | 進度卡更新秒數，預設 300、最小 30；**不能設成空字串** |
 | `AI_TEAM_REPORT_DETAIL` | `brief`（預設）或 `full`；完整報告可用 `補充 #<id> 檢視完整報告 [節點]` 叫出 |
@@ -87,7 +88,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 | `name`、`repositoryEnv`、`baseBranch` | 專案名稱、存放 repo 路徑的環境變數名、基準分支 |
 | `buildInstructions`、`testInstructions` | 注入角色的建置／測試規範；`testInstructions` 的每一步都要有對應 `operations` |
 | `operations` | 操作契約：`{ "<id>": { nodes, directory, argv, writes } }`。`argv` 不支援管線，多步驟請拆開。執行檔不可為 `rm`（Codex 會拒絕，載入配置即失敗；清空目錄用 `find <目錄> -mindepth 1 -delete`）。`writes` 中沒有 git 追蹤檔的目錄會被系統自動寫進工作區 `.git/info/exclude`，不進寫入稽核或代為提交（見 [configurable-team](/docs/configurable-team)） |
-| `verification` | 系統獨立驗證：管理者固定的 `commands` 與 `timeoutSeconds`（最多 1800；超時直接交給真人，不算測試失敗），在 QA 前於全新 clone 執行，依賴下載快取放在 `<安裝目錄>/verification-cache`；選填 `docOnlyPaths`（路徑 glob）：系統依 git diff 判定變更全部落在其中、且不含強制全跑檔時略過建置測試；同一份清單也會寫進實作節點的指示，要求純文件變更不要自行編譯（見 engineering-workflow）；選填 `commandScopes`（與 `commands` 一一對應的負責路徑，只跑範圍內有變更的指令）與 `qaOnlyPaths`（由 QA 驗證、系統不跑指令的路徑，須與 commandScopes 一起設定且不得重疊）；有不屬於任何範圍的變更就全跑。相同輸入指紋已通過的指令會重用（2026-10-17 起） |
+| `verification` | 系統獨立驗證：管理者固定的 `commands` 與 `timeoutSeconds`（最多 1800；超時不算測試失敗，交給真人；啟用 `project.autonomy.verificationContinuations` 時先在同一個 clone 自動續驗剩下的指令），在 QA 前於全新 clone 執行，依賴下載快取放在 `<安裝目錄>/verification-cache`；選填 `docOnlyPaths`（路徑 glob）：系統依 git diff 判定變更全部落在其中、且不含強制全跑檔時略過建置測試；同一份清單也會寫進實作節點的指示，要求純文件變更不要自行編譯（見 engineering-workflow）；選填 `commandScopes`（與 `commands` 一一對應的負責路徑，只跑範圍內有變更的指令）與 `qaOnlyPaths`（由 QA 驗證、系統不跑指令的路徑，須與 commandScopes 一起設定且不得重疊）；有不屬於任何範圍的變更就全跑。相同輸入指紋已通過的指令會重用（2026-10-17 起） |
 | `nodes.<實作>.protectedPathFallback` | 選填 `{"role", "paths"}`：需求提到原實作角色 runtime 寫不了的路徑、且其中有落在 `paths`（目錄 `/**`）內的，就分段改派這些檔案（範圍外的不交出去，原角色要改時被拒而停下問人；2026-10-08 前要「全部」在範圍內才改派）：該角色只改 `paths` 內的檔案（系統核對全部在範圍內後代為提交），其餘工作仍由原角色完成；行為設定類路徑寫死禁止（見 multi-runtime） |
 | `requiredTools` | 啟動時沙箱工具鏈自檢逐一檢查，缺任一項服務不啟動 |
 | `protectedPaths`、`cachePaths` | 任何角色不可寫的路徑；允許的快取目錄（只限 `.m2/repository`、`.npm`、`.gradle/caches`、`.cache/<名稱>`） |
@@ -122,7 +123,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 | `plan` | 驗收節點引用的計畫節點 |
 | `next`、`blocked`、`routes` | 成功、受阻時的下一站，以及 agent 可回傳的 route 鍵；保留目標 `human`、`end` |
 | `requires` | 必須先有有效收據的前置節點；`APPROVAL` 節點至少要涵蓋實作、計畫、驗收、審查 |
-| `maxVisits`、`timeoutSeconds`、`maxTurns` | 相同輸入連續重跑上限（最多 3）、逾時、回合上限 |
+| `maxVisits`、`timeoutSeconds`、`maxTurns` | 相同輸入連續重跑上限（最多 3）、逾時（秒，最多 3600；2026-10-22 前為 1800）、回合上限（最多 80）。`timeoutSeconds` 可用配置遷移套用到舊任務，另兩項不行 |
 
 | `scope` | 權限 |
 |---|---|
@@ -152,6 +153,12 @@ bash deploy/bootstrap/check-source.sh
 完整說明見 [configurable-team](/docs/configurable-team) 與 [cross-project-execution](/docs/cross-project-execution)。
 
 
+## 自主恢復（project.autonomy）
+
+選填，null＝停用。欄位 `modelTimeoutRecoveries`（0～3）、`maxTimeoutSeconds`（0～3600）、`verificationContinuations`（0～3）、
+`requirementChangeOptions`、`channelCommandRouting`；目前只有 bestpartner 啟用（2／3600／2／true／true）。可原地配置遷移。
+行為與邊界見 [失敗回報](/docs/failure-reporting)「管理者授權的自主恢復」一節。
+
 ## 服務建置與指定腳本
 
 `project.serviceTarget` 指定管理者核准的服務目標名稱及檢查操作 ID（至少 start、health）；null 時不能啟動 service runtime。
@@ -161,7 +168,7 @@ bash deploy/bootstrap/check-source.sh
 
 ## 服務執行工具（2026-10-10）
 
-服務建置以 `project.operations` 的四個 `service-*` 操作與 `serviceTarget` 指定目標；Windows 宿主機 `host.example.json` 的 UUID／guest_user／password_file／source_manifest／state_directory 必須由管理者設定，`tasks=[]` 依即時 SERVICE 狀態自動挑選。詳見 [服務建置](/docs/service-delivery)。
+服務建置以 `project.operations` 的四個 `service-*` 操作與 `serviceTarget` 指定目標；Agent VM 的 `~/.config/ai-team/ssh-targets/<目標名稱>.json` 指定 destination、port、identity_file、known_hosts_file，固定執行器依即時 SERVICE 狀態授權。詳見 [服務建置](/docs/service-delivery)。
 
 
 ### 節點 skill
@@ -169,10 +176,42 @@ bash deploy/bootstrap/check-source.sh
 `nodes.<id>.skills` 選填，最多 8 份不重複的 `skills/<name>/SKILL.md` 或 `skills/<name>/references/<name>.md` 相對路徑。檔案須位於 teams 目錄內，每份不超過 256 KB。
 舊配置缺欄位照舊；skill 與參考內容納入 revision／snapshot，角色改派保留 skills，唯讀對話不注入。變更 skill 須新任務承接，不能以能力遷移替換提示。
 
-Windows 可用 skill 的 `scripts/login.ps1 -Config <設定檔>` 初始化 password_file；其父目錄必須是專用私人目錄，腳本會限制 ACL 且不覆寫既有檔案。
+直連設定僅存私鑰與 known_hosts 的路徑；私鑰留在 Agent VM，目標的 forced-command 入口由管理者一次性安裝；已授權測試部署不需逐版來源manifest。
 
 ## 文件驗收配置（2026-10-12 來源更新）
 
 `project.verification.docOnlyPaths` 配合系統 Git 差異與文字副檔名限制略過不相關產品建置，內附配置均已提供；SQL／腳本／設定不適用。
 必要文件站建置另由 verification 操作處理。可配置 qa-docs-dir／clean／snapshot／extract／install／build 等操作，僅寫 target/qa-docs，原 docs-site 唯讀，安裝離線使用實作準備的 npm 快取。
 plan 的 protected_path_changes 明列需跨 runtime 改派的檔案；不新增權限，仍須符合節點 protectedPathFallback.paths。詳見[配置流程](/docs/configurable-team)。尚未部署。
+
+
+### 2026-10-19 部署脈絡（已部署 bestpartner）
+
+實例可放 service-context/&lt;target&gt;.json，提供不含機密的宿主程式、設定路徑、啟動指令與歷史收據索引；詳見 [服務建置](/docs/service-delivery)。此檔僅供說明，不增加操作權限。
+
+
+### 2026-10-19 SSH 直連規格（已啟用）
+
+Agent VM 的 systemd 固定部署執行器已啟用，以 SSH 公鑰直連 dev VM；網路、公鑰、主機指紋、受限入口與 health 已實測，不需要 Windows broker。#1046 的舊 skill 快照須新任務承接；dev VM 曾 heartbeat 停止，經使用者核准重啟後已重新驗證健康與8088入口，當機根因待查。本輪未重部署產品或續跑 Slack。詳見 [直連部署](/docs/direct-ssh-deployment)。
+
+## 長作業恢復的設定邊界（2026-10-20 已部署 bestpartner）
+
+AI_TEAM_RESUME_OPERATION_TASK 在一般 recoverOnStartup 之後讀取，只接受單一數字任務編號；限定配置流程、非角色對話、AWAIT_HUMAN、node=activeNode、乾淨工作區與有效同 HEAD journal。由中央佇列排 RESUME_QUEUED；不是套用新快照、重新核准計畫或核准 PR。管理者應先以固定 executor --reconcile 驗證原成功收據，用後清除變數；程式不會自動修改你的 env 檔。
+
+沒有新增團隊 JSON 的 operation timeout 設定。client 等待預設 30 秒後交回 OPERATION_PENDING；executor journal deadline 建立時為 7200 秒；遠端 root job 的 RuntimeMaxSec 為 7000 秒、TimeoutStopSec 為 30 秒；模型 sandbox 的 TimeoutStopSec 為 3 秒。這些是不同層的來源常數，不能用調高節點 timeoutSeconds 取代結果對帳。
+
+標準佈局下，Java 依 AI_TEAM_HOME、Python 依 workspace 的 home 定位 operation-jobs、operation-cancellations、operation-executor-heartbeat。journal 不在模型工作區；自訂 workspaces 位置時須核對兩者是否指向同一實例 home，不可假稱任意佈局已實測。可信 prepare/start 只在 task／activeNode／target／HEAD 相符時重用，health 仍須核對 start release。詳見[直連部署](/docs/direct-ssh-deployment)。
+
+此契約已部署 bestpartner；未修改 env.sh／team.env，正式恢復使用一次性啟動變數。實測範圍與任務結果見直連部署紀錄。
+
+
+## 服務追問支援（已部署bestpartner）
+
+home/service-context/&lt;target&gt;.json可設定access_endpoints陣列（1～4筆），每筆audience、url、probe_url；url為使用者完整入口，probe_url為Agent VM受控實測位置。config_file沿用既有SSH設定引用；auto_repair_existing_release=true允許固定工具只修復已部署active應用，不build或動資料。沒有設定不自動推定URL或新增主機。HTTP探測不跟隨redirect，不接受憑證/query/fragment URL。
+
+AI_TEAM_RESUME_DIALOGUE_TASK只在一次啟動指定舊AWAIT_HUMAN、dialogue=true且有parent的單一對話ID；已COMPLETED服務對話僅在保存答案含不可執行的執行前綴建議時允許校正，走原中央佇列重新回答同一問題；不更換快照、不重開部署、用後移除。service-support/&lt;task&gt;保存current.json與health/diagnose/repair原job；dialogue-evidence/&lt;task&gt;是已清理來源之結案對話的證據資料夾，不是產品clone。
+
+
+### 持久診斷期限（已部署bestpartner）
+
+沒有新增環境變數或team.json欄位。Linux support worker的job.json記錄600秒deadline，Java等待上限610秒；remote每次操作另有180秒查詢界線，期限不因worker重啟延長。重啟恢復限定有效診斷服務角色對話，或原activeNode且乾淨同HEAD的SERVICE階段；不會改env.sh或既有快照。中央槽維持循序執行。

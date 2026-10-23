@@ -12,7 +12,9 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
@@ -109,21 +111,33 @@ public class BaselineVerifier {
         var policy = new SandboxPolicy(List.of(writable, verifier.dependencyCache()), IndependentVerifier.pinsFor(repo), 4096, 200, 256);
         List<Result> results = new ArrayList<>();
         boolean outOfTime = false;
+        // project.autonomy 授權時，總時限用完但這一輪有進展，就給剩下的指令一個新的總時限再跑（#1053：1800 秒跑不完五條）。
+        var autonomy = snapshot.definition().project().autonomy();
+        Map<String, Integer> rounds = new HashMap<>();
+        int passedThisRound = 0; String continued = null;
         for (int i = 0; i < spec.commands().size(); i++) {
             List<String> argv = List.copyOf(spec.commands().get(i));
             if (outOfTime) { results.add(new Result(argv, Outcome.SKIPPED, null, null, "總時限已用完，未執行")); continue; }
             Path log = run.resolve("check-" + i + ".log");
             try {
                 verifier.execute(ID, argv, repo, home, policy, log, deadline);
-                results.add(new Result(argv, Outcome.PASS, 0, log.toString(), null));
+                results.add(new Result(argv, Outcome.PASS, 0, log.toString(), continued));
+                passedThisRound++; continued = null;
+            } catch (IndependentVerifier.VerificationTimeout timeout) {
+                int round = AutonomousRecovery.claimVerificationContinuation(autonomy, rounds, "baseline", 0, passedThisRound);
+                if (round > 0) {
+                    deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(spec.timeoutSeconds());
+                    passedThisRound = 0; i--;
+                    continued = "前一輪用完總時限，依 project.autonomy 自動續驗第 " + round + " 輪後通過";
+                    continue;
+                }
+                outOfTime = true;
+                results.add(new Result(argv, Outcome.TIMEOUT, null, log.toString(), "超過 verification.timeoutSeconds，執行中被中止"));
             } catch (IndependentVerifier.CommandExit exit) {
                 var classified = IndependentVerifier.classify(exit);
                 results.add(classified instanceof IndependentVerifier.CheckFailed failed
                         ? new Result(argv, Outcome.FAIL, exit.exitCode, log.toString(), failed.summary())
                         : new Result(argv, Outcome.ENVIRONMENT, exit.exitCode, log.toString(), tail(log)));
-            } catch (IndependentVerifier.VerificationTimeout timeout) {
-                outOfTime = true;
-                results.add(new Result(argv, Outcome.TIMEOUT, null, log.toString(), "超過 verification.timeoutSeconds，執行中被中止"));
             } catch (Exception e) {
                 results.add(new Result(argv, Outcome.ERROR, null, log.toString(), e.getMessage()));
             }

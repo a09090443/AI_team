@@ -33,7 +33,14 @@ public record TeamDefinition(int version, String id, Project project, Map<String
                            * 計畫通過系統的機械檢查（覆蓋全部驗收項目、每條情境有反例、操作可執行）時自動核准，
                            * 不再等真人按。發布仍必須由真人核准，需求變更也仍要真人同意。
                            */
-                          boolean autoApprovePlanWhenValid, ServiceTarget serviceTarget) {
+                          boolean autoApprovePlanWhenValid, ServiceTarget serviceTarget, Autonomy autonomy) {
+        public Project(String name, String repositoryEnv, String baseBranch, String buildInstructions,
+                       String testInstructions, List<String> protectedPaths, List<String> cachePaths,
+                       List<String> requiredTools, Verification verification, Map<String, Operation> operations,
+                       boolean requirePlanApproval, boolean autoApprovePlanWhenValid, ServiceTarget serviceTarget) {
+            this(name, repositoryEnv, baseBranch, buildInstructions, testInstructions, protectedPaths,
+                    cachePaths, requiredTools, verification, operations, requirePlanApproval, autoApprovePlanWhenValid, serviceTarget, null);
+        }
         public Project(String name, String repositoryEnv, String baseBranch, String buildInstructions,
                        String testInstructions, List<String> protectedPaths, List<String> cachePaths,
                        List<String> requiredTools, Verification verification, Map<String, Operation> operations,
@@ -61,6 +68,16 @@ public record TeamDefinition(int version, String id, Project project, Map<String
             this(nodes, directory, argv, writes, null);
         }
     }
+    /**
+     * 管理者授權的自主恢復（2026-10-22，#1053）。null＝停用，照舊停下等人。不擴權、不代替核准 PR，每項都有上限。
+     * @param modelTimeoutRecoveries   模型逾時且沒有長作業紀錄時，自動接續原 session 的每任務次數上限（0..3）
+     * @param maxTimeoutSeconds        自動接續那一輪的節點時限；小於節點原值時沿用原值（最多 3600）
+     * @param verificationContinuations 獨立／基準驗證用完總時限時，沿用已通過指令自動續驗的輪數上限（0..3）
+     * @param requirementChangeOptions 分流可提出 change_requirements 選項：需求負責人按下即等同「核准需求變更」
+     * @param channelCommandRouting    頻道頂層訊息「#編號 已知指令」視為該任務的補充，不另開新任務
+     */
+    public record Autonomy(int modelTimeoutRecoveries, int maxTimeoutSeconds, int verificationContinuations,
+                           boolean requirementChangeOptions, boolean channelCommandRouting) {}
     /** 管理者核准的部署目標與檢查操作；模型不能用報告自行指定其他主機。 */
     public record ServiceTarget(String name, Map<String, String> checks) {}
     /** 管理者固定的 argv；不能由模型的 command 欄位提供。 */

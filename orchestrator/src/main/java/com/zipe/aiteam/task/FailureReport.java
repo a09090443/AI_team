@@ -94,7 +94,19 @@ public final class FailureReport {
         """;
 
     /** 在送往 runtime 前擴充 schema，避免五份契約各自漂移。 */
-    public static String extendSchema(String schema) throws IOException {
+    public static String extendSchema(String schema) throws IOException { return extendSchema(schema, false); }
+
+    /** 管理者以 project.autonomy 開放時，選項多一種 change_requirements（負責人按下即核准需求變更）。 */
+    public static final String REQUIREMENT_CHANGE_INSTRUCTIONS = """
+
+        【需求或驗收範圍要改時：change_requirements】
+        本專案開放 action=change_requirements：選項內容是「改需求或驗收範圍」（例如把某條需求移出本任務、改驗收方式）時，
+        一律用它，不要用 decide。需求負責人按下就等同核准這項需求變更，系統會回到需求階段重訂基準，下游依新基準重跑。
+        consequence 要寫清楚改了哪條需求、少了哪項保證。選了 decide 的範圍變更系統不會套用，只會讓流程原地停下；
+        也不要自己在問題清單把未解問題改成 EXCLUDED，那必須由需求階段依核准處理。
+        """;
+
+    public static String extendSchema(String schema, boolean requirementChange) throws IOException {
         ObjectMapper mapper = new ObjectMapper();
         ObjectNode root = (ObjectNode) mapper.readTree(schema);
         var properties = (ObjectNode) root.path("properties");
@@ -124,6 +136,9 @@ public final class FailureReport {
                "also_needed":{"type":"array","items":{"type":"string","minLength":1}}},
              "required":["headline","question","options","recommendation","also_needed"]}
             """));
+        if (requirementChange)
+            ((com.fasterxml.jackson.databind.node.ArrayNode) properties.path("human_decision").path("properties").path("options")
+                    .path("items").path("properties").path("action").path("enum")).add("change_requirements");
         root.withArray("required").add("execution_status").add("failure_report").add("human_decision");
         return root.toString();
     }

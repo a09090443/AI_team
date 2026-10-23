@@ -602,6 +602,70 @@ CRITICAL 等其他寫法不放行。放行寫成帶 `owner_waiver` 的 receipt�
 
 - 使用者決定：配置維持不變（後端測試仍在 QA 操作與系統獨立驗證內），服務啟動後的第一個任務就在 #dynamic-api 請 AI 團隊修 ResponseRepositoryTest（findByPrimaryKey 少傳 ServiceType）。理由：問題在 repo 本身，修好後驗證範圍不必再調整；不為了綠燈暫時移除測試。
 
+
+## 2026-10-19 部署歷史與宿主恢復說明
+
+- 歷史資訊從同頻道、同目標的 SERVICE 報告查詢，附來源任務／時間，明確標為角色報告；舊工具收據可由管理者以帶證據索引的摘要登錄，不改舊任務紀錄。
+- 宿主恢復入口以實例 service-context/<target>.json 提供非機密說明，避免在 TeamDefinition／FlowRun 新增欄位破壞舊快照相容；不執行指令、不改操作權限。每次執行即讀取，更新 JAR 後等待中的舊任務也能取得說明。
+
+
+## 2026-10-19 Agent VM 直接 SSH 部署
+
+- 使用者要求日常路徑固定為 Agent VM → SSH 公鑰 → dev VM；取消 Windows broker 依賴。
+- 保留模型沙箱：由 Agent VM systemd 固定執行器讀即時 SERVICE 授權後操作，私鑰不進模型工作區；目標 forced-command + sudoers 僅允許 root-owned 固定入口與逐檔來源核准。
+- 兩個獨立 NAT 不互通且第二網卡停用，採共享 NAT Network ai-team-direct（172.30.46.0/24，Agent .10／dev .20），任務閒置時備份、優雅關機與切換；保留 Windows 管理入口但不作日常部署節點。
+- 舊任務 skill 快照不自動替換，承接新任務載入新規則；不偽造核准或修改歷史任務資料。
+
+
+## 2026-10-20 使用者取消額外逐版來源清單核准
+
+- 使用者明確指出已完全授權測試沙箱部署，要求Slack agent自行完成正常版本更新，取消我先前擅加的manifest管理者關卡。
+- 本決策取代10/19「目標逐檔來源manifest核准」部分。來源為任務已提交HEAD，沿用主機/固定SERVICE操作授權與SSH身分；SHA256是傳輸完整性與收據綁定，不是新的真人核准。
+- 不另做「管理者更新清單」或新增Slack逐commit核准流程。資料保留、來源完整性、不可偽造成功與原本其他流程的核准界線仍按任務與使用者指示處理。
+
+
+## 2026-10-20 長作業與模型生命週期分離
+
+使用者要求跨任務自主部署。以executor-owned operation-jobs檔案日誌保存job與可信收據，外部工具獨立systemd unit執行；不因模型/SSH逾時宣告工具失敗。FlowEngine作通用對帳與同節點續跑，保留中央名額與次數，避免同時增加部署負載；不新增Task.State或DB schema。明確中斷透過operation-cancellations取消精確job，傳輸失聯保留UNCERTAIN。既有同HEAD成功prepare/start可重用但health需綁同release重新驗證；SHA僅完整性，不恢復已取消的逐版人工清單核准。
+
+
+## 2026-10-20 服務追問採持久證據與固定工具自修
+
+使用者明確要求Slack agent自主修正並正確回答。結案來源可依既有政策清理，但對話須以明示非產品repo的診斷資料夾運作，不改原task或以主clone冒充來源。系統在模型外從管理者登錄的入口probe並必要時用同SSH通道repair原active應用；模型仍不取得任意root/SSH或資料初始化工具。內部probe與指定使用者url分開，禁止稱已從使用者電腦驗證；回覆與交付檢查完整url，必要時自動改寫同一回覆。使用者沒有重述義務，舊卡住問題由正式單筆對話恢復API接回，不手改快照或造假成功。
+
+
+## 2026-10-21 回覆也須符合可執行契約
+
+真實1049首輪給對URL仍建議以執行前綴續已結案父任務，故不以COMPLETED或URL存在當充分驗收。ServiceSupport對已登錄服務追問檢查完整URL與不可執行建議，自動改寫一次後必要時用固定診斷證據回覆；已完成對話只在保存壞建議時可由正式單筆API校正，保留舊Slack/模型歷史。最終1049回正確入口、明示不用重新派工，且不把Agent VM探測說成Windows實測。這改回覆品質，不擴張任意宿主管理或捏造所有故障皆可自動修復。
+
+
+## 2026-10-21：狀態式角色指引與模型前持久診斷
+
+- 使用者核准部署流程改善；提示依系統實際任務狀態與可用操作決策，不新增授權或把對話變成產品實作。
+- 固定診斷在模型前執行，程序鎖/原子job與原repair ID保存於模型工作區外；協調器重啟以同身分/有效期限恢復原服務對話。避免答案改寫造成重複修復，不新增FlowRun欄位或DB遷移。
+- 保留中央執行槽與root固定入口互斥；未設計完整併行語意前不釋放槽並行操作同目標。相同失敗證據下不原樣重試，真實端對端演練與程式回歸分開記錄。
+- 本輪僅來源修改與隔離測試，尚未部署；角色快照沿既有遷移，不自行覆寫舊任務。
+
+
+## 2026-10-21：部署快照改用唯讀逐列雜湊
+
+實際部署在切換前的sqlite3 CLI -json階段連續占CPU逾2分鐘；改由Python對六張任務表在同一唯讀交易按穩定主鍵順序逐列JSON編碼並SHA256，含表名/行分隔，避免整份JSON輸出。保留同等前後資料比對、不輸出內容，14次穩定性/各表變更/復原測試與實際升級通過。僅改部署工具，JAR/任務內容與schema不變。
+
+## 2026-10-22：節點逾時上限 3600 秒並可原地遷移；bestpartner 非 Kotlin 變更不跑後端
+
+#1053 實作只改部署檔與文件，builder 仍以「含 Dockerfile」為由補跑後端編譯、漂移掃描與測試，撞上 1800 秒逾時。
+決定：`TeamCatalog` 節點 `timeoutSeconds` 上限放寬為 3600（獨立驗證維持 1800）；`TeamMigration` 允許 `nodes.*.timeoutSeconds`，
+因它只是資源上限、不改路由或權限，舊任務可經「檢視／核准配置更新」取得；`maxVisits`、`maxTurns` 仍不可遷移。
+bestpartner `implementation.timeoutSeconds` 改 3600，`buildInstructions`／`testInstructions` 明定只有變更含 `bestpartner-service/**`
+或版本設定才跑後端檢查。其餘專案配置與節點逾時不變。
+
+## 2026-10-22：以 project.autonomy 授權自主恢復，只在 bestpartner 啟用
+
+使用者明確授權沙箱系統自行處理可恢復的停止點（#1053 一天停四次）。決定新增選填 `project.autonomy`，不擴權、不代替核准：
+模型逾時且無長作業時自動接續原 session（每任務 2 次、同工作區狀態只一次、接續時限 3600）；獨立／基準驗證用完總時限時沿用已通過指令續驗（需有進展、最多 2 輪），
+因此不再放寬 verification.timeoutSeconds 上限；分流可用 `change_requirements` 選項，負責人按下即送「核准需求變更」；頻道頂層「#編號 已知指令」導回原任務。
+狀態放在 systemRetries，不新增 FlowRun 欄位；autonomy 列為可原地遷移。其他團隊 null，行為不變。取代同日「驗證上限放寬到 3600」提案。
+
 ## 2026-10-23 角色共用規則改由配置檔集中提供
 
 - 使用者核准方案 A：精簡提示詞並抽出共用規則、效率規則補到其他角色、修簡體字、spring-starters design 受阻改交分流。

@@ -53,7 +53,7 @@ QA 遇到快取缺件時，代表實作階段沒有跑過對應建置，要退�
 
 ## 讓既有任務取得這項能力
 
-既有任務使用建立時的配置快照，不會自動取得新能力。能力遷移可預覽 nodes 的 `writablePaths`／`localTestNetwork`，
-但不得夾帶 runtime、路由、scope、保護路徑或上限變更（同一 runtime 內換模型是允許的）；操作步驟（檢視配置更新 → 核准配置更新 → 核准恢復驗收 → 重新核准測試計畫）
+既有任務使用建立時的配置快照，不會自動取得新能力。能力遷移可預覽 nodes 的 `writablePaths`／`localTestNetwork`／`timeoutSeconds`，
+但不得夾帶 runtime、路由、scope、保護路徑或重跑／回合上限變更（同一 runtime 內換模型是允許的）；操作步驟（檢視配置更新 → 核准配置更新 → 核准恢復驗收 → 重新核准測試計畫）
 見 [INSTALL §6.1](INSTALL.md#61-真人核准閘門必讀否則全管線驗收會停住) 與 [跨專案執行契約](cross-project-execution.md)。
 僅更新服務或核准配置，都不會自動多給一次執行機會；流程總上限仍是硬限制，PR 核准獨立。

@@ -111,9 +111,9 @@ agent 不能自行指定角色或跳到任意節點。
 | 套件 | 責任 | 關鍵類別 |
 |---|---|---|
 | `task/` | 任務狀態機、佇列、legacy 管線與各種閘門 | `TaskOrchestrator`、`Task`、`ReviewGate`、`QaGate`、`TriageGate`、`QuotaAutoResume` |
-| `flow/` | 配置式流程引擎與 v2 契約 | `FlowEngine`、`TeamDefinition`、`TeamCatalog`、`FlowLimits`、`AutomaticHandoff`、`Traceability`、`IndependentVerifier`、`VerificationPlan`、`OperationContract`、`PlanApproval`、`ToolTrust` |
-| `runtime/` | 各 CLI adapter 與診斷 | `AgentRuntime`、`RuntimeRegistry`、`ClaudeCodeRuntime`、`CodexRuntime`、`OpenCodeRuntime`、`QuotaExceeded`、`ProviderAccessDenied` |
-| `sandbox/` | systemd 執行沙箱與政策 | `ExecutionSandbox`、`SandboxPolicy`、`TaskUnits` |
+| `flow/` | 配置式流程引擎與 v2 契約 | `FlowEngine`、`TeamDefinition`、`TeamCatalog`、`FlowLimits`、`AutomaticHandoff`、`Traceability`、`IndependentVerifier`、`VerificationPlan`、`OperationContract`、`OperationJobs`、`PlanApproval`、`ToolTrust` |
+| `runtime/` | 各 CLI adapter、typed timeout 與診斷 | `AgentRuntime`、`RuntimeRegistry`、`ClaudeCodeRuntime`、`CodexRuntime`、`OpenCodeRuntime`、`RuntimeTimedOut`、`QuotaExceeded`、`ProviderAccessDenied` |
+| `sandbox/` | systemd 執行沙箱與政策 | `ExecutionSandbox`、`SandboxPolicy`、`SandboxUnitCleanup`、`TaskUnits` |
 | `slack/` | Slack 進入點、發言身分、按鈕、進度卡 | `SlackListener`、`SlackNotifier`、`HumanGate`、`HumanInput`、`PlanReview`、`SpinoffButtons`、`StageProgress` |
 | `store/` | SQLite 存取與稽核 | `TaskStore`、`AuditLog` |
 | `workspace/` | 每任務獨立 clone | `WorkspaceManager` |
@@ -142,15 +142,49 @@ agent 不能自行指定角色或跳到任意節點。
 | 資料庫 | `~/ai-team/ai-team.db`（SQLite；沒有遷移機制，沒有外鍵） |
 | 任務工作區 | `AI_TEAM_WORKSPACES` 下的 `task-<id>` 獨立 clone |
 | 階段 log | `AI_TEAM_LOGS/<id>/`，例如 `verification.codex.jsonl`、`*.stderr.log` |
+| 固定執行器 journal（2026-10-20 來源新增） | AI_TEAM_HOME/operation-jobs/&lt;task&gt;/&lt;id&gt;.json，在模型工作區外 |
+| 取消要求／執行器心跳（來源新增） | AI_TEAM_HOME/operation-cancellations/&lt;task&gt;/&lt;id&gt;.json、AI_TEAM_HOME/operation-executor-heartbeat |
 | 服務 log | `~/ai-team/orchestrator.log` |
 
 
 ## 服務執行工具（2026-10-10）
 
-服務建置另有 `orchestrator/teams/skills/service-build/`：工作區 client → 主機 broker → SSH 或 VirtualBox 配置的目標。broker 讀即時任務授權，執行四個固定操作，結果存宿主機並交回工作區；不透過 Slack 傳遞憑證。詳見 [服務建置](/docs/service-delivery)。
+服務建置另有 `orchestrator/teams/skills/service-build/`：工作區 client → Agent VM systemd 執行器 → SSH 公鑰直連目標。執行器讀即時任務授權，執行四個固定操作，目標持久化收據並交回工作區；不透過 Slack 傳遞憑證。詳見 [服務建置](/docs/service-delivery)。
 
 ### 文件任務驗證（2026-10-12 來源更新）
 
 工作分類由共用提示指導，純文字採合併內容查核、文件站採隔離副本建置、SQL／設定採行為驗證；不是新的節點或跳關。
 plan.protected_path_changes 由實作前置計畫提供，ProtectedPathFallback 取清單與允許目錄交集，FlowEngine 在代提交前逐檔核對。文字提及不再觸發改派。
 現有 requires、計畫核准、QA／Review 與 PR 閘門保持；舊快照不自動載入新提示／schema／操作，詳見[配置流程](/docs/configurable-team)。
+
+
+### 2026-10-19 部署脈絡（已部署 bestpartner）
+
+服務目標的歷史背景由 TaskStore.serviceHistory → ServiceDeploymentContext → ConfiguredExecutor 注入所有正式節點；管理者說明讀自實例 service-context/&lt;target&gt;.json，不自動執行管理命令。
+
+
+### 2026-10-19 SSH 直連規格（已啟用）
+
+Agent VM 的 systemd 固定部署執行器已啟用，以 SSH 公鑰直連 dev VM；網路、公鑰、主機指紋、受限入口與 health 已實測，不需要 Windows broker。#1046 的舊 skill 快照須新任務承接；dev VM 曾 heartbeat 停止，經使用者核准重啟後已重新驗證健康與8088入口，當機根因待查。本輪未重部署產品或續跑 Slack。詳見 [直連部署](/docs/direct-ssh-deployment)。
+
+2026-10-20：SSH目標取消逐版來源manifest比對，沿用任務SERVICE授權、SSH身分與固定操作；SHA256只作傳輸完整性和收據綁定。新版本不需人工更新清單。
+
+## 持久長作業恢復分層（2026-10-20 已部署 bestpartner）
+
+client → Agent VM 固定 executor → SSH root 固定入口 → 獨立 systemd job／持久 result。角色仍只呼叫四個固定業務操作；result/status/cancel 由執行器管理，不給模型任意 SSH。Agent journal 與遠端 root 收據分開保存，SQLite 連線明確關閉，heartbeat 獨立於工作區。
+
+OperationJobs 驗證 task／node／HEAD 與結果綁定；ConfiguredExecutor 注入系統檢查點。client 預設等待 30 秒後交回 OPERATION_PENDING，模型立即 BLOCKED；FlowEngine 在一般受阻路由之前等待 journal，沒有模型程序但保留中央執行槽，續同 activeNode 不新計次。RuntimeTimedOut 的 MODEL 階段須 cleanup=CONFIRMED 才可走逾時對帳；精確模型 unit 的 cgroup 清理不波及獨立 executor／遠端 job。
+
+重啟恢復由 TaskOrchestrator.recoverOnStartup → FlowEngine.recover 經中央佇列排原 task；只涵蓋原執行中／RESUME_QUEUED、node=activeNode 且有有效同 HEAD journal 的配置任務。舊 AWAIT_HUMAN 另需管理者先核實收據，再以一次 AI_TEAM_RESUME_OPERATION_TASK 指定。真人中斷產生精確 job 取消要求，模型 timeout／SSH 斷線本身不取消。
+
+已驗證的同 HEAD prepare/start 可重用，health 綁當次 start release。未知結果不新建相同 start；#1048 已成功版本不得重建。流程細節與歷史證據見[直連部署](/docs/direct-ssh-deployment)。已部署 bestpartner；Linux cgroup與SSH背景health已實測。重啟、取消與所有故障組合的真實端對端尚未全面演練，見直連部署紀錄。
+
+
+### 服務追問與來源清理（已部署bestpartner）
+
+ConfiguredExecutor在結案來源已清理時建立dialogue-evidence，保持非產品來源標示；ServiceSupport從非機密service-context啟動固定support.py，從service-support取得新探測/修復證據。模型收到歷史收據與新診斷，FlowEngine驗證入口並必要時自動改寫回覆；原任務驗收不被對話覆寫。root SSH新增repair只操作已存在active應用，沒有新來源建置。原對話可透過AI_TEAM_RESUME_DIALOGUE_TASK正式續跑。
+
+
+### 模型前持久診斷（已部署bestpartner）
+
+FlowEngine先執行固定ServiceSupport worker並用StageProgress回報，再呼叫ConfiguredExecutor。worker以Linux flock保護每task診斷，原子保存job/current與原repair ID；模型改寫只讀結果。FlowEngine.recover僅對有效、身分相符的執行中服務對話，或乾淨同HEAD/activeNode的SERVICE階段排回原任務，不更換快照或父任務。ConfiguredExecutor依任務狀態產生對話system與目前能力摘要；未新增角色權限或並行。

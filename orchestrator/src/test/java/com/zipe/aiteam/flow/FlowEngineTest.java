@@ -840,6 +840,31 @@ class FlowEngineTest {
         assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
     }
 
+    @Test void delegatedPartReportingPartialStillHandsOverToThePrimaryImplementer() throws Exception {
+        // #1054：codex 兩次都改好並提交受保護檔案，卻因 PARTIAL 被當成整個實作的結果，主實作段一次都沒跑。
+        mode = "protectedRulePartial";
+        enableProtectedPathFallback();
+        when(workspace.uncommittedPaths("42")).thenReturn(List.of(".claude/rules/api-endpoints.md"), List.of());
+        when(workspace.auditPaths(eq("42"), anyString())).thenReturn(List.of(".claude/rules/api-endpoints.md"), List.of());
+
+        engine.run(task);
+
+        assertThat(calls).containsSubsequence("implementation:builder_codex", "implementation:builder");
+        assertThat(store.flow(task.id()).orElseThrow().delegatedParts).containsKey("implementation");
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+    }
+
+    @Test void partialDelegatedPartThatChangedNothingIsNotTreatedAsDone() throws Exception {
+        mode = "protectedRulePartial";
+        enableProtectedPathFallback();
+        when(workspace.auditPaths(eq("42"), anyString())).thenReturn(List.of());
+
+        engine.run(task);
+
+        assertThat(calls).contains("implementation:builder_codex").doesNotContain("implementation:builder");
+        assertThat(store.flow(task.id()).orElseThrow().delegatedParts).doesNotContainKey("implementation");
+    }
+
     @Test void delegatedPartTouchingAnythingOutsideTheAllowedPathsStops() throws Exception {
         // 改派段只准動允許範圍：連一般檔案（例如 .agents/ 的 skill）也不行，那是原角色的工作。
         mode = "protectedRule";
@@ -995,6 +1020,120 @@ class FlowEngineTest {
         assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
         verifyNoInteractions(publisher);
     }
+    private Path operationJob(FlowRun f, String state) throws Exception {
+        when(props.homePath()).thenReturn(tmp);
+        f.workspaceReady=true; f.activeNode=f.node;
+        Path dir=tmp.resolve("operation-jobs/42");Files.createDirectories(dir);
+        ObjectNode record=mapper.createObjectNode();
+        record.put("version",1).put("id","a".repeat(32)).put("task","42").put("node",f.node)
+                .put("action","start").put("target","test-target").put("source_head","head1")
+                .put("state",state).put("verified",true).put("updated",1).put("deadline",java.time.Instant.now().getEpochSecond()+60);
+        if (state.equals("SUCCEEDED")) record.putObject("result").put("id","a".repeat(32))
+                .put("action","start").put("target","test-target").put("exit_code",0);
+        Path file=dir.resolve("a".repeat(32)+".json");Files.writeString(file,record.toString());return file;
+    }
+    @Test void pendingOperationWaitsWithoutAnotherModelOrNodeCount() throws Exception {
+        FlowRun f=new FlowRun(catalog.snapshot());operationJob(f,"RUNNING");f.transitions=8;
+        task.state(Task.State.STAGE_RUNNING);store.save(task);store.saveFlow(task.id(),f);
+        engine.operationPoll=()->{try{operationJob(f,"SUCCEEDED");}catch(Exception e){throw new RuntimeException(e);}};
+        assertThat(engine.reconcileOperations(task,f,f.snapshot.definition().nodes().get(f.node),false))
+                .isEqualTo(FlowEngine.OperationDisposition.RESUME);
+        assertThat(f.transitions).isEqualTo(8);assertThat(f.activeNode).isEqualTo(f.node);
+        assertThat(f.context).contains("SUCCEEDED","只接續剩餘步驟");
+        verifyNoInteractions(executor,publisher);
+    }
+    @Test void modelTimeoutReconcilesLateSuccessOnceWithoutNewStart() throws Exception {
+        FlowRun f=new FlowRun(catalog.snapshot());operationJob(f,"SUCCEEDED");
+        task.state(Task.State.STAGE_RUNNING);store.save(task);store.saveFlow(task.id(),f);
+        assertThat(engine.reconcileOperations(task,f,f.snapshot.definition().nodes().get(f.node),true))
+                .isEqualTo(FlowEngine.OperationDisposition.RESUME);
+        assertThat(engine.reconcileOperations(task,f,f.snapshot.definition().nodes().get(f.node),true))
+                .isEqualTo(FlowEngine.OperationDisposition.NONE);
+        verifyNoInteractions(executor,publisher);
+    }
+    @Test void restartWithTrustedOperationQueuesSameTaskAndSnapshot() throws Exception {
+        FlowRun f=new FlowRun(catalog.snapshot());operationJob(f,"RUNNING");
+        task.state(Task.State.STAGE_RUNNING);store.save(task);store.saveFlow(task.id(),f);
+        List<Runnable> queued=new ArrayList<>();engine.recover(task,queued::add);
+        assertThat(queued).hasSize(1);assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.RESUME_QUEUED);
+        assertThat(store.flow(task.id()).orElseThrow().snapshot.revision()).isEqualTo(f.snapshot.revision());
+        verifyNoInteractions(executor,publisher);
+    }
+    @Test void abortedTaskNeverAutomaticallyResumesAnOperation() throws Exception {
+        FlowRun f=new FlowRun(catalog.snapshot());operationJob(f,"RUNNING");
+        task.state(Task.State.ABORTED);store.save(task);store.saveFlow(task.id(),f);
+        assertThat(engine.reconcileOperations(task,f,f.snapshot.definition().nodes().get(f.node),false))
+                .isEqualTo(FlowEngine.OperationDisposition.STOP);
+        verifyNoInteractions(executor,publisher);
+    }
+    @Test void closedParentRejectsUnsupportedExecutionAdviceForAnyQuestion() {
+        var parent=new Task("1048","c","t","u","deploy");parent.state(Task.State.PR_CREATED);store.save(parent);
+        FlowRun f=store.flow(task.id()).orElseThrow();f.dialogue=true;f.parentId="1048";
+        assertThat(engine.dialogueReplyReason(task,f,"請輸入 @QA Agent 執行 重跑測試")).contains("已結案");
+        assertThat(engine.dialogueReplyReason(task,f,"原任務已完成，未進行新的部署。")).isNull();
+    }
+    @Test void restartQueuesPersistedServiceDialogueWithoutChangingParentOrCounts() throws Exception {
+        enableService(true);when(props.homePath()).thenReturn(tmp);
+        FlowRun f=store.flow(task.id()).orElseThrow();f.dialogue=true;f.dialogueRole="builder";f.parentId="1048";f.node="dialogue";
+        f.transitions=12;store.saveFlow(task.id(),f);task.state(Task.State.STAGE_RUNNING);store.save(task);
+        var target=f.snapshot.definition().project().serviceTarget().name();
+        var context=tmp.resolve("service-context");Files.createDirectories(context);
+        var registration=mapper.createObjectNode().put("target",target);registration.putArray("access_endpoints").addObject();
+        Files.writeString(context.resolve(target+".json"),registration.toString());
+        var path=tmp.resolve("service-support/42/job.json");Files.createDirectories(path.getParent());
+        Files.writeString(path,mapper.createObjectNode().put("version",1).put("task","42").put("parent","1048").put("target",target)
+                .put("state","RUNNING").put("generation",engine.supportGeneration(task,f)).put("deadline",java.time.Instant.now().getEpochSecond()+60).toString());
+        List<Runnable> queued=new ArrayList<>();engine.recover(task,queued::add);
+        assertThat(queued).hasSize(1);assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.RESUME_QUEUED);
+        assertThat(store.flow("42").orElseThrow().transitions).isEqualTo(12);
+        verifyNoInteractions(executor,publisher);
+    }
+    @Test void serviceDiagnosticRestartRequiresSameCleanSource() throws Exception {
+        enableService(true);when(props.homePath()).thenReturn(tmp);
+        FlowRun f=store.flow(task.id()).orElseThrow();f.node="service";f.activeNode="service";f.workspaceReady=true;
+        f.transitions=8;f.visits.put("service",1);store.saveFlow(task.id(),f);
+        task.state(Task.State.STAGE_RUNNING);store.save(task);
+        var registration=mapper.createObjectNode().put("target","test-host");registration.putArray("access_endpoints").addObject();
+        Files.createDirectories(tmp.resolve("service-context"));Files.writeString(tmp.resolve("service-context/test-host.json"),registration.toString());
+        var path=tmp.resolve("service-support/42/job.json");Files.createDirectories(path.getParent());
+        Files.writeString(path,mapper.createObjectNode().put("version",1).put("task","42").put("parent","42").put("target","test-host")
+                .put("generation",engine.supportGeneration(task,f)).put("state","RUNNING").put("deadline",java.time.Instant.now().getEpochSecond()+60).toString());
+        List<Runnable> queued=new ArrayList<>();engine.recover(task,queued::add);
+        assertThat(queued).hasSize(1);assertThat(store.flow("42").orElseThrow().transitions).isEqualTo(8);
+        queued.clear();workspaceHead="head2";task.state(Task.State.STAGE_RUNNING);store.save(task);
+        engine.recover(task,queued::add);
+        assertThat(queued).isEmpty();assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        verifyNoInteractions(executor,publisher);
+    }
+    @Test void serviceDialogueCorrectsWrongUrlWithoutHumanOrDeploying() throws Exception {
+        when(props.homePath()).thenReturn(tmp);mode="dialogueWrongUrl";
+        FlowRun f=store.flow(task.id()).orElseThrow();f.dialogue=true;f.dialogueRole="coordinator";f.node="dialogue";
+        store.saveFlow(task.id(),f);
+        task=new Task("42","c","t","u","網址無法打開");store.save(task);
+        Path evidence=tmp.resolve("service-support/42/current.json");Files.createDirectories(evidence.getParent());
+        Files.writeString(evidence,"{\"healthy\":true,\"endpoints\":[{\"url\":\"http://127.0.0.1:8088/view/chat\",\"audience\":\"Windows\",\"http_status\":200}]}" );
+        engine.run(task);
+        assertThat(store.find("42").orElseThrow().state()).withFailMessage("audit=%s calls=%s",mockingDetails(audit).getInvocations(),calls).isEqualTo(Task.State.COMPLETED);
+        assertThat(calls).hasSize(2);
+        assertThat(store.find("42").orElseThrow().stage("dialogue").orElseThrow().result().path("answer").asText()).contains("http://127.0.0.1:8088/view/chat");
+        verifyNoInteractions(publisher,verifier);
+    }
+    @Test void completedServiceDialogueWithUnsupportedAdviceCanBeCorrected() throws Exception {
+        enableService(true);FlowRun f=store.flow(task.id()).orElseThrow();f.dialogue=true;f.dialogueRole="builder";f.parentId="1048";f.node="dialogue";
+        store.saveFlow(task.id(),f);task.state(Task.State.COMPLETED);store.save(task);
+        var reply=mapper.createObjectNode().put("answer","請開http://127.0.0.1:8088/view/chat，輸入`@Infrastructure Agent 執行 檢查轉送`" );
+        store.saveStage(task.id(),new com.zipe.aiteam.task.StageOutcome("dialogue","session",reply,0.1,0));
+        task=store.find("42").orElseThrow();List<Runnable> queued=new ArrayList<>();engine.resumeDialogueTask(task,queued::add);
+        assertThat(queued).hasSize(1);assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.RESUME_QUEUED);
+        assertThat(store.flow("42").orElseThrow().context).contains("上次回答留下不能執行");verifyNoInteractions(executor,publisher);
+    }
+    @Test void stoppedDialogueCanResumeSameQuestionWithoutChangingParent() throws Exception {
+        FlowRun f=store.flow(task.id()).orElseThrow();f.dialogue=true;f.dialogueRole="coordinator";f.parentId="1048";f.node="dialogue";
+        store.saveFlow(task.id(),f);task.state(Task.State.AWAIT_HUMAN);store.save(task);
+        List<Runnable> queued=new ArrayList<>();engine.resumeDialogueTask(task,queued::add);
+        assertThat(queued).hasSize(1);assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.RESUME_QUEUED);
+        assertThat(store.flow("42").orElseThrow().parentId).isEqualTo("1048");verifyNoInteractions(executor,publisher);
+    }
     @TempDir Path tmp;
     ObjectMapper mapper = new ObjectMapper();
     TaskStore store;
@@ -1052,6 +1191,10 @@ class FlowEngineTest {
         when(executor.execute(any(), any(), any())).thenAnswer(c -> {
             FlowRun flow = c.getArgument(1); TeamDefinition.Node node = c.getArgument(2); calls.add(flow.node + ":" + node.role());
             Task executing = c.getArgument(0);
+            if (mode.equals("dialogueWrongUrl")) {
+                var answer=mapper.createObjectNode().put("answer","請開http://172.30.46.20/").put("execution_status","COMPLETED").putNull("failure_report");
+                return new AgentRuntime.RuntimeResult("session","",answer,0.1,false,tmp.resolve("log"),"model",null);
+            }
             if (executing.continuation() != null) resumed.add(flow.node + ":" + executing.continuation().sessionId());
             if (mode.equals("interrupt") && flow.node.equals("implementation") && executing.continuation() == null) {
                 store.saveCheckpoint(new Checkpoint("42", flow.node, "claude-code", "sonnet", "kept-session", "context", "head1", null));
@@ -1073,6 +1216,23 @@ class FlowEngineTest {
             if (mode.equals("quota") && flow.node.equals("verification")) {
                 store.saveCheckpoint(new Checkpoint("42", flow.node, "claude-code", "sonnet", "saved-session", "context", "head1", "quota"));
                 throw new QuotaExceeded("usage_limit_reached");
+            }
+            if (mode.startsWith("modelTimeout") && flow.node.equals("implementation")
+                    && (mode.equals("modelTimeoutAlways") || calls.stream().filter("implementation:builder"::equals).count() == 1)) {
+                store.saveCheckpoint(new Checkpoint("42", flow.node, "claude-code", "sonnet", "impl-session", "context", "head1", null));
+                throw new com.zipe.aiteam.runtime.RuntimeTimedOut("claude-code", java.time.Duration.ofSeconds(1800),
+                        tmp.resolve("stdout"), tmp.resolve("stderr"), new com.zipe.aiteam.sandbox.SandboxUnitCleanup.Result(
+                                com.zipe.aiteam.sandbox.SandboxUnitCleanup.Status.CONFIRMED, "ai-team-test.service", "test"));
+            }
+            if (mode.startsWith("serviceOperationTimeout") && flow.node.equals("service")
+                    && calls.stream().filter(v -> v.startsWith("service:")).count()==1) {
+                operationJob(flow,"SUCCEEDED");
+                throw new com.zipe.aiteam.runtime.RuntimeTimedOut("codex", java.time.Duration.ofSeconds(1),
+                        tmp.resolve("stdout"), tmp.resolve("stderr"),
+                        new com.zipe.aiteam.sandbox.SandboxUnitCleanup.Result(
+                                mode.endsWith("Unknown") ? com.zipe.aiteam.sandbox.SandboxUnitCleanup.Status.UNKNOWN
+                                        : com.zipe.aiteam.sandbox.SandboxUnitCleanup.Status.CONFIRMED,
+                                "ai-team-test.service","test"));
             }
             JsonNode report = report(node.gate());
             if (mode.startsWith("service") && flow.node.equals("intake")) ((ObjectNode)report).put("route", "service");
@@ -1115,6 +1275,11 @@ class FlowEngineTest {
                 ((ObjectNode)report).putArray("protected_path_changes").add(".claude/rules/api-endpoints.md");
             if (mode.startsWith("protectedRule") && flow.node.equals("intake"))
                 ((ObjectNode)report).put("summary", "把 `.claude/rules/api-endpoints.md` 第 49 行的 all 改成 admin");
+            // #1054：改派段照指示不建置，如實回報 PARTIAL／verify_passed=false。
+            if (mode.equals("protectedRulePartial") && flow.node.equals("implementation") && node.role().equals("builder_codex")) {
+                ((ObjectNode)report).put("status", "PARTIAL");
+                ((ObjectNode)report.path("quality_gate")).put("verify_passed", false);
+            }
             if (mode.startsWith("question") && flow.node.equals("intake")) {
                 ((ObjectNode)report).put("route", "question").put("summary", "API 共 69 個，文件寫 68 個");
                 ((ObjectNode)report).putArray("requirements");
@@ -1235,6 +1400,63 @@ class FlowEngineTest {
         flow.snapshot = new TeamDefinition.Snapshot("tracked", flow.snapshot.definition(), flow.snapshot.repository(), assets);
         store.saveFlow(task.id(), flow);
     }
+    void enableAutonomy() throws Exception {
+        var flow = store.flow(task.id()).orElseThrow();
+        ObjectNode definition = mapper.valueToTree(flow.snapshot.definition());
+        ((ObjectNode) definition.path("project")).set("autonomy", mapper.readTree(
+                "{\"modelTimeoutRecoveries\":2,\"maxTimeoutSeconds\":3600,\"verificationContinuations\":2,"
+                        + "\"requirementChangeOptions\":true,\"channelCommandRouting\":true}"));
+        flow.snapshot = new TeamDefinition.Snapshot("autonomy", mapper.treeToValue(definition, TeamDefinition.class),
+                flow.snapshot.repository(), flow.snapshot.assets());
+        store.saveFlow(task.id(), flow);
+    }
+    @Test void modelTimeoutResumesTheSameSessionOnceWithLongerLimit() throws Exception {
+        enableAutonomy(); mode = "modelTimeout";
+        engine.run(task);
+        // #1053：實作跑到時限被砍，工作沒遺失；系統沿用原 session 接著做，不必等人按「繼續執行」。
+        assertThat(calls.stream().filter("implementation:builder"::equals)).hasSize(2);
+        assertThat(resumed).contains("implementation:impl-session");
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        var flow = store.flow("42").orElseThrow();
+        assertThat(flow.visits.get("implementation")).isEqualTo(1);
+        assertThat(AutonomousRecovery.timeoutSeconds(flow, "implementation",
+                flow.snapshot.definition().nodes().get("implementation"))).isEqualTo(3600);
+        assertThat(flow.context).contains("系統自動接續");
+    }
+    @Test void modelTimeoutWithoutAutonomyStillStopsForHuman() {
+        mode = "modelTimeout";
+        engine.run(task);
+        assertThat(calls.stream().filter("implementation:builder"::equals)).hasSize(1);
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
+    }
+    @Test void modelTimeoutWithoutProgressStopsInsteadOfLooping() throws Exception {
+        enableAutonomy(); mode = "modelTimeoutAlways";
+        engine.run(task);
+        // 兩輪之間工作區沒有任何變化：同一指紋只接續一次，第二次逾時就停給人。
+        assertThat(calls.stream().filter("implementation:builder"::equals)).hasSize(2);
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
+    }
+    @Test void verificationContinuationInsideTheVerifierIsReportedOnce() throws Exception {
+        enableAutonomy();
+        doAnswer(c -> {
+            FlowRun f = c.getArgument(1);
+            // 續驗在 IndependentVerifier 內、同一個 clone 完成（見 IndependentVerifierTest）；引擎只負責回報。
+            f.systemRetries.put(AutonomousRecovery.VERIFY_KEY + workspaceHead, 1);
+            return new IndependentVerifier.Receipt(workspaceHead, f.baselineRevision, f.snapshot.revision(), "start", "end", List.of());
+        }).when(verifier).verify(any(), any());
+        engine.run(task);
+        verify(verifier, times(1)).verify(any(), any());
+        verify(slack).post(any(), eq("c"), eq("t"), contains("自動續驗了 1 輪"));
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+    }
+    @Test void verificationTimeoutWithoutProgressStillStops() throws Exception {
+        enableAutonomy();
+        doThrow(new IndependentVerifier.VerificationTimeout(List.of("npm", "ci"), tmp.resolve("check-0.log")))
+                .when(verifier).verify(any(), any());
+        engine.run(task);
+        verify(verifier, times(1)).verify(any(), any());
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
+    }
     @Test void issueQuestionMisclassificationRepairsItselfWithoutHuman() {
         enableIssueTracking(); mode = "issueQuestion";
         engine.run(task);
@@ -1300,6 +1522,19 @@ class FlowEngineTest {
         assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.COMPLETED);
         assertThat(calls).containsExactly("intake:coordinator", "service:builder");
         verifyNoInteractions(verifier, publisher);
+    }
+    @Test void serviceTypedTimeoutResumesSuccessfulJobWithoutAnotherVisit() throws Exception {
+        enableService(true); mode="serviceOperationTimeout"; engine.run(task);
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.COMPLETED);
+        assertThat(calls).containsExactly("intake:coordinator","service:builder","service:builder");
+        assertThat(store.flow(task.id()).orElseThrow().visits.get("service")).isEqualTo(1);
+        verifyNoInteractions(verifier,publisher);
+    }
+    @Test void serviceTypedTimeoutRequiresConfirmedModelCleanup() throws Exception {
+        enableService(true); mode="serviceOperationTimeoutUnknown"; engine.run(task);
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        assertThat(calls).containsExactly("intake:coordinator","service:builder");
+        verifyNoInteractions(verifier,publisher);
     }
     @Test void serviceFailureRoutesBackToBuilderAndRechecks() throws Exception {
         enableService(true); mode = "serviceRepair"; engine.run(task);

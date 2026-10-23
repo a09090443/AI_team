@@ -14,7 +14,8 @@ public final class TeamMigration {
             throw new IllegalArgumentException("repository 或提示／schema 資產已變更，不能原地遷移；請另建任務");
         ObjectNode left = MAPPER.valueToTree(before.definition()), right = MAPPER.valueToTree(after.definition());
         List<String> changes = new ArrayList<>();
-        for (String field : List.of("requiredTools", "cachePaths", "buildInstructions", "testInstructions", "operations", "serviceTarget")) {
+        // autonomy 是管理者授權的恢復政策（次數有上限、不擴權），與能力設定一樣可原地套用（2026-10-22，#1053）。
+        for (String field : List.of("requiredTools", "cachePaths", "buildInstructions", "testInstructions", "operations", "serviceTarget", "autonomy")) {
             compareRemove((ObjectNode)left.get("project"), (ObjectNode)right.get("project"), field, "project.", changes);
         }
         if (!before.definition().roles().keySet().equals(after.definition().roles().keySet()))
@@ -29,7 +30,8 @@ public final class TeamMigration {
         if (!before.definition().nodes().keySet().equals(after.definition().nodes().keySet()))
             throw new IllegalArgumentException("節點清單已變更，不能原地遷移");
         for (String node : before.definition().nodes().keySet()) {
-            for (String field : List.of("writablePaths", "localTestNetwork"))
+            // timeoutSeconds 只是資源上限，不改路由或權限；#1053 實作逾時後需原地拉長才能續跑。
+            for (String field : List.of("writablePaths", "localTestNetwork", "timeoutSeconds"))
                 compareRemove((ObjectNode)left.path("nodes").get(node), (ObjectNode)right.path("nodes").get(node), field, "nodes." + node + ".", changes);
         }
         if (!left.equals(right)) throw new IllegalArgumentException("含 runtime、節點、基準分支、核准政策或其他非能力設定變更；請另建任務");

@@ -292,7 +292,7 @@ public class TaskOrchestrator {
         log.info("啟動恢復：發現 {} 個未完成的任務", unfinished.size());
 
         for (Task t : unfinished) {
-            if (flowEngine != null && flowEngine.owns(t.id())) { flowEngine.recover(t); continue; }
+            if (flowEngine != null && flowEngine.owns(t.id())) { flowEngine.recover(t, this::enqueue); continue; }
             if (legacyBlockedByNewConfiguration(t)) {
                 if (t.state().isRunning() || t.state() == Task.State.QUEUED || t.state() == Task.State.RESUME_QUEUED || t.state() == Task.State.TRIAGE_QUEUED) {
                     t.state(Task.State.AWAIT_HUMAN); store.save(t);
@@ -1251,11 +1251,23 @@ public class TaskOrchestrator {
     public void spinoff(Task task, int index, String user) {
         if (flowEngine != null && flowEngine.owns(task.id())) flowEngine.spinoff(task, index, user, this::enqueue);
     }
+    public void resumeDialogueTask(String id) {
+        Task task=store.find(id).orElseThrow(()->new IllegalArgumentException("找不到對話"));
+        if(flowEngine==null||!flowEngine.owns(id))throw new IllegalArgumentException("對話不是配置流程");
+        flowEngine.resumeDialogueTask(task,this::enqueue);
+    }
+    public void resumeOperationTask(String id) {
+        Task task = store.find(id).orElseThrow(() -> new IllegalArgumentException("指定任務不存在"));
+        if (flowEngine == null || !flowEngine.owns(id)) throw new IllegalArgumentException("指定任務不是配置流程");
+        flowEngine.resumeOperationTask(task, this::enqueue);
+    }
     public void resumeApprovedPlanTask(String id) {
         Task task = store.find(id).orElseThrow(() -> new IllegalArgumentException("指定任務不存在"));
         if (flowEngine == null || !flowEngine.owns(id)) throw new IllegalArgumentException("指定任務不是配置流程");
         flowEngine.resumeApprovedPlan(task, this::enqueue);
     }
+    public boolean channelCommandRouting() { return flowEngine != null && flowEngine.channelCommandRouting(); }
+
     public void requestTriage(Task task, String feedback, String byUser) {
         if (flowEngine != null && flowEngine.owns(task.id())) { flowEngine.resume(task, feedback, byUser, this::enqueue); return; }
         if (com.zipe.aiteam.flow.HumanOptions.PUBLISH_COMMAND.equals(feedback)) {
