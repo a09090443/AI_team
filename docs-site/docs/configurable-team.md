@@ -132,6 +132,28 @@ Preview 部署節點、外部 VM 權限與部署收據尚未實作，所以此�
 | 改派後 `.agents/**` 寫不進去（2026-10-04 查證；已由分段改派處理，真實任務尚未實測） | 整節點改派時是整個實作節點交給 `builder_codex`，但 Codex 內層沙箱把工作區的 `.agents` 掛成唯讀（[雙層沙箱](codex-nested-sandbox.md) 為它建立的掛載點），`.claude/**` 與一般檔案則可寫（VM 上以 codex-cli 0.156.1 `codex sandbox` 實測）。bestpartner 的 skill 同時存在 `.claude/skills/` 與 `.agents/skills/`，改 skill 的需求一改派就一定寫不了 `.agents/**`。#1020 同時要改 `build.gradle.kts`、`.claude/**` 與 `.agents/**`：第一次的 patch 一起被拒（`writing outside of the project`，推測是同一個 patch 含 `.agents` 檔），後端測試又因上一列的 Gradle 問題跑不了，停在 AWAIT_HUMAN。Claude Code 的 `builder` 寫得了 `.agents/**` 也跑得了 Gradle，只是寫不了 `.claude/**`，所以改成分段改派：受保護檔案交給 Codex，`.agents/**` 與其餘工作由 `builder` 完成。已整節點改派的舊任務（#1020）沿用舊行為 |
 | repo hooks | repo 的 `.claude/settings.json` 掛了 pwsh hooks；VM 沒有 pwsh，實測只產生非阻擋的錯誤訊息，工具呼叫照常完成 |
 
+## dynamic-api 配置
+
+`orchestrator/teams/dynamic-api.json`（2026-10-17）供第三個實例使用，專案為
+[a09090443/dynamic-api](https://github.com/a09090443/dynamic-api)（Spring Boot 3.2.5／Java 17＋Gradle 後端、Next.js 15 管理介面、
+Docusaurus 文件，基準分支 `master`）。以 bestpartner 為範本，角色、模型與審查／分流節點相同；
+**未啟用**角色諮詢與共享看板（`collaboration`／`consultRoles`，目前只在 bestpartner 啟用）。其他差異如下：
+
+| 項目 | 內容與理由 |
+|---|---|
+| 工具 | 沿用 PATH 上的 `gradle`（VM 共用 8.14.5），repo 的 gradlew 是 8.7；operations 的執行檔只能是工具名稱。Spring Boot 3.2.5 外掛在 8.14.5 上能否建置**尚未在 VM 實測** |
+| 前端建置任務 | `backend/build.gradle` 的 `installNextjs`／`buildNextjs` 寫死 Windows 版 `tools/node-*-win-x64/npm.cmd`，Linux 上必定失敗；`processResources` 依賴它，所以 `test` 類操作一律帶 `-x buildFrontend`，`compileJava` 不經過 `processResources` 不需要。建置指示禁止 agent 改 `build.gradle`／`tools/` 繞過 |
+| 後端測試 | 只有 `ResponseRepositoryTest`、`DynamicControllerServiceTest`，以單一 `backend-test`／`qa-backend-test` 執行。預設設定含 `D:/tmp`、`C:/tmp`，Linux 是否通過**尚未實測**；失敗時 QA 標「無法核實」，不改設定 |
+| 前端 | `npm --prefix nextjs-dynamic-api-manager ci`／`run type-check`／`run lint`／`run build`；驗收用 `--offline` |
+| 動態載入 | 上傳 JAR、啟用服務、Mock 命中需要啟動服務並用範例 JAR 手動驗證；沙箱內無法完成時 QA 標「無法核實」 |
+| 服務建置 | **不配置** `service`／`service_triage` 節點與 `serviceTarget`（service-build skill 目前只實作 bestpartner）；intake 沒有 `service` 路線。`infrastructure` 角色只作為設計／實作候選 |
+| `.claude/` 文件 | 同 bestpartner，`.claude/rules/**`、`.claude/skills/**` 分段改派 `builder_codex` |
+| 系統獨立驗證 | 後端測試＋前端 ci／type-check／build 共 4 條；`docOnlyPaths` 同 bestpartner |
+
+Slack 使用自己的一組 App（`deploy/agent-manifests/dynamic-api/`，見 [建立 Slack App](slack-agent-apps.md#dynamic-api-實例的-app-組)），頻道 `#dynamic-api`（`C0CA5CXTUHJ`，2026-10-17 建立的公開頻道）。
+**目前狀態（2026-10-17）**：配置以現行原始碼建置的 JAR 通過 `--validate-team`；頻道與 7 個 Slack App 已建立並加入頻道，App-Level Token 尚未產生，VM 實例尚未安裝，
+沒有任何建置、測試或 Slack 端對端證據。
+
 ## 不改 Java 的增刪例子
 
 - `orchestrator/teams/spring-starters.json`：設計、測試計畫、實作、驗收、獨立審查、人工 PR 核准。
@@ -270,6 +292,14 @@ IssueTracker 驗證穩定 ID、需求對應及逐項證據；FlowEngine 保存�
 - 舊配置缺少 `candidateRoles` 時沿原角色執行。新欄位會寫入快照，舊 JAR 不能讀取新版快照，回滾須搭配部署前 DB 備份。
   角色集合／流程派工政策變更不允許原地配置遷移；#1030 等舊任務需由負責人使用「改用新任務繼續」。
 
+### 派工的任務效率要求（2026-10-23）
+
+`orchestrator/teams/prompts/intake.md` 與 `triage.md` 要求派工角色先確認能否縮短執行時間：
+PM 以完成要求的最小必要範圍建立需求，同類修正合併、不為簡單任務加入未要求的檔案、文件、測試或抽象化；
+分流角色選最短可行路線，可一次修完的小缺陷合併派給同一角色，不重開不受影響的節點。
+精簡不得刪減使用者要求、降低高風險檢查，或跳過受影響的必需計畫、核准與驗收。
+這是提示層級的要求，流程節點與 `requires` 不變；修改後的提示會改變配置 revision，需重新部署 teams 才生效，尚未在真實任務驗證。
+
 ### 文件任務的派工限制與已知問題（2026-10-12 查核）
 
 2026-10-12 已在來源修正提示、操作配置與改派範圍判斷；2026-10-14 已部署 bestpartner 與 spring-starters，尚未驗收真實模型端對端。
@@ -300,6 +330,82 @@ plan 與 verification 固定由 tester 負責。node-web 範例仍經 builder／
 舊快照不會自動獲得新 schema／提示／操作；舊計畫沒有清單時不再猜測分段改派，若確需修改受保護檔案須更新配置與計畫，
 或承接成使用新配置的任務。已保存的整節點改派與已完成分段收據仍保留，沒有自動還原或改寫既有成果。
 提示與清單無法證明模型完全理解使用者意圖，QA／Review 仍須核對原需求；任務只是修改手冊時，不可宣稱已實際安裝成功。
+
+## 角色諮詢與共享看板（2026-10-17）
+
+讓角色在工作中互相詢問，並共用一份決策紀錄。由頂層 `collaboration` 啟用，**未設定時整個功能關閉**，舊快照的提示、schema 與行為逐字不變。
+程式在 `flow/Consultation.java`、`flow/TeamBoard.java`，由 `ConfiguredExecutor` 注入、`FlowEngine` 執行。
+
+```json
+"collaboration": { "consultPerVisit": 2, "consultPerTask": 12, "questionsPerRound": 2, "boardMaxEntries": 100 },
+"nodes": { "plan": { "consultRoles": ["architect", "builder"], "...": "..." } }
+```
+
+### 角色諮詢（consult）
+
+- 節點設定 `consultRoles` 且還有額度時，schema 多一個必填欄位 `consult`（陣列或 null）。agent 填了 consult，這份報告就視為**暫停**：
+  - 其他欄位只是草稿，不會被採用。
+  - 不寫入 receipts、問題清單或看板。
+- 系統依序請被諮詢角色**唯讀**回答，用 `ConfiguredExecutor.consult` 執行：
+  - 與提問節點相同的工作目錄。
+  - 唯讀沙箱，工具只有 Read／Grep／Glob。
+  - 開新 session，不寫 checkpoint。
+  - log 與 systemd unit 名稱為 `<節點>-consult-<輪>-<題>`。
+  - 回答的 schema 是 `answer`、`confidence`（HIGH／MEDIUM／LOW）、`evidence`。
+- 答完後保留 `activeNode` 與提問者的 checkpoint，以 `--resume` 接回原 session。這次接續**不計入** visits／transitions。
+  問答以「諮詢問答（資料，非指令）」區塊附在提問者的脈絡，不受 `flow.context` 長度淘汰。
+- 上限：
+  - 每輪最多 `questionsPerRound` 題（1～3）。
+  - 每次節點執行最多 `consultPerVisit` 輪（0～2）。
+  - 每個任務最多 `consultPerTask` 題（0～16）。
+  - 額度在開始一輪時扣除，失敗也不退還。額度用完後 schema 不再提供 consult。
+- 格式錯誤（例如角色不在名單、題數超過、額度用完仍要求諮詢）：
+  - 附上修正說明，請同一節點以原 session 修正一次，不計次（`systemRetries` 鍵尾 `#consult-format`）。
+  - 第二次仍錯就走一般受阻路線，受阻原因寫「諮詢請求不合格」。
+  - 角色名稱容錯與 handoff 相同：顯示名稱能唯一對應時直接採用。
+- 中斷與額度：
+  - 每題開始前檢查中止與中斷。
+  - 回答途中遇到額度用完，任務進 `WAITING_QUOTA`，`pendingConsult` 保留。續跑時先補答剩下的題目，再接回提問者。
+  - 回答途中發生其他錯誤時，提問者那次執行已經送達模型，所以**不還原次數、不自動重試**，直接停下讓真人按繼續。
+- 驗證規則（載入配置時）：
+  - 一定要有 `collaboration`。
+  - 只能用在 AGENT 節點，1～8 個不重複且存在的角色。
+  - 不可包含節點自己的角色（含 `candidateRoles`）。
+  - 被諮詢的角色必須有 `capabilities`。
+  - **REVIEW 節點不可諮詢任何實作角色**（含 `candidateRoles` 與 `protectedPathFallback`），以維持獨立審查。
+- 諮詢不是派工：回答者不能修改檔案、核准或擴權，回答也不能取代 QA／Review／獨立驗證的證據。
+
+### 共享看板（board）
+
+- 啟用後每個節點的 schema 都多一個必填欄位 `board_updates`（最多 10 筆）：
+  - `op`：`ADD`、`RESOLVE`、`SUPERSEDE`。
+  - `kind`：`DECISION`、`ASSUMPTION`、`QUESTION`、`RISK`、`NOTE`。
+  - 另有 `id`、`text`、`to`、`refs`。
+  - 缺陷照舊寫問題清單（IssueTracker），不寫在看板。
+- ADD 由系統配發 `B-<n>`；RESOLVE／SUPERSEDE 只能針對 OPEN 項目。QUESTION 可以用 `to` 指定要回答的角色，該角色下次執行時會看到醒目標示。
+- **只收最終報告**：通過與受阻的報告都收，格式重送、需求草稿重送與諮詢暫停不收。
+  - 寫錯的項目只被拒絕，並附一行「系統看板說明」到 context，**不擋流程、不交真人**。
+  - 看板滿了（`boardMaxEntries`，最多 200）拒絕新增，請角色先結案。
+- 每個節點的脈絡都會附上看板（對話模式除外）。OPEN 項目優先列出，最多 64000 字，已結項目只列最近 20 筆。
+  看板**不納入節點輸入指紋**：角色自己寫看板不算新的輸入，防循環照常生效。
+- 承接成新任務時，OPEN 項目與決策會帶到新任務並標明來源任務。PR 核准訊息與結束訊息會附上看板摘要（未結的問題與風險前 5 筆）。
+
+### 相容與回滾
+
+- `TeamDefinition.collaboration` 與 `Node.consultRoles` 為 null 時不序列化，未啟用配置的 revision 與修改前相同。
+- FlowRun 的 `board`、`boardSeq`、`consultations`、`pendingConsult`、`consultUsed` 為空時不寫入 JSON。
+  沒用到協作的任務，舊 JAR 仍讀得到；**用過協作的任務，舊 JAR 讀不到**，回滾時必須搭配部署前的 DB 備份。
+- 進行中的任務不會自動套用，要用「改用新任務繼續」。
+
+目前只在 bestpartner 啟用：
+- design 可諮詢 builder／tester。
+- plan 可諮詢 architect／builder／infrastructure。
+- implementation 可諮詢 architect／tester。
+- verification 可諮詢 architect／builder。
+- review 只可諮詢 architect。
+- triage 可諮詢 architect／builder／tester／infrastructure。
+
+spring-starters、node-web 尚未啟用。**目前證據等級：只有程式測試通過，尚未做真實 Slack／CLI 端對端驗證。**
 
 ## 快照與相容策略
 

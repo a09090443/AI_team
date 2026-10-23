@@ -1,11 +1,41 @@
+## 2026-10-21 最新：狀態式決策與持久診斷已部署bestpartner
+
+使用者已明確要求並完成部署；D:/agent_team-dynamicapi（codex/direct-ssh-deployment）為實作/交接主工作樹。本輪新JAR a4e66bbf…、PID70717、配置ca2973b2…、8提示與skill已上線，備份orchestrator-backup.qk7iNY。Linux最終完整735項0失敗/錯誤12略過、Python97/來源與docs build通過；六角色連線/SSH executor正常、ERROR0，六表/工作區及三實例資料設定一致、Windows8088/view/chat200。部署快照sqlite3 CLI耗CPU已改Python唯讀逐列雜湊並驗證，未重建產品/續跑1049或發Slack。本輪尚未commit/push/merge；新任務讀新提示、舊快照保留。完整證據、備份與文件核對見該工作樹.ai/context.md及progress；下方未部署狀態已被取代。
+
+## 2026-10-21 最新：狀態式角色決策與持久診斷來源完成，尚未部署
+
+使用者已核准修改；實作在D:/agent_team-dynamicapi（codex/direct-ssh-deployment，基底04cb0d9已push）。本輪3主類/3測試、8角色prompt、service-build單一來源/鏡像及文件尚未commit/push，未部署或改線上任務；線上仍95cb87fb…。Linux首輪完整734項0失敗/錯誤12略過，後續218相關；最終本機181與Linux2來源恢復正反通過；Python97 Linux（含真實worker中斷復原/鎖）、來源/check-source/docs build通過。255來源一致。精確範圍、最終隔離JAR a4e66bbf…、證據與下一步見該工作樹.ai/context.md及progress；不可把來源完成當已上線，不重播1049或重建產品。
+
+
+## 2026-10-21 最新：Slack服務追問自主修正已完成
+
+實作在D:/agent_team-dynamicapi（codex/direct-ssh-deployment），6bb706a+d9ff79e已部署bestpartner，JAR95cb87fb…，未push/merge。原#1049於00:13:29已由Infrastructure實際回覆正確Windows完整入口、不再要求執行重派；#1048來源仍已清理，使用獨立證據repo與固定probe，原部署/其他任務/兩實例未變，沒有新start或產品重啟。728 Linux/174本機相關/90 Python與來源/docs build通過，詳細程式/備份/證據與範圍限制見該工作樹.ai/context.md與progress。此最新結果取代下方僅分析/待修正狀態，不重播1049、不重建舊workspace、不再部署產品。
+
+## 2026-10-20 最新：網址與#1049追問失敗僅分析
+
+詳細在D:/agent_team-dynamicapi/.ai/context.md與progress：正確Windows入口http://127.0.0.1:8088/view/chat（200），agent給VM內網根網址不適用且/為404。上輪23:27:56正常重載的COMPLETED清理刪除task1048來源工作區，1049追問在模型前被verifiedWorkspace阻斷；未修程式/部署/恢復工作區/續跑/發Slack。已補文件及docs build通過，待後續修正指示。
+
+## 2026-10-20 Codex：長作業恢復已完成
+
+實作與部署交接在 D:/agent_team-dynamicapi/.ai/context.md（分支codex/direct-ssh-deployment，核心60cff26及後續相容修正，未推送/合併）。bestpartner已升級，#1048已正式COMPLETED；原start不重建、原health成功，其他任務/兩實例資料未變。Linux719項零失敗/錯誤（11略過）、Python78、來源與docs build通過；最終Spring/沙箱/6角色連線正常。不要依本檔下方舊AWAIT_HUMAN/尚未授權內容重送部署；完整版本、備份與證據見上述工作樹交接檔。
 # 當前工作（Codex 與 Claude Code 共用）
 
 > 換手前務必更新這份檔案。內容只寫「現在正在做什麼、卡在哪、下一步」，
 > 長期結論寫 `decisions.md`，已完成的寫 `progress.md`。舊內容查 git 歷史，不要在這裡累積流水帳。
 
-最後更新：2026-10-14（Claude Code）
+最後更新：2026-10-17（Claude Code）
 
 ## 正在進行
+
+- **自主部署限制已取消（2026-10-20，Codex）**：依使用者明確指示取消逐版source-manifest人工核准，這項指示取代舊manifest下一步。實作與文件在D:/agent_team-dynamicapi，codex/direct-ssh-deployment commit a118e37，未推送。dev固定入口/target.json、Agent工具/提示/skill/service-context已更新，bestpartner新配置d1334fe3…/PID10731。Python36（Windows/Linux）、Java75、check-source/docs build通過；#1048實際來源a0c53284…無需清單可通過。任務表/工作區完整一致，health ab1c03e9…及8088 HTTP200。#1048仍AWAIT_HUMAN，可原串續跑，不需管理者更新清單或新任務；未發Slack訊息或重部署產品。完整備份及證據見該worktree progress。
+- **#1047 部署卡點（2026-10-19，Codex）**：AWAIT_HUMAN，SSH prepare/diagnose成功；HEAD2216d6d缺少版控docs/docker/sit，start在SSH前git archive失敗。已修正來源缺件收據（090d5f4，D:/agent_team-dynamicapi，未推送），Python33項/Linux實際缺件重現/check-source/docs build通過，固定helper已更新、systemd active。未續跑/改快照/重部署產品；需經審閱SIT檔納入來源並提交、核對manifest後才能解卡。
+
+- **部署通道修正（2026-10-19，Codex）**：實作位於 D:/agent_team-dynamicapi，分支 codex/direct-ssh-deployment（f79f142／59bf341，未推送）。已改 Agent VM → SSH 公鑰 → dev，bestpartner JAR45879bfd…/PID8844，安全部署任務與工作區比對通過；本機 systemd 執行器 active/enabled，不再啟動 Windows broker。兩VM共享NAT172.30.46.0/24，Agent.10/dev.20。實測health曾HTTP200；收尾dev heartbeat停止，ACPI無效，使用者已明確核准強制重啟並執行，恢復後新health d443693b…與Windows8088均HTTP200；核心RCU/watchdog警告根因待查。#1046舊skill快照須新任務承接，載入新規則。完整最新紀錄見該worktree .ai/progress.md。
+
+- **dynamic-api VM 安裝進度（2026-10-17 晚，Claude Code，用量上限中斷）**：分支 feature/dynamic-api-instance commit b57b429（worktree D:/agent_team-dynamicapi，未推送、未合併 main）。VM 已完成：來源 ~/ai-team-source-b57b429（tar SHA256 f31a46bc… 兩端一致，check-source 通過）；install-app 到 ~/ai-team-dynamic-api（JAR ea7781a2…，664 項 0 失敗／錯誤、11 略過）；repo clone 在 ~/ai-team-dynamic-api/dynamic-api（非 shallow，master 3f638e3）；team.env（INSTANCE=dynamicapi）與 env.sh 非機密值已寫、權限 600、VM 上 --validate-team 通過（revision c68a5591…）。**未做**：步驟 6 預熱與 Linux 實測（暫存 clone 已在 ~/dynamic-api-prewarm-20261017，尚未建置）；之後使用者填 7 個 xapp＋7 個 xoxb＋GITHUB token，再啟動。服務未啟動，其他兩個實例未動。
+- **新增 dynamic-api 專案實例（2026-10-17，Claude Code，未部署、未 commit）**：teams/dynamic-api.json、deploy/agent-manifests/dynamic-api/、文件與 check-source 已完成並驗證；Slack 公開頻道 #dynamic-api 已建立（C0CA5CXTUHJ）。詳見 progress。7 個 Slack App 已建立、安裝並加入頻道（App ID 見 slack-agent-apps）。下一步：使用者自己產生 7 個 App-Level Token（connections:write）；取得授權後在 Agent VM 安裝 ~/ai-team-dynamic-api（INSTALL §5.1，AI_TEAM_INSTANCE=dynamicapi，AI_TEAM_CHANNEL_ID=C0CA5CXTUHJ），預熱 Gradle／npm 快取，實測後端測試與前端建置。檔案目前在 phase1 分支的工作樹，跟其他 session 未 commit 的修改混在一起。
+
+- **第一階段：角色諮詢與共享看板（2026-10-17，Claude Code，分支 feature/team-collaboration-phase1，未部署）**：使用者核准計畫（目標是走向自主協作的 AI 團隊）。#1044 系列已先 commit 到 main 06ab560（未 push）。Consultation／TeamBoard 已完成並接上 FlowEngine 與 ConfiguredExecutor，bestpartner.json 已啟用；flow 測試 241 項通過，docs build 通過。下一步：確認完整 Maven 結果、commit 分支；Linux 隔離 mvn verify 與部署要另外取得授權；部署後在 bestpartner 用小需求做真實端對端驗證（Slack 出現諮詢問答、接續不計次、核准訊息帶看板摘要）。後續階段（PM 動態拆工、平行執行）尚未規劃。
 
 - **#1043 文件站清理指令修正（2026-10-16，Claude Code，已部署 bestpartner）**：qa-docs-clean 從 `rm -rf`（Codex 會拒絕）改成 `find target/qa-docs -mindepth 1 -delete`。新配置 revision d6821d93…，PID37280，備份 clean-op-backup.wWMxrR，各項檢查通過。#1044 實測：清理到建置的六個步驟全部 exit 0，但 target/ 沒被忽略，副本的 package-lock.json 被判成限寫越權，任務停在 AWAIT_HUMAN。之後改成系統層方案（2026-10-17 已部署，JAR 1183a100…；bestpartner PID49119、spring-starters PID52345）：每個工作區階段會自動把操作的 writes 輸出目錄寫進 .git/info/exclude。ad5b510 已撤回，#1044 工作區已補上排除區塊、工作樹乾淨。2026-10-17 又上線兩項：沙箱不鎖輸出目錄（解決 find 遇到 Device busy），以及載入配置時擋 rm（JAR b9be907b…，bestpartner PID71506、spring-starters PID74387）。#1044 之後在 10:20 因獨立驗證超時再次停止。已部署專用依賴快取與超時辨識（JAR f922d222…，bestpartner PID80842、spring-starters PID83653）。快取預熱後實測獨立驗證 23 分鐘、QA 全過。12:08 分流因 handoff 角色名稱格式停下，已部署容錯與重送（JAR 91aa82e8…，bestpartner PID97347、spring-starters PID100186）。下一步：使用者在 #1044 按繼續執行；使用者決定第 2 項計畫（依變更檔案只跑相關的獨立驗證），以及 #1044 要繼續執行還是開新任務。QA 另外找到兩個內容問題（清除警告放在指令後面、四頁缺 title），會在新任務修。本機修改未 commit。
 

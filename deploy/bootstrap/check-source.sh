@@ -25,4 +25,8 @@ for role in PM ARCHITECTURE BACKEND QA CODE_REVIEW INFRASTRUCTURE; do
  done
 done
 for role in pm architecture backend qa code-review infrastructure; do test -s "deploy/agent-manifests/$role.yaml"; done
-echo 'PASS：Bash 語法、管線與角色對話 prompt/schema、五個 legacy 角色及 Infrastructure Slack 設定／manifest 齊全。'
+test -s orchestrator/teams/dynamic-api.json
+for role in main pm architecture backend qa code-review infrastructure; do
+ test -s "deploy/agent-manifests/dynamic-api/$role.yaml" || { echo "缺少 dynamic-api 的 $role manifest"; exit 1; }
+done
+echo 'PASS：Bash 語法、管線與角色對話 prompt/schema、五個 legacy 角色、Infrastructure 及 dynamic-api 實例的 Slack 設定／manifest 齊全。'

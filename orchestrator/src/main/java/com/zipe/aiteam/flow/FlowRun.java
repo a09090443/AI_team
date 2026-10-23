@@ -1,5 +1,6 @@
 package com.zipe.aiteam.flow;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.*;
 
@@ -109,6 +110,24 @@ public class FlowRun {
     public Map<String,OperationPreflight.Evidence> executionContexts = new LinkedHashMap<>();
     public Map<String,PlanApproval> planApprovals = new LinkedHashMap<>();
     public List<TeamDefinition.Snapshot> migrationHistory = new ArrayList<>();
+    /*
+     * 角色諮詢與共享看板（collaboration 未設定時永遠是空值）。空值不寫入 JSON：
+     * 沒用到協作的任務，快照仍能被不認得這些欄位的舊 JAR 讀取，回滾時不必還原 DB。
+     */
+    /** 團隊共享看板：B-<n> → 項目；只增不刪，結案以狀態表示。 */
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public Map<String,TeamBoard.Entry> board = new LinkedHashMap<>();
+    @JsonInclude(JsonInclude.Include.NON_DEFAULT)
+    public int boardSeq;
+    /** 已完成的諮詢問答，保留全部紀錄；依節點與執行次數取用。 */
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public List<Consultation.Answer> consultations = new ArrayList<>();
+    /** 尚未答完的一輪諮詢；額度中斷續跑時先補答再接回提問者。 */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public Consultation.Pending pendingConsult;
+    /** 任務生命週期已使用的諮詢題數，不因續跑或格式重送退還。 */
+    @JsonInclude(JsonInclude.Include.NON_DEFAULT)
+    public int consultUsed;
     public FlowRun() {}
     public FlowRun(TeamDefinition.Snapshot snapshot) { this.snapshot = snapshot; this.node = snapshot.definition().entry(); }
 }

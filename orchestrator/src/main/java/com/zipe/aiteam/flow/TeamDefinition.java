@@ -1,11 +1,22 @@
 package com.zipe.aiteam.flow;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 import java.util.Map;
 
 /** 管理者配置，不接受 agent 修改。角色 ID 不帶任何流程語意。 */
 public record TeamDefinition(int version, String id, Project project, Map<String, Role> roles,
-                             String entry, int maxTransitions, Map<String, Node> nodes) {
+                             String entry, int maxTransitions, Map<String, Node> nodes,
+                             @JsonInclude(JsonInclude.Include.NON_NULL) Collaboration collaboration) {
+    public TeamDefinition(int version, String id, Project project, Map<String, Role> roles,
+                          String entry, int maxTransitions, Map<String, Node> nodes) {
+        this(version, id, project, roles, entry, maxTransitions, nodes, null);
+    }
+    /**
+     * 角色諮詢與共享看板的上限；未設定代表整個功能關閉（舊快照一律如此）。
+     * 序列化時省略 null，未啟用的配置 revision 與舊版逐字相同。見 {@link Consultation}、{@link TeamBoard}。
+     */
+    public record Collaboration(int consultPerVisit, int consultPerTask, int questionsPerRound, int boardMaxEntries) {}
     public record Project(String name, String repositoryEnv, String baseBranch,
                           String buildInstructions, String testInstructions, List<String> protectedPaths, List<String> cachePaths, List<String> requiredTools,
                           Verification verification, Map<String, Operation> operations, boolean requirePlanApproval,
@@ -79,7 +90,15 @@ public record TeamDefinition(int version, String id, Project project, Map<String
                        boolean workspace, List<String> writablePaths, String plan,
                        String next, String blocked, Map<String, String> routes,
                        List<String> requires, int maxVisits, int timeoutSeconds, int maxTurns, String instructions,
-                       boolean localTestNetwork, Fallback protectedPathFallback, List<String> candidateRoles, List<String> skills) {
+                       boolean localTestNetwork, Fallback protectedPathFallback, List<String> candidateRoles, List<String> skills,
+                       @JsonInclude(JsonInclude.Include.NON_NULL) List<String> consultRoles) {
+        public Node(Kind kind, String role, String schema, Scope scope, Gate gate, boolean workspace,
+                    List<String> writablePaths, String plan, String next, String blocked, Map<String,String> routes,
+                    List<String> requires, int maxVisits, int timeoutSeconds, int maxTurns, String instructions,
+                    boolean localTestNetwork, Fallback protectedPathFallback, List<String> candidateRoles, List<String> skills) {
+            this(kind, role, schema, scope, gate, workspace, writablePaths, plan, next, blocked, routes,
+                    requires, maxVisits, timeoutSeconds, maxTurns, instructions, localTestNetwork, protectedPathFallback, candidateRoles, skills, null);
+        }
         public Node(Kind kind, String role, String schema, Scope scope, Gate gate, boolean workspace,
                     List<String> writablePaths, String plan, String next, String blocked, Map<String,String> routes,
                     List<String> requires, int maxVisits, int timeoutSeconds, int maxTurns, String instructions,
@@ -110,7 +129,7 @@ public record TeamDefinition(int version, String id, Project project, Map<String
         /** 改派時用：同一個節點契約，換成另一個角色執行。 */
         public Node withRole(String other) {
             return new Node(kind, other, schema, scope, gate, workspace, writablePaths, plan, next, blocked, routes,
-                    requires, maxVisits, timeoutSeconds, maxTurns, instructions, localTestNetwork, protectedPathFallback, candidateRoles, skills);
+                    requires, maxVisits, timeoutSeconds, maxTurns, instructions, localTestNetwork, protectedPathFallback, candidateRoles, skills, consultRoles);
         }
     }
     /** 此處只保存檔案內容與環境變數名稱，不保存 token 值。 */
