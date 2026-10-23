@@ -7,7 +7,7 @@
 - 2 localhost：VM 實測根因為 Codex network proxy 清空 NO_PROXY 且 NODE_USE_ENV_PROXY=1，Node fetch 連 localhost 被 proxy 拒；shell_environment_policy 被覆蓋，只有指令本身的 env 有效（codex-cli 0.156.1 exec 實測可通、外連仍擋）。localTestNetwork 節點的固定操作加 `env NO_PROXY=…` 前綴，預檢新增 HTTP 探測。驗收提示列出系統收據已通過的指令要求引用、不重跑；bestpartner testInstructions 同步。
 - 3＋4 沿用前次結果：新增 flow/ReceiptReuse 與 FlowRun.priorReceipts；主線節點在配置、HEAD、前置結果相同且需求沒變／只刪減、沒有新問題時直接沿用。限制：需求重訂時措辭改寫會使基準摘要不同，計畫與實作仍會重跑，實際節省小於原估。
 - 5 驗證範圍：bestpartner qaOnlyPaths 加 docs/docker/**（compose 檔不再觸發後端測試）。
-- 測試：新增 Traceability 延後驗收、ConfiguredExecutor NO_PROXY 前綴與收據提示、VerificationPlan 以實際 bestpartner 配置、FlowEngine 沿用（需求未變、計畫未變、HEAD 改變）共 6 項，既有 3 項測試的 harness 改為修復產生新 commit／重訂計畫內容不同。本機完整 809 項僅 3 項 Windows 已知環境失敗。
+- 測試：新增 Traceability 延後驗收、ConfiguredExecutor NO_PROXY 前綴與收據提示、VerificationPlan 以實際 bestpartner 配置、FlowEngine 沿用（需求未變、計畫未變、HEAD 改變）共 6 項，既有 3 項測試的 harness 改為修復產生新 commit／重訂計畫內容不同。本機完整 809 項僅 3 項 Windows 已知環境失敗。Linux（/home/agent/deploy-8610704）check-source 通過、mvn -B clean verify 809 項 0 失敗／錯誤、12 略過，候選 JAR 3bca71e9…（未部署，full-build.log 可直接供部署腳本使用）。
 - 已核對的文件：engineering-workflow、failure-reporting、local-test-capabilities、configurable-team、data-model、agent/configuration、agent/system-map、agent/operations（無需改）、catalog、project-tree。已修正：前述除 operations 外全部。docs build 通過。
 
 ## 2026-10-23 負責人裁定待決問題直接推進到審查／發布（Claude Code，commit 2e61dab，已部署 bestpartner）
