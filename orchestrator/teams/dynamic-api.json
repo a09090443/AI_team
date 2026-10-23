@@ -571,6 +571,7 @@
   },
   "entry": "intake",
   "sharedInstructions": "prompts/shared.md",
+  "collaboration": { "consultPerVisit": 2, "consultPerTask": 12, "questionsPerRound": 2, "boardMaxEntries": 100 },
   "maxTransitions": 24,
   "nodes": {
     "intake": {
@@ -596,6 +597,7 @@
     },
     "design": {
       "kind": "AGENT",
+      "consultRoles": ["builder","tester"],
       "role": "architect",
       "schema": "schemas/analysis.json",
       "scope": "READ_ONLY",
@@ -624,6 +626,7 @@
     "plan": {
       "instructions": "prompts/plan.md",
       "kind": "AGENT",
+      "consultRoles": ["architect","builder","infrastructure"],
       "role": "tester",
       "schema": "schemas/plan.json",
       "scope": "READ_ONLY",
@@ -643,6 +646,7 @@
     },
     "implementation": {
       "kind": "AGENT",
+      "consultRoles": ["architect","tester"],
       "role": "builder",
       "schema": "schemas/implementation.json",
       "scope": "WORKSPACE",
@@ -674,6 +678,7 @@
     },
     "verification": {
       "kind": "AGENT",
+      "consultRoles": ["architect","builder"],
       "role": "tester",
       "schema": "schemas/verification.json",
       "scope": "LIMITED",
@@ -703,6 +708,7 @@
     },
     "review": {
       "kind": "AGENT",
+      "consultRoles": ["architect"],
       "role": "inspector",
       "schema": "schemas/review.json",
       "scope": "READ_ONLY",
@@ -723,6 +729,7 @@
     "triage": {
       "instructions": "prompts/triage.md",
       "kind": "AGENT",
+      "consultRoles": ["architect","builder","tester","infrastructure"],
       "role": "coordinator",
       "schema": "schemas/analysis.json",
       "scope": "READ_ONLY",

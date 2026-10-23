@@ -52,6 +52,15 @@ class TeamCatalogTest {
             assertThat(definition.nodes().get("implementation").requires()).as(team).contains("plan");
         }
     }
+    @Test void deployedTeamsEnableCollaborationWhileNodeExampleStaysOptOut() throws Exception {
+        for (String team : List.of("bestpartner", "dynamic-api", "spring-starters")) {
+            var definition = mapper.readValue(Files.readString(Path.of("teams/" + team + ".json")), TeamDefinition.class);
+            TeamCatalog.validate(definition);
+            assertThat(definition.collaboration()).as(team).isNotNull();
+            assertThat(definition.nodes().get("triage").consultRoles()).as(team).isNotEmpty();
+        }
+        assertThat(mapper.readValue(Files.readString(Path.of("teams/node-web.json")), TeamDefinition.class).collaboration()).isNull();
+    }
     @Test void sharedInstructionsAreFrozenForEveryBundledTeamAndOmittedWhenUnset() throws Exception {
         Files.createDirectories(tmp.resolve(".git"));
         for (String team : List.of("bestpartner", "dynamic-api", "spring-starters", "node-web")) {

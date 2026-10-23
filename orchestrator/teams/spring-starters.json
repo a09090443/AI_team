@@ -86,6 +86,7 @@
       "runtime": "claude-code",
       "model": "opus",
       "prompt": "prompts/design.md",
+      "capabilities": "應用架構、模組與 starter 邊界、API、相依方向與向後相容性設計；唯讀分析。",
       "botTokenEnv": "SLACK_BOT_TOKEN_ARCHITECTURE",
       "appTokenEnv": "SLACK_APP_TOKEN_ARCHITECTURE",
       "tools": [
@@ -99,6 +100,7 @@
       "runtime": "claude-code",
       "model": "opus",
       "prompt": "prompts/implement.md",
+      "capabilities": "Java／Spring Boot starter 程式、設定、測試與文件實作；可在工作區修改並依契約建置測試，也承接文件站維護。",
       "botTokenEnv": "SLACK_BOT_TOKEN_BACKEND",
       "appTokenEnv": "SLACK_APP_TOKEN_BACKEND",
       "tools": [
@@ -124,6 +126,7 @@
       "model": "gpt-5.6-sol",
       "reasoningEffort": "medium",
       "prompt": "prompts/verify.md",
+      "capabilities": "測試計畫、反例設計與驗收：依需求與固定操作判斷要測哪些情境、如何驗證、證據是否足夠。",
       "botTokenEnv": "SLACK_BOT_TOKEN_QA",
       "appTokenEnv": "SLACK_APP_TOKEN_QA",
       "tools": [
@@ -159,6 +162,7 @@
   },
   "entry": "intake",
   "sharedInstructions": "prompts/shared.md",
+  "collaboration": { "consultPerVisit": 2, "consultPerTask": 12, "questionsPerRound": 2, "boardMaxEntries": 100 },
   "maxTransitions": 24,
   "nodes": {
     "intake": {
@@ -184,6 +188,7 @@
     },
     "design": {
       "kind": "AGENT",
+      "consultRoles": ["builder","tester"],
       "role": "architect",
       "schema": "schemas/analysis.json",
       "scope": "READ_ONLY",
@@ -207,6 +212,7 @@
     "plan": {
       "instructions": "prompts/plan.md",
       "kind": "AGENT",
+      "consultRoles": ["architect","builder"],
       "role": "tester",
       "schema": "schemas/plan.json",
       "scope": "READ_ONLY",
@@ -226,6 +232,7 @@
     },
     "implementation": {
       "kind": "AGENT",
+      "consultRoles": ["architect","tester"],
       "role": "builder",
       "schema": "schemas/implementation.json",
       "scope": "WORKSPACE",
@@ -245,6 +252,7 @@
     },
     "verification": {
       "kind": "AGENT",
+      "consultRoles": ["architect","builder"],
       "role": "tester",
       "schema": "schemas/verification.json",
       "scope": "LIMITED",
@@ -280,6 +288,7 @@
     },
     "review": {
       "kind": "AGENT",
+      "consultRoles": ["architect"],
       "role": "inspector",
       "schema": "schemas/review.json",
       "scope": "READ_ONLY",
@@ -300,6 +309,7 @@
     "triage": {
       "instructions": "prompts/triage.md",
       "kind": "AGENT",
+      "consultRoles": ["architect","builder","tester"],
       "role": "coordinator",
       "schema": "schemas/analysis.json",
       "scope": "READ_ONLY",
