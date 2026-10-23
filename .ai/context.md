@@ -27,7 +27,7 @@
 
 ## 正在進行
 
-- **phase1 與 main 合併中（2026-10-23，Claude Code，用量上限中斷）**：衝突已解並在分支提交合併 commit；Windows 上完整 Maven 711 項有 4 項失敗（symlink 權限、/bin/sh、逾時訊息、WorkspaceManager），疑為 Windows 環境問題，需在 Linux 重跑確認後才把分支併入 main 並 push。dynamic-api 配置以 main 版為準。
+- **phase1 已併入 main（2026-10-23，Claude Code）**：使用者要求不等 Linux 驗證直接併入並 push。Windows 完整 Maven 711 項有 4 項失敗（OperationContractTest symlink 權限、QuotaExceededTest 找不到 /bin/sh、RuntimeDiagnosticsTest 逾時訊息、WorkspaceManagerTest 未提交修改），疑為 Windows 環境問題，**尚未在 Linux 確認**；下一步在 Linux 隔離環境重跑。dynamic-api 配置以 main 版為準；諮詢功能未部署到任何 VM。
 
 - **自主部署限制已取消（2026-10-20，Codex）**：依使用者明確指示取消逐版source-manifest人工核准，這項指示取代舊manifest下一步。實作與文件在D:/agent_team-dynamicapi，codex/direct-ssh-deployment commit a118e37，未推送。dev固定入口/target.json、Agent工具/提示/skill/service-context已更新，bestpartner新配置d1334fe3…/PID10731。Python36（Windows/Linux）、Java75、check-source/docs build通過；#1048實際來源a0c53284…無需清單可通過。任務表/工作區完整一致，health ab1c03e9…及8088 HTTP200。#1048仍AWAIT_HUMAN，可原串續跑，不需管理者更新清單或新任務；未發Slack訊息或重部署產品。完整備份及證據見該worktree progress。
 - **#1047 部署卡點（2026-10-19，Codex）**：AWAIT_HUMAN，SSH prepare/diagnose成功；HEAD2216d6d缺少版控docs/docker/sit，start在SSH前git archive失敗。已修正來源缺件收據（090d5f4，D:/agent_team-dynamicapi，未推送），Python33項/Linux實際缺件重現/check-source/docs build通過，固定helper已更新、systemd active。未續跑/改快照/重部署產品；需經審閱SIT檔納入來源並提交、核對manifest後才能解卡。
