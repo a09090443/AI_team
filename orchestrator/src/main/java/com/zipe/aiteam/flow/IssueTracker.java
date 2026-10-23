@@ -154,7 +154,14 @@ public final class IssueTracker {
             next.put(id, stored);
         }
         if (next.size() > 100 || JSON.valueToTree(next).toString().length() > 96000) return "問題清單超出保存上限，禁止遺漏項目";
+        String before = revision(flow);
+        boolean decisionNotesOnly = decisionNotesOnly(flow.issueInventory, next);
         flow.issueInventory.clear(); flow.issueInventory.putAll(next);
+        String after = revision(flow);
+        if (decisionNotesOnly && !after.equals(before)) {
+            flow.issueRevisionAliases.put(after, before);
+            while (flow.issueRevisionAliases.size() > 50) flow.issueRevisionAliases.remove(flow.issueRevisionAliases.keySet().iterator().next());
+        }
         // Bind this report to the merged version, not the model's unchecked assertion.
         ((ObjectNode) report).put("issue_revision", revision(flow));
         return null;
@@ -206,14 +213,77 @@ public final class IssueTracker {
      */
     static boolean checkedRevisionStillValid(FlowRun flow, String checked) {
         if (checked == null || checked.isBlank()) return false;
-        if (revision(flow).equals(checked)) return true;
-        List<Map.Entry<String, JsonNode>> items = new ArrayList<>(flow.issueInventory.entrySet());
+        if (validFor(flow.issueInventory, checked) || aliasedTo(flow, revision(flow), checked)) return true;
+        // 負責人裁定移出範圍的項目，還原成裁定前的內容再比一次（#1055）：裁定本身不是新的待處理變動。
+        Map<String, JsonNode> beforeDecisions = beforeOwnerDecisions(flow);
+        return beforeDecisions != null && (validFor(beforeDecisions, checked)
+                || aliasedTo(flow, Traceability.digest(JSON.valueToTree(beforeDecisions)), checked));
+    }
+    /** 沿著別名往回找：中間每一步都只是待決項目的說明更新。 */
+    private static boolean aliasedTo(FlowRun flow, String revision, String checked) {
+        String current = revision;
+        for (int step = 0; step < 50 && current != null; step++) {
+            current = flow.issueRevisionAliases.get(current);
+            if (checked.equals(current)) return true;
+        }
+        return false;
+    }
+    /** 項目集合與順序不變，改動的只有既有待決項目（仍是待決、需求對應不變）的 evidence／reason 等說明。 */
+    private static boolean decisionNotesOnly(Map<String, JsonNode> before, Map<String, JsonNode> after) {
+        if (!new ArrayList<>(before.keySet()).equals(new ArrayList<>(after.keySet()))) return false;
+        for (var entry : after.entrySet()) {
+            JsonNode previous = before.get(entry.getKey()), item = entry.getValue();
+            if (previous.equals(item)) continue;
+            if (!"DECISION".equals(previous.path("scope").asText()) || !"DECISION".equals(item.path("scope").asText())
+                    || !previous.path("requirement_ids").equals(item.path("requirement_ids"))
+                    || !previous.path("description").equals(item.path("description"))) return false;
+        }
+        return true;
+    }
+    private static boolean validFor(Map<String, JsonNode> inventory, String checked) {
+        if (Traceability.digest(JSON.valueToTree(inventory)).equals(checked)) return true;
+        List<Map.Entry<String, JsonNode>> items = new ArrayList<>(inventory.entrySet());
         for (int end = items.size(); end > 0 && !actionable(items.get(end - 1).getValue()); end--) {
             Map<String, JsonNode> prefix = new LinkedHashMap<>();
             for (var item : items.subList(0, end - 1)) prefix.put(item.getKey(), item.getValue());
             if (Traceability.digest(JSON.valueToTree(prefix)).equals(checked)) return true;
         }
         return false;
+    }
+    private static Map<String, JsonNode> beforeOwnerDecisions(FlowRun flow) {
+        Map<String, JsonNode> before = new LinkedHashMap<>(flow.issueInventory);
+        boolean reverted = false;
+        for (var entry : flow.issueInventory.entrySet()) {
+            JsonNode decision = flow.issueEvidence.get(OWNER_DECISION + entry.getKey());
+            if (decision == null || actionable(entry.getValue()) || !decision.has("previous")) continue;
+            before.put(entry.getKey(), decision.get("previous"));
+            reverted = true;
+        }
+        return reverted ? before : null;
+    }
+
+    /** issueEvidence 的鍵前綴：負責人裁定紀錄（裁定前的原項目、裁定人、時間）。 */
+    static final String OWNER_DECISION = "owner-decision:";
+
+    /**
+     * 驗收負責人裁定待決問題移出本任務範圍。描述不動，保留在清單上；原項目存進 issueEvidence 供稽核與版本比對。
+     * 權限、授權碼與時機由 {@link OwnerIssueDecision} 檢查。
+     */
+    static void resolveByOwner(FlowRun flow, String id, String user, String at) {
+        JsonNode item = flow.issueInventory.get(id);
+        if (item == null || !"DECISION".equals(item.path("scope").asText()))
+            throw new IllegalArgumentException("問題 " + id + " 不是待決項目");
+        ObjectNode record = JSON.createObjectNode();
+        record.set("previous", item.deepCopy());
+        record.put("user", user).put("at", at);
+        ObjectNode resolved = item.deepCopy();
+        resolved.put("scope", "EXCLUDED");
+        resolved.remove("decision_supplements");
+        String reason = "需求負責人 <@" + user + "> 於 " + at + " 裁定移出本任務範圍，保留在清單供後續任務處理。原待決理由："
+                + item.path("reason").asText();
+        resolved.put("reason", reason.length() > 4000 ? reason.substring(0, 4000) : reason);
+        flow.issueInventory.put(id, resolved);
+        flow.issueEvidence.put(OWNER_DECISION + id, record);
     }
     public static String checksReason(JsonNode report, FlowRun flow) {
         if (!checkedRevisionStillValid(flow, report.path("issue_revision").asText())) return "問題清單已變更，須重新逐項驗證";
@@ -222,6 +292,8 @@ public final class IssueTracker {
             String id = check.path("id").asText();
             JsonNode item = flow.issueInventory.get(id);
             if (item == null || !checked.add(id) || !text(check, "evidence")) return "問題查核 ID／證據無效：" + id;
+            // 已移出範圍或只是觀察的項目不要求通過；查核當時它可能還是待決（#1055 負責人事後裁定排除）。
+            if (!actionable(item)) continue;
             if (!"PASS".equals(check.path("status").asText()) || "DECISION".equals(item.path("scope").asText()))
                 return "問題尚未解決或待必要決策：" + id;
         }

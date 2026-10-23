@@ -32,7 +32,7 @@ public class SlackListener {
     /** 頻道頂層的「#編號 指令」。#1054：「#1053 檢視配置更新」打在頂層、少了「補充」，被開成新任務。 */
     static final Pattern BARE_COMMAND = Pattern.compile("^#(\\d+)\\s+([\\s\\S]+)$");
     static final java.util.List<String> ROUTABLE_COMMANDS = java.util.List.of(
-            "檢視配置更新", "核准配置更新", "狀態", "檢視完整報告", "檢視測試計畫", "核准需求變更", "核准測試計畫");
+            "檢視配置更新", "核准配置更新", "狀態", "檢視完整報告", "檢視測試計畫", "核准需求變更", "核准測試計畫", "負責人裁定問題");
     static boolean routable(String command) {
         String value = command.trim();
         return ROUTABLE_COMMANDS.stream().anyMatch(c -> value.equals(c) || value.startsWith(c + " "));

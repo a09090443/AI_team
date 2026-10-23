@@ -414,7 +414,7 @@ public class FlowEngine {
                             ? workspaces.headSha(task.id()) : null;
                     String fingerprint = NodeInput.fingerprint(flow, node, inputHead);
                     boolean repeatedInput = NodeInput.repeated(flow, fingerprint);
-                    boolean overLimit = flow.transitions >= flow.snapshot.definition().maxTransitions()
+                    boolean overLimit = FlowLimits.transitionsExhausted(flow)
                             || (repeatedInput && flow.repeats.getOrDefault(flow.node, 0) >= node.maxVisits());
                     usedAutomaticHandoff = null;
                     if (overLimit && !recoveryPermitted) {
@@ -715,6 +715,8 @@ public class FlowEngine {
                         next = node.routes().get(route);
                     } else next = node.next();
                 } else {
+                    // 裁定後的前進額度只給一路通過的情況；任何受阻都照常停下。
+                    OwnerIssueDecision.clearForward(flow);
                     flow.lastBlockReason = Diagnostics.clip("節點 " + flow.node + "：" + block
                             + "\n" + SlackReport.render(report), 4500);
                     flow.blockedFindings.put(flow.node, report);
@@ -1765,6 +1767,47 @@ public class FlowEngine {
             }
             return;
         }
+        if (feedback != null && feedback.startsWith(OwnerIssueDecision.COMMAND)) {
+            if (from != Task.State.AWAIT_HUMAN) return;
+            String[] parts = feedback.trim().split("\\s+");
+            try {
+                if (parts.length != 4 || !parts[0].equals(OwnerIssueDecision.COMMAND) || !parts[2].equals(OwnerIssueDecision.EXCLUDE))
+                    throw new IllegalArgumentException("格式：" + OwnerIssueDecision.COMMAND + " <問題 ID> " + OwnerIssueDecision.EXCLUDE + " <授權碼>");
+                requireWorkspace(task, flow);
+                String head = workspaces.headSha(task.id());
+                String description = flow.issueInventory.containsKey(parts[1])
+                        ? flow.issueInventory.get(parts[1]).path("description").asText() : parts[1];
+                var applied = OwnerIssueDecision.apply(flow, parts[1], parts[3], user, head,
+                        workspaces.clean(task.id()), java.time.Instant.now().toString());
+                if (!store.claimState(task.id(), from, Task.State.RESUME_QUEUED)) return;
+                task.state(Task.State.RESUME_QUEUED);
+                store.saveFlow(task.id(), flow);
+                var mode = applied.mode();
+                audit.record(task.id(), user, AuditLog.ACTION_RECOVERY, "需求負責人裁定問題 " + parts[1] + " 移出本任務範圍；"
+                        + (!applied.proceed() ? "仍有其他待決問題，任務繼續等待"
+                        : mode == OwnerIssueDecision.Mode.REUSE ? "沿用節點 " + applied.node() + " 在 commit=" + head + " 已通過的結果，接著執行 " + flow.node
+                        : mode == OwnerIssueDecision.Mode.WAIVE ? "節點 " + applied.node() + " 只剩未核實事項，待負責人以開 PR 放行"
+                        : "節點 " + applied.node() + " 的結果引用舊問題清單，在 commit=" + head + " 只重跑該節點")
+                        + "；未重設任何計數，PR 仍需真人核准");
+                String decided = "已依你的裁定把「" + Diagnostics.clip(description, 200) + "」移出本任務範圍（保留在問題清單，供後續任務處理）。";
+                if (!applied.proceed() || mode == OwnerIssueDecision.Mode.WAIVE) {
+                    if (store.claimState(task.id(), Task.State.RESUME_QUEUED, Task.State.AWAIT_HUMAN)) task.state(Task.State.AWAIT_HUMAN);
+                    postHumanOptions(task, flow, decided + (!applied.proceed() ? "還有其他待決問題要決定，任務繼續停著。"
+                            : "\n「" + applied.node() + "」其他都已通過，只剩這個環境無法核實的事項；按「開 PR」由你放行，"
+                                    + "系統會補跑審查後直接開 PR，不重跑需求到驗收。"), true);
+                    return;
+                }
+                slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id() + " " + decided
+                        + (mode == OwnerIssueDecision.Mode.REUSE ? "\n同一個 commit 的驗收結果沿用，不重跑需求到驗收的各階段；接著執行「" + flow.node + "」"
+                        : "\n驗收之後問題清單又被更新過，舊的驗收結果不能直接沿用；在同一個 commit 只重跑「" + flow.node
+                                + "」，不重跑需求到實作")
+                        + "，通過後仍要你核准 PR。沒有重設任何次數。");
+                queue(enqueue, task, () -> run(store.find(task.id()).orElseThrow()));
+            } catch (Exception e) {
+                tellUser(task, "", e);
+            }
+            return;
+        }
         if (feedback != null && feedback.startsWith("核准人工修復重驗")) {
             if (from != Task.State.AWAIT_HUMAN) return;
             String[] parts=feedback.trim().split("\\s+");
@@ -2059,6 +2102,8 @@ public class FlowEngine {
                     current.activeNode = null;
                     current.ownerPublishBy = user;
                     AutomaticHandoff.clear(current);
+                    // 負責人的開 PR 指令是新的真人輸入：補跑審查不被已用完的換手次數擋住（只到 PR 核准為止）。
+                    OwnerIssueDecision.grantForward(current, current.node);
                     store.saveFlow(task.id(), current);
                     run(store.find(task.id()).orElseThrow());
                     return;

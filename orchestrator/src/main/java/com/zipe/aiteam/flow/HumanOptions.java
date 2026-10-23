@@ -125,7 +125,8 @@ public final class HumanOptions {
             else options.add(new Option(SUCCESSOR, "承接成新任務",
                     "開一個新任務，從這個任務的最新 commit 接著做，並帶入已做過的決定；次數重新計算，"
                             + "需求、測試計畫與 PR 仍要重新核准。", SUCCESSOR_COMMAND));
-            // 開 PR 不經過任何 agent 節點，換手次數用完也不受影響。
+            // 開 PR 與裁定待決問題都只往 PR 核准走，換手次數用完也能用（往前走的步數另給有界額度）。
+            options.addAll(issueDecisionOptions(flow, ws));
             String publish = publishHint(flow, ws);
             if (publish != null) options.add(new Option(PUBLISH, "開 PR", publish, PUBLISH_COMMAND));
             if (briefReports) options.add(new Option(REPORT, "看完整報告",
@@ -150,6 +151,9 @@ public final class HumanOptions {
                     STATUS_COMMAND));
 
         // agent 提出的選擇題放最前面：這是對方停下來最主要要回答的事。卡在上限時選了也不會重新執行。
+        // 驗收只差待決問題時，系統直接提供裁定按鈕，放在 agent 的選擇題前面：
+        // 不必借道「核准需求變更」整輪重跑（#1055）。卡在上限時也能用。
+        options.addAll(issueDecisionOptions(flow, ws));
         if (!stuck) options.addAll(decisionOptions(flow, ws));
 
         // 開 PR 不重跑任何 agent 節點，卡在上限也能用。agent 的 publish 選項已經是同一個指令時不重複。
@@ -226,6 +230,32 @@ public final class HumanOptions {
     }
 
     public static final String DECISION = "DECISION";
+    public static final String ISSUE_DECISION = "ISSUE_DECISION";
+
+    /** 驗收在同一個乾淨 commit 只因待決問題被擋：每個待決問題一顆「移出本任務範圍」按鈕（{@link OwnerIssueDecision}）。 */
+    static List<Option> issueDecisionOptions(FlowRun flow, Workspace ws) {
+        var candidate = OwnerIssueDecision.candidate(flow, ws.head(), ws.clean());
+        if (candidate == null) return List.of();
+        String next = flow.snapshot.definition().nodes().get(candidate.node()).next();
+        String effect = switch (candidate.mode()) {
+            case REUSE -> "沿用已通過的驗收，接著執行「" + next + "」；不重跑需求到驗收的各階段";
+            case WAIVE -> "其他都已通過、只剩這個環境無法核實的事項，裁定後再按「開 PR」由你放行；不重跑需求到驗收的各階段";
+            case RERUN -> "在同一個 commit 只重跑「" + candidate.node() + "」（驗收之後問題清單又被更新過，舊結果不能直接沿用），通過後接著「"
+                    + next + "」；不重跑需求到實作";
+        };
+        List<Option> result = new ArrayList<>();
+        for (String id : candidate.issues()) {
+            String description = flow.issueInventory.get(id).path("description").asText();
+            result.add(new Option(ISSUE_DECISION, "移出範圍：" + clip(description, 20),
+                    "「" + clip(description, 200) + "」\n「" + candidate.node() + "」在同一個 commit 只因這個待決問題擋下。按下去由你裁定它不在本任務範圍"
+                            + "（保留在問題清單，標明是你的決定，供後續任務處理），" + effect + "，PR 仍要你核准。只有需求負責人可以按。"
+                            + (flow.changeAuthorized || flow.changeTarget != null ? "尚未執行的需求變更核准會由這個裁定取代。" : "")
+                            + (candidate.issues().size() > 1 ? "還有其他待決問題時要逐一決定。" : ""),
+                    OwnerIssueDecision.COMMAND + " " + id + " " + OwnerIssueDecision.EXCLUDE + " "
+                            + OwnerIssueDecision.token(flow, id, ws.head())));
+        }
+        return result;
+    }
 
     /**
      * 目前節點最新報告裡的 human_decision 選項。
@@ -385,6 +415,8 @@ public final class HumanOptions {
             else
                 out.append("\n目前沒有可用的恢復方式。若 agent 回報需要調整配置、環境或權限，要由管理者修正並部署新配置；")
                    .append("部署後按「重新整理選項」，就會出現「檢視配置更新」。");
+            if (options.stream().anyMatch(o -> ISSUE_DECISION.equals(o.kind())))
+                out.append("\n不過驗收只差待決問題：按「移出範圍」由你裁定後，會直接往 PR 核准走（不回需求階段），不受這個上限影響。");
         } else if (repeatedDecision(flow) && options.stream().noneMatch(o -> DECISION.equals(o.kind()))) {
             // 還有結案／承接這類由系統直接執行的選項時，不說「光靠選擇解決不了」。
             out.append("\n\n*這個問題你已經回答過了*\nagent 收到你的選擇後仍停在同一個地方，代表光靠選擇解決不了。")
@@ -428,7 +460,8 @@ public final class HumanOptions {
                 .append(" 次（上限 ").append(flow.snapshot.definition().maxTransitions()).append("），")
                 .append("而目前停住的這一步，沒有任何可用的延長或恢復授權能讓它通過。")
                 .append("\n這是防止任務無限循環的保護，不是故障。在這個任務裡不論按什麼、補充什麼，")
-                .append("下一步都會在開始前被擋下。")
+                .append("下一步都會在開始前被擋下")
+                .append(issueDecisionOptions(flow, ws).isEmpty() ? "。" : "（下方「移出範圍」的裁定除外）。")
                 .append("\n\n*目前的成果都還在*")
                 .append(ws.head() == null ? "\n任務工作區保留原樣。"
                         : "\n任務工作區保留原樣，最新 commit=" + ws.head() + (ws.clean() ? "（已全部提交）" : ""));
@@ -447,6 +480,10 @@ public final class HumanOptions {
                 .append("並帶入這個任務的交接紀錄與你做過的決定（包含已核准的需求變更）。次數重新計算；")
                 .append("需求、測試計畫與 PR 仍會請你重新核准。新任務會在頻道開新的討論串。")
                 .append(typed ? "\n或輸入：補充 #" + task.id() + " " + SUCCESSOR_COMMAND : "");
+        // 裁定待決問題只往 PR 核准走，有自己的有界額度，不受上面的上限影響。
+        for (Option option : issueDecisionOptions(flow, ws))
+            out.append("\n\n*不必承接：驗收只差你的一個決定*\n按「").append(option.label()).append("」：").append(option.hint())
+               .append(typed ? "\n或輸入：補充 #" + task.id() + " " + option.command() : "");
         if (briefReports) out.append(typed ? "\n想先看細節：補充 #" + task.id() + " 檢視完整報告" : "\n想先看細節：按「看完整報告」。");
         return out.toString();
     }

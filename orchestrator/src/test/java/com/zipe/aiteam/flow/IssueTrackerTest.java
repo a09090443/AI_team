@@ -141,6 +141,36 @@ class IssueTrackerTest {
         assertThat(IssueTracker.ingest(flow,node(Gate.REQUIREMENTS),r,"42")).isNull();
         assertThat(IssueTracker.checksReason(checks(1),flow)).contains("必要決策");
     }
+    /** #1055：驗收時只差待決項目，負責人事後裁定排除；同一份驗收仍有效，其他待處理項目一有變動就失效。 */
+    @Test void ownerDecisionKeepsTheCheckedVerificationValidButOtherChangesDoNot() {
+        ObjectNode r = report(); r.withArray("issue_updates").add(issue("I1", "REPAIR")).add(issue("I2", "DECISION"));
+        assertThat(IssueTracker.ingest(flow, node(Gate.REQUIREMENTS), r, "42")).isNull();
+        ObjectNode verified = checks(2); ((ObjectNode) verified.path("issue_checks").get(1)).put("status", "OPEN");
+        assertThat(IssueTracker.checksReason(verified, flow)).contains("I2");
+
+        IssueTracker.resolveByOwner(flow, "I2", "owner", "2026-10-23T09:50:49Z");
+        assertThat(flow.issueInventory.get("I2").path("scope").asText()).isEqualTo("EXCLUDED");
+        assertThat(flow.issueInventory.get("I2").path("description").asText()).isEqualTo("Problem I2");
+        assertThat(flow.issueEvidence.get(IssueTracker.OWNER_DECISION + "I2").path("previous").path("scope").asText()).isEqualTo("DECISION");
+        assertThat(IssueTracker.checksReason(verified, flow)).isNull();
+        assertThatThrownBy(() -> IssueTracker.resolveByOwner(flow, "I1", "owner", "now")).hasMessageContaining("不是待決");
+
+        r = report(); r.withArray("issue_updates").add(issue("I3", "REPAIR"));
+        assertThat(IssueTracker.ingest(flow, node(Gate.REVIEW), r, "42")).isNull();
+        assertThat(IssueTracker.checksReason(verified, flow)).contains("變更");
+    }
+    /** 只更新待決項目的說明不改變驗收對象，舊驗收仍有效；待修項目的證據一變就失效。 */
+    @Test void notesOnDecisionsKeepVerificationButRepairChangesDoNot() {
+        ObjectNode r = report(); r.withArray("issue_updates").add(issue("I1", "REPAIR")).add(issue("I2", "DECISION"));
+        assertThat(IssueTracker.ingest(flow, node(Gate.REQUIREMENTS), r, "42")).isNull();
+        ObjectNode verified = checks(1);
+        r = report(); r.withArray("issue_updates").add(issue("I2", "DECISION").put("evidence", "分流補充說明"));
+        assertThat(IssueTracker.ingest(flow, node(Gate.REPORT), r, "42")).isNull();
+        assertThat(IssueTracker.checkedRevisionStillValid(flow, verified.path("issue_revision").asText())).isTrue();
+        r = report(); r.withArray("issue_updates").add(issue("I1", "REPAIR").put("evidence", "又壞了"));
+        assertThat(IssueTracker.ingest(flow, node(Gate.REPORT), r, "42")).isNull();
+        assertThat(IssueTracker.checkedRevisionStillValid(flow, verified.path("issue_revision").asText())).isFalse();
+    }
     @Test void staleReportsAndMalformedBatchesDoNotPartiallyMutateInventory() {
         ObjectNode stale=report();discover(1);
         assertThat(IssueTracker.ingest(flow,node(Gate.REQUIREMENTS),stale,"42")).contains("過期");

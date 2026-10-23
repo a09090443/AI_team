@@ -30,6 +30,26 @@ Linux 完整測試 619 項、0 失敗、0 錯誤、11 略過，兩實例啟動�
   **例外（2026-10-17 起）**：驗收之後，如果只在清單尾端新增了不需處理的項目（`OBSERVATION`、`EXCLUDED`），拿掉這些尾端項目後的版本又正好等於驗收當時的版本，
   舊的逐項驗證仍然有效（`IssueTracker.checkedRevisionStillValid`，發布閘門與摘要共用）。REPAIR／DECISION 只要有任何新增或改動，就照樣失效。
   起因是 bestpartner #1044：QA 全部 PASS 後，審查把 LOW 提醒記成 OBSERVATION，發布閘門判定「問題清單仍有待處理／未驗證項目」，按續跑也一直擋。
+  **待決說明更新（2026-10-23 起）**：清單變動只是既有 DECISION 項目更新 evidence／reason（仍是 DECISION、描述與需求對應不變）時，
+  系統記錄版本別名 `FlowRun.issueRevisionAliases`，舊驗收仍有效；DECISION 本來就不能靠 PASS 放行，說明更新不改變已驗證的內容。
+
+#### 負責人裁定待決問題（2026-10-23）
+
+起因 bestpartner #1055：驗收 8 項全 PASS，只剩一個「部署後網址能否打開」的 DECISION 問題擋住發布。負責人選了「移到後續任務」，
+但這只能借道「核准需求變更」回需求階段整輪重跑；換手 27 次已超過上限 24，1 秒內又停回等待真人，沒有 agent 啟動。
+
+- 驗收或審查節點的受阻報告，在同一個乾淨 commit（`attemptHeads`）上，把全部 DECISION 試算移出範圍後
+  除了問題清單版本與未核實事項之外都通過時，停止訊息為每個 DECISION 附「移出範圍」按鈕（`HumanOptions.issueDecisionOptions`）。
+  按鈕送 `負責人裁定問題 <ID> 排除 <授權碼>`；授權碼綁定配置、清單版本、問題與 HEAD，處理後清單版本改變即失效。
+- 只限需求負責人。項目改為 EXCLUDED，description 不變，reason 記裁定人與時間；原項目存 `issueEvidence["owner-decision:<ID>"]`。
+  驗收版本比對會把裁定過的項目還原成裁定前內容再比，裁定本身不使驗收失效。尚未執行的需求變更核准由這個裁定取代。
+- 全部 DECISION 都裁定後依試算結果（`OwnerIssueDecision.Mode`）：
+  `REUSE` 報告直接通過，寫入 receipts 並接著跑下一個節點；`WAIVE` 只剩未核實事項，不排入執行，改出「開 PR」由負責人逐項放行；
+  `RERUN` 驗收之後清單又被改過、無法證明是同一份，在同一個 commit 只重跑該節點，不回需求到實作。
+- 往 PR 核准走的固定步數（沿 `next` 的 agent 節點）另給一次有界額度（`systemRetries` 的 `owner-forward-cap`／`owner-forward-path:<節點>`），
+  不重設 `transitions`；任何節點受阻即收回。負責人「開 PR」補跑審查也用同一套額度。
+- 只要還有其他未通過項目（OPEN 的 REPAIR、失敗情境、HEAD 改變或工作區不乾淨），按鈕就不出現，照舊重跑或核准需求變更。
+- 分流的共用提示（`FailureReport`）同步說明：只差待決問題時系統會附按鈕，選項不必再提供「移到後續任務」。
 - 承接完整複製清單與 `issueEvidence` 歷史證據，不複製有效驗收／核准；新任務先核實已有成果，再補未完成項。
   明確從唯讀問答挑選單項建立的子任務仍是局部範圍，顯示來源總數與未涵蓋項數，不假稱整體完成，也不擅自擴張授權。
 - 最多 100 個問題、清單 96000 字元；提示中的清單與歷史證據最多 128000 字元。超限明示停止，不截斷後宣稱全部處理。

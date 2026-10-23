@@ -1322,7 +1322,8 @@ class FlowEngineTest {
                 if (node.gate() == TeamDefinition.Gate.REQUIREMENTS) {
                     tracked.put("work_intent", "WORK").put("intent_evidence", "檢查並修好全部問題");
                     for (int i = 1; i <= 9; i++) tracked.withArray("issue_updates").addObject()
-                            .put("id", "I" + i).put("description", "problem " + i).put("scope", "REPAIR")
+                            .put("id", "I" + i).put("description", "problem " + i)
+                            .put("scope", mode.startsWith("issueDecision") && i == 9 ? "DECISION" : "REPAIR")
                             .put("evidence", "file:" + i).put("reason", "使用者目標內")
                             .putArray("requirement_ids").add("R1");
                     if (mode.equals("issueQuestion") && calls.stream().filter(s -> s.startsWith("intake:")).count() == 1)
@@ -1332,9 +1333,21 @@ class FlowEngineTest {
                     int count = mode.equals("issueMissing") && flow.node.equals("verification")
                             && calls.stream().filter(s -> s.startsWith("verification:")).count() == 1 ? 1 : 9;
                     for (int i = 1; i <= count; i++) tracked.withArray("issue_checks").addObject()
-                            .put("id", "I" + i).put("status", "PASS").put("evidence", "獨立檢查 file:" + i);
+                            .put("id", "I" + i).put("status", mode.startsWith("issueDecision") && i == 9 ? "OPEN" : "PASS")
+                            .put("evidence", "獨立檢查 file:" + i);
+                    if (mode.equals("issueDecisionReviewHigh") && node.gate() == TeamDefinition.Gate.REVIEW)
+                        ((ObjectNode) report).put("verdict", "REQUEST_CHANGES").withArray("blockers").add("真正的缺陷");
                 }
                 if (flow.node.equals("triage") && mode.equals("issueMissing")) tracked.put("route", "implementation");
+                // #1055：分流停下前補充待決項目的說明（issueDecisionNotes），或改了待修項目的證據（issueDecisionRepairNote）。
+                if (flow.node.equals("triage") && Set.of("issueDecisionNotes", "issueDecisionRepairNote").contains(mode)) {
+                    boolean decision = mode.equals("issueDecisionNotes");
+                    tracked.withArray("issue_updates").addObject().put("id", decision ? "I9" : "I1")
+                            .put("description", decision ? "problem 9" : "problem 1").put("scope", decision ? "DECISION" : "REPAIR")
+                            .put("evidence", "分流補充：負責人先前核准延後").put("reason", "請負責人決定").putArray("requirement_ids").add("R1");
+                }
+                if (flow.node.equals("verification") && mode.equals("issueDecisionUncertain"))
+                    tracked.withArray("uncertainties").add("前端單元測試被沙箱擋下 localhost");
                 // verification 改寫既有 description：issueFormat 只錯一次，issueFormatTwice 兩次都錯。
                 long verifications = calls.stream().filter(s -> s.startsWith("verification:")).count();
                 if (flow.node.equals("verification") && (mode.equals("issueFormatTwice")
@@ -1492,6 +1505,128 @@ class FlowEngineTest {
         verify(slack, times(1)).post(any(), any(), any(), contains("系統已請它自動修正重送（不計次）"));
         assertThat(calls).contains("verification:tester", "triage:coordinator");
         assertThat(store.flow("42").orElseThrow().issueInventory.get("I1").path("description").asText()).isEqualTo("problem 1");
+        verifyNoInteractions(publisher);
+    }
+
+    /** 驗收只因待決問題 I9 擋下、換手次數已用完：重現 #1055。 */
+    private HumanOptions.Option verificationBlockedOnlyByDecisionAtTheLimit(String scenario) {
+        enableIssueTracking(); mode = scenario;
+        engine.run(task);
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        var flow = store.flow("42").orElseThrow();
+        assertThat(flow.blockedFindings).containsKey("verification");
+        flow.transitions = flow.snapshot.definition().maxTransitions();
+        store.saveFlow("42", flow);
+        calls.clear(); clearInvocations(slack, audit);
+        return HumanOptions.options(store.find("42").orElseThrow(), store.flow("42").orElseThrow(), true, true, null,
+                        new HumanOptions.Workspace(workspaceHead, true)).stream()
+                .filter(o -> HumanOptions.ISSUE_DECISION.equals(o.kind())).findFirst().orElseThrow();
+    }
+
+    @Test void ownerExcludesThePendingDecisionAndContinuesToReviewEvenAtTheTransitionLimit() {
+        var exclude = verificationBlockedOnlyByDecisionAtTheLimit("issueDecision");
+        assertThat(exclude.command()).startsWith(OwnerIssueDecision.COMMAND + " I9 " + OwnerIssueDecision.EXCLUDE + " ");
+        int limit = store.flow("42").orElseThrow().transitions;
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(store.find("42").orElseThrow(), exclude.command(), "u", jobs::add);
+        assertThat(jobs).hasSize(1);
+        jobs.getFirst().run();
+
+        // 不回需求階段整輪重跑：沿用同一個 commit 的驗收，只跑審查，停在 PR 核准。
+        assertThat(calls).containsExactly("review:security_auditor");
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        var flow = store.flow("42").orElseThrow();
+        assertThat(flow.issueInventory.get("I9").path("scope").asText()).isEqualTo("EXCLUDED");
+        assertThat(flow.issueInventory.get("I9").path("description").asText()).isEqualTo("problem 9");
+        assertThat(flow.issueInventory.get("I9").path("reason").asText()).contains("<@u>").contains("移出本任務範圍");
+        assertThat(flow.issueEvidence).containsKey(IssueTracker.OWNER_DECISION + "I9");
+        assertThat(flow.receipts).containsKey("verification");
+        assertThat(flow.transitions).isEqualTo(limit + 1);
+        assertThat(flow.changeAuthorized).isFalse();
+        verify(audit).record(eq("42"), eq("u"), eq(AuditLog.ACTION_RECOVERY), contains("裁定問題 I9 移出本任務範圍"));
+    }
+
+    @Test void triageNotesOnThePendingDecisionDoNotForceAnotherVerification() {
+        var exclude = verificationBlockedOnlyByDecisionAtTheLimit("issueDecisionNotes");
+        assertThat(exclude.hint()).contains("沿用已通過的驗收");
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(store.find("42").orElseThrow(), exclude.command(), "u", jobs::add);
+        jobs.getFirst().run();
+
+        assertThat(calls).containsExactly("review:security_auditor");
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+    }
+
+    @Test void changedRepairEvidenceAfterVerificationRerunsOnlyTheVerification() {
+        var exclude = verificationBlockedOnlyByDecisionAtTheLimit("issueDecisionRepairNote");
+        assertThat(exclude.hint()).contains("只重跑「verification」");
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(store.find("42").orElseThrow(), exclude.command(), "u", jobs::add);
+        jobs.getFirst().run();
+
+        // 不回需求階段：同一個 commit 只重驗，再審查，停在 PR 核准；換手只多用裁定給的兩步。
+        assertThat(calls).containsExactly("verification:tester", "review:security_auditor");
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+    }
+
+    @Test void remainingUncertaintiesAreLeftForTheOwnerPublishCommand() {
+        var exclude = verificationBlockedOnlyByDecisionAtTheLimit("issueDecisionUncertain");
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(store.find("42").orElseThrow(), exclude.command(), "u", jobs::add);
+
+        // 未核實事項要由負責人逐項放行：裁定本身不排入執行，改出「開 PR」。
+        assertThat(jobs).isEmpty();
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        assertThat(store.flow("42").orElseThrow().issueInventory.get("I9").path("scope").asText()).isEqualTo("EXCLUDED");
+        assertThat(HumanOptions.options(store.find("42").orElseThrow(), store.flow("42").orElseThrow(), true, true, null,
+                new HumanOptions.Workspace(workspaceHead, true)))
+                .anyMatch(o -> HumanOptions.PUBLISH.equals(o.kind()) && o.hint().contains("未核實事項"));
+    }
+
+    @Test void issueDecisionIsRefusedForOthersStaleTokensAndAChangedCommit() {
+        var exclude = verificationBlockedOnlyByDecisionAtTheLimit("issueDecision");
+        when(props.allowedUsers()).thenReturn(Set.of("u", "someone-else"));
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(store.find("42").orElseThrow(), exclude.command(), "someone-else", jobs::add);
+        engine.resume(store.find("42").orElseThrow(), OwnerIssueDecision.COMMAND + " I9 " + OwnerIssueDecision.EXCLUDE + " stale", "u", jobs::add);
+        workspaceHead = "head-other";
+        assertThat(HumanOptions.options(store.find("42").orElseThrow(), store.flow("42").orElseThrow(), true, true, null,
+                new HumanOptions.Workspace(workspaceHead, true))).noneMatch(o -> HumanOptions.ISSUE_DECISION.equals(o.kind()));
+        engine.resume(store.find("42").orElseThrow(), exclude.command(), "u", jobs::add);
+
+        assertThat(jobs).isEmpty();
+        assertThat(calls).isEmpty();
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        assertThat(store.flow("42").orElseThrow().issueInventory.get("I9").path("scope").asText()).isEqualTo("DECISION");
+    }
+
+    @Test void issueDecisionIsNotOfferedWhileAnotherProblemIsStillOpen() {
+        verificationBlockedOnlyByDecisionAtTheLimit("issueDecision");
+        var flow = store.flow("42").orElseThrow();
+        ((ObjectNode) flow.blockedFindings.get("verification").path("issue_checks").get(0)).put("status", "OPEN");
+        store.saveFlow("42", flow);
+        assertThat(HumanOptions.options(store.find("42").orElseThrow(), store.flow("42").orElseThrow(), true, true, null,
+                new HumanOptions.Workspace(workspaceHead, true))).noneMatch(o -> HumanOptions.ISSUE_DECISION.equals(o.kind()));
+    }
+
+    @Test void reviewFailureAfterTheDecisionStopsAgainWithoutMoreBudget() {
+        var exclude = verificationBlockedOnlyByDecisionAtTheLimit("issueDecisionReviewHigh");
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(store.find("42").orElseThrow(), exclude.command(), "u", jobs::add);
+        jobs.getFirst().run();
+
+        // 前進額度只給一路通過：審查受阻就收回。之後的分流只能用既有的自動交接額度，不會回頭重跑驗收。
+        assertThat(calls).containsExactly("review:security_auditor", "triage:coordinator");
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        var flow = store.flow("42").orElseThrow();
+        assertThat(flow.systemRetries).doesNotContainKey(OwnerIssueDecision.FORWARD_CAP);
+        assertThat(flow.automaticHandoffs).isEqualTo(1);
         verifyNoInteractions(publisher);
     }
 
@@ -2030,6 +2165,23 @@ class FlowEngineTest {
         assertThat(flow.receipts.get("verification").path("uncertainties")).isEmpty();
         verify(audit).record(eq("42"), eq("u"), eq(AuditLog.ACTION_RECOVERY), contains("未核實事項"));
         verify(slack).post(any(), eq("c"), eq("t"), contains("將安排審查"));
+    }
+
+    @Test void ownerPublishCommandRunsThePendingReviewEvenAtTheTransitionLimit() throws Exception {
+        verificationBlockedOnlyByUncertainties();
+        var flow = store.flow("42").orElseThrow();
+        flow.transitions = flow.snapshot.definition().maxTransitions();
+        store.saveFlow("42", flow);
+        mode = "normal";
+        when(publisher.publish(eq("42"), any(), any(), eq("feature/task42"))).thenReturn(new PullRequestPublisher.Result("feature/task42", "https://example.test/pr/10", 10));
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(store.find("42").orElseThrow(), HumanOptions.PUBLISH_COMMAND, "u", jobs::add);
+        jobs.getFirst().run();
+
+        // 開 PR 指令是新的真人輸入：補跑審查只到 PR 為止，不被已用完的換手次數擋住。
+        assertThat(calls).containsExactly("review:security_auditor");
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.PR_CREATED);
     }
 
     @Test void pendingReviewWithOnlyAnInformationalFindingIsWaivedByTheSameCommand() throws Exception {

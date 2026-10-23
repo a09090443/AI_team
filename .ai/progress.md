@@ -1,5 +1,16 @@
 # 工作進度（Codex 與 Claude Code 共用）
 
+## 2026-10-23 負責人裁定待決問題直接推進到審查／發布（Claude Code，來源完成、未部署、未 commit）
+
+- 起因 #1055（bestpartner）：驗收 8 項全 PASS，只剩 ISSUE-1053-DEPLOY-001（DECISION）擋發布；負責人 17:50 選「移到後續任務」，該選項是 change_requirements → 回需求階段，換手 27 已超過上限 24、自動交接額度用完，1 秒內停回 AWAIT_HUMAN，未啟動 agent。分析時只做唯讀查詢。
+- 新增 flow/OwnerIssueDecision：驗收／審查受阻報告在同一個乾淨 commit 上、把 DECISION 全部試算排除後除清單版本與未核實事項外都通過時，停止訊息附「移出範圍」按鈕（`負責人裁定問題 <ID> 排除 <授權碼>`，只限需求負責人，授權碼綁配置／清單版本／問題／HEAD）。裁定後 REUSE 沿用並往下跑、WAIVE 改出「開 PR」放行未核實事項、RERUN 同 commit 只重跑驗收；取代未執行的需求變更核准。
+- IssueTracker：resolveByOwner（EXCLUDED、description 不變、原項目存 issueEvidence owner-decision:<ID>）；驗收版本比對會還原裁定項目；checksReason 不再要求已非 REPAIR／DECISION 項目 PASS；新增 FlowRun.issueRevisionAliases，只記「既有待決項目僅更新說明」的版本別名。
+- 換手上限：FlowLimits.transitionsExhausted 例外為裁定／「開 PR」補跑審查後沿 next 到核准節點的固定步數（systemRetries owner-forward-cap／owner-forward-path），任何節點受阻即收回。FailureReport 共用提示補說明；SlackListener 頂層指令可路由新指令。
+- #1055 真實 flow 唯讀重播：出現「移出範圍」按鈕，模式為 RERUN（分流在驗收後改過待決項目、舊內容已覆蓋），裁定後 verification 可啟動、前置與計畫核准皆有效。重驗若仍有 Vitest 未核實事項，需再按「開 PR」放行。
+- 測試：FlowEngineTest 新增 8 項（含換手已滿仍能前進、拒絕他人／舊授權／HEAD 改變、另有未通過項目不出按鈕、審查受阻收回額度、開 PR 在上限仍補跑審查）、IssueTrackerTest 新增 2 項；本機相關 FlowEngine 153／IssueTracker 16／HumanOptions 46 通過。Linux check-source 通過、docs build 通過；Linux（/home/agent/issue-decision-build-20261023）完整 clean verify 803 項 0 失敗／錯誤、12 略過，隔離 JAR abe40f3e…（未部署）。屬程式測試通過，尚未真實端對端。
+- 已核對的文件：engineering-workflow、agent/operations、agent/system-map、data-model、pm-triage、review-gate（未改，開 PR 規則不變）、catalog、project-tree。已修正：engineering-workflow（新增「負責人裁定待決問題」與待決說明別名）、operations（按鈕與指令）、system-map（防循環上限例外）、data-model（issueEvidence 鍵、issueRevisionAliases、systemRetries 鍵）、catalog、project-tree。
+- 下一步：使用者同意後部署 bestpartner（或三實例），在 #1055 按「重新整理選項」→「移出範圍」做真實驗收。
+
 ## 2026-10-23 三實例部署統一版本並全面啟用角色諮詢；基準驗證改用驗證鍵（Claude Code）
 
 - 使用者要求部署到所有專案、先合併 Codex 分支、全部啟用 collaboration。合併 codex/direct-ssh-deployment 進 main（cd05b2e，提示詞保留精簡版並加入 Codex 的狀態式段落）；spring-starters、dynamic-api 啟用 collaboration 與 consultRoles，spring-starters 補 capabilities；node-web 為範例維持未啟用並作為測試對照組（e8e8799）。

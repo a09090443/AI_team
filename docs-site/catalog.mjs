@@ -111,7 +111,7 @@ export const docs = [
     status: 'current',
     summary: 'v2 需求基準與原子驗收項、返工與需求變更、系統獨立驗證收據、PR_CREATED 的意義。',
     readWhen: '處理需求 ID／驗收覆蓋、返工失效傳遞，或判斷 PR 狀態代表什麼。',
-    code: ['orchestrator/src/main/java/com/zipe/aiteam/flow/Traceability.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/IssueTracker.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/IndependentVerifier.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/VerificationPlan.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/FileComparison.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/CommandEvidence.java', 'orchestrator/src/main/java/com/zipe/aiteam/runtime/CommandRuns.java'],
+    code: ['orchestrator/src/main/java/com/zipe/aiteam/flow/Traceability.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/IssueTracker.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/OwnerIssueDecision.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/IndependentVerifier.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/VerificationPlan.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/FileComparison.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/CommandEvidence.java', 'orchestrator/src/main/java/com/zipe/aiteam/runtime/CommandRuns.java'],
   },
   {
     id: 'cross-project-execution',

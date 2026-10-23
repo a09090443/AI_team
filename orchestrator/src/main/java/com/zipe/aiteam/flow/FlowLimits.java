@@ -14,11 +14,16 @@ final class FlowLimits {
 
     /**
      * 節點層級的上限只看「輸入完全相同的連續重跑」；輸入變了代表有新的依據，不算原地打轉。
-     * 整輪 maxTransitions 仍是硬上限，維持不變。
+     * 整輪 maxTransitions 仍是硬上限，只有負責人裁定後往 PR 核准走的有界步數例外。
      */
     static boolean overLimit(FlowRun flow, Node node) {
-        return flow.transitions >= flow.snapshot.definition().maxTransitions()
+        return transitionsExhausted(flow)
                 || flow.repeats.getOrDefault(flow.node, 0) >= node.maxVisits();
+    }
+
+    /** 整輪換手已用完；負責人裁定待決問題後沿 next 往 PR 核准走的固定步數除外（{@link OwnerIssueDecision}）。 */
+    static boolean transitionsExhausted(FlowRun flow) {
+        return flow.transitions >= flow.snapshot.definition().maxTransitions() && !OwnerIssueDecision.forwardAllowed(flow);
     }
 
     /** 下一次啟動目前節點時，能不能通過防循環檢查（不含計畫核准等其他閘門）。 */
@@ -38,6 +43,6 @@ final class FlowLimits {
         if (node == null || node.kind() != Kind.AGENT) return false;
         if (canStart(flow, node)) return false;
         if (AutomaticHandoff.extensionWouldHelp(flow)) return false;
-        return flow.transitions >= flow.snapshot.definition().maxTransitions();
+        return transitionsExhausted(flow);
     }
 }

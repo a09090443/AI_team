@@ -103,6 +103,11 @@ public class FlowRun {
     public Map<String,JsonNode> issueInventory = new LinkedHashMap<>();
     /** Historical per-issue evidence, preserved across continuation but never treated as fresh approval. */
     public Map<String,JsonNode> issueEvidence = new LinkedHashMap<>();
+    /**
+     * 問題清單版本別名：新版本 → 舊版本。只記錄「既有待決項目僅更新 evidence／reason」這類不改變驗收對象的變動，
+     * 讓分流停下前補充待決說明不會使先前的驗收失效（#1055）。最多保留 50 筆。
+     */
+    public Map<String,String> issueRevisionAliases = new LinkedHashMap<>();
     public String issueContext = "";
     /** One approved requirements-change cycle; agents cannot grant this themselves. */
     public boolean issueScopeChangeAuthorized;

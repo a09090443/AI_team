@@ -243,7 +243,7 @@ v2 配置式流程的整份執行快照，對應 `com.zipe.aiteam.flow.FlowRun`�
 | `activeNode` | String | 已進入但尚未結束的節點。**非 null 代表現場還在**，續跑可直接恢復，不需重做配置遷移 |
 | `transitions` | int | 一般流程累計轉換次數；受控責任交接可越過 `definition.maxTransitions()`，歷史值不重設 |
 | `visits` | Map&lt;節點,次數&gt; | 各節點造訪次數，上限為節點自己的 `maxVisits()` |
-| `systemRetries` | Map&lt;鍵,次數&gt; | 系統層自動重試次數。鍵為節點 id 時是環境失敗重試（上限 `SystemFailure.RETRY_LIMIT`，該節點真的跑起來即清除）；鍵為 `<節點>#issue-format` 時表示已對該節點自動修正過一次問題清單格式，回報通過問題清單檢查即清除（2026-10-15 起）；2026-10-20 長作業另使用 operation-checkpoint／operation-timeout／operation-timeout-total 鍵，見下節。沿用既有 Map，無 schema 變更 |
+| `systemRetries` | Map&lt;鍵,次數&gt; | 系統層自動重試次數。鍵為節點 id 時是環境失敗重試（上限 `SystemFailure.RETRY_LIMIT`，該節點真的跑起來即清除）；鍵為 `<節點>#issue-format` 時表示已對該節點自動修正過一次問題清單格式，回報通過問題清單檢查即清除（2026-10-15 起）；2026-10-20 長作業另使用 operation-checkpoint／operation-timeout／operation-timeout-total 鍵，見下節；2026-10-23 起 `owner-forward-cap`（負責人裁定或開 PR 後往 PR 核准走的換手上限）與 `owner-forward-path:<節點>`（該路徑上的節點），任何節點受阻即清除，見 [工程流程](engineering-workflow.md#負責人裁定待決問題2026-10-23)。沿用既有 Map，無 schema 變更 |
 | `automaticHandoff` | String | 尚待使用的受阻證據鍵；含配置版本、來源／目標節點、HEAD 與報告摘要 |
 | `automaticHandoffs` | int | 已處理的獨立受阻事件數；基本上限 6；可辨識的舊制逐節點 key 會按證據合併重算 |
 | `automaticHandoffExtraBudget` | int | 真人針對目前現場增加的事件額度；每次 2、最多額外 6，不重設既有計數；配置遷移時歸零 |
@@ -261,7 +261,8 @@ v2 配置式流程的整份執行快照，對應 `com.zipe.aiteam.flow.FlowRun`�
 | `blockedFindings` | Map&lt;節點,報告&gt; | 尚未解除的受阻發現，以來源節點為鍵。受阻時寫入，該節點自己通過時移除。**不受 `context` 長度上限影響**，必定注入下游節點提示；節點受阻證據與 issueInventory 問題清單分別保存。需求變更不清除，採 fail closed |
 | `heads` | Map&lt;節點,commit&gt; | 各節點結束時的 HEAD |
 | `issueInventory` | Map&lt;問題 ID,JSON&gt; | 新 v2 共用契約的完整問題清單，含 description／evidence／scope／reason／requirement_ids、系統 source_task／source_node；DECISION 額外保存 decision_supplements，防止未收到新回覆就自行決定。空更新不清除，承接完整深拷貝 |
-| `issueEvidence` | Map&lt;問題 ID,JSON&gt; | 通過驗收／審查／服務階段的逐項 id／status／evidence／head／node；承接只作歷史證據，不能取代新任務驗收 |
+| `issueEvidence` | Map&lt;問題 ID,JSON&gt; | 通過驗收／審查／服務階段的逐項 id／status／evidence／head／node；承接只作歷史證據，不能取代新任務驗收。2026-10-23 起另有 `owner-decision:<問題 ID>` 鍵：負責人裁定移出範圍的紀錄（`previous` 原項目、`user`、`at`） |
+| `issueRevisionAliases` | Map&lt;新版本,舊版本&gt; | 2026-10-23 新增。問題清單變動只是既有待決項目更新說明時記錄的版本別名，舊驗收沿用；最多 50 筆。舊 JSON 沒有此欄位時為空；新版存過的任務一律寫出此欄位，回滾到舊 JAR 會讀不了 |
 | `issueContext` | String | 單項衍生任務的來源總數與局部範圍說明，承接保留 |
 | `issueScopeChangeAuthorized` | boolean | 由原需求負責人明確核准需求變更時給予的一輪排除變更權；建立新基準後清除，不由模型授予、不沿用到承接任務 |
 | `origin` / `branch` | String | 工作區的 origin 與分支 |
