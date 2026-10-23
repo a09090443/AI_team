@@ -10,7 +10,9 @@
 - 測試：FlowEngineTest 新增 8 項（含換手已滿仍能前進、拒絕他人／舊授權／HEAD 改變、另有未通過項目不出按鈕、審查受阻收回額度、開 PR 在上限仍補跑審查）、IssueTrackerTest 新增 2 項；本機相關 FlowEngine 153／IssueTracker 16／HumanOptions 46 通過。Linux check-source 通過、docs build 通過；Linux（/home/agent/issue-decision-build-20261023）完整 clean verify 803 項 0 失敗／錯誤、12 略過，隔離 JAR abe40f3e…（未部署）。屬程式測試通過，尚未真實端對端。
 - 已核對的文件：engineering-workflow、agent/operations、agent/system-map、data-model、pm-triage、review-gate（未改，開 PR 規則不變）、catalog、project-tree。已修正：engineering-workflow（新增「負責人裁定待決問題」與待決說明別名）、operations（按鈕與指令）、system-map（防循環上限例外）、data-model（issueEvidence 鍵、issueRevisionAliases、systemRetries 鍵）、catalog、project-tree。
 - 部署：使用者要求後 19:03 部署 bestpartner（JAR dc32bb4b…、PID 249751、備份 orchestrator-backup.jaNMDU，Linux 803 項 0 失敗），見 deploy-2026-09-06-v2 同日段落；starters／dynamic-api 未部署。
-- 下一步：負責人在 #1055 討論串送 `補充 #1055 狀態`，按「移出範圍」做真實驗收；之後若驗收只剩未核實事項，再按「開 PR」。
+- **真實端對端（2026-10-23 19:06–21:47 台北）**：負責人按「移出範圍」後未回需求階段，同 commit 重驗 → 審查（inspector）找到 2 個真實缺陷（nginx 裸 /login 被 301、Compose env_file 插值破壞 ${enc::}）→ 分流 → 計畫 → builder_codex＋builder 修正 522c2a9 → 系統獨立驗證（逾時後自動續驗 1 輪）→ 驗收 8 情境全 PASS（Vitest 沙箱中止以系統收據核實，無未核實事項）→ 審查 APPROVE → AWAIT_PR_APPROVAL。全程無真人介入；換手 27→38、自動交接 5／6。
+- 觀察到的效率問題（未處理）：只改 nginx／Compose／.claude/rules 仍跑約 26 分鐘後端測試；tester 沙箱擋 localhost 使 Vitest 每輪中止、多一次分流來回。
+- 下一步：負責人核准 #1055 的 PR。
 
 ## 2026-10-23 三實例部署統一版本並全面啟用角色諮詢；基準驗證改用驗證鍵（Claude Code）
 
