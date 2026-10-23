@@ -27,7 +27,7 @@
 
 ## 正在進行
 
-- **2026-10-23 負責人裁定待決問題（Claude Code，最高優先）**：來源完成、未部署、未 commit。新增 OwnerIssueDecision、IssueTracker 裁定與版本別名、換手上限前進額度；#1055 真實資料重播會出「移出範圍」按鈕（RERUN）。Linux 驗證目錄 /home/agent/issue-decision-build-20261023。下一步：使用者同意後 commit／部署，在 #1055 實測。細節見 progress 同日條目。
+- **2026-10-23 負責人裁定待決問題（Claude Code，最高優先）**：commit 2e61dab，19:03 已部署 bestpartner（JAR dc32bb4b…、PID 249751、備份 orchestrator-backup.jaNMDU）；starters／dynamic-api 未部署。下一步：負責人在 #1055 送 `補充 #1055 狀態` → 按「移出範圍」，觀察是否同 commit 重驗後進審查；若只剩未核實事項再按「開 PR」。細節見 progress 同日條目。
 
 - **三實例統一版本已部署（2026-10-23，Claude Code）**：main e8e8799（含 Codex 分支 codex/direct-ssh-deployment、phase1、共用規則；三個已部署專案啟用 collaboration）JAR 0b7efa1a…，starters／bestpartner／dynamic-api 依序部署成功，Linux verify 791 項 0 失敗。Codex 分支的工作已併入 main，之後以 main 為準。dynamic-api 部署後的基準驗證 15:55 排入、結果待確認；starters 基準有 MailServiceSmtpsScenariosTest 既有失敗。基準驗證改用驗證鍵（d95714a，JAR d8e04353…）已部署三實例，starters 重啟實測不再重跑；dynamic-api 最後一次重跑 17:32 排入。
 

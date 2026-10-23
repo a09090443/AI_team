@@ -1,6 +1,6 @@
 # 工作進度（Codex 與 Claude Code 共用）
 
-## 2026-10-23 負責人裁定待決問題直接推進到審查／發布（Claude Code，來源完成、未部署、未 commit）
+## 2026-10-23 負責人裁定待決問題直接推進到審查／發布（Claude Code，commit 2e61dab，已部署 bestpartner）
 
 - 起因 #1055（bestpartner）：驗收 8 項全 PASS，只剩 ISSUE-1053-DEPLOY-001（DECISION）擋發布；負責人 17:50 選「移到後續任務」，該選項是 change_requirements → 回需求階段，換手 27 已超過上限 24、自動交接額度用完，1 秒內停回 AWAIT_HUMAN，未啟動 agent。分析時只做唯讀查詢。
 - 新增 flow/OwnerIssueDecision：驗收／審查受阻報告在同一個乾淨 commit 上、把 DECISION 全部試算排除後除清單版本與未核實事項外都通過時，停止訊息附「移出範圍」按鈕（`負責人裁定問題 <ID> 排除 <授權碼>`，只限需求負責人，授權碼綁配置／清單版本／問題／HEAD）。裁定後 REUSE 沿用並往下跑、WAIVE 改出「開 PR」放行未核實事項、RERUN 同 commit 只重跑驗收；取代未執行的需求變更核准。
@@ -9,7 +9,8 @@
 - #1055 真實 flow 唯讀重播：出現「移出範圍」按鈕，模式為 RERUN（分流在驗收後改過待決項目、舊內容已覆蓋），裁定後 verification 可啟動、前置與計畫核准皆有效。重驗若仍有 Vitest 未核實事項，需再按「開 PR」放行。
 - 測試：FlowEngineTest 新增 8 項（含換手已滿仍能前進、拒絕他人／舊授權／HEAD 改變、另有未通過項目不出按鈕、審查受阻收回額度、開 PR 在上限仍補跑審查）、IssueTrackerTest 新增 2 項；本機相關 FlowEngine 153／IssueTracker 16／HumanOptions 46 通過。Linux check-source 通過、docs build 通過；Linux（/home/agent/issue-decision-build-20261023）完整 clean verify 803 項 0 失敗／錯誤、12 略過，隔離 JAR abe40f3e…（未部署）。屬程式測試通過，尚未真實端對端。
 - 已核對的文件：engineering-workflow、agent/operations、agent/system-map、data-model、pm-triage、review-gate（未改，開 PR 規則不變）、catalog、project-tree。已修正：engineering-workflow（新增「負責人裁定待決問題」與待決說明別名）、operations（按鈕與指令）、system-map（防循環上限例外）、data-model（issueEvidence 鍵、issueRevisionAliases、systemRetries 鍵）、catalog、project-tree。
-- 下一步：使用者同意後部署 bestpartner（或三實例），在 #1055 按「重新整理選項」→「移出範圍」做真實驗收。
+- 部署：使用者要求後 19:03 部署 bestpartner（JAR dc32bb4b…、PID 249751、備份 orchestrator-backup.jaNMDU，Linux 803 項 0 失敗），見 deploy-2026-09-06-v2 同日段落；starters／dynamic-api 未部署。
+- 下一步：負責人在 #1055 討論串送 `補充 #1055 狀態`，按「移出範圍」做真實驗收；之後若驗收只剩未核實事項，再按「開 PR」。
 
 ## 2026-10-23 三實例部署統一版本並全面啟用角色諮詢；基準驗證改用驗證鍵（Claude Code）
 
