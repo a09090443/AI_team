@@ -1011,6 +1011,7 @@ class FlowEngineTest {
     Task task = new Task("42", "c", "t", "u", "email failover");
     List<String> calls = new ArrayList<>();
     List<String> resumed = new ArrayList<>();
+    List<String> consults = new ArrayList<>();
     String mode = "normal";
     String deniedAt;
     boolean provisioned;
@@ -1176,7 +1177,34 @@ class FlowEngineTest {
                     tracked.withArray("issue_updates").addObject().put("id", "I1").put("description", "problem 1；已決定接受")
                             .put("scope", "REPAIR").put("evidence", "x").put("reason", "y").putArray("requirement_ids").add("R1");
             }
+            if (mode.startsWith("consult") && flow.node.equals("plan")) {
+                long plans = calls.stream().filter(s -> s.startsWith("plan:")).count();
+                boolean bad = mode.equals("consultBadTwice") || (mode.equals("consultBadOnce") && plans == 1);
+                if (bad || plans == 1) {
+                    store.saveCheckpoint(new Checkpoint("42", "plan", "claude-code", "sonnet", "plan-session", "context", "head1", null));
+                    var consult = ((ObjectNode) report).putArray("consult");
+                    consult.addObject().put("role", bad ? "security_auditor" : "builder").put("question", "錯誤碼有哪些？").put("why", "反例要用");
+                    if (mode.equals("consultTwo") || mode.equals("consultInterrupt"))
+                        consult.addObject().put("role", "frontend").put("question", "畫面怎麼顯示？").put("why", "情境要用");
+                }
+                ((ObjectNode) report).putArray("board_updates").addObject().put("op", "ADD").put("id", "").put("kind", "DECISION")
+                        .put("text", "plan-" + plans).put("to", "").putArray("refs");
+            }
+            if (mode.equals("boardBlocked") && flow.node.equals("verification")) {
+                ((ObjectNode) report).withArray("uncertainties").add("SMTP 無法核實");
+                ((ObjectNode) report).putArray("board_updates").addObject().put("op", "ADD").put("id", "").put("kind", "RISK")
+                        .put("text", "SMTP 環境不可用").put("to", "").putArray("refs");
+            }
             return new AgentRuntime.RuntimeResult("session", "", report, 0.1, false, tmp.resolve("log"), "model", denials);
+        });
+        when(executor.consult(any(), any(), any(), anyInt())).thenAnswer(c -> {
+            Consultation.Pending pending = c.getArgument(2); int index = c.getArgument(3);
+            consults.add(pending.questions().get(index).role());
+            if (mode.equals("consultQuota") && consults.size() == 1) throw new QuotaExceeded("usage_limit_reached");
+            if (mode.equals("consultInterrupt") && consults.size() == 1) engine.interrupt(c.getArgument(0), "u");
+            return new AgentRuntime.RuntimeResult("consult-session", "", mapper.readTree("{\"answer\":\"回答 "
+                    + pending.questions().get(index).question() + "\",\"confidence\":\"HIGH\",\"evidence\":\"src/x.ts\"}"),
+                    0.05, false, tmp.resolve("log"), "model", null);
         });
         when(verifier.verify(any(), any())).thenAnswer(c -> {
             FlowRun f = c.getArgument(1);
@@ -1299,6 +1327,95 @@ class FlowEngineTest {
         assertThat(calls).anyMatch(s -> s.startsWith("implementation:"));
     }
 
+    void enableCollaboration() throws Exception {
+        FlowRun f = store.flow("42").orElseThrow();
+        f.snapshot = ConsultationTest.collaborative(f.snapshot, 2, 4);
+        store.saveFlow("42", f);
+    }
+    @Test void consultPausesAsksAnotherRoleAndResumesTheSameSessionWithoutCounting() throws Exception {
+        enableCollaboration(); mode = "consult";
+        engine.run(task);
+        var flow = store.flow("42").orElseThrow();
+        assertThat(consults).containsExactly("builder");
+        assertThat(calls.stream().filter(s -> s.startsWith("plan:")).count()).isEqualTo(2);
+        assertThat(resumed).contains("plan:plan-session");
+        assertThat(flow.visits.get("plan")).isEqualTo(1);
+        assertThat(flow.consultations).singleElement().satisfies(a -> {
+            assertThat(a.role()).isEqualTo("builder"); assertThat(a.answer()).contains("回答 錯誤碼有哪些？"); });
+        assertThat(flow.consultUsed).isEqualTo(1);
+        assertThat(flow.pendingConsult).isNull();
+        assertThat(flow.receipts.get("plan").has("consult")).isFalse();
+        assertThat(flow.board.values()).extracting(TeamBoard.Entry::text).containsExactly("plan-2");
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        verify(slack).postConfigured(any(), any(), any(), contains("暫停，先向其他角色諮詢"));
+        verify(slack).postConfigured(any(), any(), any(), contains("Backend Agent 回覆 QA Agent 的諮詢"));
+        verify(slack).post(any(), any(), any(), contains("團隊看板"), any());
+    }
+    @Test void consultQuotaStopsThenResumeAnswersFirstAndReturnsToTheAsker() throws Exception {
+        enableCollaboration(); mode = "consultQuota";
+        engine.run(task);
+        assertThat(task.state()).isEqualTo(Task.State.WAITING_QUOTA);
+        assertThat(store.flow("42").orElseThrow().pendingConsult).isNotNull();
+        mode = "normal"; calls.clear();
+        List<Runnable> jobs = new ArrayList<>(); engine.resume(task, "繼續", "u", jobs::add); jobs.getFirst().run();
+        assertThat(consults).containsExactly("builder", "builder");
+        assertThat(calls.getFirst()).isEqualTo("plan:tester");
+        var flow = store.flow("42").orElseThrow();
+        assertThat(flow.consultations).hasSize(1);
+        assertThat(flow.consultUsed).isEqualTo(1);
+        assertThat(flow.visits.get("plan")).isEqualTo(1);
+        // plan 已以接回的 session 完成並交棒；之後的工作區節點不在本測試範圍
+        // （測試替身的 provision 只認原 task 物件，續跑工作拿到的是重新載入的任務）。
+        assertThat(flow.receipts).containsKey("plan");
+        assertThat(flow.pendingConsult).isNull();
+        assertThat(resumed).contains("plan:plan-session");
+    }
+    @Test void invalidConsultIsCorrectedOnceInTheSameSessionAndNotPutOnTheBoard() throws Exception {
+        enableCollaboration(); mode = "consultBadOnce";
+        engine.run(task);
+        var flow = store.flow("42").orElseThrow();
+        assertThat(consults).isEmpty();
+        assertThat(calls.stream().filter(s -> s.startsWith("plan:")).count()).isEqualTo(2);
+        assertThat(resumed).contains("plan:plan-session");
+        assertThat(flow.visits.get("plan")).isEqualTo(1);
+        assertThat(flow.board.values()).extracting(TeamBoard.Entry::text).containsExactly("plan-2");
+        assertThat(flow.systemRetries).doesNotContainKey("plan" + Consultation.FORMAT_RETRY);
+        verify(slack).post(any(), any(), any(), contains("諮詢（consult）格式不對"));
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+    }
+    @Test void persistentlyInvalidConsultFollowsTheBlockedRoute() throws Exception {
+        enableCollaboration(); mode = "consultBadTwice";
+        engine.run(task);
+        var flow = store.flow("42").orElseThrow();
+        assertThat(consults).isEmpty();
+        assertThat(flow.receipts).doesNotContainKey("plan");
+        assertThat(flow.board).isEmpty();
+        assertThat(flow.lastBlockReason).contains("諮詢請求不合格");
+    }
+    @Test void interruptBetweenQuestionsStopsBeforeTheNextAnswer() throws Exception {
+        enableCollaboration(); mode = "consultInterrupt";
+        engine.unitStopper = id -> true;
+        engine.run(task);
+        var flow = store.flow("42").orElseThrow();
+        assertThat(consults).containsExactly("builder");
+        assertThat(flow.consultations).hasSize(1);
+        assertThat(flow.pendingConsult.questions()).hasSize(2);
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
+    }
+    @Test void blockedReportsStillRecordBoardRisks() throws Exception {
+        enableCollaboration(); mode = "boardBlocked";
+        engine.run(task);
+        var flow = store.flow("42").orElseThrow();
+        assertThat(flow.board.values()).extracting(TeamBoard.Entry::kind).contains("RISK");
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
+    }
+    @Test void legacySnapshotIgnoresAStrayConsultField() throws Exception {
+        mode = "consult";
+        engine.run(task);
+        assertThat(consults).isEmpty();
+        assertThat(store.flow("42").orElseThrow().board).isEmpty();
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+    }
     void enableAgentDispatch() throws Exception {
         FlowRun f = store.flow("42").orElseThrow();
         ObjectNode d = mapper.valueToTree(f.snapshot.definition());

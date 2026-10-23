@@ -350,7 +350,7 @@ public class FlowEngine {
                     state(task, Task.State.AWAIT_PR_APPROVAL, "任務 #" + task.id() + " 等待人工核准 PR");
                     String message = "任務 #" + task.id() + " 已完成配置中的檢查，請核准才會推分支與開 PR（不代表產品已交付）。\ncommit=" + head
                             + "\n需求基準=" + flow.baselineRevision + "\n需求／驗收負責人=<@" + flow.acceptanceOwner + ">"
-                            + IssueTracker.summary(flow) + reviewSuggestions(flow, 8);
+                            + IssueTracker.summary(flow) + TeamBoard.summary(flow) + reviewSuggestions(flow, 8);
                     slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), message, SlackBlocks.approvalBlocks(task.id(), message));
                     return;
                 }
@@ -465,6 +465,8 @@ public class FlowEngine {
                         flow.delegatedParts.remove(flow.node);
                     } else flow.beforeHead = null;
                     flow.activeNode = flow.node;
+                    // 新的一次執行：上一次沒答完的諮詢不沿用（同一次執行的續跑不會走到這裡）。
+                    flow.pendingConsult = null;
                     if (node.gate() == Gate.REQUIREMENTS && flow.baselineRevision != null) {
                         JsonNode previous = Traceability.baseline(flow);
                         if (previous != null) flow.baselineHistory.add(previous.deepCopy());
@@ -520,6 +522,9 @@ public class FlowEngine {
                     String invalid = verifier.blockingReason(flow, workspaces.headSha(task.id()));
                     if (invalid != null) { flow.independentEvidence = null; throw new IllegalStateException(invalid + "；續跑時將重新執行系統驗證"); }
                 }
+                // 諮詢途中因額度或錯誤停下：先把這一輪答完，再接回提問者原本的 session。
+                if (flow.pendingConsult != null && flow.pendingConsult.node().equals(flow.node)
+                        && !runConsultations(task, flow)) return;
                 AgentRuntime.RuntimeResult result;
                 long started = System.nanoTime();
                 Node runner = actingNode(task, flow, node);
@@ -564,9 +569,43 @@ public class FlowEngine {
                         flow.context = FlowContext.append(flow.context, evidence);
                     }
                 }
-                String issueBlock = IssueTracker.ingest(flow, node, report, task.id());
-                if (issueBlock == null) flow.systemRetries.remove(flow.node + IssueTracker.FORMAT_RETRY);
-                String block = issueBlock == null ? FlowGates.blockingReason(node, report, flow) : issueBlock;
+                String consultBlock = null;
+                if (Consultation.requested(flow, report)) {
+                    String problem;
+                    try {
+                        List<Consultation.Question> questions = Consultation.parse(flow, node, report);
+                        Consultation.begin(flow, node, questions, report);
+                        store.saveFlow(task.id(), flow);
+                        audit.record(task.id(), node.role(), AuditLog.ACTION_STATE, "節點 " + flow.node + " 暫停諮詢："
+                                + questions.stream().map(q -> q.role() + "：" + Diagnostics.clip(q.question(), 200)).toList());
+                        StringBuilder asked = new StringBuilder("任務 #" + task.id() + "｜" + flow.snapshot.definition().roles().get(node.role()).name()
+                                + "（" + flow.node + "）暫停，先向其他角色諮詢：");
+                        for (var q : questions) asked.append("\n・問 ").append(flow.snapshot.definition().roles().get(q.role()).name())
+                                .append("：").append(Diagnostics.clip(q.question(), 500));
+                        slack.postConfigured(flow.snapshot.definition().roles().get(node.role()), task.slackChannel(), task.slackThreadTs(), asked.toString());
+                        // 提問者這次確實送達模型；回答途中出錯不得被當成「未送達」而還原次數或整段重跑。
+                        countedNode = null;
+                        if (!runConsultations(task, flow)) return;
+                        // activeNode 與 checkpoint 保留：下一圈走續跑分支，以原 session 接回提問者，不計次。
+                        continue;
+                    } catch (Consultation.Format e) { problem = e.getMessage(); }
+                    String key = flow.node + Consultation.FORMAT_RETRY;
+                    if (!flow.systemRetries.containsKey(key)) {
+                        flow.systemRetries.put(key, 1);
+                        flow.context = FlowContext.append(flow.context, Consultation.correction(flow, node, problem));
+                        store.saveFlow(task.id(), flow);
+                        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY,
+                                "諮詢請求格式不合格，請節點 " + flow.node + " 以原 session 修正一次，不計次：" + problem);
+                        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                                "上一份回報的諮詢（consult）格式不對，系統已請它自動修正重送（不計次）。");
+                        continue;
+                    }
+                    consultBlock = "諮詢請求不合格：" + problem;
+                } else flow.systemRetries.remove(flow.node + Consultation.FORMAT_RETRY);
+                // 諮詢請求本身不是成果：不登錄問題清單，直接走受阻路線。
+                String issueBlock = consultBlock == null ? IssueTracker.ingest(flow, node, report, task.id()) : null;
+                if (issueBlock == null && consultBlock == null) flow.systemRetries.remove(flow.node + IssueTracker.FORMAT_RETRY);
+                String block = consultBlock != null ? consultBlock : issueBlock == null ? FlowGates.blockingReason(node, report, flow) : issueBlock;
                 // 自陳成功不夠：與 CLI 紀錄裡配置操作的實際結束碼對照，矛盾時不送去跑注定失敗的獨立驗證（#1001）。
                 if (block == null && node.gate() == Gate.IMPLEMENTATION) {
                     String contradiction = CommandEvidence.contradiction(
@@ -631,6 +670,7 @@ public class FlowEngine {
                       + "（" + flow.node + "）\n" + describe(report, flow, node)
                       + fullReportHint(task, flow.node));
                 String next;
+                boolean resend = false;
                 if (block == null) {
                     flow.receipts.put(flow.node, report);
                     flow.blockedFindings.remove(flow.node);
@@ -688,7 +728,8 @@ public class FlowEngine {
                         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
                                 "上一份回報的" + formatLabel + "格式不對，系統已請它自動修正重送（不計次）。");
                     }
-                    next = repairDraft || formatRetry ? flow.node : node.blocked();
+                    resend = repairDraft || formatRetry;
+                    next = resend ? flow.node : node.blocked();
                     if (repairDraft) flow.context = FlowContext.append(flow.context,
                             "需求草稿的結構不合格，尚未建立基準；請自行修正上方指出的 ID／欄位／對應錯誤，保留原使用者要求，不要請使用者核准你的編寫錯誤。");
                     if (!"human".equals(next) && !formatRetry) {
@@ -696,6 +737,12 @@ public class FlowEngine {
                         AutomaticHandoff.begin(flow, flow.node, report, head);
                     }
                 }
+                // 看板只收最終報告：重送的草稿與諮詢暫停不算。寫錯的項目只告知，不擋流程。
+                if (!resend && consultBlock == null) {
+                    String boardNote = TeamBoard.ingest(flow, node, report);
+                    if (boardNote != null) flow.context = FlowContext.append(flow.context, "系統看板說明：" + boardNote);
+                }
+                flow.pendingConsult = null;
                 flow.activeNode = null; task.continuation(null);
                 countedNode = null;
                 if (next.equals("human")) {
@@ -832,6 +879,39 @@ public class FlowEngine {
      * 整節點改派的舊任務（2026-10-04 前已記在 flow.roleOverrides）沿用原決定，中途不換規則。
      * 新的改派判定走 {@link #runDelegatedPart} 的分段改派。
      */
+    /**
+     * 依序回答待答的諮詢；每題完成即保存，中斷或額度停下後續跑只補答剩下的題目。
+     * 回傳 false 代表任務被中止或中斷，呼叫端應直接結束本輪。
+     */
+    private boolean runConsultations(Task task, FlowRun flow) throws Exception {
+        Consultation.Pending pending = flow.pendingConsult;
+        if (pending == null) return true;
+        Role asker = flow.snapshot.definition().roles().get(pending.asker());
+        for (int index = Consultation.nextIndex(flow, pending); index < pending.questions().size(); index++) {
+            if (aborted(task) || stopForInterrupt(task, flow)) return false;
+            Consultation.Question question = pending.questions().get(index);
+            Role role = flow.snapshot.definition().roles().get(question.role());
+            long started = System.nanoTime();
+            AgentRuntime.RuntimeResult result;
+            try (var progress = new StageProgress(slack, store, task, role.executionLabel() + "／回答 " + asker.name() + " 的諮詢",
+                    props.progressIntervalSeconds(), true)) {
+                result = executor.consult(task, flow, pending, index);
+            }
+            if (aborted(task)) return false;
+            if (result.isError()) throw new IllegalStateException("諮詢回答 runtime 回報 isError；診斷：" + result.diagnosticsLog());
+            Consultation.Answer answer = Consultation.record(flow, pending, index, result.structuredOutput());
+            store.saveStage(task.id(), new StageOutcome(Consultation.stage(pending, index), result.sessionId(), result.structuredOutput(),
+                    result.costEstimate(), (System.nanoTime() - started) / 1_000_000_000));
+            audit.record(task.id(), question.role(), AuditLog.ACTION_RUNTIME, "回答節點 " + pending.node() + " 的諮詢；配置="
+                    + flow.snapshot.revision(), result.costEstimate(), result.sessionId());
+            store.saveFlow(task.id(), flow);
+            slack.postConfigured(role, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id() + "｜" + role.name()
+                    + " 回覆 " + asker.name() + " 的諮詢（信心 " + answer.confidence() + "）：\n" + Diagnostics.clip(answer.answer(), 2500));
+        }
+        flow.pendingConsult = null;
+        store.saveFlow(task.id(), flow);
+        return true;
+    }
     private Node actingNode(Task task, FlowRun flow, Node node) {
         if (node.protectedPathFallback() == null || flow.dialogue) return node;
         String chosen = flow.roleOverrides.get(flow.node);
@@ -1251,6 +1331,7 @@ public class FlowEngine {
         child.acceptanceOwner = flow.acceptanceOwner;
         child.continuationOf = task.id();
         IssueTracker.inherit(flow, child);
+        TeamBoard.inherit(flow, child, task.id());
         child.context = FlowContext.append("", "【承接自任務 #" + task.id() + "】\n"
                 + (exhausted ? "原任務因用完自動處理次數而停止" : "負責人決定以新任務、最新配置繼續原任務")
                 + "，本任務從它的最新成果接著做"
@@ -1351,7 +1432,7 @@ public class FlowEngine {
         }
         AutomaticHandoff.clear(flow);
         store.saveFlow(task.id(), flow);
-        state(task, Task.State.COMPLETED, "任務 #" + task.id() + " 已結束（未發布）" + IssueTracker.summary(flow));
+        state(task, Task.State.COMPLETED, "任務 #" + task.id() + " 已結束（未發布）" + IssueTracker.summary(flow) + TeamBoard.summary(flow));
         offerSpinoffs(task, flow);
     }
     /**

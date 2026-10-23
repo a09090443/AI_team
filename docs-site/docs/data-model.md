@@ -215,6 +215,19 @@ v2 配置式流程的整份執行快照，對應 `com.zipe.aiteam.flow.FlowRun`�
 自主派工新增 assignments／assignmentHistory，以及 snapshot.definition 中的 candidateRoles／capabilities；
 新版寫入後舊 JAR 不能直接解析，回滾需配合升級前的資料庫與配置備份。
 
+角色諮詢與共享看板（2026-10-17）新增了以下欄位：
+
+| JSON 欄位 | 說明 |
+|---|---|
+| `board` | 看板，依 `B-<n>` 編號存放 `TeamBoard.Entry`（id、kind、text、to、refs、author、node、status、resolution、supersededBy、origin） |
+| `boardSeq` | 下一個看板編號 |
+| `consultations` | 已完成的問答，型別是 `Consultation.Answer`，以 node、visit、round、index 定位 |
+| `pendingConsult` | 還沒答完的一輪，型別是 `Consultation.Pending` |
+| `consultUsed` | 整個任務已用掉的題數 |
+| `snapshot.definition.collaboration`、`nodes.*.consultRoles` | 對應的配置欄位 |
+
+這些欄位為空時都不會寫進 JSON，所以沒有用到協作的任務，舊 JAR 仍然讀得到。只有用過協作的任務會受「舊 JAR 不能解析」的限制。
+
 最關鍵的性質：`snapshot` 內含「任務開始時」的 teams 配置，
 磁碟上的配置改了不會影響進行中的任務。要換配置必須走 `TeamMigration`，
 而遷移會清掉 `planApprovals`、`executionContexts`、`recoveryGrants`

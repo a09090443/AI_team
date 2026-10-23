@@ -160,3 +160,17 @@ Infrastructure 實際送出的 start `d55653d5fec64cfaae0421371a58b077` 已完�
 模型於11:36先遇額度停止；建置工具稍後完成，不能寫成模型已讀取結果或任務結案。#1036仍WAITING_QUOTA；既有quota_retry排2026-10-17 22:29台北時間自動嘗試（供應商22:27），恢復後需先領取成功收據再做獨立health，無需重建。broker仍需宿主機持續運作，尚未註冊開機服務；此輪新增輪詢失敗3至60秒退避，避免暫時傳輸錯誤直接退出。
 
 實測發現前版GRADLE_USER_HOME環境變數不足以使映像使用指定cache，目標快取目錄仍空；現已改獨立/build-cache掛載及明確--gradle-user-home，需在下一輪建置實測效益，不能說此次已靠持久快取完成。Windows20項測試與check-source通過。登入、資料寫入/重啟持久化、獨立health操作與新VM無人工介入驗收尚未完成；本次確定的是agent送出工具的建置/啟動與工具內健康檢查成功。
+
+## 2026-10-19 #1046：部署歷史與恢復入口缺漏
+
+#1046 的 prepare 兩次回 SERVICE_BROKER_OFFLINE（exit 75），請求
+`20db9ac9a6f54de49a63c60c3c5f51c0` 保留。這只證明本次部署通道未回應，不能證明舊服務已停止。
+#1036 的 start 收據 `d55653d5fec64cfaae0421371a58b077` 是 exit 0，當時已成功啟動並通過健康檢查；目前健康狀態仍須重查。
+
+目前新任務注入本任務脈絡、serviceTarget 與 skill，不自動匯入同目標舊任務的部署收據。
+#1046 快照的 serviceTarget 只有目標名稱與檢查操作，沒有宿主啟動入口。這是已知的脈絡與操作說明缺口。
+恢復入口是 Windows 宿主機上的 `.agents/skills/service-build/scripts/broker.py`，搭配既有設定
+`C:/Users/zipe1/AppData/Local/AI-Team/service-build/bestpartner-dev.json`；不是要求手動執行產品 JAR。
+管理者確認 Python、依賴可用及同目標沒有其他 broker 後，以 `python <broker.py 的絕對路徑> <主機設定檔>` 啟動並保持運作，再在原任務續跑。
+agent 應區分「本次未完成」「過去已部署」「目前狀態未核實」，並明說在哪台機器、啟動哪個程式與設定檔；
+沒有具體入口時應列為管理資訊缺漏，不能只寫「請維運者啟動」。

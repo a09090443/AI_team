@@ -24,6 +24,11 @@ FlowEngine 的新任務承接、續跑、發布及角色請求均保留這個身
 主 App 負責排程、按鈕與流程控制；角色 App 只用來以角色身分發言與接收 @提問，不能自己觸發或中止任務。
 啟用 `candidateRoles` 的階段由上游 agent 依能力選擇負責角色，`AgentDispatch` 驗證並保存交接；
 執行仍經中央排程與原階段的權限／驗收契約，詳見 [自主派工](/docs/configurable-team#agent-自主派工)。
+設定了 `collaboration` 的團隊另外提供兩種協作：
+- **角色諮詢**（`Consultation`）：節點可以暫停，向 `consultRoles` 裡的角色唯讀提問，再用原本的 session 接著做，不計次。
+- **共享看板**（`TeamBoard`）：所有角色共用的決策、假設、問題與風險紀錄，承接成新任務時一起帶過去。
+
+兩者都不會新增人工停止點，也不能擴權。詳見[角色諮詢與共享看板](/docs/configurable-team#角色諮詢與共享看板2026-10-17)。
 
 ## 兩種執行模式
 
