@@ -5,6 +5,11 @@
 - 使用者要求驗證後依序部署三個實例。commit 8269d27，Linux 810 項 0 失敗，JAR 5fc7db7b…；starters 23:45（PID 274064）、bestpartner 23:49（PID 277417）、dynamic-api 23:51（PID 280953），備份與檢查見 deploy-2026-09-06-v2 同日段落。bestpartner 因 dev 有新 commit 排入基準驗證，其餘不重跑。
 - 已修正的文件：deploy-2026-09-06-v2。下一步：以下一個小型任務對照 #1053～#1055 的耗時與停頓次數。
 
+## 2026-10-23 新增「分支／worktree 完成即合併」規則（Claude Code）
+
+- 使用者要求：為修改另開分支或 worktree 的任務，完成後直接合併回 main 並 push。已寫入 AGENTS.md（只適用開發本專案的 AI 工具，不改變 orchestrator 對目標專案的 PR 核准閘門）。
+- 已核對的文件：agent/ai-tools（只描述規則來源與同步，無需改）、agent/index。無缺漏。docs build 未過，原因是工作區另一項未提交工作的 PullRequestSync.java、PullRequestMonitor.java 尚未列入目錄樹，與本規則無關。
+
 ## 2026-10-23 dynamic-api、spring-starters 開啟延後驗收（Claude Code）
 
 - 使用者要求兩份配置加 autonomy、只開 deferUnverifiable（其餘 0／false），驗證後依序部署三個實例。

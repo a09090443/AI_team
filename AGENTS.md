@@ -30,6 +30,10 @@
 - `.ai/` 是給人與 agent 看的交接紀錄，不是 orchestrator 執行時讀的設定；orchestrator 給下游 agent 的規範在
   `orchestrator/teams/prompts/`（配置式）與 `orchestrator/prompts/`（legacy），不是本檔。
 - 大範圍修改先提出計畫讓使用者確認再實作（有 plan mode 的工具使用 plan mode）。
+- **分支／worktree 完成即合併**：開發本專案時若為修改另開分支或 worktree，任務完成且驗證通過後，
+  直接合併回 `main` 並 push `origin main`，不另開 PR、不需再詢問。合併前先同步最新 `main`、解決衝突並重跑相關驗證；
+  只合併該任務的 commit，不夾帶主工作目錄其他未提交變更；不得 force push，push 被拒時先整合遠端變更再推。
+  此規則只適用開發本專案的 AI 工具，不改變 orchestrator 下游 agent 對目標專案「真人核准後才推分支開 PR」的閘門。
 - 快速理解專案：[docs-site/agent/index.md](docs-site/agent/index.md)（系統全貌、Slack 指令、設定參考、依任務找文件）；
   找檔案先查專案目錄樹 [docs-site/agent/project-tree.md](docs-site/agent/project-tree.md)；
   每份文件的狀態（現行／紀錄／決策／歷史）與用途登錄在 `docs-site/catalog.mjs`。
