@@ -1,5 +1,11 @@
 # 工作進度（Codex 與 Claude Code 共用）
 
+## 2026-10-23 入口文件改為通用寫法（Claude Code，未 commit）
+
+- 使用者指出 system-map 以專案清單描述團隊配置，與「AI team 適用不同專案」不符。
+- configurable-team 新增「各專案實例的功能啟用狀態」表，集中記錄各實例啟用哪些通用功能；system-map、agent/configuration、agent/operations 移除以特定專案代表系統的寫法，改以功能與配置欄位描述並連到該表。AGENTS.md 通用性原則補上文件撰寫要求。
+- 已核對的文件：agent/system-map、configuration、operations、index（已無專案名稱）。實例專屬段落（configurable-team 的各實例配置、部署紀錄、service-delivery）屬實例紀錄，保留不改。
+
 ## 2026-10-23 精簡提示詞並抽出共用規則（Claude Code，來源完成、未部署、未 commit）
 
 - 新增 TeamDefinition.sharedInstructions，TeamCatalog 凍結進快照資產，ConfiguredExecutor 在正式階段附「【團隊共用工作規則】」；新增 teams/prompts/shared.md（工作分類、任務效率、協作與自主），四份配置都啟用。

@@ -102,6 +102,25 @@ App-Level Token 留空**：發言與交接 tag 使用同一個角色身分，不
 2026-10-03 已在同一台 VM 同時啟動 starters 與 bestpartner 兩個實例（各自 0 ERROR、自檢 unit 帶各自字首、443 連線分屬各自 PID）。
 **兩個實例的真實 Slack 端對端（提需求→PR）尚未驗證**。
 
+## 各專案實例的功能啟用狀態
+
+所有功能都是通用的，由配置欄位開關，程式不針對任何專案。新專案只要新增一份配置，就能依需要啟用下列任一項。
+下表只記錄目前內附配置的啟用狀態（2026-10-23 來源），不是功能限制：
+
+| 功能（配置欄位） | bestpartner | dynamic-api | spring-starters | node-web |
+|---|---|---|---|---|
+| 共用工作規則（`sharedInstructions`） | ✓ | ✓ | ✓ | ✓ |
+| 角色諮詢與共享看板（`collaboration`／`consultRoles`） | ✓（未部署） | — | — | — |
+| 自主派工（`candidateRoles`） | design、implementation | design、implementation | — | — |
+| 跨 runtime 改派（`protectedPathFallback`） | ✓ | ✓ | — | — |
+| 服務建置路線（`service` 節點、`serviceTarget`） | ✓ | — | — | — |
+| 依變更範圍驗證（`commandScopes`） | ✓ | — | — | — |
+| 文件略過產品建置（`docOnlyPaths`） | ✓ | ✓ | ✓ | ✓ |
+| 計畫自動核准（`autoApprovePlanWhenValid`） | ✓ | ✓ | ✓ | — |
+| design 節點 | ✓ | ✓ | ✓ | 無（另有 frontend 節點） |
+
+以下各段是個別實例的配置取捨，只說明該專案為何這樣設定。
+
 ## bestpartner 配置
 
 `orchestrator/teams/bestpartner.json`（2026-10-03）是第一個 Gradle 專案配置，供 bestpartner 實例

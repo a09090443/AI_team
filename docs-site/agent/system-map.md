@@ -47,11 +47,13 @@ FlowEngine 的新任務承接、續跑、發布及角色請求均保留這個身
 每個服務實例只載入一份團隊配置。每個任務建立時保存完整配置快照（`flow_run`），
 之後修改配置**不影響**既有任務；要讓舊任務套用新規則，需走受控配置遷移或「改用新任務繼續」。
 
-bestpartner 另提供 `intake → service → end`：由 Infrastructure 建置既有服務並檢查啟動結果，
+配置了 `service` 節點與 `serviceTarget` 的團隊另提供 `intake → service → end`：由 Infrastructure 建置既有服務並檢查啟動結果，
 失敗經 `service_triage` 派回修正。服務路線不進 QA 計畫、開發獨立驗證或 PR 發布；目標主機未配置則等待補齊。
 詳見 [服務建置](/docs/service-delivery)。
 
-## 任務生命週期（以 `spring-starters.json` 為例）
+## 任務生命週期（典型配置）
+
+節點與角色都由團隊配置決定，以下是內附配置共用的典型流程；不同專案可以增刪節點與角色（例如不設 design、另加 frontend），不需要改程式。
 
 ```text
 Slack @主機器人 需求
@@ -66,9 +68,9 @@ Slack @主機器人 需求
   → approval      [真人核准 PR] → 推分支、開 PR → 狀態 PR_CREATED
 ```
 
-bestpartner、dynamic-api 與 spring-starters 的 design、plan、implementation、verification、review 節點受阻（`blocked`）時交給 **triage**（PM 分流）；
-intake 與 triage 受阻則交真人。實際依任務保存的配置快照，舊快照的 design 可能直接交真人（spring-starters 在 2026-10-23 前建立的任務即是）。
-四份配置都以 `sharedInstructions` 載入 `prompts/shared.md`，所有角色共用同一份工作分類、任務效率與協作規則。分流只能回傳配置中既有的 route：
+典型配置中，design、plan、implementation、verification、review 節點受阻（`blocked`）時交給 **triage**（PM 分流）；
+intake 與 triage 受阻則交真人。實際依任務保存的配置快照，舊快照的 design 可能直接交真人。
+設定 `sharedInstructions` 的團隊，所有角色共用同一份工作分類、任務效率與協作規則（內附配置都指向 `prompts/shared.md`）。分流只能回傳配置中既有的 route：
 `implementation`、`verification`、`plan`、`design`、`requirements`（回到 intake 改需求）或 `human`。
 agent 不能自行指定角色或跳到任意節點。
 
@@ -123,7 +125,7 @@ agent 不能自行指定角色或跳到任意節點。
 
 | 路徑 | 內容 |
 |---|---|
-| `orchestrator/teams/*.json` | 團隊配置：`bestpartner.json`（唯一啟用 `collaboration`）、`dynamic-api.json`、`spring-starters.json`（Java starters）、`node-web.json`（Node 範例） |
+| `orchestrator/teams/*.json` | 團隊配置：每個專案實例一份，流程、角色、權限與操作都寫在配置裡，程式不含專案特例。現有實例與各自啟用的功能見[實例一覽](/docs/configurable-team#各專案實例的功能啟用狀態) |
 | `orchestrator/teams/prompts/`、`schemas/` | 配置式節點的提示與輸出 schema |
 | `orchestrator/prompts/`、`orchestrator/schemas/` | legacy 五角色的提示與 schema |
 | `orchestrator/src/main/resources/schema.sql` | SQLite DDL 唯一來源 |

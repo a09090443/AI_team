@@ -28,7 +28,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 | `AI_TEAM_ALLOWED_USERS` | 允許觸發的 Slack user ID，逗號分隔（不是顯示名稱） |
 | `AI_TEAM_CHANNEL_ID` | 運作頻道 ID；preflight 視為必填 |
 | `AI_TEAM_DEFINITION` | 團隊配置 JSON 的絕對路徑；**留空＝legacy 五角色模式**。修改後重啟，只影響新任務 |
-| `GRADLE_USER_HOME` | 只有 Gradle 專案需要（如 bestpartner）：指向 `$HOME/.cache/gradle`，配置 `cachePaths` 宣告 `.cache/gradle`；沙箱白名單會帶入，系統獨立驗證不受影響 |
+| `GRADLE_USER_HOME` | 只有 Gradle 專案需要：指向 `$HOME/.cache/gradle`，配置 `cachePaths` 宣告 `.cache/gradle`；沙箱白名單會帶入，系統獨立驗證不受影響 |
 | `AI_TEAM_INSTANCE` | 服務實例名稱（建議放 `team.env`）。單一服務留空；同一台 VM 多個專案服務時**必填且不可重複**，systemd unit 改名為 `ai-team-<實例>-…`。格式見 [多個服務實例](/docs/configurable-team#同一台-vm-多個服務實例) |
 | `AI_TEAM_HOME`、`AI_TEAM_REPO`、`AI_TEAM_WORKSPACES`、`AI_TEAM_LOGS` | 服務根目錄、目標 repo 鏡像、任務工作區、階段 log |
 | `CLAUDE_BIN`、`CODEX_BIN`、`OPENCODE_BIN` | 各 CLI 絕對路徑；只有用到該 runtime 才需要 |
@@ -48,13 +48,13 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 
 ## 團隊配置 JSON
 
-範例：`orchestrator/teams/spring-starters.json`（v2，完整流程）、`node-web.json`（Node 專案、不同角色組合）。
+結構對所有專案相同；`orchestrator/teams/` 內附的配置可當範例，各自啟用的功能見[實例一覽](/docs/configurable-team#各專案實例的功能啟用狀態)。
 所有 prompt／schema 路徑必須在配置檔所在目錄內，跳脫或 symlink 指向外部會被拒絕。
 
 ```json
 {
   "version": 2,
-  "id": "spring-starters",
+  "id": "<團隊 ID>",
   "project": { "...": "專案層設定" },
   "roles": { "<角色 ID>": { "...": "角色設定" } },
   "entry": "intake",
@@ -161,7 +161,7 @@ bash deploy/bootstrap/check-source.sh
 
 ## 服務執行工具（2026-10-10）
 
-bestpartner 配置四個 `service-*` 操作，目標 `bestpartner-dev`；Windows 宿主機 `host.example.json` 的 UUID／guest_user／password_file／source_manifest／state_directory 必須由管理者設定，`tasks=[]` 依即時 SERVICE 狀態自動挑選。詳見 [服務建置](/docs/service-delivery)。
+服務建置以 `project.operations` 的四個 `service-*` 操作與 `serviceTarget` 指定目標；Windows 宿主機 `host.example.json` 的 UUID／guest_user／password_file／source_manifest／state_directory 必須由管理者設定，`tasks=[]` 依即時 SERVICE 狀態自動挑選。詳見 [服務建置](/docs/service-delivery)。
 
 
 ### 節點 skill
@@ -173,6 +173,6 @@ Windows 可用 skill 的 `scripts/login.ps1 -Config <設定檔>` 初始化 passw
 
 ## 文件驗收配置（2026-10-12 來源更新）
 
-`project.verification.docOnlyPaths` 配合系統 Git 差異與文字副檔名限制略過不相關產品建置，三份範例配置均已提供；SQL／腳本／設定不適用。
-必要文件站建置另由 verification 操作處理。bestpartner 新增 qa-docs-dir／clean／snapshot／extract／install／build，僅寫 target/qa-docs，原 docs-site 唯讀，安裝離線使用實作準備的 npm 快取。
+`project.verification.docOnlyPaths` 配合系統 Git 差異與文字副檔名限制略過不相關產品建置，內附配置均已提供；SQL／腳本／設定不適用。
+必要文件站建置另由 verification 操作處理。可配置 qa-docs-dir／clean／snapshot／extract／install／build 等操作，僅寫 target/qa-docs，原 docs-site 唯讀，安裝離線使用實作準備的 npm 快取。
 plan 的 protected_path_changes 明列需跨 runtime 改派的檔案；不新增權限，仍須符合節點 protectedPathFallback.paths。詳見[配置流程](/docs/configurable-team)。尚未部署。
