@@ -168,6 +168,14 @@ public interface AgentRuntime {
             JsonNode permissionDenials
     ) {}
 
+    /**
+     * 本輪 agent 實際執行過的 shell 指令與結束碼，讀自 CLI 自己的紀錄。
+     * 拿不到時回空清單 —— 空清單只代表沒有證據，不代表 agent 沒執行任何指令。
+     */
+    default List<CommandRuns.CommandRun> commandRuns(RuntimeRequest request, RuntimeResult result, java.time.Instant startedAt) {
+        return List.of();
+    }
+
     class RuntimeExecutionException extends Exception {
         public RuntimeExecutionException(String message) { super(message); }
         public RuntimeExecutionException(String message, Throwable cause) { super(message, cause); }

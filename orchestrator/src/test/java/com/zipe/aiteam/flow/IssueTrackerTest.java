@@ -112,6 +112,23 @@ class IssueTrackerTest {
         assertThat(IssueTracker.checksReason(previous,flow)).contains("變更");
         assertThat(IssueTracker.completionReason(flow)).isNotNull();
     }
+    @Test void laterReadOnlyObservationsKeepPreviousVerificationButActionableChangesDoNot() {
+        // #1044：QA 全部 PASS 後，審查把 LOW 提醒記成 OBSERVATION，發布閘門卻判定「仍有未驗證項目」。
+        discover(2); ObjectNode previous = checks(2); flow.receipts.put("verification", previous);
+        ObjectNode r = report(); r.withArray("issue_updates").add(issue("O1", "OBSERVATION")).add(issue("O2", "OBSERVATION"));
+        assertThat(IssueTracker.ingest(flow, node(Gate.REVIEW), r, "42")).isNull();
+        assertThat(IssueTracker.checksReason(previous, flow)).isNull();
+        assertThat(IssueTracker.completionReason(flow)).isNull();
+        assertThat(IssueTracker.summary(flow)).contains("本輪已驗證 2 項", "待處理 0 項");
+        // 之後只要新增需要處理的項目，舊核對就失效；尾端是觀察也不能蓋掉中間的 REPAIR。
+        r = report(); r.withArray("issue_updates").add(issue("I3", "REPAIR"));
+        assertThat(IssueTracker.ingest(flow, node(Gate.REVIEW), r, "42")).isNull();
+        r = report(); r.withArray("issue_updates").add(issue("O3", "OBSERVATION"));
+        assertThat(IssueTracker.ingest(flow, node(Gate.REVIEW), r, "42")).isNull();
+        assertThat(IssueTracker.checksReason(previous, flow)).contains("變更");
+        assertThat(IssueTracker.completionReason(flow)).isNotNull();
+        assertThat(IssueTracker.checkedRevisionStillValid(flow, "")).isFalse();
+    }
     @Test void duplicateUnknownAndOpenChecksRejected() {
         discover(1); ObjectNode r=checks(1);r.withArray("issue_checks").add(r.path("issue_checks").get(0));
         assertThat(IssueTracker.checksReason(r,flow)).contains("無效");

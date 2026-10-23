@@ -106,13 +106,13 @@ done
 | `code-review.yaml` | DA Code Reviewer | `A0CA5E836JY` | `SLACK_BOT_TOKEN_CODE_REVIEW` | `SLACK_APP_TOKEN_CODE_REVIEW` |
 
 App ID 可直接開 `https://api.slack.com/apps/<App ID>`：Bot Token 在 **OAuth & Permissions**，App-Level Token 在
-**Basic Information → App-Level Tokens**（尚未產生，需建立 `connections:write` token）。
+**Basic Information → App-Level Tokens**（名稱 `socket`、scope `connections:write`）。
 
 - 變數名稱與其他實例相同，但填進 **dynamic-api 實例自己的** `env.sh`（例如 `~/ai-team-dynamic-api/env.sh`），值是這組 App 的 token。
 - `builder_codex`（分段改派段）的 `SLACK_BOT_TOKEN_BUILDER_CODEX` 不另建 App，留空時由主 App 以「Backend Agent」名稱代發。
 - 7 個 App 都要 `/invite` 進 `#dynamic-api`，`AI_TEAM_CHANNEL_ID` 填 `C0CA5CXTUHJ`（2026-10-17 建立的公開頻道）；不要把其他實例的 App 留在這個頻道。
 - 狀態（2026-10-17）：7 個 App 已由 manifest 建立、安裝到 AI-team 並邀請進 `#dynamic-api`（建立時在 Review 頁確認主 App 4 個、
-  角色 2 個 scope）。App-Level Token 尚未產生、兩種 token 都未填入 env.sh，直接 @ 與流程身分皆未驗證。
+  角色 2 個 scope）。2026-10-18 使用者填入 14 個 token，auth.test 確認身分；服務啟動 log 顯示 6 個角色為獨立帳號、Socket Mode 皆啟動。直接 @ 與流程身分尚未以真實訊息驗證。
 - 經驗：從瀏覽器自動化帶入 manifest 時，對 CodeMirror 呼叫 `setValue` 不會更新表單狀態，建立出來的是預設 Demo App
   （Slack 會提示 app 沒有 scope）；要以貼上方式（`replaceSelection(..., 'paste')`）帶入，並在 Review 頁核對 scope 數。
   `?new_app=1&manifest_yaml=` 預填網址在 2026-10-17 未開啟建立視窗。

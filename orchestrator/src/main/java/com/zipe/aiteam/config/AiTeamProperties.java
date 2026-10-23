@@ -135,6 +135,17 @@ public class AiTeamProperties {
         return reportDetail == null || !"full".equalsIgnoreCase(reportDetail.trim());
     }
 
+    /**
+     * 啟動時自動跑基準驗證（目前配置＋基準分支最新 commit 還沒有結果時）。預設 on；off 只關掉自動觸發，
+     * Slack 的「基準驗證」指令照樣可用。
+     */
+    @Value("${AI_TEAM_BASELINE_VERIFY:on}")
+    private String baselineVerify;
+
+    public boolean baselineVerifyOnStart() {
+        return baselineVerify == null || !"off".equalsIgnoreCase(baselineVerify.trim());
+    }
+
     /** Code Review 階段的開關。預設開啟；設成 off 可整個略過。 */
     @Value("${AI_TEAM_CODE_REVIEW:on}")
     private String codeReview;

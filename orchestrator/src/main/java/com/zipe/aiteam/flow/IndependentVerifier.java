@@ -15,6 +15,8 @@ import java.util.concurrent.TimeUnit;
 /** 系統執行固定驗證 argv，從最終 commit 的全新 clone 取得獨立收據；不執行模型提供的指令。 */
 @Component
 public class IndependentVerifier {
+    /** 驗證指令失敗時寫進 blockedFindings 的 source；下游依此判斷這是硬閘門。 */
+    public static final String FINDING_SOURCE = "系統獨立驗證";
     public record CommandResult(List<String> argv, int exitCode, String log, String sha256) {}
     public record FileEvidence(String base, String head, String planDigest, List<WorkspaceManager.FileIdentity> files,
                                String log, String sha256) {}
@@ -22,8 +24,19 @@ public class IndependentVerifier {
      * @param docOnlyChanges 非 null 表示系統依 git diff 判定為純文件變更、依配置略過建置測試；此時 commands 為空，
      *                       這裡列出判定所依據的變更檔案。null 為一般收據。
      */
+    /**
+     * @param decisions    2026-10-17 起的收據：與配置指令一一對應的執行／略過／重用決定（見 {@link VerificationPlan}）；
+     *                     null 為舊收據，沿用 commands 逐一核對。commands 此時只列本輪實際執行的結果。
+     * @param changedFiles 判定所依據的變更檔案（最多 500 個）；查不到時為 null。
+     * @param taskId       發布前重算變更與指紋所需的任務編號。
+     */
     public record Receipt(String head, String baseline, String configuration, String startedAt, String completedAt,
-                          List<CommandResult> commands, List<String> docOnlyChanges, FileEvidence fileComparison) {
+                          List<CommandResult> commands, List<String> docOnlyChanges, FileEvidence fileComparison,
+                          List<VerificationPlan.Decision> decisions, List<String> changedFiles, String taskId) {
+        public Receipt(String head, String baseline, String configuration, String startedAt, String completedAt,
+                       List<CommandResult> commands, List<String> docOnlyChanges, FileEvidence fileComparison) {
+            this(head, baseline, configuration, startedAt, completedAt, commands, docOnlyChanges, fileComparison, null, null, null);
+        }
         public Receipt(String head, String baseline, String configuration, String startedAt, String completedAt,
                        List<CommandResult> commands, List<String> docOnlyChanges) {
             this(head, baseline, configuration, startedAt, completedAt, commands, docOnlyChanges, null);
@@ -120,36 +133,97 @@ public class IndependentVerifier {
                 return new Receipt(head, flow.baselineRevision, flow.snapshot.revision(), now, now, List.of(), List.copyOf(changed), fileEvidence);
             }
         }
+        // 依變更檔案決定每個指令要執行、略過或重用（VerificationPlan）；任何查不到的情況都全跑。
+        List<String> changed;
+        try { changed = workspaces.changedPathsSinceBase(task.id()); }
+        catch (Exception e) { changed = null; }
+        var selection = VerificationPlan.select(spec, changed);
+        List<String> prints = VerificationPlan.fingerprints(spec, workspaces.treeEntries(task.id(), head));
+        List<VerificationPlan.Decision> decisions = new ArrayList<>();
+        for (int i = 0; i < spec.commands().size(); i++) {
+            List<String> argv = List.copyOf(spec.commands().get(i));
+            if (!selection.needs(i)) {
+                decisions.add(new VerificationPlan.Decision(i, argv, VerificationPlan.Action.SKIP,
+                        "變更檔案都不在這個指令的範圍內（純文件、QA 專屬或屬於其他指令）", List.of(), prints.get(i), null, null, null));
+                continue;
+            }
+            List<String> matched = selection.fullRun() ? List.of() : List.copyOf(selection.matched().get(i));
+            VerificationPlan.HistoryEntry previous = reusable(flow, argv, prints.get(i));
+            if (previous != null) decisions.add(new VerificationPlan.Decision(i, argv, VerificationPlan.Action.REUSE,
+                    "相同輸入指紋已於 commit " + previous.head() + " 通過", matched, prints.get(i), previous.log(), previous.sha256(), previous.head()));
+            else decisions.add(new VerificationPlan.Decision(i, argv, VerificationPlan.Action.RUN,
+                    selection.fullRun() ? selection.fullRunReason() : "範圍內有變更", matched, prints.get(i), null, null, null));
+        }
+        List<String> changedFiles = changed == null ? null : List.copyOf(changed.subList(0, Math.min(500, changed.size())));
+        Instant started = Instant.now();
+        if (decisions.stream().noneMatch(d -> d.action() == VerificationPlan.Action.RUN)) {
+            if (!head.equals(workspaces.headSha(task.id())) || !workspaces.clean(task.id())) throw new IllegalStateException("驗證期間來源工作區變更，收據作廢");
+            return new Receipt(head, flow.baselineRevision, flow.snapshot.revision(), started.toString(), Instant.now().toString(),
+                    List.of(), null, fileEvidence, List.copyOf(decisions), changedFiles, task.id());
+        }
         Path root = props.homePath().resolve("verification-runs").resolve(task.id()).toAbsolutePath().normalize();
         Files.createDirectories(root);
         Path run = Files.createTempDirectory(root, "run-");
         Path writable = Files.createDirectory(run.resolve("work"));
         Path home = Files.createDirectory(writable.resolve("home"));
         Path repo = writable.resolve("repo");
-        Instant started = Instant.now();
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(spec.timeoutSeconds());
         var setupPolicy = new SandboxPolicy(List.of(writable), List.of(), 2048, 200, 256);
         execute(task.id(), List.of("git", "-c", "core.hooksPath=/dev/null", "clone", "--no-local", "--no-checkout", "--",
                 workspaces.pathFor(task.id()).toAbsolutePath().toString(), repo.toString()), writable, home, setupPolicy, run.resolve("clone.log"), deadline);
         execute(task.id(), List.of("git", "-c", "core.hooksPath=/dev/null", "checkout", "--detach", head), repo, home, setupPolicy, run.resolve("checkout.log"), deadline);
+        var policy = new SandboxPolicy(List.of(writable, dependencyCache()), pinsFor(repo), 4096, 200, 256);
+        List<CommandResult> results = new ArrayList<>();
+        for (int i = 0; i < decisions.size(); i++) {
+            VerificationPlan.Decision decision = decisions.get(i);
+            if (decision.action() != VerificationPlan.Action.RUN) continue;
+            Path log = run.resolve("check-" + i + ".log");
+            try { execute(task.id(), decision.argv(), repo, home, policy, log, deadline); }
+            catch (CommandExit exit) { throw classify(exit); }
+            CommandResult result = new CommandResult(decision.argv(), 0, log.toString(), hash(log));
+            results.add(result);
+            decisions.set(i, new VerificationPlan.Decision(i, decision.argv(), decision.action(), decision.reason(), decision.matched(),
+                    decision.fingerprint(), result.log(), result.sha256(), null));
+            // 每通過一個就記下來：後面的指令失敗時，修正後的下一輪仍可重用輸入沒變的這個結果。
+            remember(flow, new VerificationPlan.HistoryEntry(decision.argv(), decision.fingerprint(), flow.snapshot.revision(), head, result.log(), result.sha256()));
+        }
+        if (!head.equals(workspaces.headSha(task.id())) || !workspaces.clean(task.id())) throw new IllegalStateException("驗證期間來源工作區變更，收據作廢");
+        return new Receipt(head, flow.baselineRevision, flow.snapshot.revision(), started.toString(), Instant.now().toString(),
+                List.copyOf(results), null, fileEvidence, List.copyOf(decisions), changedFiles, task.id());
+    }
+    /** 全新 checkout 只有版控檔；釘住每個檔案與 .git，避免測試指令先改產品／測試再回報成功。 */
+    static List<Path> pinsFor(Path repo) throws java.io.IOException {
         List<Path> pins = new ArrayList<>(); pins.add(repo.resolve(".git"));
-        // 全新 checkout 只有版控檔；釘住每個檔案，避免測試指令先改產品／測試再回報成功。
         try (var files = Files.walk(repo)) {
             for (Path path : files.toList()) {
                 if (Files.isSymbolicLink(path)) throw new IllegalStateException("獨立驗證不接受 symlink，需管理者評估：" + repo.relativize(path));
                 if (!path.startsWith(repo.resolve(".git")) && Files.isRegularFile(path)) pins.add(path);
             }
         }
-        var policy = new SandboxPolicy(List.of(writable, dependencyCache()), List.copyOf(pins), 4096, 200, 256);
-        List<CommandResult> results = new ArrayList<>();
-        for (List<String> argv : spec.commands()) {
-            Path log = run.resolve("check-" + results.size() + ".log");
-            try { execute(task.id(), argv, repo, home, policy, log, deadline); }
-            catch (CommandExit exit) { throw classify(exit); }
-            results.add(new CommandResult(List.copyOf(argv), 0, log.toString(), hash(log)));
+        return List.copyOf(pins);
+    }
+    /** 同一配置版本、同一指令、相同輸入指紋、紀錄檔仍在且雜湊相符的歷史結果；找不到回 null。 */
+    VerificationPlan.HistoryEntry reusable(FlowRun flow, List<String> argv, String fingerprint) {
+        if (flow.verificationHistory == null) return null;
+        for (int i = flow.verificationHistory.size() - 1; i >= 0; i--) {
+            var entry = flow.verificationHistory.get(i);
+            if (entry == null || !argv.equals(entry.argv()) || !fingerprint.equals(entry.fingerprint())
+                    || !flow.snapshot.revision().equals(entry.configuration())) continue;
+            if (logIntact(entry.log(), entry.sha256())) return entry;
         }
-        if (!head.equals(workspaces.headSha(task.id())) || !workspaces.clean(task.id())) throw new IllegalStateException("驗證期間來源工作區變更，收據作廢");
-        return new Receipt(head, flow.baselineRevision, flow.snapshot.revision(), started.toString(), Instant.now().toString(), List.copyOf(results), null, fileEvidence);
+        return null;
+    }
+    static void remember(FlowRun flow, VerificationPlan.HistoryEntry entry) {
+        if (flow.verificationHistory == null) flow.verificationHistory = new ArrayList<>();
+        flow.verificationHistory.add(entry);
+        while (flow.verificationHistory.size() > VerificationPlan.HISTORY_LIMIT) flow.verificationHistory.removeFirst();
+    }
+    private boolean logIntact(String log, String sha256) {
+        try {
+            Path root = props.homePath().resolve("verification-runs").toRealPath();
+            Path path = Path.of(log);
+            return path.toRealPath().startsWith(root) && hash(path).equals(sha256);
+        } catch (Exception e) { return false; }
     }
     FileEvidence compareFiles(Task task, FlowRun flow, String head) throws Exception {
         List<String> paths = FileComparison.paths(flow);
@@ -176,6 +250,7 @@ public class IndependentVerifier {
             return receipt.commands() != null && receipt.commands().isEmpty()
                     && DocOnlyChanges.qualifies(spec.docOnlyPaths(), receipt.docOnlyChanges())
                     ? null : "純文件收據不符配置或含非文件變更";
+        if (receipt.decisions() != null) return decisionReason(receipt, spec, head);
         if (receipt.commands() == null || receipt.commands().size() != spec.commands().size()) return "獨立驗證缺少必要指令結果";
         try {
             Path root = props.homePath().resolve("verification-runs").toRealPath();
@@ -186,6 +261,34 @@ public class IndependentVerifier {
                 if (!log.toRealPath().startsWith(root) || !hash(log).equals(result.sha256())) return "獨立驗證紀錄遺失或雜湊不符";
             }
         } catch (Exception e) { return "無法核實獨立驗證紀錄：" + e.getClass().getSimpleName(); }
+        return null;
+    }
+    /**
+     * 新收據的發布前核對：從工作區重新算變更清單與輸入指紋，不只相信收據。
+     * 略過的指令重算後必須仍不需要跑；執行與重用的指令指紋要相同、紀錄檔要在且雜湊相符。
+     */
+    String decisionReason(Receipt receipt, TeamDefinition.Verification spec, String head) {
+        var decisions = receipt.decisions();
+        if (decisions.size() != spec.commands().size() || receipt.taskId() == null || !receipt.taskId().matches("[0-9]+"))
+            return "獨立驗證缺少必要指令決定";
+        try {
+            List<String> changed;
+            try { changed = workspaces.changedPathsSinceBase(receipt.taskId()); }
+            catch (Exception e) { changed = null; }
+            var selection = VerificationPlan.select(spec, changed);
+            List<String> prints = VerificationPlan.fingerprints(spec, workspaces.treeEntries(receipt.taskId(), head));
+            for (int i = 0; i < decisions.size(); i++) {
+                var d = decisions.get(i);
+                if (d == null || d.index() != i || d.action() == null || !spec.commands().get(i).equals(d.argv()))
+                    return "獨立驗證決定與配置指令不符";
+                if (!prints.get(i).equals(d.fingerprint())) return "獨立驗證的輸入指紋已失效：" + String.join(" ", d.argv());
+                if (d.action() == VerificationPlan.Action.SKIP) {
+                    if (selection.needs(i)) return "略過的指令重算後需要執行：" + String.join(" ", d.argv());
+                } else if (d.log() == null || d.sha256() == null || !logIntact(d.log(), d.sha256())) {
+                    return "獨立驗證紀錄遺失或雜湊不符：" + String.join(" ", d.argv());
+                }
+            }
+        } catch (Exception e) { return "無法核實獨立驗證決定：" + e.getClass().getSimpleName(); }
         return null;
     }
     String fileComparisonReason(FlowRun flow, Receipt receipt, String head) {

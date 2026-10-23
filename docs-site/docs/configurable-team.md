@@ -78,6 +78,8 @@ checkpoint 保存的是節點 ID，不再靠 PM／QA 等角色名稱判斷續跑
 （舊名稱的固定字首）。不合法時服務啟動失敗。實例名以字母開頭、任務編號是純數字，所以新舊格式的 glob 互不配對。
 不用配置的 `id` 當實例名，是因為 `node-web.json` 這類配置可給多個 repo 共用，`id` 不保證唯一。
 
+接入新實例後，第一次啟動會自動跑[基準驗證](baseline-verification.md)，確認配置的驗證指令在基準分支上能通過（2026-10-18 起）。
+
 相關檢查：`preflight.sh` 偵測到其他安裝目錄的服務在跑、而本實例 `AI_TEAM_INSTANCE` 留空時直接失敗（不檢查兩個實例是否同名，需管理者自行確保）；
 `service.sh status` 只列本實例 PID 的 443 連線；`deploy/deploy-jar-safe.sh` 的第三個參數是安裝目錄，
 「有 unit 在跑就拒絕部署」只看本實例的 unit。
@@ -137,22 +139,23 @@ Preview 部署節點、外部 VM 權限與部署收據尚未實作，所以此�
 `orchestrator/teams/dynamic-api.json`（2026-10-17）供第三個實例使用，專案為
 [a09090443/dynamic-api](https://github.com/a09090443/dynamic-api)（Spring Boot 3.2.5／Java 17＋Gradle 後端、Next.js 15 管理介面、
 Docusaurus 文件，基準分支 `master`）。以 bestpartner 為範本，角色、模型與審查／分流節點相同；
-**未啟用**角色諮詢與共享看板（`collaboration`／`consultRoles`，目前只在 bestpartner 啟用）。其他差異如下：
+**未啟用**角色諮詢與共享看板（`collaboration`／`consultRoles`，目前只在 bestpartner 啟用；第一階段已合併到 main，尚未部署）。其他差異如下：
 
 | 項目 | 內容與理由 |
 |---|---|
-| 工具 | 沿用 PATH 上的 `gradle`（VM 共用 8.14.5），repo 的 gradlew 是 8.7；operations 的執行檔只能是工具名稱。Spring Boot 3.2.5 外掛在 8.14.5 上能否建置**尚未在 VM 實測** |
-| 前端建置任務 | `backend/build.gradle` 的 `installNextjs`／`buildNextjs` 寫死 Windows 版 `tools/node-*-win-x64/npm.cmd`，Linux 上必定失敗；`processResources` 依賴它，所以 `test` 類操作一律帶 `-x buildFrontend`，`compileJava` 不經過 `processResources` 不需要。建置指示禁止 agent 改 `build.gradle`／`tools/` 繞過 |
-| 後端測試 | 只有 `ResponseRepositoryTest`、`DynamicControllerServiceTest`，以單一 `backend-test`／`qa-backend-test` 執行。預設設定含 `D:/tmp`、`C:/tmp`，Linux 是否通過**尚未實測**；失敗時 QA 標「無法核實」，不改設定 |
-| 前端 | `npm --prefix nextjs-dynamic-api-manager ci`／`run type-check`／`run lint`／`run build`；驗收用 `--offline` |
+| 工具 | 沿用 PATH 上的 `gradle`（VM 共用 8.14.5），repo 的 gradlew 是 8.7；operations 的執行檔只能是工具名稱。2026-10-18 VM 實測 8.14.5 可建置 Spring Boot 3.2.5 主程式（連線與 `--offline` 皆成功） |
+| 前端建置任務 | `backend/build.gradle` 的 `installNextjs`／`buildNextjs` 寫死 Windows 版 `tools/node-*-win-x64/npm.cmd`，Linux 上必定失敗；`processResources` 依賴它，所以會用到它的操作（含 `compileTestJava`、`test`）一律帶 `-x buildFrontend`。2026-10-18 實測：原本 `backend-compile` 沒帶，`compileTestJava` 觸發 `installNextjs` 而失敗，已補上。建置指示禁止 agent 改 `build.gradle`／`tools/` 繞過 |
+| 後端測試 | 只有 `ResponseRepositoryTest`、`DynamicControllerServiceTest`，以單一 `backend-test`／`qa-backend-test` 執行。**已知問題（2026-10-18 實測）**：repo `master`（3f638e3）的 `ResponseRepositoryTest.java:15` 呼叫 `MockResponseDao.findByPrimaryKey` 少了 `ServiceType` 參數，測試程式編譯失敗，所以 `backend-test`、`qa-backend-test` 與系統獨立驗證的後端測試目前必定失敗，要等 repo 修正。2026-10-18 #1001 已修好編譯（任務分支 commit 640f747，未發布），但兩個 `@SpringBootTest` 在 Linux 仍必定失敗：`backend/src/main/resources/data-source.properties:10` 是 `jdbc:sqlite:D:/tmp/mockapi.db`，repo 沒有 `src/test/resources` 測試專用設定，Spring context 建不起來。系統獨立驗證因此永遠不會通過，要先在 repo 加測試專用設定（需負責人授權範圍）或調整配置 |
+| 前端 | `npm --prefix nextjs-dynamic-api-manager ci`／`run type-check`／`run lint`／`run build`；驗收用 `--offline`。2026-10-18 VM 實測四步皆成功（ci 約 9 分鐘、build 約 80 秒），文件站 `ci`／`build` 也成功 |
 | 動態載入 | 上傳 JAR、啟用服務、Mock 命中需要啟動服務並用範例 JAR 手動驗證；沙箱內無法完成時 QA 標「無法核實」 |
 | 服務建置 | **不配置** `service`／`service_triage` 節點與 `serviceTarget`（service-build skill 目前只實作 bestpartner）；intake 沒有 `service` 路線。`infrastructure` 角色只作為設計／實作候選 |
 | `.claude/` 文件 | 同 bestpartner，`.claude/rules/**`、`.claude/skills/**` 分段改派 `builder_codex` |
 | 系統獨立驗證 | 後端測試＋前端 ci／type-check／build 共 4 條；`docOnlyPaths` 同 bestpartner |
 
 Slack 使用自己的一組 App（`deploy/agent-manifests/dynamic-api/`，見 [建立 Slack App](slack-agent-apps.md#dynamic-api-實例的-app-組)），頻道 `#dynamic-api`（`C0CA5CXTUHJ`，2026-10-17 建立的公開頻道）。
-**目前狀態（2026-10-17）**：配置以現行原始碼建置的 JAR 通過 `--validate-team`；頻道與 7 個 Slack App 已建立並加入頻道，App-Level Token 尚未產生，VM 實例尚未安裝，
-沒有任何建置、測試或 Slack 端對端證據。
+**目前狀態（2026-10-18）**：VM 實例已安裝在 `~/ai-team-dynamic-api`（`AI_TEAM_INSTANCE=dynamicapi`），配置在 VM 通過 `--validate-team`，
+Gradle／npm 快取已在沙箱外預熱；頻道與 7 個 Slack App 已建立並加入頻道。token 已由使用者填入，2026-10-18 服務啟動；同日部署 85047ce（PID152364），首次基準驗證顯示後端測試失敗與 build 逾時（見[部署紀錄](deploy-2026-09-06-v2.md)）。
+尚未有成功的 Slack 端對端證據（#1001 已結案未發布）。
 
 ## 不改 Java 的增刪例子
 
@@ -473,6 +476,11 @@ Runnable 交給 TaskOrchestrator，由真正的執行中工作與 FIFO 排隊清
   給權限的，寫進 `also_needed`。結案與改用新任務要用選項的 `action=close`／`successor`，由系統直接執行，
   不可寫成交回流程的 `decide`（流程沒有結案路線，見 [plan-approval-buttons](plan-approval-buttons.md#由-agent-本人說明需要你決定的事)）。
   同一個問題已回答過卻又被問時，不再提供 `decide` 按鈕並說明原因。
+  2026-10-18 起，受阻來源是系統獨立驗證時，系統會在下游脈絡注入「這是硬閘門、真人選擇無法略過」的固定說明，
+  triage 提示也明文禁止「接受失敗／記為無法核實後繼續」類選項（#1001）；詳見 [engineering-workflow](engineering-workflow.md#系統獨立驗證)。
+- **實作的品質檢查自陳會被核對**：實作回報成功時，系統讀 Claude／Codex CLI 自己的指令紀錄，本節點配置操作最後一次執行失敗就不採用
+  這份成功回報（2026-10-18 起）。共用契約同時規定 `verify_passed=true` 只能在必要檢查都實際執行且結束碼為 0 時填寫，
+  「無法核實」是驗收判定，不是實作成功的理由。
 - **計畫階段與 plan_revision**：`plan_revision` 由系統在計畫完成後計算；系統會明確告知計畫節點不得因缺少它而受阻
   （同一角色常兼任計畫與驗收，會看到驗收要引用 plan_revision 的規則）。
 - **操作契約與測試規範要一致**：`testInstructions` 要求的每一步都必須有對應的 `operations`，

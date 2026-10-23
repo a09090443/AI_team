@@ -286,6 +286,13 @@ v2 配置式流程的整份執行快照，對應 `com.zipe.aiteam.flow.FlowRun`�
 | `delegatedParts` | Map&lt;節點,DelegatedPart&gt; | 分段改派的改派段結果：`role`、`startHead`（本輪起始 commit）、`head`（系統代為提交後）、`files`、`summary`（摘要，最多 2000 字）。續跑同一輪時略過已完成的改派段；節點新的一輪開始時移除（2026-10-04 新增，回滾風險同上） |
 | `prUrl` / `publishedHead` | String | 發布結果 |
 
+2026-10-17 `IndependentVerifier.Receipt` 新增可為 null 的 `decisions`、`changedFiles`、`taskId`（見 [engineering-workflow](engineering-workflow.md)「依變更檔案只跑相關指令」）：
+`decisions[]` 與配置指令一一對應，每項含 `index`、`argv`、`action`（`RUN`／`SKIP`／`REUSE`）、`reason`、`matched[]`（最多 20 個命中檔案）、
+`fingerprint`、`log`、`sha256`（RUN／REUSE 才有）、`sourceHead`（REUSE 的來源 commit）；有 `decisions` 時 `commands[]` 只列本輪實際執行的結果。
+`changedFiles` 最多 500 個；`taskId` 供發布前重算。舊收據三者為 null，沿用 `commands[]` 逐一核對。
+`FlowRun` 新增 `verificationHistory`：List&lt;`VerificationPlan.HistoryEntry`&gt;，每項 `argv`、`fingerprint`、`configuration`、`head`、`log`、`sha256`，
+最多 20 筆；缺欄位的舊資料初始化為空。**回滾到舊 JAR 會讀不了含這些欄位的任務**，須配合部署前 DB 備份。
+
 2026-10-10 `IndependentVerifier.Receipt` 新增可為 null 的 `fileComparison`：
 `base`（固定 Git 基準）、`head`、`planDigest`（所有已保存測試計畫的雜湊）、`files[]`（`path`、`before`、`after`，後兩者為 Git mode／blob ID）、
 `log`（系統比較結果 JSON）及 `sha256`。未引用內建比對的舊計畫保持 null。

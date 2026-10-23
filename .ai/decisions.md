@@ -597,3 +597,7 @@ CRITICAL 等其他寫法不放行。放行寫成帶 `owner_waiver` 的 receipt�
 
 - 使用者要求：給予任務的 agent 要確認能否縮短任務執行時間，不把簡單任務複雜化。
 - 寫入 AGENTS.md 終極目標的「任務效率」原則，並在 intake／triage 提示加入對應規則。只改提示不改流程節點或 requires，避免為效率而跳過必要的驗收或核准；精簡以不降低驗收標準與安全邊界為前提。
+
+## 2026-10-18 dynamic-api 後端測試編譯錯誤的處理
+
+- 使用者決定：配置維持不變（後端測試仍在 QA 操作與系統獨立驗證內），服務啟動後的第一個任務就在 #dynamic-api 請 AI 團隊修 ResponseRepositoryTest（findByPrimaryKey 少傳 ServiceType）。理由：問題在 repo 本身，修好後驗證範圍不必再調整；不為了綠燈暫時移除測試。

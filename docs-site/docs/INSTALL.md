@@ -214,6 +214,8 @@ git clone --no-single-branch <新專案 repo> ~/ai-team-web/<repo 目錄>
 - `team.env` 設該專案的 `AI_TEAM_DEFINITION` 與 **`AI_TEAM_INSTANCE`**；原本的實例也要設（例如 `starters`），名稱不可重複。
 - 另建一組 Slack App 與一個頻道；**不可與其他實例共用 App token**。
 - 啟停與查詢都用該目錄下的腳本（`bash ~/ai-team-web/service.sh status`）。
+- 第一次啟動後，頻道會出現「🔎 基準驗證」：系統在基準分支最新 commit 跑一次配置的驗證指令（2026-10-18 起，見 [基準驗證](baseline-verification.md)）。
+  未通過代表配置或環境讓這些指令根本過不了，先修好再開任務；修好後在頻道送 `@主機器人 基準驗證` 重新確認。
 
 ### 5.2 Gradle 專案的額外前置
 

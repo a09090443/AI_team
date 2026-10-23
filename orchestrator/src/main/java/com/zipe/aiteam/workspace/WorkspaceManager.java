@@ -256,6 +256,25 @@ public class WorkspaceManager {
         }
     }
 
+    /** 基準分支名稱與它在 origin 上的最新 commit。 */
+    public record BaseRef(String branch, String sha) {}
+
+    /**
+     * 取基準分支的最新 commit，供基準驗證使用；與開工作區相同：先 fetch（失敗只警告），讀 refs/remotes/origin。
+     * 不建立工作區、不碰主 repo 的本機分支與工作樹。
+     */
+    public BaseRef baseRef(Path repository, String configuredBase) throws WorkspaceException {
+        try {
+            git(repository, "fetch", "--quiet", "origin");
+        } catch (WorkspaceException e) {
+            log.warn("fetch 主 repo 失敗，基準驗證改用本機既有的 origin 基準：{}", e.getMessage());
+        }
+        String base = configuredBase == null || configuredBase.isBlank() ? detectBaseBranch(repository) : configuredBase;
+        String sha = gitOutput(repository, "rev-parse", "--verify", "refs/remotes/origin/" + base + "^{commit}");
+        if (!sha.matches("[0-9a-f]{40,64}")) throw new WorkspaceException("無法取得基準分支 " + base + " 的 commit");
+        return new BaseRef(base, sha);
+    }
+
     private boolean remoteBranchExists(Path repo, String branch) {
         try {
             gitOutput(repo, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/" + branch);
@@ -389,6 +408,23 @@ public class WorkspaceManager {
         if (baseSha.isBlank()) throw new WorkspaceException("工作區沒有記錄基準 commit，無法列出變更檔案");
         return gitOutput(ws, "-c", "core.quotePath=false", "diff", "--name-only", "--no-renames", baseSha + "..HEAD")
                 .lines().filter(s -> !s.isBlank()).toList();
+    }
+
+    /**
+     * 指定 commit 的完整檔案樹，每筆為「mode 物件雜湊<TAB>路徑」，依 git 排序；獨立驗證以此計算各指令的輸入指紋。
+     * 用已提交的物件而不是工作目錄檔案，未提交或被忽略的產物不影響指紋。
+     */
+    public List<String> treeEntries(String taskId, String commit) throws WorkspaceException {
+        if (commit == null || !commit.matches("[0-9a-f]{40,64}")) throw new WorkspaceException("無效 commit：" + commit);
+        List<String> entries = new ArrayList<>();
+        for (String raw : gitOutput(pathFor(taskId), "ls-tree", "-r", "-z", "--full-tree", commit).split("\u0000")) {
+            if (raw.isEmpty()) continue;
+            int tab = raw.indexOf('\t');
+            String[] meta = tab < 0 ? new String[0] : raw.substring(0, tab).split(" ");
+            if (meta.length != 3) throw new WorkspaceException("無法解析 git ls-tree 輸出");
+            entries.add(meta[0] + " " + meta[2] + raw.substring(tab));
+        }
+        return List.copyOf(entries);
     }
 
     public record FileIdentity(String path, String before, String after) {

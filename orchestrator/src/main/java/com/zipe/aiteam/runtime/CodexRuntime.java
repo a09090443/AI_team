@@ -40,6 +40,16 @@ public class CodexRuntime implements AgentRuntime {
     /** Codex 無細粒度 CLI 白名單；寫入需求仍須通過外層 SandboxPolicy 預檢。 */
     @Override public boolean permitsCommand(List<String> tools, List<String> argv) { return true; }
 
+    /** execute 把事件流整份寫在 logs/<任務>/<角色>.codex.jsonl；上一輪的已被 SessionCapture 改名保存。 */
+    @Override public List<CommandRuns.CommandRun> commandRuns(RuntimeRequest req, RuntimeResult result, java.time.Instant startedAt) {
+        try {
+            return CommandRuns.fromCodexEvents(Files.readString(
+                    props.logsPath().resolve(req.taskId()).resolve(req.role() + ".codex.jsonl"), StandardCharsets.UTF_8));
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
     private static final Logger log = LoggerFactory.getLogger(CodexRuntime.class);
     /** codex exec 與 exec resume 的 PROMPT 引數為 "-" 時從 stdin 讀取。 */
     static final String STDIN_PROMPT = "-";

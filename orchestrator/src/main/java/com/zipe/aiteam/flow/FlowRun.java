@@ -74,6 +74,8 @@ public class FlowRun {
     public String prUrl;
     public String publishedHead;
     public IndependentVerifier.Receipt independentEvidence;
+    /** 同一任務內通過過的獨立驗證指令（最多 20 筆）；相同配置、指令與輸入指紋時重用，見 VerificationPlan。缺欄位的舊快照為空。 */
+    public List<VerificationPlan.HistoryEntry> verificationHistory = new ArrayList<>();
     public List<JsonNode> baselineHistory = new ArrayList<>();
     public Map<String,Integer> visits = new LinkedHashMap<>();
     /**

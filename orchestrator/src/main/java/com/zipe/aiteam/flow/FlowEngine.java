@@ -41,7 +41,14 @@ public class FlowEngine {
         FlowRun flow = new FlowRun(catalog.snapshot()); flow.acceptanceOwner = task.requesterUserId();
         store.saveFlow(task.id(), flow);
         audit.record(task.id(), task.requesterUserId(), AuditLog.ACTION_STATE, "固定配置版本 " + catalog.snapshot().revision());
+        // 已知基準失敗要一開始就讓負責人知道，不必等到系統獨立驗證才發現（dynamic-api #1001）。
+        if (baseline != null) baseline.latest().filter(r -> !r.passed()).ifPresent(r -> slack.post(Identity.SYSTEM,
+                task.slackChannel(), task.slackThreadTs(), "⚠️ 提醒：目前配置最近一次基準驗證沒有通過，下列驗證指令在還沒有任何修改的基準分支上就失敗；"
+                        + "除非本任務處理它，系統獨立驗證會在同樣的地方失敗。這不會阻擋任務。\n"
+                        + BaselineVerifier.slackSummary(r)));
     }
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    BaselineVerifier baseline;
     /**
      * 使用者在 Slack 要求中斷的任務 → 要求者。只放在記憶體：服務重啟時執行中的那一輪本來就會中斷。
      * 與「中止任務」不同，中斷只停這一輪，任務回到 AWAIT_HUMAN，工作區、次數與 session 都保留。
@@ -504,6 +511,11 @@ public class FlowEngine {
                             slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id()
                                     + " 只改了文件（系統依 git diff 判定 " + flow.independentEvidence.docOnlyChanges().size()
                                     + " 個檔案），依專案設定略過建置與測試；QA 驗收、程式審查與 PR 核准照常。");
+                        var decisions = flow.independentEvidence.decisions();
+                        if (decisions != null && decisions.stream().anyMatch(d -> d.action() != VerificationPlan.Action.RUN))
+                            slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id()
+                                    + " 系統獨立驗證依變更檔案判定：" + VerificationPlan.summary(decisions)
+                                    + "（略過＝變更不在該指令範圍；重用＝相同輸入先前已通過）。QA 驗收、程式審查與 PR 核准照常。");
                         // 驗證指令全數正常結束才會走到這裡，收據有效可保留；但不再啟動驗收角色。
                         if (stopForInterrupt(task, flow)) return;
                     }
@@ -594,6 +606,16 @@ public class FlowEngine {
                 String issueBlock = consultBlock == null ? IssueTracker.ingest(flow, node, report, task.id()) : null;
                 if (issueBlock == null && consultBlock == null) flow.systemRetries.remove(flow.node + IssueTracker.FORMAT_RETRY);
                 String block = consultBlock != null ? consultBlock : issueBlock == null ? FlowGates.blockingReason(node, report, flow) : issueBlock;
+                // 自陳成功不夠：與 CLI 紀錄裡配置操作的實際結束碼對照，矛盾時不送去跑注定失敗的獨立驗證（#1001）。
+                if (block == null && node.gate() == Gate.IMPLEMENTATION) {
+                    String contradiction = CommandEvidence.contradiction(
+                            OperationContract.forNode(flow.snapshot.definition(), flow.node), executor.lastCommandRuns(task.id()), report);
+                    if (contradiction != null) {
+                        block = contradiction;
+                        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_REJECTED, "節點 " + flow.node + "：" + contradiction);
+                        flow.context = FlowContext.append(flow.context, "系統核對指令紀錄：" + contradiction);
+                    }
+                }
                 AgentDispatch.Assignment assignment = null;
                 String handoffCorrection = null;
                 if (block == null) {
@@ -1161,13 +1183,16 @@ public class FlowEngine {
         String head = workspaces.headSha(task.id());
         String reason = (failed.argv().equals(List.of(FileComparison.OPERATION))
                 ? "系統比對指定舊檔時發現修改（" : "系統在全新 clone 執行配置的驗證指令失敗（") + String.join(" ", failed.argv()) + "，exit=" + failed.exitCode()
-                + "，commit=" + head + "）。這代表程式或測試沒有通過，不是環境問題。"
-                + "\n請找出原因修正後提交，完成後會交回驗收重新驗證。不得刪除、停用、跳過失敗的測試或放寬斷言來讓它通過；"
+                + "，commit=" + head + "）。最常見的原因是程式或測試沒有通過，請先依失敗摘要找出根因。"
+                + "\n能在已核准範圍內修好就修正後提交，完成後會交回驗收重新驗證。不得刪除、停用、跳過失敗的測試或放寬斷言來讓它通過；"
                 + "若判定是測試本身不穩定（例如時間門檻過緊），要修成穩定且仍能驗到原需求，並在報告說明依據。"
+                + "\n若根因不在本次修改、也無法在已核准範圍內修好（例如配置的測試依賴此環境不存在的路徑或服務），"
+                + "status 填 BLOCKED（不是 SUCCESS）、quality_gate.verify_passed 填 false，並在失敗回報附上原始錯誤與根因；"
+                + "「記為無法核實」不會讓這道系統驗證通過。"
                 + "\n失敗摘要：\n" + failed.summary()
                 + "\n完整紀錄：" + failed.log();
         var finding = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode()
-                .put("source", "系統獨立驗證").put("commit", head).put("exit_code", failed.exitCode())
+                .put("source", IndependentVerifier.FINDING_SOURCE).put("commit", head).put("exit_code", failed.exitCode())
                 .put("failure_summary", failed.summary()).put("log", failed.log());
         flow.lastBlockReason = Diagnostics.clip(reason, 4500);
         flow.blockedFindings.put(flow.node, finding);

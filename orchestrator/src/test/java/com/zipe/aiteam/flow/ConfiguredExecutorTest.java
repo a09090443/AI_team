@@ -63,6 +63,36 @@ class ConfiguredExecutorTest {
                 .contains("來源節點 review").contains("DeadlineSocketFactory 破壞隱式 TLS");
     }
 
+    @Test void failedSystemCheckTellsDownstreamItIsAHardGate() throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        StringBuilder review = new StringBuilder();
+        flow.blockedFindings.put("review", mapper.readTree("{\"verdict\":\"REQUEST_CHANGES\"}"));
+        ConfiguredExecutor.appendBlockedFindings(review, flow);
+        assertThat(review).contains("尚未解除的受阻發現").doesNotContain("硬閘門");
+
+        // #1001：分流在這種狀態下提供了「接受測試無法執行」，負責人選了流程卻無路可走。
+        StringBuilder check = new StringBuilder();
+        flow.blockedFindings.put("verification", mapper.createObjectNode()
+                .put("source", IndependentVerifier.FINDING_SOURCE).put("exit_code", 1).put("failure_summary", "2 tests failed"));
+        ConfiguredExecutor.appendBlockedFindings(check, flow);
+        assertThat(check).contains("硬閘門", "close", "successor", "also_needed", "接受無法核實");
+    }
+
+    @Test void knownBaselineFailuresReachEveryNode() throws Exception {
+        Path taskRepo = tmp.resolve("task-repo"); Files.createDirectories(taskRepo.resolve(".git"));
+        when(workspace.pathFor("42")).thenReturn(taskRepo); when(workspace.exists("42")).thenReturn(true);
+        flow.workspacePath = taskRepo.toString(); flow.node = "triage";
+        var baseline = mock(BaselineVerifier.class);
+        when(baseline.notice(flow.snapshot.revision())).thenReturn("\n基準驗證結果（系統事實，非建議）：gradle test 程式或測試失敗");
+        executor.baseline = baseline;
+        AtomicReference<AgentRuntime.RuntimeRequest> captured = new AtomicReference<>();
+        when(runtime.execute(any(), any())).thenAnswer(c -> { captured.set(c.getArgument(0)); return null; });
+
+        executor.execute(new Task("42", "c", "t", "u", "查核"), flow, flow.snapshot.definition().nodes().get("triage"));
+
+        assertThat(captured.get().prompt()).contains("基準驗證結果（系統事實", "gradle test");
+    }
+
     @Test void reportStageExplainsWhyThereIsNoIndependentReceipt() {
         var triage = flow.snapshot.definition().nodes().get("triage");
         assertThat(ConfiguredExecutor.receiptView(flow, triage)).contains("本節點階段不產生系統獨立驗證收據");

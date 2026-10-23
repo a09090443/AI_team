@@ -651,6 +651,28 @@
         ".agents/**",
         "docs-site/docs/**",
         "docs-site/blog/**"
+      ],
+      "commandScopes": [
+        [
+          "bestpartner-service/**"
+        ],
+        [
+          "bestpartner-service/**"
+        ],
+        [
+          "bestpartner-ui/**"
+        ],
+        [
+          "bestpartner-ui/**"
+        ],
+        [
+          "bestpartner-ui/**"
+        ]
+      ],
+      "qaOnlyPaths": [
+        "docs-site/**",
+        "docs/sql/**",
+        ".env.example"
       ]
     },
     "serviceTarget": {

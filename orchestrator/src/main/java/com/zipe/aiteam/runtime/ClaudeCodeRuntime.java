@@ -58,6 +58,13 @@ public class ClaudeCodeRuntime implements AgentRuntime {
         return "claude-code";
     }
 
+    /** --output-format json 只給最終結果；指令與結束碼要讀 Claude Code 寫在 ~/.claude/projects 的 session 紀錄。 */
+    @Override
+    public List<CommandRuns.CommandRun> commandRuns(RuntimeRequest req, RuntimeResult result, java.time.Instant startedAt) {
+        if (result == null) return List.of();
+        return CommandRuns.fromClaudeSession(Path.of(System.getProperty("user.home"), ".claude"), result.sessionId(), startedAt);
+    }
+
     /** claude 的 session 記錄、憑證更新與外掛快取都在這裡。 */
     @Override
     public List<Path> statePaths(Path home) {

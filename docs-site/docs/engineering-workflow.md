@@ -27,6 +27,9 @@ Linux 完整測試 619 項、0 失敗、0 錯誤、11 略過，兩實例啟動�
 - verification／review／service 必須針對全部 REPAIR／DECISION 回 `issue_checks`，每项有 id、PASS／OPEN 與非空證據。
   DECISION 不能靠 PASS 自行放行，須收到新的真人回覆後由需求階段確認；明確核准需求變更才可將待處理問題排除。
   新增或更動清單會使舊的逐項驗證版本失效。缺對應、漏驗、待決／OPEN 都不能完成或發布，既有需求→情境→驗收檢查照常。
+  **例外（2026-10-17 起）**：驗收之後，如果只在清單尾端新增了不需處理的項目（`OBSERVATION`、`EXCLUDED`），拿掉這些尾端項目後的版本又正好等於驗收當時的版本，
+  舊的逐項驗證仍然有效（`IssueTracker.checkedRevisionStillValid`，發布閘門與摘要共用）。REPAIR／DECISION 只要有任何新增或改動，就照樣失效。
+  起因是 bestpartner #1044：QA 全部 PASS 後，審查把 LOW 提醒記成 OBSERVATION，發布閘門判定「問題清單仍有待處理／未驗證項目」，按續跑也一直擋。
 - 承接完整複製清單與 `issueEvidence` 歷史證據，不複製有效驗收／核准；新任務先核實已有成果，再補未完成項。
   明確從唯讀問答挑選單項建立的子任務仍是局部範圍，顯示來源總數與未涵蓋項數，不假稱整體完成，也不擅自擴張授權。
 - 最多 100 個問題、清單 96000 字元；提示中的清單與歷史證據最多 128000 字元。超限明示停止，不截斷後宣稱全部處理。
@@ -132,16 +135,57 @@ Slack 會說明「只改了文件，依專案設定略過建置與測試」，QA
 實作節點（`IMPLEMENTATION` 閘門）在專案有 `docOnlyPaths` 時，系統會在脈絡加一段「純文件變更規則」（`DocOnlyChanges.implementationNotice`）：
 變更全部符合上述條件時不執行後端／前端編譯與測試操作，也不因缺建置證據回報 BLOCKED；有任一檔不符合就照建置規範完整執行
 （2026-10-04 起；#1018 只改一行 Markdown，改派的 Codex 角色仍自行跑 Gradle 而受阻）。這是給角色的指示，略過與否仍以系統 git diff 判定為準。
+
+**依變更檔案只跑相關指令、重用相同輸入的結果（2026-10-17 起）**：起因是 bestpartner #1044 只改文件、網站與設定範本，
+每輪仍跑 23～30 分鐘的後端與前端全套測試，回到驗收階段時同一個 commit 也重跑一次。規則在 `VerificationPlan`，不綁專案名稱：
+- 配置選填 `verification.commandScopes`（與 `commands` 一一對應，每個指令負責的路徑）與 `verification.qaOnlyPaths`
+  （系統沒有對應指令、由 QA 固定操作或內容檢視驗證的路徑，必須和 commandScopes 一起設定，而且不能與任何指令範圍重疊；重疊用固定前綴保守判斷）。
+- 變更清單同樣來自 `changedPathsSinceBase`。每個檔案歸成：純文件（沿用 docOnlyPaths 加純文字規則）／QA 專屬（qaOnlyPaths，**包含其中的建置檔**，
+  例如 `docs-site/package.json` 由 QA 的 qa-docs-* 安裝建置）／屬於某些指令範圍（範圍內的 package.json 等建置檔只觸發該範圍的指令）／都不屬於。
+  只要有一個「都不屬於」，或查不到變更清單、清單為空、沒設 commandScopes，就**全跑**。
+- 需要跑的指令，若同一任務、同一配置版本、同一 argv 以相同**輸入指紋**通過過，而且紀錄檔仍在、雜湊相符，就**重用**，不 clone、不重跑。
+  指紋取 HEAD 的 `git ls-tree -r`：有範圍時是「該指令範圍內的檔案＋共用檔（不屬於任何範圍、也不是純文件或 QA 專屬）」，共用檔一變所有重用失效；
+  沒設範圍時是整棵樹，所以 spring-starters／node-web 只有「同一份內容再驗一次」才會重用。歷史存在 `FlowRun.verificationHistory`（最多 20 筆），
+  每個指令通過就記下，後面的指令失敗時，修正後下一輪仍可重用輸入沒變的那幾個。
+- 收據新增 `decisions`（每個指令一筆 RUN／SKIP／REUSE、原因、命中檔案、指紋、紀錄路徑與雜湊、重用來源 commit）、`changedFiles`、`taskId`；
+  `commands` 只列本輪實際執行的結果。發布前 `IndependentVerifier.decisionReason` 會**重新從工作區**算變更與指紋：
+  略過的指令重算後必須仍不需要跑；執行與重用的指令指紋要相同、紀錄要在且雜湊相符，否則擋下並在續跑時重驗。
+- Slack 會貼「依變更檔案判定：執行 X、略過 Y、重用 Z」；QA／審查收到的收據說明略過與重用是系統依實際變更的決定，不是查無建置證據，
+  QA 專屬路徑仍須依計畫驗證；PR 說明分列執行、略過（原因）與重用（來源 commit）。QA 逐項驗收、程式審查與 PR 真人核准照常。
+- bestpartner 設定：兩個 Gradle 指令範圍 `bestpartner-service/**`，三個前端指令範圍 `bestpartner-ui/**`，
+  `qaOnlyPaths` 為 `docs-site/**`、`docs/sql/**`、`.env.example`（使用者 2026-10-17 決定）；`bestpartner-mcp-servers/**`、`scripts/**`、`skills/**` 不屬於任何範圍，改到時全跑。
+  設定屬新快照，既有任務仍用舊快照（但重用是程式行為，所有任務都適用）。
 - 指令使用空白環境加少量明確變數、獨立 HOME，不把 Slack/GitHub token 或 CLI session 透過環境傳入。
-- 不沿用共享依賴快取與個人 Maven/npm 設定；第一次建置可能很慢。私有依賴可能受阻，不可用複製整包憑證來解決。
+- 不讀個人 Maven/npm 設定；相依套件下載快取只用下方的獨立驗證專用快取，第一次建置仍可能很慢。私有依賴可能受阻，不可用複製整包憑證來解決。
 - 記錄系統觀察的結束碼、argv、起訖時間、commit、配置與需求版本；log 存在可寫目錄外，單指令輸出超過 8 MB 即停止。
 - 配置的檢查指令以非零結束碼結束（例如測試失敗、編譯錯誤），代表程式沒過，屬於實作責任：
   系統把失敗摘要（失敗的測試與編譯錯誤，或 log 最後 40 行）存成受阻發現，自動交回實作節點修正，
   修好後重新獨立驗證；不需真人轉達。實作節點取受阻分流節點的 `implementation` 路由，
   否則取流程中唯一具工作區寫入權的實作節點；判定不出時照舊停給真人。仍受重跑、事件額度與整輪上限約束。
+  2026-10-18 起交回說明不再斷言「不是環境問題」，改為：先依失敗摘要找根因，能在範圍內修就修；根因在本次修改之外
+  （例如配置的測試依賴此環境不存在的路徑）時，實作要回 `BLOCKED`、`verify_passed=false` 並附原始錯誤，
+  「記為無法核實」不會讓這道驗證通過。dynamic-api #1001 兩位 agent 都指出舊說法與實際根因（Windows `D:/tmp` 路徑）矛盾。
+- **硬閘門說明（2026-10-18 起）**：受阻發現的 `source` 是 `系統獨立驗證`（`IndependentVerifier.FINDING_SOURCE`）時，
+  `ConfiguredExecutor.appendBlockedFindings` 會在下游所有節點的脈絡加上固定系統說明：指令通過前驗收、審查與發布都不會開始，
+  可行出路只有範圍內修正、需求負責人核准擴大範圍、`close`、`successor`，配置問題寫進 `also_needed`，
+  不得提供「接受失敗／記為無法核實後繼續」的 `decide` 選項。#1001 分流提供了這種選項，負責人選了之後又空轉兩輪 agent 才停下。
+  這是依實際狀態注入的事實，但選項內容仍由模型產生，系統沒有逐字語意檢查。
+- **實作自陳與指令紀錄交叉核對（2026-10-18 起）**：實作節點回報 `SUCCESS` 且 `verify_passed=true` 時，系統讀取 CLI 自己寫的紀錄
+  （Claude Code：`~/.claude/projects/*/<session>.jsonl` 的 Bash `tool_use`／`tool_result`，失敗時 `is_error=true`、內容以 `Exit code N` 開頭，
+  只取本輪開始後的紀錄；Codex：`logs/<任務>/<角色>.codex.jsonl` 的 `command_execution`，帶 `exit_code`／`status`，指令外層的
+  `/bin/bash -lc '…'` 會還原）。只要某個本節點的配置操作在本輪**最後一次**執行失敗，系統就不採用這份成功回報，
+  記 audit `REJECTED`、寫入脈絡並走受阻路線，不跑獨立驗證（`runtime.CommandRuns`、`flow.CommandEvidence`）。
+  比對刻意保守：指令要與操作 argv 完全相同，後面只允許接重導向、管線或指令分隔；子集測試（加 `--tests`）、`cd … &&` 開頭等都不算；
+  同一操作先失敗、修好後重跑成功以最後一次為準；讀不到紀錄時不判定（空清單不代表沒執行）。
+  格式於 2026-10-18 以 VM 真實紀錄核對（dynamic-api #1001 的 Claude 實作、bestpartner #1041／#1042 的 Codex 事件）；
+  CLI 版本更新改變紀錄格式時，這項檢查會靜默失效（退回只看自陳），換版要重驗。#1001 第一輪實作 `gradle … test` 結束碼 1 卻回報成功，
+  系統因此跑了 8 分 38 秒的 Gradle（整段約 16 分鐘）注定失敗的獨立驗證。
 - clone／checkout 失敗、超時、輸出過大，以及 log 顯示環境缺件（相依套件抓不到、磁碟滿、找不到指令、
   沙箱啟動失敗等）、紀錄遺失／雜湊改變、版本不同，都阻止審查或 PR；失敗現場保留並明示等待人工。
 - 發布前再驗收據、log 雜湊及同一最終 commit，不因模型回報 PASS 就跳過。
+
+**基準驗證（2026-10-18 起）**：服務啟動（配置或基準 commit 改變時）與 Slack「基準驗證」指令會在基準分支先跑同一批指令，
+失敗時警告管理者並把已知失敗告訴之後的任務，不阻擋任務。見 [基準驗證](baseline-verification.md)。
 
 收據是「配置的指令真的在該版本成功執行」的證據，**不是每項情境均正確的證明，也不是 GitHub CI Check**。
 例如 `npm test` 被 repo 寫成 no-op 仍可能 exit=0，必須由 Reviewer 查核；JUnit 報告解析、測試案例到機器產物的逐項對照與外部 CI adapter 尚未加入。

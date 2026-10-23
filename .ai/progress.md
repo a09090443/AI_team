@@ -6,6 +6,47 @@
 - 已核對的文件：agent/index.md（原文只寫真人核准後開 PR，已補目標與現況閘門說明）、catalog（無新增檔案，不需改）、project-tree（無新增檔案，不需改）。發現的缺漏：先前文件未寫專案終極目標。
 - 追加「任務效率」原則：AGENTS.md、orchestrator/teams/prompts/intake.md 與 triage.md 加入派工前確認能否縮短執行時間、不把簡單任務複雜化；configurable-team 新增「派工的任務效率要求」段、agent/index 補摘要。提示修改會改變配置 revision，未部署、未在真實任務驗證。驗證：check-source 通過（Python 單元測試以 shim 略過，未執行）、TeamCatalogTest／ToolTrustTest 通過、docs build 通過。
 
+## 2026-10-18 部署 85047ce 到三個實例（Claude Code，使用者授權，未推送）
+
+- 依序部署 dynamic-api → spring-starters → bestpartner，JAR 28679cb5…，備份 0nLsxQ／QC7RCI／VrAEaX；部署腳本檢查全過、log 無 ERROR、等待中任務與工作區一致。spring-starters 第一次被部署腳本的 agent 程序檢查比對到自己的 ssh 指令字串而擋下，改用不含關鍵字的指令重跑。
+- 首次基準驗證：dynamic-api 後端 test 失敗（測試編譯錯誤）＋ build 逾時（冷快取合計 >1800 秒）；spring-starters 1/180 時間門檻測試失敗（MailServiceSmtpsScenariosTest）；bestpartner 5 條全過（29 分 10 秒）。
+- 已修正的文件：deploy-2026-09-06-v2（新段落）、baseline-verification（部署狀態與首次結果）、configurable-team（dynamic-api 狀態）。
+- 待辦：分支合併 main 與推送需使用者同意；dynamic-api timeoutSeconds 是否調整、spring-starters 時間門檻測試是否不穩定待決定；真實任務驗證新行為。
+
+## 2026-10-18 基準驗證（Claude Code，分支 feature/baseline-verification，未推送、未部署）
+
+- 使用者核准：接入專案或部署配置時先在基準分支跑獨立驗證，失敗只警告不阻擋；啟動自動跑＋Slack「基準驗證」手動指令。
+- 實作：flow/BaselineVerifier（WorkspaceManager.baseRef 取基準 commit；init＋fetch refs/remotes/origin/<base>＋checkout；沿用 IndependentVerifier.execute／classify／dependencyCache，抽出 pinsFor；失敗後繼續跑其餘指令；結果 JSON 存 baseline-verification/<revision>-<sha>.json，unit 編號 0）。TaskOrchestrator.scheduleBaselineOnStartup／requestBaseline／runBaseline（走中央佇列、根訊息加討論串、佇列名稱「基準驗證」）；SlackListener「基準驗證」指令（含反引號）；ConfiguredExecutor 注入已知基準失敗；FlowEngine.prepare 在新任務討論串提醒；AiTeamProperties AI_TEAM_BASELINE_VERIFY（預設 on）。
+- 測試：BaselineVerifierTest 4、BaselineScheduleTest 3、TriageRoutingTest 1、ConfiguredExecutorTest 1；主要套件 659 項中僅既有 4 項 Windows 失敗（/bin/sh、symlink、CRLF 警告）。check-source、docs build 通過。未在 VM 實跑、無 Slack 端對端。
+- Linux 隔離驗證（使用者授權，只測試不部署）：85047ce 打包 tar SHA256 aaf8f693… 兩端一致，VM 暫存目錄 /home/agent/baseline-test.SIDXke：check-source（含 Python）通過；mvn -B verify 683 項、0 失敗、0 錯誤、11 略過，BUILD SUCCESS，165 秒，JAR 28679cb5…。涵蓋 fix/unexecutable-options 與本分支。服務與三個實例未動。
+- 文件：新增 docs/baseline-verification.md 並登錄 catalog；已修正 agent/operations、agent/configuration、agent/index、agent/project-tree、INSTALL §5.1、configurable-team、engineering-workflow；env.sh.template 加註解範例。data-model 不需改（未動資料庫與 FlowRun）。
+
+## 2026-10-18 硬閘門選項與實作自陳核對（Claude Code，分支 fix/unexecutable-options，未推送、未部署）
+
+- 使用者核准兩階段計畫（#1001 分析的後續）。第一階段：受阻來源為系統獨立驗證時，ConfiguredExecutor.appendBlockedFindings 注入硬閘門說明（IndependentVerifier.FINDING_SOURCE）；FlowEngine.routeFailedCheck 移除「不是環境問題」斷言並要求範圍外根因回 BLOCKED；FailureReport 共用契約、teams/prompts/implement.md、triage.md 補 verify_passed 與禁止不可執行選項；dynamic-api.json 測試規範分開 QA 無法核實與系統閘門。
+- 第二階段：先以 VM 真實紀錄確認格式（dynamic-api #1001 Claude session jsonl：Bash tool_result is_error=true、內容 Exit code N、頂層 timestamp；bestpartner #1041／#1042 Codex：item.completed command_execution 的 exit_code／status，指令包 /bin/bash -lc）。新增 runtime/CommandRuns、AgentRuntime.commandRuns（預設空、Claude／Codex 實作）、ConfiguredExecutor.lastCommandRuns、flow/CommandEvidence；FlowEngine 對 IMPLEMENTATION 自陳成功但配置操作最後一次失敗者改判受阻（audit REJECTED），不跑獨立驗證。以 jshell 用真實 #1001 紀錄驗證可抓到 backend-test 結束碼 1。
+- 測試：新增 CommandRunsTest 4、CommandEvidenceTest 4、FlowEngineTest 1、ConfiguredExecutorTest 1，修改 FlowEngineTest 1；flow／runtime／task 套件 562 項僅 3 項既有 Windows 失敗（/bin/sh、symlink）。check-source、三份配置 --validate-team、docs build 通過。未做 Linux 隔離 mvn verify。
+- 已核對／修正的文件：engineering-workflow（系統獨立驗證三段）、configurable-team（共用行為）、plan-approval-buttons（選項邊界）、multi-runtime（commandRuns）、project-tree、catalog；data-model 無 schema 變更、不需改。
+- 限制：選項內容仍由模型產生，硬閘門說明是依狀態注入的提示，非語意檢查；指令比對只認與操作 argv 完全相同者；CLI 換版改變紀錄格式時核對會靜默失效，需重驗；opencode 未實作。
+
+## 2026-10-18 dynamic-api #1001 派工過程分析（Claude Code，唯讀查核）
+
+- #1001（修 ResponseRepositoryTest 編譯錯誤）：intake→design→plan→implementation（commit 640f747，編譯修好）→獨立驗證 8m38s 測試失敗→implementation 受阻→triage→人選「接受無法核實」→triage 派 verification→系統退回 implementation→triage→人結案（OWNER_CLOSE，工作區保留）。共 36 分鐘、9 次 agent 執行。
+- 判斷：角色選擇與根因分析正確；不合理處為 (1) 配置把必定失敗的後端測試列入系統獨立驗證（D:/tmp 路徑），任務從一開始就不可能完成；(2) triage 提供「接受測試無法執行」這個 decide 選項，但獨立驗證是硬閘門，違反「選項必須流程能照做」的契約，造成兩次空轉；(3) implementation 第一輪已知測試失敗仍回 SUCCESS／verify_passed=true，觸發 16 分鐘必敗的獨立驗證；(4) 一行測試修正仍走 design（與 intake 分析重複）。
+- 已修正的文件：configurable-team（dynamic-api 已知問題改為實測結果）。
+
+## 2026-10-18 dynamic-api 實例安裝到 Agent VM（Claude Code，未啟動）
+
+- 使用者核准計畫並要求做到第 6 步後停下等填 token。分支 feature/dynamic-api-instance（b57b429 起，未推送、未合併 main）。
+- VM：來源 ~/ai-team-source-b57b429（tar SHA256 f31a46bc… 兩端一致，check-source 含 Python 測試通過）；install-app 至 ~/ai-team-dynamic-api，JAR ea7781a2…，Maven 664 項 0 失敗／錯誤、11 略過，耗時 2m22s；repo ~/ai-team-dynamic-api/dynamic-api 非 shallow、master 3f638e3；team.env（INSTANCE=dynamicapi）、env.sh 非機密值（頻道 C0CA5CXTUHJ、白名單、master、GRADLE_USER_HOME、CLI 路徑、併發 1），權限 600；--validate-team 通過。
+- 預熱實測（暫存 clone ~/dynamic-api-prewarm-20261017，log 在 ~/dynamic-api-prewarm-logs）：前端 ci／type-check／lint／build 與文件站 ci／build 全部成功；Gradle 8.14.5 編譯 Spring Boot 3.2.5 主程式成功（含 --offline）。發現 backend-compile 缺 -x buildFrontend（compileTestJava 會觸發 Windows npm.cmd），已修配置與文件並同步到 VM。
+- 發現的落差：repo 的 ResponseRepositoryTest.java:15 少傳 ServiceType，測試編譯失敗，後端測試與系統獨立驗證必定失敗；屬 repo 問題，已在 configurable-team 標為已知問題，待使用者決定處理方式。
+- 已修正的文件：configurable-team（dynamic-api 段：實測結果、已知問題、狀態）。
+- 2026-10-18 文件缺漏：configuration.md 只寫 AI_TEAM_GITHUB_TOKEN 用途，未寫取得方式與所需權限；已依 PullRequestPublisher 實際用法補上 Fine-grained token 步驟（Contents、Pull requests 讀寫）。
+- token 狀態（2026-10-18）：使用者已填 14 個 Slack token；auth.test 顯示主 App Bot Token invalid_auth、Infrastructure 與 Code Reviewer 的 Bot Token 對調，已請使用者修正；GitHub token 未填。服務尚未啟動。
+- 啟動（2026-10-18）：使用者修正 token（主 App 重貼、Infrastructure／Code Reviewer 對調、CODE_REVIEW xapp 重貼），也複製了 bestpartner 的 GitHub token（push --dry-run 已確認可推送，開 PR 權限未驗）。preflight 通過後啟動 PID141371：Spring、沙箱、工具鏈自檢、6 角色 Socket Mode 通過，ERROR 0，WARN 僅 builder_codex 共用主 token；其他兩實例 PID 不變。已更新 deploy-2026-09-06-v2、configurable-team、slack-agent-apps。
+- 未完成：Slack 端對端（使用者在 #dynamic-api 開第一個任務修 ResponseRepositoryTest）。
+
 ## 2026-10-17 新增 dynamic-api 專案實例（Claude Code，來源完成、未部署、未 commit）
 
 - 使用者要求新增 https://github.com/a09090443/dynamic-api 並在 Slack 建頻道；選擇主 App＋角色 App、以 bestpartner 為範本、頻道 #dynamic-api。repo 已存在（master 3f638e3）。
