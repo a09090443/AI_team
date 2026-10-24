@@ -478,16 +478,19 @@ public class FlowEngine {
                                         + "；累計次數=" + flow.visits.get(flow.node) + "，歷史計數與總上限未重設");
                     }
                     if (node.workspace()) {
+                        boolean provisioned = false;
                         if (!flow.workspaceReady) {
                             if (workspaces.exists(task.id())) throw new IllegalStateException("工作區已存在但快照未完成 provision，保留現場並停止");
                             workspaces.provision(task, Path.of(flow.snapshot.repository()), flow.snapshot.definition().project().baseBranch());
-                            flow.workspaceReady = true;
+                            flow.workspaceReady = true; provisioned = true; flow.baseSync = null;
                             flow.comparisonBase = workspaces.headSha(task.id());
                             flow.workspacePath = workspaces.pathFor(task.id()).toAbsolutePath().normalize().toString();
                             flow.origin = workspaces.origin(task.id()); flow.branch = workspaces.currentBranch(task.id());
                         }
                         if (!workspaces.exists(task.id())) throw new IllegalStateException("原工作區遺失，拒絕重新 clone");
                         excludeOperationOutputs(task, flow);
+                        // 剛建好的工作區已是最新基準，不重做。
+                        if (!provisioned) syncBase(task, flow, node);
                         flow.beforeHead = workspaces.headSha(task.id());
                         flow.attemptHeads.put(flow.node, flow.beforeHead);
                         // 新的一輪：上一輪的改派段結果不沿用（續跑同一輪時不會走到這裡）。
@@ -700,6 +703,23 @@ public class FlowEngine {
                         audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_REJECTED, "節點 " + flow.node + "：" + block);
                         flow.context = FlowContext.append(flow.context, "系統核對合併結果：" + problem
                                 + "\n請照【系統：已開 PR 與基準衝突】的要求修正；不要 rebase 或重新合併。");
+                    }
+                }
+                // 動手前同步有衝突：同樣由系統核對合併結果（BaseSync）；沙箱不能寫 .git 時代為提交合併 commit。
+                if (block == null && BaseSync.resolving(flow, flow.node)) {
+                    var sync = flow.baseSync;
+                    String problem = workspaces.finishMerge(task.id(), sync.conflicts(),
+                            "合併 " + sync.baseBranch() + " 並解決衝突（任務 #" + task.id() + " 動手前同步，" + node.role() + "）");
+                    if (problem == null) problem = workspaces.syncProblem(task.id(), sync.parentHead(), sync.baseSha(), sync.conflicts());
+                    if (problem != null) {
+                        block = "動手前同步最新基準的合併核對未通過：" + problem;
+                        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_REJECTED, "節點 " + flow.node + "：" + block);
+                        flow.context = FlowContext.append(flow.context, "系統核對合併結果：" + problem
+                                + "\n請照【系統：動手前同步最新基準，有衝突】的要求修正；不要 rebase 或重新合併。");
+                    } else {
+                        flow.baseSync = null;
+                        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "節點 " + flow.node + " 已解完動手前同步的衝突："
+                                + sync.conflicts() + "；HEAD=" + workspaces.headSha(task.id()));
                     }
                 }
                 if (block == null && node.gate() == Gate.SERVICE) {
@@ -1051,16 +1071,68 @@ public class FlowEngine {
             // PR 衝突同步時合併還沒 commit：這次提交就是合併 commit（含基準帶進來的變更），由 mergeProblem 核對。
             String head = workspaces.commitPaths(task.id(), dirty, flow.pullRequestSync != null
                     ? "合併 " + flow.pullRequestSync.baseBranch() + " 並解決衝突（任務 #" + task.id() + " PR 衝突同步，" + node.role() + "）"
+                    : BaseSync.resolving(flow, flow.node)
+                    ? "合併 " + flow.baseSync.baseBranch() + " 並解決衝突，任務 #" + task.id() + " 自主派工實作（" + node.role() + "）"
                     : "任務 #" + task.id() + " 自主派工實作（" + node.role() + "）");
             audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "自主派工核對後代為提交：" + head);
         }
     }
-    /** 實作節點這一輪實際改了哪些路徑；PR 衝突同步時以 git 自動合併結果為起點，基準帶進來的變更不算（{@link PullRequestSync}）。 */
+    /**
+     * 實作節點這一輪實際改了哪些路徑；本輪負責解合併衝突時以 git 自動合併結果為起點，基準帶進來的變更不算
+     * （{@link PullRequestSync}、{@link BaseSync}）。
+     */
     private List<String> implementationPaths(Task task, FlowRun flow, Node node) throws Exception {
         var round = flow.pullRequestSync;
         if (PullRequestSync.resolving(flow, flow.node))
             return workspaces.pathsChangedFromAutoMerge(task.id(), round.parentHead(), round.baseSha());
+        if (BaseSync.resolving(flow, flow.node))
+            return workspaces.pathsChangedFromAutoMerge(task.id(), flow.baseSync.parentHead(), flow.baseSync.baseSha());
         return workspaces.auditPaths(task.id(), flow.beforeHead);
+    }
+    /**
+     * 實作節點每一輪動手前先併入最新基準（{@link BaseSync}）。只對可寫整個工作區的 agent 節點；
+     * PR 衝突同步本身就在合併、上一輪的衝突還沒解完時不再合併。
+     * fetch 或合併失敗不擋派工（與建立工作區時相同），但告知角色工作區可能落後並留稽核。
+     */
+    private void syncBase(Task task, FlowRun flow, Node node) {
+        if (node.kind() != Kind.AGENT || node.scope() != Scope.WORKSPACE || flow.dialogue
+                || flow.pullRequestSync != null || flow.baseSync != null) return;
+        String base = "基準分支", head, previousBase;
+        WorkspaceManager.BaseMerge merge;
+        try {
+            base = workspaces.baseBranch(task.id());
+            if (!workspaces.clean(task.id())) {
+                flow.context = FlowContext.append(flow.context, BaseSync.skipped("工作區有未提交的修改，系統不在其上合併"));
+                audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "節點 " + flow.node + " 動手前未同步 " + base + "：工作區有未提交的修改");
+                return;
+            }
+            head = workspaces.headSha(task.id());
+            previousBase = workspaces.baseSha(task.id());
+            merge = workspaces.mergeBase(task.id(), Path.of(flow.snapshot.repository()), base, head);
+        } catch (Exception e) {
+            try { workspaces.abortMerge(task.id()); }
+            catch (Exception abort) { audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_ERROR, "放棄合併失敗：" + Diagnostics.safe(Diagnostics.describe(abort))); }
+            String reason = "同步最新的 " + base + " 失敗：" + Diagnostics.clip(Diagnostics.safe(Diagnostics.describe(e)), 300);
+            flow.context = FlowContext.append(flow.context, BaseSync.skipped(reason));
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_ERROR, "節點 " + flow.node + " 動手前" + reason);
+            return;
+        }
+        if (merge.upToDate()) return;
+        // 承接任務的比較起點是原任務 commit，不是基準，維持不變。
+        if (Objects.equals(flow.comparisonBase, previousBase)) flow.comparisonBase = merge.baseSha();
+        if (merge.conflicts().isEmpty()) {
+            flow.context = FlowContext.append(flow.context, BaseSync.merged(base, merge.baseSha(), head));
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "節點 " + flow.node + " 動手前合併 " + base + "@" + merge.baseSha()
+                    + " 進 " + flow.branch + "@" + head + "，沒有衝突，系統已提交合併 commit");
+            return;
+        }
+        flow.baseSync = new BaseSync.Round(flow.node, base, merge.baseSha(), head, merge.conflicts(), java.time.Instant.now().toString());
+        flow.context = FlowContext.append(flow.context, BaseSync.instruction(flow.baseSync));
+        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "節點 " + flow.node + " 動手前合併 " + base + "@" + merge.baseSha()
+                + " 進 " + flow.branch + "@" + head + "，衝突檔=" + merge.conflicts() + "，交由本輪角色先解衝突");
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id() + " 動手前已同步最新的 " + base
+                + "，有衝突：" + String.join("、", merge.conflicts().stream().limit(10).toList()) + (merge.conflicts().size() > 10 ? " 等" : "")
+                + "\n由 " + flow.node + " 先解衝突再繼續，系統會核對合併結果。");
     }
     /**
      * 分段改派（{@link ProtectedPathFallback}）：需求要改原角色 runtime 必定寫不了、而且管理者允許改派的路徑時，
@@ -1147,7 +1219,7 @@ public class FlowEngine {
     }
     private List<String> auditDelegatedPart(Task task, FlowRun flow, Node node, Node delegate) throws Exception {
         if (flow.beforeHead == null) throw new SecurityException("缺少改派段的起始 commit，不能核實寫入範圍");
-        List<String> changed = workspaces.auditPaths(task.id(), flow.beforeHead);
+        List<String> changed = implementationPaths(task, flow, node);
         List<String> bad = ProtectedPathFallback.partViolations(changed, node.protectedPathFallback(),
                 ProtectedPathFallback.plannedPaths(flow, node));
         if (!bad.isEmpty()) {
@@ -1170,7 +1242,7 @@ public class FlowEngine {
         if (acting == node || node.protectedPathFallback() == null) return;
         if (flow.beforeHead == null) throw new SecurityException("缺少改派實作的起始 commit，不能核實寫入範圍");
         AgentRuntime primary = executor.runtimeFor(flow.snapshot.definition().roles().get(node.role()).runtime());
-        List<String> changed = workspaces.auditPaths(task.id(), flow.beforeHead);
+        List<String> changed = implementationPaths(task, flow, node);
         List<String> bad = ProtectedPathFallback.violations(changed, node.protectedPathFallback(), primary);
         if (!bad.isEmpty()) {
             audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_DENIED, "改派實作越權：" + bad);

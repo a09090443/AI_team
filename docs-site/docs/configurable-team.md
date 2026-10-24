@@ -506,6 +506,9 @@ Runnable 交給 TaskOrchestrator，由真正的執行中工作與 FIFO 排隊清
   - 提示會寫明「遠端記錄於 <台北時間> 更新」；fetch 失敗時不擋派工，但要求 agent 把涉及遠端的判斷標成「無法確認最新狀態」。
 
   不設開關，所有團隊適用；工作區節點不受影響。
+- **實作節點動手前同步最新基準**（2026-10-24）：工作區只在建立時取一次基準，之後每一輪 `scope=WORKSPACE` 的 agent 節點開始前，
+  系統先 fetch 並以一般 merge 把最新基準併進任務分支，衝突交給該輪角色先解（`BaseSync`）。
+  不設開關，所有團隊適用；細節見 [工程流程](engineering-workflow.md#實作前同步最新基準2026-10-24)。
 - **已開 PR 衝突同步**：見[工程流程與驗證邊界](engineering-workflow.md#已開-pr-的衝突同步2026-10-23)。
   以 `project.autonomy.pullRequestSyncRounds` 開啟；開啟後，該實例所有仍開啟、且由系統開出的 PR 都會納入檢查。
 

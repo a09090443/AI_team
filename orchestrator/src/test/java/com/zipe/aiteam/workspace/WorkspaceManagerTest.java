@@ -226,6 +226,36 @@ class WorkspaceManagerTest {
     }
 
     @Test
+    void 動手前同步_解完衝突後可接著做本輪工作_系統代為提交_放棄合併不通過() throws Exception {
+        Path ws = manager.provision(task("1404"));
+        run(ws, "git", "config", "core.autocrlf", "false");   // Windows 的換行警告會混進 git 輸出
+        String parent = prCommit(ws);
+        String baseSha = advanceBase("README.md", "基準的修改\n");
+        var merge = manager.mergeBase("1404", repo, "master", parent);
+        assertThat(manager.baseSha("1404")).isEqualTo(baseSha);
+
+        // 還有衝突標記時不代為提交。
+        assertThat(manager.finishMerge("1404", merge.conflicts(), "合併")).contains("衝突標記");
+        // 角色改好衝突檔、又做了本輪工作，但沙箱不能寫 .git：系統代為提交合併 commit。
+        Files.writeString(ws.resolve("README.md"), "PR 的修改\n基準的修改\n", StandardCharsets.UTF_8);
+        Files.writeString(ws.resolve("feature.txt"), "本輪工作\n", StandardCharsets.UTF_8);
+        assertThat(manager.finishMerge("1404", merge.conflicts(), "合併並實作")).isNull();
+        assertThat(manager.clean("1404")).isTrue();
+        assertThat(manager.syncProblem("1404", parent, baseSha, merge.conflicts())).isNull();
+        // 合併 commit 之後的本輪 commit 不影響核對（與已開 PR 同步不同）。
+        Files.writeString(ws.resolve("more.txt"), "x\n", StandardCharsets.UTF_8);
+        run(ws, "git", "add", "more.txt");
+        run(ws, "git", "commit", "--quiet", "-m", "本輪另一個 commit");
+        assertThat(manager.syncProblem("1404", parent, baseSha, merge.conflicts())).isNull();
+        assertThat(manager.changedPathsSinceBase("1404")).containsExactlyInAnyOrder("README.md", "pr.txt", "feature.txt", "more.txt");
+
+        // 放棄合併、回到原 commit：基準不在歷史裡。
+        run(ws, "git", "reset", "--quiet", "--hard", parent);
+        assertThat(manager.syncProblem("1404", parent, baseSha, merge.conflicts())).contains(baseSha);
+        assertThat(manager.finishMerge("1404", merge.conflicts(), "沒有合併中")).isNull();
+    }
+
+    @Test
     void 主repo遠端記錄_60秒內不重複fetch_失敗時回報過時() throws Exception {
         var first = manager.refreshOrigin(repo);
         assertThat(first.ok()).isTrue();

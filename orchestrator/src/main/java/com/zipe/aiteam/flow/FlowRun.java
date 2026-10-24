@@ -33,7 +33,10 @@ public class FlowRun {
     public String origin;
     public String branch;
     public String beforeHead;
-    /** 本任務工作區建立／承接當下的 commit；不隨返工改寫，也不是需求版本雜湊。 */
+    /**
+     * 驗收比較的起點：本任務工作區建立／承接當下的 commit，不隨返工改寫，也不是需求版本雜湊。
+     * 系統把新的基準合併進任務分支時（{@link BaseSync}、{@link PullRequestSync}）改成新基準 commit，基準帶進來的變更不算本任務的修改。
+     */
     public String comparisonBase;
     public String activeNode;
     public boolean dialogue;
@@ -79,6 +82,9 @@ public class FlowRun {
     /** 進行中的同步輪；沒有在同步時為 null。 */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public PullRequestSync.Round pullRequestSync;
+    /** 實作節點動手前同步最新基準時有衝突、尚待該節點解完的合併（{@link BaseSync}）；沒有時為 null。 */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public BaseSync.Round baseSync;
     /** 已開始過的同步輪數，不因成功或失敗退還；上限見 project.autonomy.pullRequestSyncRounds。 */
     @JsonInclude(JsonInclude.Include.NON_DEFAULT)
     public int pullRequestSyncRounds;

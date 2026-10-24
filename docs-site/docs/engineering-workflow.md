@@ -254,6 +254,37 @@ PR 開出去之後若與基準衝突，可以由原任務自動同步，見下�
 導入這些功能前需先定義目標 repo 的發布方法與真人責任，不自行新增自動合併或部署權限。
 舊版本 jar 不認得 PR_CREATED；產生新版任務後回退須用升級前備份，不讓舊 jar 直接讀新版資料。
 
+### 實作前同步最新基準（2026-10-24）
+
+起因：工作區只在第一個工作區節點建立時 fetch 並從最新的 `origin/<基準分支>` 開分支（`WorkspaceManager.provision`）。
+之後等計畫核准、返工、續做可能隔好幾個小時，期間別人合併的修改都看不到，實作角色在舊程式上改，到開 PR 才發現衝突。
+沙箱裡的 agent 連不到遠端、也不該自己 pull，所以由系統在派工前處理（`BaseSync`、`FlowEngine.syncBase`）。
+
+**時機**：`kind=AGENT`、`scope=WORKSPACE` 的節點每一輪**新開始**時（同一輪的續跑不做）。以下情況略過：
+- 這一輪剛建立工作區（已是最新）；
+- 角色對話、PR 衝突同步進行中（同步本身就在合併）；
+- 上一次同步的衝突還沒解完（`FlowRun.baseSync` 有值，不重複合併）。
+
+`LIMITED`（QA 補測試、服務建置）與唯讀節點不同步：它們只改限定路徑或不改，驗的是實作節點交出的版本。
+
+**做法**：與 PR 衝突同步共用 `WorkspaceManager.mergeBase`：fetch 主 repo 後以 `git merge --no-ff --no-commit` 併入最新基準，
+不 rebase、不改寫既有 commit，之後推分支仍是 fast-forward。基準已包含在 HEAD 裡時不做事。
+`comparisonBase` 原本等於工作區記錄的基準（`ai-team.base-sha`）時改成新基準 commit，驗收範圍與檔案比對只看本任務對新基準的差異；
+承接任務的 `comparisonBase` 是原任務 commit，維持不變。
+
+| 結果 | 處理 |
+|---|---|
+| 沒有衝突 | 系統提交合併 commit，本輪起始 commit（`beforeHead`）就是合併後的 commit；脈絡告知角色已同步到哪個 commit |
+| 有衝突 | 保留合併中的狀態，記 `FlowRun.baseSync`，脈絡列出兩側 SHA 與衝突檔，要求本輪角色**先解衝突再做原本的工作**；討論串貼一則說明 |
+| 工作區有未提交修改、fetch 或合併失敗 | 不擋派工（與建立工作區時 fetch 失敗相同），放棄合併中的狀態，脈絡告知角色工作區可能落後、涉及他人近期修改的判斷要標明無法確認，並留稽核 |
+
+**有衝突那一輪的核對**（不採信自陳）：
+1. 本輪的寫入稽核與改派核對以 git 自動合併結果為起點（`pathsChangedFromAutoMerge`），基準帶進來的變更不算角色的修改。
+2. 角色結束後仍在合併中（沙箱不能寫 .git）且衝突檔沒有衝突標記時，系統代為提交合併 commit（`WorkspaceManager.finishMerge`）。
+3. `WorkspaceManager.syncProblem`：合併已完成、合併前 commit 與基準 commit 都在 HEAD 的歷史裡（沒有 rebase、reset 或放棄合併）、
+   衝突檔在 HEAD 沒有衝突標記。與 PR 衝突同步不同，合併 commit 之後可以有本輪工作的其他 commit。
+4. 不通過時照一般受阻路由處理，`baseSync` 保留，下一輪不重新合併，由同一節點接著解；通過後清除。
+
 ### 已開 PR 的衝突同步（2026-10-23）
 
 起因：使用者先合併另一個 PR 後，系統已開的 PR 跟基準分支衝突。原本的流程只能另開任務、另開新 PR，原 PR 一定解不了，最後交給真人。

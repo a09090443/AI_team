@@ -268,7 +268,7 @@ v2 配置式流程的整份執行快照，對應 `com.zipe.aiteam.flow.FlowRun`�
 | `issueScopeChangeAuthorized` | boolean | 由原需求負責人明確核准需求變更時給予的一輪排除變更權；建立新基準後清除，不由模型授予、不沿用到承接任務 |
 | `origin` / `branch` | String | 工作區的 origin 與分支 |
 | `beforeHead` | String | 限寫階段的起始 commit。**缺這個就拒絕核實寫入範圍**（`SecurityException`） |
-| `comparisonBase` | String | 工作區建立／承接當下的 Git commit，返工不更換；內建指定檔案比對的基準。舊任務為 null，不允許以目前 HEAD 補造。唯一例外：PR 衝突同步開始時改為新併入的基準 commit（PR 的實際差異從這裡算） |
+| `comparisonBase` | String | 工作區建立／承接當下的 Git commit，返工不更換；內建指定檔案比對的基準。舊任務為 null，不允許以目前 HEAD 補造。例外：PR 衝突同步開始時，以及實作節點動手前同步最新基準（`BaseSync`）且原值等於工作區記錄的基準時，改為新併入的基準 commit（實際差異從這裡算） |
 | `changeTarget` / `changeAuthorized` | String / boolean | 待核准的需求變更目標節點；核准後才允許回頭改需求 |
 | `pendingPlanRevision` | String | 待核准的測試計畫節點 |
 | `planApprovals` | Map&lt;節點,`PlanApproval`&gt; | 真人核准收據：`plan`、`planRevision`、`baseline`、`configuration`、`user`、`at`。**只由已授權真人指令建立**，不接受 agent 報告裡的 `approved` 欄位 |
@@ -291,6 +291,7 @@ v2 配置式流程的整份執行快照，對應 `com.zipe.aiteam.flow.FlowRun`�
 | `delegatedParts` | Map&lt;節點,DelegatedPart&gt; | 分段改派的改派段結果：`role`、`startHead`（本輪起始 commit）、`head`（系統代為提交後）、`files`、`summary`（摘要，最多 2000 字）。續跑同一輪時略過已完成的改派段；節點新的一輪開始時移除（2026-10-04 新增，回滾風險同上） |
 | `prUrl` / `publishedHead` | String | 發布結果。PR 衝突同步推回後，`publishedHead` 改成推回的 commit |
 | `pullRequestSync` | `PullRequestSync.Round` | 2026-10-23 新增，空值不寫入 JSON。進行中的 PR 衝突同步輪：`round`、`prNumber`、`baseBranch`、`baseSha`、`parentHead`（上次推上 PR 的 commit）、`conflicts`、`trigger`、`autoPush`、`transitionsAtStart`、`startedAt`；推回後清除 |
+| `baseSync` | `BaseSync.Round` | 2026-10-24 新增，空值不寫入 JSON。實作節點動手前同步最新基準時有衝突、尚待該節點解完的合併：`node`、`baseBranch`、`baseSha`、`parentHead`（合併前的 commit）、`conflicts`、`startedAt`；系統核對通過後清除，重新建立工作區時清除。新版存過有值的任務回滾到舊 JAR 會讀不了 |
 | `pullRequestSyncRounds` | int | 2026-10-23 新增，0 不寫入。已開始過的同步輪數（合併前失敗也算），上限為目前配置的 `pullRequestSyncRounds` |
 | `pullRequestClosed` | boolean | 2026-10-23 新增，false 不寫入。GitHub 回報 PR 已合併或關閉，之後不再查詢 |
 | `pullRequestNotice` | String | 2026-10-23 新增，空值不寫入。已說明過的 PR 狀態（`pushed:`／`confirmed:`／`mismatch:`／`exhausted:`／`failed:` 開頭），同一狀態只發言一次 |

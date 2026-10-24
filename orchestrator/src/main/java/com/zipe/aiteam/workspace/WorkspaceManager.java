@@ -654,6 +654,56 @@ public class WorkspaceManager {
         return tree;
     }
 
+    /** 工作區記錄的基準 commit（{@link #BASE_SHA_CONFIG_KEY}）；合併基準後會更新。 */
+    public String baseSha(String taskId) throws WorkspaceException {
+        return gitOutput(pathFor(taskId), "config", "--local", "--get", BASE_SHA_CONFIG_KEY);
+    }
+
+    /**
+     * 動手前同步有衝突、角色已改好檔案但沙箱不能寫 .git 時，由系統代為提交合併 commit（連同本輪其他未提交修改）。
+     * 沒有合併中時不做事；衝突檔仍有衝突標記時不提交，回傳原因。
+     */
+    public String finishMerge(String taskId, List<String> conflicts, String message) throws WorkspaceException {
+        Path ws = pathFor(taskId);
+        if (!Files.exists(ws.resolve(".git/MERGE_HEAD"))) return null;
+        java.util.regex.Pattern marker = java.util.regex.Pattern.compile("^(<<<<<<<|>>>>>>>)( |$)|^=======$", java.util.regex.Pattern.MULTILINE);
+        for (String path : conflicts) {
+            Path file = ws.resolve(path).normalize();
+            if (!file.startsWith(ws) || !Files.isRegularFile(file)) continue;
+            try {
+                if (marker.matcher(Files.readString(file, StandardCharsets.UTF_8)).find()) return "衝突檔仍有衝突標記：" + path;
+            } catch (IOException e) {
+                throw new WorkspaceException("無法讀取衝突檔：" + path, e);
+            }
+        }
+        List<String> dirty = uncommittedPaths(taskId);
+        if (dirty.isEmpty()) git(ws, "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "--no-edit");
+        else commitPaths(taskId, dirty, message);
+        return null;
+    }
+
+    /**
+     * 動手前同步（BaseSync）有衝突的那一輪結束後由系統核對，不採信自陳；回傳不通過的原因，通過時為 null。
+     * 與 {@link #mergeProblem} 不同，合併 commit 之後可以有本輪工作的其他 commit：只要求合併已完成、
+     * 合併前的 commit 與基準 commit 都還在 HEAD 的歷史裡（沒有 rebase、reset 或放棄合併），且衝突檔沒有殘留衝突標記。
+     */
+    public String syncProblem(String taskId, String parentHead, String baseSha, List<String> conflicts) throws WorkspaceException {
+        Path ws = pathFor(taskId);
+        if (Files.exists(ws.resolve(".git/MERGE_HEAD"))) return "合併尚未完成（仍有 MERGE_HEAD），需要解完衝突後 git commit --no-edit";
+        for (String ref : List.of(parentHead, baseSha)) {
+            try {
+                git(ws, "merge-base", "--is-ancestor", ref, "HEAD");
+            } catch (WorkspaceException e) {
+                return "HEAD 的歷史不包含 " + ref + "：合併被放棄或改寫（不可 rebase、reset 或 git merge --abort）";
+            }
+        }
+        for (String path : conflicts) {
+            String markers = gitOutput(ws, true, "--literal-pathspecs", "grep", "-n", "-E", "^(<<<<<<<|>>>>>>>)( |$)|^=======$", "HEAD", "--", path);
+            if (!markers.isBlank()) return "衝突檔仍有衝突標記：" + path;
+        }
+        return null;
+    }
+
     /** 同步無法開始時放棄合併中的狀態，讓工作區回到已發布的 commit；沒有合併中時不做事。 */
     public void abortMerge(String taskId) throws WorkspaceException {
         if (Files.exists(pathFor(taskId).resolve(".git/MERGE_HEAD"))) git(pathFor(taskId), "merge", "--abort");

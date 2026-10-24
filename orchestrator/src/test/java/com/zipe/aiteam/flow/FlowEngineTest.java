@@ -1187,6 +1187,8 @@ class FlowEngineTest {
         when(workspace.auditPaths(eq("42"), anyString())).thenAnswer(c -> workspaceClean ? List.of()
                 : List.of("base-spring-boot-starter/src/test/java/com/example/MailTest.java"));
         when(workspace.uncommittedPaths("42")).thenAnswer(c -> workspaceClean ? List.of() : List.of(dirtyPath));
+        // 動手前同步（BaseSync）預設基準沒有前進。
+        when(workspace.mergeBase(any(), any(), any(), any())).thenAnswer(c -> new WorkspaceManager.BaseMerge("base0", List.of(), true));
         when(workspace.commitPaths(eq("42"), anyList(), anyString())).thenAnswer(c -> {
             workspaceClean = true; workspaceHead = "head-qa-tests"; return workspaceHead; });
         when(executor.execute(any(), any(), any())).thenAnswer(c -> {
@@ -2299,6 +2301,8 @@ class FlowEngineTest {
         when(workspace.pathsChangedFromAutoMerge("42", "head1", SYNC_BASE)).thenReturn(List.of("README.md"));
         when(publisher.update("42", "feature/task42", PR_URL, "head1")).thenReturn(new PullRequestPublisher.Result("feature/task42", PR_URL, 1));
         calls.clear();
+        // 開 PR 前各輪動手前的基準同步（BaseSync）不算 PR 同步。
+        clearInvocations(workspace);
         return store.flow("42").orElseThrow();
     }
 
@@ -2512,6 +2516,76 @@ class FlowEngineTest {
         assertThat(store.flow("42").orElseThrow().receipts).doesNotContainKey("implementation");
         verify(audit).record(eq("42"), eq(AuditLog.ACTOR_SYSTEM), eq(AuditLog.ACTION_REJECTED), contains("npm test，結束碼 1"));
         assertThat(store.flow("42").orElseThrow().context).contains("系統核對指令紀錄");
+    }
+    /** 獨立驗證第一次失敗，讓實作節點跑第二輪（工作區已存在）。 */
+    private void implementationRunsTwice() throws Exception {
+        doThrow(new IndependentVerifier.CheckFailed(List.of(FileComparison.OPERATION), 1, "/runs/files.json", "README.md 被誤改"))
+                .doAnswer(c -> {
+                    FlowRun f = c.getArgument(1);
+                    return new IndependentVerifier.Receipt(workspaceHead, f.baselineRevision, f.snapshot.revision(), "start", "end", List.of());
+                }).when(verifier).verify(any(), any());
+    }
+    @Test void implementationMergesTheLatestBaseBeforeEachLaterRound() throws Exception {
+        implementationRunsTwice();
+        when(workspace.baseSha("42")).thenReturn("head1");
+        when(workspace.mergeBase(eq("42"), any(), eq("main"), eq("head1"))).thenAnswer(c -> {
+            workspaceHead = "synced"; return new WorkspaceManager.BaseMerge(SYNC_BASE, List.of(), false); });
+
+        engine.run(task);
+
+        assertThat(calls.stream().filter("implementation:builder"::equals)).hasSize(2);
+        // 剛建好的工作區不重複同步；第二輪動手前才合併，之後的節點基準沒有再前進。
+        verify(workspace, times(1)).mergeBase(eq("42"), any(), eq("main"), eq("head1"));
+        FlowRun saved = store.flow(task.id()).orElseThrow();
+        assertThat(saved.comparisonBase).isEqualTo(SYNC_BASE);
+        assertThat(saved.context).contains("動手前已同步最新基準").contains(SYNC_BASE);
+        assertThat(saved.baseSync).isNull();
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+    }
+    @Test void baseConflictBeforeARoundIsResolvedByThatRoundAndCheckedBySystem() throws Exception {
+        implementationRunsTwice();
+        when(workspace.mergeBase(eq("42"), any(), eq("main"), eq("head1"))).thenAnswer(c -> new WorkspaceManager.BaseMerge(SYNC_BASE, List.of("README.md"), false));
+        // 角色完成合併 commit 後 HEAD 已包含基準，下一個實作節點不會再有東西要合併。
+        when(workspace.syncProblem("42", "head1", SYNC_BASE, List.of("README.md"))).thenAnswer(c -> { workspaceHead = "resolved"; return null; });
+
+        engine.run(task);
+
+        verify(workspace, times(1)).mergeBase(eq("42"), any(), eq("main"), eq("head1"));
+        verify(workspace).finishMerge(eq("42"), eq(List.of("README.md")), contains("動手前同步"));
+        verify(workspace).syncProblem("42", "head1", SYNC_BASE, List.of("README.md"));
+        verify(slack).post(any(), eq("c"), eq("t"), contains("動手前已同步最新的 main，有衝突：README.md"));
+        FlowRun saved = store.flow(task.id()).orElseThrow();
+        assertThat(saved.context).contains("動手前同步最新基準，有衝突").contains("README.md");
+        assertThat(saved.comparisonBase).isNotEqualTo(SYNC_BASE);   // 比較起點不是工作區記錄的基準（例如承接任務）時不改
+        assertThat(saved.baseSync).isNull();
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+    }
+    @Test void unresolvedBaseConflictBlocksTheRoundAndIsNeverMergedAgain() throws Exception {
+        implementationRunsTwice();
+        when(workspace.mergeBase(eq("42"), any(), eq("main"), eq("head1")))
+                .thenAnswer(c -> new WorkspaceManager.BaseMerge(SYNC_BASE, List.of("README.md"), false));
+        when(workspace.syncProblem(any(), any(), any(), any())).thenReturn("衝突檔仍有衝突標記：README.md");
+
+        engine.run(task);
+
+        verify(workspace, times(1)).mergeBase(eq("42"), any(), eq("main"), eq("head1"));
+        verify(audit).record(eq("42"), eq(AuditLog.ACTOR_SYSTEM), eq(AuditLog.ACTION_REJECTED), contains("動手前同步最新基準的合併核對未通過"));
+        FlowRun saved = store.flow(task.id()).orElseThrow();
+        assertThat(saved.context).contains("系統核對合併結果");
+        assertThat(saved.baseSync).isNotNull();
+        assertThat(task.state()).isNotEqualTo(Task.State.AWAIT_PR_APPROVAL);
+    }
+    @Test void failedBaseSyncDoesNotStopTheRoundButTellsTheRole() throws Exception {
+        implementationRunsTwice();
+        when(workspace.mergeBase(eq("42"), any(), eq("main"), eq("head1")))
+                .thenThrow(new WorkspaceManager.WorkspaceException("git 失敗（結束碼 128）：git fetch"));
+
+        engine.run(task);
+
+        assertThat(calls.stream().filter("implementation:builder"::equals)).hasSize(2);
+        verify(workspace, atLeastOnce()).abortMerge("42");
+        assertThat(store.flow(task.id()).orElseThrow().context).contains("這一輪沒有同步最新基準").contains("git fetch");
+        verify(audit, atLeastOnce()).record(eq("42"), eq(AuditLog.ACTOR_SYSTEM), eq(AuditLog.ACTION_ERROR), contains("動手前同步最新的 main 失敗"));
     }
     @Test void changedProtectedOldFileReturnsToImplementationWithoutChangingRequirementsOrBaseline() throws Exception {
         doThrow(new IndependentVerifier.CheckFailed(List.of(FileComparison.OPERATION), 1, "/runs/files.json", "README.md 被誤改"))

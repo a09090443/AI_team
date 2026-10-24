@@ -188,6 +188,7 @@ agent_team/
 │   │   │   ├── ReceiptReuse.java     # 流程重走時沿用前次仍有效的設計、計畫、實作結果
 │   │   │   ├── DeferredAcceptance.java # 驗收環境驗不了的驗收項目在計畫延後、PR 列出
 │   │   │   ├── PullRequestSync.java  # 已開 PR 與基準衝突時回原任務解衝突、推回同一個 PR 的判斷與核對
+│   │   │   ├── BaseSync.java         # 實作節點每輪動手前併入最新基準：衝突交該輪角色解的紀錄與提示
 │   │   │   ├── NodeInput.java        # 節點輸入指紋（判斷是否為相同輸入重跑）
 │   │   │   ├── ToolTrust.java        # 工具被拒卻宣稱完成時作廢結論
 │   │   │   ├── SystemFailure.java    # 區分系統沒跑起來與工作本身有問題
