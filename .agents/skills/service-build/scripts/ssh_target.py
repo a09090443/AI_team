@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 """Root-owned forced SSH entry; accepts authorized fixed service actions."""
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -12,20 +13,67 @@ import tarfile
 import time
 
 LIB = Path("/usr/local/lib/ai-team-service")
+ENTRY = Path("/usr/local/sbin/ai-team-ssh-service")
 CONFIG = Path("/etc/ai-team-service/target.json")
 STATE = Path("/var/lib/ai-team-service")
 MAX_ARCHIVE = 128 * 1024 * 1024
+PAYLOAD_ACTIONS = {"start", "exec", "upgrade"}
+MARKERS = ("PREPARED:","START_PASS:","HEALTH_PASS:","DIAGNOSIS:","REPAIR_PASS:","EXEC_PASS:","EXEC_FAILED:","EXEC_OUTPUT:")
 
 def request(text, expected_target):
     parts = text.split()
     if (len(parts) not in (4,5) or parts[0] != "ai-team-service" or parts[1] != expected_target
-            or parts[2] not in {"prepare","start","health","diagnose","result","status","cancel","repair"}
+            or parts[2] not in {"prepare","start","health","diagnose","result","status","cancel","repair","exec","upgrade"}
             or not re.fullmatch(r"[0-9a-f]{32}", parts[3])):
         raise ValueError("unapproved SSH command")
     digest = parts[4] if len(parts)==5 else None
-    if (parts[2] == "start") != (digest is not None) or (digest and not re.fullmatch(r"[0-9a-f]{64}", digest)):
+    if (parts[2] in PAYLOAD_ACTIONS) != (digest is not None) or (digest and not re.fullmatch(r"[0-9a-f]{64}", digest)):
         raise ValueError("invalid archive digest")
     return parts[2], parts[3], digest
+
+
+def sandbox(config):
+    return config.get("mode", "restricted") == "sandbox"
+
+
+def verify_exec(data, config):
+    if not sandbox(config):
+        raise ValueError("SANDBOX_NOT_ENABLED: exec is only available on targets the administrator declared sandbox")
+    sys.path.insert(0, str(LIB))
+    from guest import validate_exec_archive
+    with validate_exec_archive(data):
+        pass
+
+
+def upgrade_entry(job, digest, data, config):
+    """Sandbox only: replace this fixed entry and guest.py with the Agent VM's tested copies."""
+    result = dict(id=job, action="upgrade", target=config["target"], source_sha256=digest, completed=int(time.time()))
+    if not sandbox(config):
+        return dict(result, exit_code=1, evidence=["SANDBOX_NOT_ENABLED: entry upgrades need the administrator's install script"])
+    if len(data) > 1024*1024 or hashlib.sha256(data).hexdigest() != digest:
+        return dict(result, exit_code=1, evidence=["Upgrade payload integrity check failed"])
+    files = {}
+    with tarfile.open(fileobj=io.BytesIO(data)) as archive:
+        for member in archive.getmembers():
+            if member.name not in {"ssh_target.py", "guest.py"} or not member.isfile() or member.name in files:
+                return dict(result, exit_code=1, evidence=["Upgrade payload must hold only ssh_target.py and guest.py"])
+            files[member.name] = archive.extractfile(member).read()
+    if set(files) != {"ssh_target.py", "guest.py"}:
+        return dict(result, exit_code=1, evidence=["Upgrade payload must hold ssh_target.py and guest.py"])
+    for name, content in files.items():
+        compile(content, name, "exec")  # never install an entry that cannot start
+    installed = {"ssh_target.py": ENTRY, "guest.py": LIB / "guest.py"}
+    if all(path.is_file() and path.read_bytes() == files[name] for name, path in installed.items()):
+        return dict(result, exit_code=0, evidence=["UPGRADE_UNCHANGED: installed entry already matches"])
+    if any(STATE.glob("*.running")):
+        return dict(result, exit_code=75, state="DEFERRED", evidence=["Upgrade deferred until running operations finish"])
+    for name, path in installed.items():
+        fd, temp = tempfile.mkstemp(dir=path.parent, prefix=".upgrade-")
+        with os.fdopen(fd, "wb") as out:
+            out.write(files[name])
+        os.chmod(temp, 0o755 if name == "ssh_target.py" else 0o644)
+        os.replace(temp, path)
+    return dict(result, exit_code=0, evidence=["UPGRADE_PASS: entry and guest replaced; service data retained"])
 
 def verify_source(data, config):
     # Deployment authorization comes from the enrolled SSH key and active SERVICE
@@ -135,11 +183,13 @@ def execute(text):
     action, job, digest = request(text, c["target"])
     STATE.mkdir(mode=0o700, parents=True, exist_ok=True)
     # Do not block unrelated status/cancel calls while SSH is uploading an archive.
-    data = sys.stdin.buffer.read(MAX_ARCHIVE+1) if action == "start" else None
+    data = sys.stdin.buffer.read(MAX_ARCHIVE+1) if action in PAYLOAD_ACTIONS else None
     with (STATE / "submission.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         record = STATE / (job + ".json")
         accepted = STATE / (job + ".request")
+        if action == "upgrade":
+            return upgrade_entry(job, digest, data, c)
         if action == "cancel":
             return cancel_job(job,c["target"])
         if record.exists():
@@ -171,13 +221,14 @@ def execute(text):
             return dict(id=job,target=c["target"],state="UNCERTAIN",exit_code=75)
         if (STATE/(job+".cancel")).exists():
             return dict(id=job,target=c["target"],state="UNCERTAIN",exit_code=75,error_kind="CANCELLATION_REQUESTED")
-        if action == "start":
+        if action in {"start", "exec"}:
             try:
                 if len(data)>MAX_ARCHIVE or hashlib.sha256(data).hexdigest()!=digest:
                     raise ValueError("archive digest mismatch")
-                verify_source(data, c)
+                verify_source(data, c) if action == "start" else verify_exec(data, c)
             except (ValueError, tarfile.TarError) as exc:
-                reason = str(exc) if str(exc).startswith("SERVICE_CONFIG_REQUIRED:") else "Source integrity or format check failed"
+                reason = (str(exc) if str(exc).startswith(("SERVICE_CONFIG_REQUIRED:", "SANDBOX_NOT_ENABLED:"))
+                          else "Source integrity or format check failed")
                 result = dict(id=job,action=action,target=c["target"],source_sha256=digest,
                               completed=int(time.time()),exit_code=1,evidence=[reason[:1400]])
                 atomic_record(record,result)
@@ -210,7 +261,7 @@ def worker(text):
             if (cached["target"],cached["action"],cached.get("source_sha256")) != (c["target"],action,digest):
                 raise ValueError("request ID reused for different operation")
             # Consume bounded input on replay so SSH stdin cannot hide a broken pipe.
-            if action == "start":
+            if action in {"start", "exec"}:
                 read_source(job)
             return cached
         running = STATE / (job+".running")
@@ -223,26 +274,26 @@ def worker(text):
         try:
             with tempfile.TemporaryDirectory(prefix="ssh-service-",dir=STATE) as tmp:
                 argv=["/usr/bin/python3", str(LIB/"guest.py"),action]
-                if action == "start":
+                if action in {"start", "exec"}:
                     data=read_source(job)
                     if len(data)>MAX_ARCHIVE or hashlib.sha256(data).hexdigest()!=digest:
                         raise ValueError("archive size or digest mismatch")
-                    verify_source(data, c)
+                    verify_source(data, c) if action == "start" else verify_exec(data, c)
                     archive=Path(tmp)/"source.tar";archive.write_bytes(data);argv.append(str(archive))
                 log=STATE/(job+".log")
                 with log.open("w") as out:
                     os.chmod(log,0o600)
                     proc=subprocess.run(argv,stdout=out,stderr=subprocess.STDOUT,timeout=6900,
                                         env=dict(os.environ,AI_TEAM_OPERATION_ID=job))
-                expected={"prepare":"PREPARED:","start":"START_PASS:","health":"HEALTH_PASS:","diagnose":"DIAGNOSIS:","repair":"REPAIR_PASS:"}[action]
+                expected={"prepare":"PREPARED:","start":"START_PASS:","health":"HEALTH_PASS:","diagnose":"DIAGNOSIS:","repair":"REPAIR_PASS:","exec":"EXEC_PASS:"}[action]
                 with log.open("rb") as source:
                     source.seek(0,2);source.seek(max(0,source.tell()-65536))
                     tail=source.read(65536).decode("utf-8",errors="replace")
                 lines=[line.strip()[:1450] for line in tail.splitlines()
-                       if line.startswith(("PREPARED:","START_PASS:","HEALTH_PASS:","DIAGNOSIS:","REPAIR_PASS:"))][-20:]
+                       if line.startswith(MARKERS)][-(40 if action == "exec" else 20):]
                 if proc.returncode or not any(line.startswith(expected) for line in lines):
                     result.update(exit_code=1,evidence=["Target operation failed; protected target log: "+str(log)]
-                                  + [line for line in lines if line.startswith("DIAGNOSIS:")])
+                                  + [line for line in lines if line.startswith(("DIAGNOSIS:","EXEC_"))])
                 else:
                     result.update(exit_code=0,evidence=lines)
         except subprocess.TimeoutExpired:

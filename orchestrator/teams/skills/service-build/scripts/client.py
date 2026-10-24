@@ -12,6 +12,9 @@ import time
 import uuid
 
 ACTIONS = {"prepare", "start", "health", "diagnose"}
+# Only targets the administrator declared sandbox accept exec; the target VM enforces that, not this client.
+SANDBOX_ACTIONS = {"exec"}
+SCRIPT_LIMIT = 256 * 1024
 
 
 def workspace():
@@ -48,6 +51,21 @@ def request_directory(flow):
         raise ValueError("SERVICE_CONFIG_REQUIRED: the serviceTarget.checks.start operation must declare "
                          "exactly one writes directory for service requests")
     return path
+
+
+def sandbox_script(root, value):
+    path = relative_path(value)
+    if path is None or any(part.startswith(".") for part in path.parts):
+        raise ValueError("exec needs a workspace-relative script path outside hidden directories")
+    full = root / path
+    for ancestor in [full, *full.parents]:
+        if ancestor == root:
+            break
+        if ancestor.is_symlink():
+            raise ValueError("exec script cannot be reached through a symlink")
+    if not full.is_file() or full.stat().st_size > SCRIPT_LIMIT:
+        raise ValueError("exec script must be an existing file of at most 256 KiB")
+    return path.as_posix()
 
 
 def directory(root, relative):
@@ -113,10 +131,12 @@ def cancellation_requested(home, job):
         return False
 
 
-def submit(action, timeout=30):
-    if action not in ACTIONS:
+def submit(action, timeout=30, script=None):
+    if action not in ACTIONS | SANDBOX_ACTIONS or (action in SANDBOX_ACTIONS) != (script is not None):
         raise ValueError("unsupported service action")
     root = workspace()
+    if script is not None:
+        script = sandbox_script(root, script)
     flow = task_flow(root)
     try:
         relative = request_directory(flow)
@@ -131,11 +151,14 @@ def submit(action, timeout=30):
     head = None
     if pending.exists():
         request = json.loads(pending.read_text())
-        if request.get("action") != action:
+        if request.get("action") != action or request.get("script") != script:
             old = queue / (request["id"] + ".json")
             if not old.exists() or json.loads(old.read_text()).get("exit_code") == 75:
-                print(json.dumps(dict(status="OPERATION_PENDING",execution_state="RUNNING",
-                                      id=request["id"],action=request["action"],task=request["task"])))
+                pending_view = dict(status="OPERATION_PENDING",execution_state="RUNNING",
+                                    id=request["id"],action=request["action"],task=request["task"])
+                if request.get("script"):
+                    pending_view["script"] = request["script"]
+                print(json.dumps(pending_view))
                 return 0
             pending.unlink()
     if not pending.exists():
@@ -158,6 +181,8 @@ def submit(action, timeout=30):
                     return 0
         request = {"id": uuid.uuid4().hex, "action": action, "task": root.name[5:],
                    "created": int(time.time()), "source_head": head}
+        if script is not None:
+            request["script"] = script
         atomic_json(pending, request)
     deadline = time.monotonic() + timeout
     while True:
@@ -232,6 +257,8 @@ def authorized(root, target_name=None):
 def main():
     if len(sys.argv) == 2:
         return submit(sys.argv[1])
+    if len(sys.argv) == 3 and sys.argv[1] in SANDBOX_ACTIONS:
+        return submit(sys.argv[1], script=sys.argv[2])
     # Host-side transport entry: root is chosen from the administrator's task allowlist.
     if len(sys.argv) < 4:
         raise ValueError("usage: client.py prepare|start|health|diagnose (broker modes require the target name)")

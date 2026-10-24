@@ -17,6 +17,9 @@ import urllib.parse
 import urllib.request
 
 CONFIG = Path("/etc/ai-team-service/target.json")
+# Sandbox targets: the administrator declared the whole VM disposable, so agent scripts run as root here.
+SANDBOX_BASE = Path("/opt/ai-team-sandbox")
+MODES = {"restricted", "sandbox"}
 # Product layout comes only from the administrator's target configuration (see configure()).
 ROOT = COMPOSE = PROJECT = APP_SERVICE = DB_SERVICE = APP_DIR = HEALTH_URL = ENV_LINK = PASSWORD_LINK = None
 SOURCE_PATHS = ()
@@ -102,20 +105,45 @@ def configure(settings):
     BUILD_LABEL = "ai-team.service-build=" + PROJECT
 
 
-def load_settings(path=None):
+def target_mode(config):
+    mode = config.get("mode", "restricted") if isinstance(config, dict) else None
+    if mode not in MODES:
+        raise config_error("mode must be restricted or sandbox")
+    return mode
+
+
+def install_config(raw):
+    """Turn the administrator's service file into target.json fields; service settings are optional only in sandbox mode."""
+    if not isinstance(raw, dict):
+        raise config_error("service configuration must be a JSON object")
+    raw = dict(raw)
+    mode = target_mode({"mode": raw.pop("mode", "restricted")})
+    if not raw and mode == "sandbox":
+        return {"mode": mode}
+    return {"mode": mode, "service": service_settings({"service": raw})}
+
+
+def load_target(path=None):
     path = path or CONFIG
     try:
         config = json.loads(path.read_text())
     except (OSError, ValueError):
         raise config_error("cannot read " + str(path))
-    return service_settings(config)
+    if not isinstance(config, dict) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", str(config.get("target", ""))):
+        raise config_error("target configuration has no valid target name")
+    target_mode(config)
+    return config
+
+
+def load_settings(path=None):
+    return service_settings(load_target(path))
 
 
 def run(argv, **kwargs):
     subprocess.run(argv, check=True, timeout=1800, **kwargs)
 
 
-def prepare():
+def prepare(mode="restricted", target=None):
     release = dict(line.split("=", 1) for line in Path("/etc/os-release").read_text().splitlines() if "=" in line)
     if release.get("ID", "").strip('"') != "ubuntu":
         raise ValueError("only dedicated Ubuntu SIT guests are supported")
@@ -146,8 +174,72 @@ def prepare():
     version = subprocess.check_output(["docker", "compose", "version", "--short"], text=True).strip().lstrip("v")
     if tuple(int(x) for x in version.split(".")[:2]) < (2, 30):
         raise ValueError("existing Docker Compose needs a reviewed upgrade to >= 2.30")
-    ROOT.mkdir(mode=0o700, exist_ok=True)
-    print("PREPARED: SSH, Docker and Compose; no database volumes removed")
+    if ROOT is not None:
+        ROOT.mkdir(mode=0o700, exist_ok=True)
+    if mode == "sandbox":
+        (SANDBOX_BASE / target / "home").mkdir(mode=0o700, parents=True, exist_ok=True)
+    print("PREPARED: SSH, Docker and Compose; mode=" + mode + "; no database volumes removed")
+
+
+def validate_exec_archive(data):
+    archive = tarfile.open(fileobj=io.BytesIO(data))
+    total, script = 0, False
+    for member in archive.getmembers():
+        p = PurePosixPath(member.name)
+        if (p.is_absolute() or ".." in p.parts or not p.parts
+                or not (p.parts == ("run.sh",) and member.isfile() or p.parts[0] == "source")
+                or any(x in {".git", ".ssh", ".secrets"} or x.startswith(".env") for x in p.parts)
+                or not (member.isfile() or member.isdir())):
+            raise ValueError("unsafe sandbox payload entry")
+        script = script or p.parts == ("run.sh",)
+        total += member.size
+        if total > 200_000_000:
+            raise ValueError("sandbox payload is too large")
+    if not script:
+        raise ValueError("sandbox payload has no run.sh")
+    return archive
+
+
+def output_tail(path, lines=30):
+    with path.open("rb") as log:
+        log.seek(0, 2); size = log.tell(); log.seek(max(0, size - 65536))
+        raw = log.read().decode("utf-8", errors="replace")
+    raw = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", raw)
+    picked = [redact_diagnostic(x.rstrip()) for x in raw.splitlines() if x.strip()]
+    return ["".join(c for c in x if c.isprintable())[:300] for x in picked[-lines:]]
+
+
+def sandbox_exec(archive_file, target):
+    """Run an agent-authored script as root on a sandbox target; output is returned only as a redacted tail."""
+    data = Path(archive_file).read_bytes()
+    archive = validate_exec_archive(data)
+    base = SANDBOX_BASE / target
+    home, runs = base / "home", base / "runs"
+    for directory in (home, runs):
+        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    run_dir = runs / (OPERATION_ID or secrets.token_hex(16))
+    run_dir.mkdir(mode=0o700)
+    with archive:
+        extract_source(archive, run_dir)
+    (run_dir / "source").mkdir(exist_ok=True)
+    for old in sorted((p for p in runs.iterdir() if p != run_dir and p.is_dir() and not p.is_symlink()),
+                      key=lambda p: p.stat().st_mtime)[:-4]:
+        shutil.rmtree(old, ignore_errors=True)
+    env = dict(os.environ, AI_TEAM_SANDBOX_HOME=str(home), AI_TEAM_OPERATION_ID=OPERATION_ID,
+               DEBIAN_FRONTEND="noninteractive")
+    log = run_dir / "run.log"
+    with log.open("wb") as out:
+        try:
+            code = subprocess.run(["bash", str(run_dir / "run.sh")], cwd=run_dir / "source", env=env,
+                                  stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT, timeout=6600).returncode
+        except subprocess.TimeoutExpired:
+            code = None
+    for line in output_tail(log):
+        print("EXEC_OUTPUT: " + line)
+    if code != 0:
+        print("EXEC_FAILED: exit=" + ("timeout" if code is None else str(code)), flush=True)
+        raise ValueError("sandbox script failed")
+    print("EXEC_PASS: exit=0; run=" + run_dir.name, flush=True)
 
 
 def archive_entry_allowed(parts, member, sources):
@@ -285,8 +377,8 @@ def remove_owned_build(timeout=30):
 def redact_diagnostic(text):
     # Read secrets locally only; never evaluate env syntax or include its raw contents.
     values = []
-    env = ROOT/"secrets"/"env.sit"
-    password = ROOT/"secrets"/"db-password"
+    env = ROOT/"secrets"/"env.sit" if ROOT is not None else Path("/nonexistent")
+    password = ROOT/"secrets"/"db-password" if ROOT is not None else Path("/nonexistent")
     if password.is_file():
         value=password.read_text(errors="replace").strip()
         if value:values.append(value)
@@ -500,20 +592,33 @@ def main():
     global BUILD_NAME, OPERATION_ID
     action = sys.argv[1]
     try:
-        configure(load_settings())
+        config = load_target()
+        mode = target_mode(config)
+        configured = mode == "restricted" or "service" in config
+        if configured:
+            configure(service_settings(config))
+        elif action not in {"prepare", "exec", "cancel-build"}:
+            raise config_error("this sandbox target has no service settings; use exec scripts for " + action)
+        if action == "exec" and mode != "sandbox":
+            raise ValueError("SANDBOX_NOT_ENABLED: exec is only available on targets the administrator declared sandbox")
     except ValueError as exc:
         # Surface the missing configuration through the fixed receipt instead of guessing a layout.
-        print("DIAGNOSIS: " + json.dumps(dict(error_kind="SERVICE_CONFIG_REQUIRED", progress="not_started",
+        kind = "SANDBOX_NOT_ENABLED" if str(exc).startswith("SANDBOX_NOT_ENABLED") else "SERVICE_CONFIG_REQUIRED"
+        print("DIAGNOSIS: " + json.dumps(dict(error_kind=kind, progress="not_started",
                                              summary=str(exc)[:600])), flush=True)
         raise
     if action == "cancel-build":
+        if not configured:
+            return  # sandbox scripts are stopped with their own systemd unit; no owned build container exists
         job = sys.argv[2]
         if not re.fullmatch(r"[0-9a-f]{32}",job):
             raise ValueError("invalid cancellation identity")
         OPERATION_ID=job;BUILD_NAME="ai-team-build-"+job
         remove_owned_build(timeout=10)
     elif action == "prepare":
-        prepare()
+        prepare(mode, config["target"])
+    elif action == "exec":
+        sandbox_exec(sys.argv[2], config["target"])
     elif action == "start":
         start(sys.argv[2])
     elif action == "repair":

@@ -1,6 +1,11 @@
 {
+  "mode": "restricted",
   "root": "/opt/ai-team-example-dev",
-  "source_paths": ["backend", "docs/docker/sit", "docs/sql"],
+  "source_paths": [
+    "backend",
+    "docs/docker/sit",
+    "docs/sql"
+  ],
   "compose_file": "docs/docker/sit/docker-compose.yml",
   "compose_project": "example-dev",
   "app_service": "app",

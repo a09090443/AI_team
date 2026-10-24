@@ -15,7 +15,7 @@ description: 由 Slack agent 在已授權主機準備環境、建置既有系統
 正式部署必須由 Agent VM 透過 SSH 公鑰認證直接連到目標 VM，不依賴 Windows broker、Guest Control 或宿主機上的常駐 Python 程式。
 VirtualBox／宿主機工具只可用於管理者一次性的網路與 SSH 初始化，不得成為日常部署通道。
 使用 BatchMode=yes、PasswordAuthentication=no、StrictHostKeyChecking=yes 與獨立 known_hosts；不得用停用指紋核對解決連線問題。
-私鑰留在 Agent VM 的受保護路徑，目標機公鑰使用 forced command，sudo 只授權固定入口，不授權任意 root shell。
+私鑰留在 Agent VM 的受保護路徑，目標機公鑰使用 forced command，sudo 只授權固定入口，不授權任意 root shell；只有管理者宣告為 sandbox 的目標，固定入口才以 exec 執行 agent 腳本（見「沙箱目標」）。
 檢查兩台 VM 間的真實可達位址；各自 NAT 的 10.0.2.15 不是互通位址，Windows 的 localhost 轉送也不是 VM 直連。
 其他平台使用管理者已提供且核准的連線工具，沒有實際驗證就不能聲稱支援。
 
@@ -42,6 +42,17 @@ VirtualBox／宿主機工具只可用於管理者一次性的網路與 SSH 初�
 - `install-ssh-target.sh` 由管理者在目標 VM 一次性執行，安裝受限公鑰、sudo 規則與目標名稱；不建立逐版來源清單；不清除資料或其他公鑰。
 - `client.py` 沿用任務檔案佇列交給同機執行器；`broker.py` 僅保留舊版相容，不能在 SSH 失敗時自動退回 Windows broker。
 - `assets/host.example.json` 僅是無憑證範本，實際私密設定放在 repo 外。
+
+## 沙箱目標（sandbox）
+
+管理者把目標 VM 宣告為 sandbox（整台可拋棄）時，prepare 收據會顯示 `mode=sandbox`。此時不受內建建置配方限制：
+- 把安裝、建置、啟動、健康檢查寫成腳本放在本節點可寫路徑（例如部署目錄下的 `sandbox/`），用 `client.py exec <腳本路徑>` 在目標以 root 執行。
+  腳本在 `source/`（`source_paths` 的工作樹內容，含未提交修改）下執行；`$AI_TEAM_SANDBOX_HOME` 跨次保留，放安裝狀態、資料與機密。
+- 缺的套件、runtime、資料庫由腳本自己安裝設定，不交回使用者；腳本要可重複執行（已裝就跳過），失敗時依收據最後 30 行輸出修正再跑。
+- 機密在目標產生並存在 `$AI_TEAM_SANDBOX_HOME`，不要輸出到畫面或寫進 repo；腳本只操作這台目標，不連其他主機做部署。
+- health 腳本要實測服務入口（HTTP 狀態、必要容器或程序），不可只 `exit 0`；系統另有登錄入口的獨立探測。
+- 配置中 `serviceTarget.checks` 指向的 exec 操作（例如 start、health 腳本）就是交付檢查，checks 照常填這些操作的結果。
+restricted 目標回 `SANDBOX_NOT_ENABLED` 時，表示管理者沒有開放，改用固定操作，不要嘗試繞過。
 
 ## 來源封裝失敗
 

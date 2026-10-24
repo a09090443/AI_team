@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Synchronous Agent VM -> target VM SSH deployment. No Windows worker."""
 import hashlib
+import io
 import json
 import re
 import subprocess
 import sys
+import tarfile
 import time
 import uuid
 from pathlib import Path
@@ -12,6 +14,9 @@ import client
 
 ACTIONS = {"prepare", "start", "health", "diagnose"}
 MAX_ARCHIVE = 128 * 1024 * 1024
+PAYLOAD_ACTIONS = {"start", "exec", "upgrade"}
+MARKERS = {"prepare":"PREPARED:", "start":"START_PASS:", "health":"HEALTH_PASS:", "diagnose":"DIAGNOSIS:",
+           "repair":"REPAIR_PASS:", "exec":"EXEC_PASS:", "upgrade":"UPGRADE_"}
 
 def config(path):
     p = Path(path)
@@ -32,13 +37,15 @@ def config(path):
     if (not isinstance(paths, list) or not 1 <= len(paths) <= 16 or len(set(map(str, paths))) != len(paths)
             or any(client.relative_path(p) is None or "/." in "/" + p for p in paths)):
         raise ValueError("SSH_CONFIG_REQUIRED: source_paths must list the committed repository paths to deploy")
+    if c.get("mode", "restricted") not in {"restricted", "sandbox"}:
+        raise ValueError("SSH_CONFIG_REQUIRED: mode must be restricted or sandbox")
     return c
 
 def command(c, action, request_id, digest=None):
-    if action not in ACTIONS | {"result", "status", "cancel", "repair"} or not re.fullmatch(r"[0-9a-f]{32}", request_id):
+    if action not in ACTIONS | {"result", "status", "cancel", "repair", "exec", "upgrade"} or not re.fullmatch(r"[0-9a-f]{32}", request_id):
         raise ValueError("invalid fixed operation")
     remote = "ai-team-service " + c["target"] + " " + action + " " + request_id
-    if action == "start":
+    if action in PAYLOAD_ACTIONS:
         if not digest or not re.fullmatch(r"[0-9a-f]{64}", digest):
             raise ValueError("archive digest required")
         remote += " " + digest
@@ -62,6 +69,55 @@ def archive_source(root, c):
     if len(data) > MAX_ARCHIVE:
         raise SourcePreflightError("SOURCE_TOO_LARGE: deployment archive exceeds approved size; SSH was not attempted")
     return data
+
+def pack(entries):
+    """Deterministic tar: the same files always give the same SHA256, so a same-ID resend can be verified."""
+    stream = io.BytesIO()
+    with tarfile.open(fileobj=stream, mode="w", format=tarfile.PAX_FORMAT) as archive:
+        for name, content, executable in sorted(entries):
+            item = tarfile.TarInfo(name)
+            item.size, item.mtime, item.mode = len(content), 0, 0o755 if executable else 0o644
+            archive.addfile(item, io.BytesIO(content))
+    return stream.getvalue()
+
+
+def hidden(path):
+    return any(part in {".git", ".ssh", ".secrets"} or part.startswith(".env") for part in path.split("/"))
+
+
+def exec_payload(root, c, script):
+    """Sandbox targets get the working tree of source_paths (uncommitted edits included) plus the agent's script."""
+    relative = client.sandbox_script(root, script)
+    names = subprocess.check_output(["git", "-C", str(root), "ls-files", "-z", "-c", "-o", "--exclude-standard",
+                                     "--", *c["source_paths"]]).decode("utf-8").split("\0")
+    entries, total = [], 0
+    for name in sorted(set(filter(None, names))):
+        path = root / name
+        if hidden(name) or path.is_symlink() or not path.is_file():
+            continue
+        content = path.read_bytes()
+        total += len(content)
+        if total > MAX_ARCHIVE:
+            raise SourcePreflightError("SOURCE_TOO_LARGE: sandbox payload exceeds approved size; SSH was not attempted")
+        entries.append(("source/" + name, content, bool(path.stat().st_mode & 0o111)))
+    entries.append(("run.sh", (root / relative).read_bytes(), True))
+    return pack(entries)
+
+
+def upgrade_entry(c, here=None):
+    """Send this skill's tested target entry to a sandbox target; the target replies UPGRADE_UNCHANGED when current."""
+    here = here or Path(__file__).resolve().parent
+    data = pack([(name, (here / name).read_bytes(), False) for name in ("ssh_target.py", "guest.py")])
+    digest, job = hashlib.sha256(data).hexdigest(), uuid.uuid4().hex
+    proc = subprocess.run(command(c, "upgrade", job, digest), input=data, capture_output=True, timeout=60)
+    if proc.returncode or not proc.stdout or len(proc.stdout) > 65536:
+        return None
+    receipt = json.loads(proc.stdout)
+    if receipt.get("exit_code") == 75:
+        return receipt
+    validate_receipt(receipt, c, "upgrade", job, digest)
+    return receipt
+
 
 def run(config_file, action):
     if action not in ACTIONS:
@@ -134,7 +190,7 @@ def run(config_file, action):
         raise ValueError("SSH receipt mismatch; request retained")
     if receipt["exit_code"] == 0 and result.returncode != 0:
         raise ValueError("SSH transport failed despite success claim; request retained")
-    marker={"prepare":"PREPARED:","start":"START_PASS:","health":"HEALTH_PASS:","diagnose":"DIAGNOSIS:", "repair":"REPAIR_PASS:"}[action]
+    marker=MARKERS[action]
     evidence=receipt.get("evidence")
     if (not isinstance(evidence,list) or not evidence or any(not isinstance(x,str) or len(x)>1500 for x in evidence)
             or type(receipt.get("completed")) is not int
@@ -151,7 +207,7 @@ def run(config_file, action):
 
 
 def validate_receipt(receipt, c, action, job_id, digest):
-    marker = {"prepare":"PREPARED:", "start":"START_PASS:", "health":"HEALTH_PASS:", "diagnose":"DIAGNOSIS:", "repair":"REPAIR_PASS:"}[action]
+    marker = MARKERS[action]
     if (receipt.get("id") != job_id or receipt.get("target") != c["target"]
             or receipt.get("action") != action or receipt.get("source_sha256") != digest
             or type(receipt.get("exit_code")) is not int or type(receipt.get("completed")) is not int
@@ -200,7 +256,8 @@ def execute_job(c, root, job, allow_launch=True, cancel=False):
             return None
         if client.source_head(root) != job["source_head"]:
             raise ValueError("source HEAD changed")
-        data = archive_source(root, c) if job["action"] == "start" else None
+        data = (archive_source(root, c) if job["action"] == "start"
+                else exec_payload(root, c, job["script"]) if job["action"] == "exec" else None)
         new_digest = hashlib.sha256(data).hexdigest() if data else None
         if digest is not None and new_digest != digest:
             raise ValueError("source archive changed during same-ID retry")

@@ -62,6 +62,30 @@ operations 與角色工具白名單裡的 client 路徑是各實例的部署設�
 機密產生資料庫密碼與該格式的加密設定 env。建置方式不同的產品要先擴充 `guest.py` 的配方，不能只改上述設定。
 既有實例的升級步驟見 [SSH 直連部署](direct-ssh-deployment.md#既有實例遷移到產品配置)。
 
+### 沙箱目標（sandbox）
+
+目標可分兩種信任等級，由管理者在服務配置的 `mode` 宣告（預設 `restricted`）：
+
+| | restricted（預設） | sandbox |
+|---|---|---|
+| 適用 | 要保護資料、只允許固定操作的主機 | 整台 VM 可拋棄、讓 agent 自行安裝與啟動的測試主機 |
+| agent 能做的 | prepare／start／health／diagnose／repair | 以上（有填 service 設定時）＋ `exec`：以 root 執行 agent 寫的腳本 |
+| 建置方式 | 內建配方（見上方） | 由 agent 寫的腳本決定，不限技術棧 |
+| 固定入口更新 | 管理者重跑 `install-ssh-target.sh` | Agent VM 執行器自動推送（`upgrade`），每 10 分鐘核對一次 |
+| 資料 | 不清資料卷、不換密碼 | 管理者已同意可拋棄；不做自動備份 |
+
+- sandbox 時 `service` 設定選填；範本 `assets/target-sandbox.example.json`。是否接受 `exec`／`upgrade` 由**目標端**的 `target.json` 決定，
+  Agent VM 直連設定的 `mode` 只決定要不要嘗試自動升級，不能替目標開權限。
+- `client.py exec <腳本>`：腳本須在任務工作區、不在隱藏目錄、最多 256 KiB。執行器把腳本（`run.sh`）和 `source_paths` 的**工作樹**
+  （含未提交修改，排除 `.env*`、`.secrets`、`.ssh`、`.git`）打包成固定順序的 tar，SHA256 綁定 job；目標在
+  `/opt/ai-team-sandbox/<target>/runs/<job>/source` 執行，`AI_TEAM_SANDBOX_HOME=/opt/ai-team-sandbox/<target>/home` 跨次保留，只留最近 5 次執行。
+- 收據：成功 `EXEC_PASS`，失敗 `EXEC_FAILED: exit=N`，都附最後 30 行輸出（每行最多 300 字，遮蔽密碼／token 樣式）。
+  沿用既有的 job ID、OPERATION_PENDING、取消與同 ID 對帳；同 ID 重送時工作樹內容不同會判為不確定，不會換內容重跑。
+- 檢查與完成條件不變：在團隊配置把 `serviceTarget.checks` 的操作 argv 設成 `client.py exec <部署目錄>/sandbox/start.sh`、
+  `…/health.sh` 等，腳本由 agent 撰寫與修復。health 由 agent 撰寫，屬自陳證據；sandbox 目標應同時登錄 `access_endpoints`，
+  讓系統從 Agent VM 獨立探測。
+- 權限邊界：root 只到這台 VM。Slack token、Agent 私鑰與其他實例資料都不在目標上；目標沒有任何 Agent VM 的登入憑證。
+
 `service-build` 的唯一來源在 `.agents/skills/service-build/`，同步腳本產生 Claude 與 Slack runtime 套件。
 `nodes.service.skills` 與 `service_triage.skills` 指定 SKILL.md 及參考檔；載入時固定內容與版本，派工時注入模型提示。
 

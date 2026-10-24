@@ -16,11 +16,11 @@ orchestrator 實例仍依既有規則以 `service.sh` 啟動。
 角色仍只呼叫固定 `client.py prepare|start|health|diagnose`，寫入原任務工作區的請求。
 `ssh_executor.py` 只接受目標相符、正在執行的 SERVICE 節點的新請求；另有獨立 journal，已受理的作業在任務暫停後仍可查詢結果（見下方「持久長作業恢復」）。
 它在同一台 Agent VM 執行固定 `ssh_client.py`，直接連目標 VM，不需要 Windows 程式輪詢。
-這是為保留角色沙箱與私鑰管理界線；未把角色改成可任意 SSH 或執行 root shell。
+這是為保留角色沙箱與私鑰管理界線；未把角色改成可任意 SSH；只有管理者宣告為 sandbox 的目標，才以固定 `exec` 操作執行 agent 腳本（見[沙箱目標與入口自動升級](#沙箱目標與入口自動升級)）。
 
 SSH 固定 BatchMode、公鑰認證、獨立 known_hosts 與嚴格指紋檢查；沒有 Windows 或密碼 fallback。
 目標公鑰帶 `restrict,command=...`；sudoers 只允許 root-owned `ai-team-ssh-service` 固定入口。
-角色只使用 prepare/start/health/diagnose；受限 SSH 協定另提供 result/status/cancel，供固定執行器管理精確 job ID。目標驗證 target、操作、請求 ID 與 start 來源 SHA256，不接受模型自訂 shell。
+角色只使用 prepare/start/health/diagnose（sandbox 目標另有 exec）；受限 SSH 協定另提供 result/status/cancel，供固定執行器管理精確 job ID，sandbox 目標再加 upgrade。目標驗證 target、操作、請求 ID 與 start／exec 內容 SHA256；restricted 目標不接受模型自訂 shell。
 部署來源為已授權任務的已提交 HEAD。目標核對傳輸 SHA256 與壓縮檔結構，不使用逐版來源清單，也不另要求管理者核准正常版本更新。
 agent 使用已提交且乾淨的工作區自行 prepare、start、health 與修復；只在缺少真正的主機權限、登入或任務範圍時請使用者處理。
 
@@ -36,7 +36,7 @@ start 封裝前會預檢版控路徑：缺件回 `SOURCE_MISSING_PATHS`，未提
 
 1. 等現有任務停止執行後安排網路維護。建立 VM 間的 Internal／Host-only 或共享 NAT Network，確認位址不同且互通；保留原有管理入口與產品資料。
 2. Agent VM 保留專用私鑰（600），只把公鑰交目標管理者。從目標 VM 本機取得 SSH 主機公鑰並核對指紋，再登錄 Agent VM 的專用 known_hosts。
-3. 將工具與 Agent 公鑰傳到目標，依 `assets/target-service.example.json` 寫好產品服務配置，以管理者權限執行
+3. 將工具與 Agent 公鑰傳到目標，依 `assets/target-service.example.json`（或可拋棄主機用 `assets/target-sandbox.example.json`）寫好服務配置，以管理者權限執行
    `install-ssh-target.sh <既有登入帳號> <Agent公鑰檔> <target名稱> <服務配置檔>`。配置不合法時在變更前中止；不新增任意 sudo 或 root shell。
 4. 管理者依 `assets/direct-ssh.example.json` 在 Agent VM 放 `~/.config/ai-team/ssh-targets/<target名稱>.json`，填真實互通位址、私鑰與 known_hosts 引用，
    以及與目標相同的 `source_paths`（欄位說明見[產品配置](service-delivery.md#產品配置)）。
@@ -47,6 +47,20 @@ start 封裝前會預檢版控路徑：缺件回 `SOURCE_MISSING_PATHS`，未提
 只有兩台 VM 的上述實測成功才可標為已啟用；Python 單元測試不是網路、公鑰或部署端對端證據。
 不在此流程中自動清空資料卷、更換資料庫密碼。
 日常維運：`systemctl --user status ai-team-ssh-deploy.service`；需要恢復才 `systemctl --user restart ai-team-ssh-deploy.service`。
+
+## 沙箱目標與入口自動升級
+
+服務配置寫 `"mode": "sandbox"` 的目標（說明見[沙箱目標](service-delivery.md#沙箱目標sandbox)）多兩個固定操作：
+
+- `exec`：只由 Agent VM 執行器送出，內容是 agent 腳本與工作樹 tar（帶 SHA256）。目標端核對 `mode`、digest 與 tar 結構後，照既有 job 機制
+  以獨立 systemd unit 執行；`restricted` 目標一律回 `SANDBOX_NOT_ENABLED`。
+- `upgrade`：Agent VM 直連設定也寫 `"mode": "sandbox"` 時，`ai-team-ssh-deploy.service` 啟動後與每 10 分鐘把本機 skill 的
+  `ssh_target.py`、`guest.py` 送到目標。目標先編譯檢查，內容相同回 `UPGRADE_UNCHANGED`；有作業執行中時延後；否則原子替換固定入口與 guest。
+  journal 會出現 `ENTRY_UPGRADE: …`。所以部署新版 orchestrator 並重啟 `ai-team-ssh-deploy.service` 後，沙箱目標的入口自動跟上，不需要再登入目標。
+
+把既有目標轉成 sandbox：在服務配置加 `"mode": "sandbox"`（原 service 設定可保留，固定操作照舊可用），由管理者**最後一次**重跑
+`install-ssh-target.sh`；再在 Agent VM 直連設定加 `"mode": "sandbox"` 並重啟 `ai-team-ssh-deploy.service`。
+驗證：journal 有 `ENTRY_UPGRADE: UPGRADE_UNCHANGED`，以固定入口送一個唯讀 exec 腳本得到 `EXEC_PASS`，health 照舊通過。
 
 ## 既有實例遷移到產品配置
 

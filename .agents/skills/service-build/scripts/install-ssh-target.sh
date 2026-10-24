@@ -5,7 +5,9 @@ umask 077
 [[ $(id -u) == 0 ]] || { echo 'Run with sudo on the target VM'; exit 1; }
 user=${1:?usage: install-ssh-target.sh login-user public-key-file target-name service-config}
 pubfile=${2:?missing public key}; target=${3:?missing target}
-# Product layout (root, source paths, Compose project and services); see assets/target-service.example.json.
+# Product layout (root, source paths, Compose project and services) and trust mode; see assets/target-service.example.json.
+# "mode": "sandbox" declares the whole VM disposable: agent scripts may then run as root through exec, and the
+# Agent VM keeps this entry upgraded itself. Service settings are optional in sandbox mode.
 service=${4:?missing product service configuration}
 [[ $user =~ ^[a-z_][a-z0-9_-]*$ && $target =~ ^[a-z0-9][a-z0-9-]{0,63}$ ]] || exit 1
 getent passwd "$user" >/dev/null
@@ -23,8 +25,8 @@ python3 - "$here" "$service" <<'PY'
 import json,sys
 from pathlib import Path
 sys.path.insert(0,sys.argv[1])
-from guest import service_settings
-service_settings({"service":json.loads(Path(sys.argv[2]).read_text())})
+from guest import install_config
+install_config(json.loads(Path(sys.argv[2]).read_text()))
 PY
 install -d -m 0755 /usr/local/lib/ai-team-service
 install -d -m 0700 /etc/ai-team-service /var/lib/ai-team-service
@@ -34,9 +36,9 @@ python3 - "$here" "$target" "$service" <<'PY'
 import json,sys
 from pathlib import Path
 sys.path.insert(0,sys.argv[1])
-from guest import service_settings
-settings=service_settings({"service":json.loads(Path(sys.argv[3]).read_text())})
-Path("/etc/ai-team-service/target.json").write_text(json.dumps({"target":sys.argv[2],"service":settings}))
+from guest import install_config
+fields=install_config(json.loads(Path(sys.argv[3]).read_text()))
+Path("/etc/ai-team-service/target.json").write_text(json.dumps({"target":sys.argv[2],**fields}))
 PY
 sudoers=$(mktemp)
 trap 'rm -f "$sudoers"' EXIT

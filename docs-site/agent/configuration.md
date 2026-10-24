@@ -172,7 +172,7 @@ bash deploy/bootstrap/check-source.sh
 
 ## 服務執行工具（2026-10-10）
 
-服務建置以 `project.operations` 的四個 `service-*` 操作與 `serviceTarget` 指定目標；Agent VM 的 `~/.config/ai-team/ssh-targets/<目標名稱>.json` 指定 destination、port、identity_file、known_hosts_file 與 source_paths（start 封裝的版控路徑），固定執行器依即時 SERVICE 狀態授權。工作區請求目錄是 `serviceTarget.checks.start` 操作唯一的 `writes`；目標 VM 的產品佈局（目錄、Compose 專案與服務名）由 `install-ssh-target.sh` 寫入 `/etc/ai-team-service/target.json`。缺項時固定工具明確失敗。詳見 [服務建置](/docs/service-delivery#產品配置)。
+服務建置以 `project.operations` 的四個 `service-*` 操作與 `serviceTarget` 指定目標；Agent VM 的 `~/.config/ai-team/ssh-targets/<目標名稱>.json` 指定 destination、port、identity_file、known_hosts_file 與 source_paths（start 封裝的版控路徑），固定執行器依即時 SERVICE 狀態授權。工作區請求目錄是 `serviceTarget.checks.start` 操作唯一的 `writes`；目標 VM 的產品佈局（目錄、Compose 專案與服務名）由 `install-ssh-target.sh` 寫入 `/etc/ai-team-service/target.json`。缺項時固定工具明確失敗。服務配置與直連設定的 `mode: sandbox` 宣告整台目標可拋棄：agent 可用 `client.py exec <腳本>` 以 root 自行安裝與啟動，固定入口由執行器自動升級（[沙箱目標](/docs/service-delivery#沙箱目標sandbox)）。詳見 [服務建置](/docs/service-delivery#產品配置)。
 
 
 ### 節點 skill

@@ -51,7 +51,8 @@ def poll(home, config):
         if not service and not any(jobs_dir.glob("*.json")):
             continue
         try:
-            queue = root / client.request_directory(flow)
+            relative = client.request_directory(flow)
+            queue = root / relative
         except ValueError:
             # The client reports the same configuration gap to the role; nothing can be queued here.
             continue
@@ -64,8 +65,10 @@ def poll(home, config):
                     raise ValueError("unsafe request")
                 req = json.loads(pending.read_text())
                 valid = (isinstance(req,dict) and req.get("task")==task
-                         and req.get("action") in client.ACTIONS
-                         and isinstance(req.get("id"),str) and re.fullmatch(r"[0-9a-f]{32}",req["id"]))
+                         and req.get("action") in client.ACTIONS | client.SANDBOX_ACTIONS
+                         and isinstance(req.get("id"),str) and re.fullmatch(r"[0-9a-f]{32}",req["id"])
+                         and (req["action"] not in client.SANDBOX_ACTIONS
+                              or client.relative_path(req.get("script")) is not None))
             except (ValueError,OSError):
                 req=None;valid=False
             path = jobs_dir / (req["id"]+".json") if valid else None
@@ -79,8 +82,10 @@ def poll(home, config):
                            action=req["action"],target=c["target"],source_head=head,source_sha256=None,
                            state="QUEUED",updated=int(time.time()),deadline=int(time.time())+7200,
                            result=None,error_kind=None,verified=False)
+                if req["action"] in client.SANDBOX_ACTIONS:
+                    job["script"] = req["script"]
                 save(home, job)
-                queue = client.directory(root)
+                queue = client.directory(root, relative)
                 (queue / (req["id"] + ".accepted")).touch()
                 (queue / (req["id"] + ".ssh-accepted")).touch()
         for path in jobs_dir.glob("*.json"):
@@ -178,6 +183,22 @@ def reconcile(home, config, task, job_id, head, digest):
                     updated=int(time.time()),deadline=int(time.time()),result=result,error_kind=None,verified=True))
 
 
+def maybe_upgrade(config, state):
+    """Sandbox targets only: keep the target entry equal to this skill's copy, checked every 10 minutes."""
+    if time.monotonic() < state.get("next", 0):
+        return
+    state["next"] = time.monotonic() + 600
+    try:
+        c = ssh_client.config(config)
+        if c.get("mode") != "sandbox":
+            return
+        receipt = ssh_client.upgrade_entry(c)
+        print("ENTRY_UPGRADE: " + (receipt["evidence"][0] if receipt and receipt.get("evidence") else "no confirmed reply; retry later"),
+              flush=True)
+    except (ValueError, OSError, KeyError, ssh_client.subprocess.SubprocessError) as exc:
+        print("ENTRY_UPGRADE: failed (" + type(exc).__name__ + "); retry later", flush=True)
+
+
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument("home",type=Path);parser.add_argument("config",type=Path)
@@ -198,7 +219,9 @@ def main():
                 (args.home / "operation-executor-heartbeat").touch(mode=0o600)
                 time.sleep(5)
         threading.Thread(target=heartbeat,daemon=True).start()
+        upgrade_state={}
         while True:
+            maybe_upgrade(args.config,upgrade_state)
             poll(args.home,args.config)
             if args.once:break
             time.sleep(2)

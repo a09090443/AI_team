@@ -1,6 +1,7 @@
 {
   "transport": "direct-ssh",
   "target": "example-dev",
+  "mode": "restricted",
   "source_paths": [
     "backend",
     "docs/docker/sit",
