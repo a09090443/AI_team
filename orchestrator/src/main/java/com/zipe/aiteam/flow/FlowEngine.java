@@ -48,18 +48,6 @@ public class FlowEngine {
         audit.record(task.id(), task.requesterUserId(), AuditLog.ACTION_STATE, "固定配置版本 " + catalog.snapshot().revision());
     }
     /**
-     * 已知基準失敗要在需求階段就讓負責人知道，不必等到系統獨立驗證才發現（#1001）。
-     * 只在第一次建立需求基準時提醒：純詢問、問候不會走到系統獨立驗證，提醒只會干擾（#1006）。
-     */
-    private void remindBaseline(Task task) {
-        if (baseline != null) baseline.latest().filter(r -> !r.passed()).ifPresent(r -> slack.post(Identity.SYSTEM,
-                task.slackChannel(), task.slackThreadTs(), "⚠️ 提醒：目前配置最近一次基準驗證沒有通過，下列驗證指令在還沒有任何修改的基準分支上就失敗；"
-                        + "除非本任務處理它，系統獨立驗證會在同樣的地方失敗。這不會阻擋任務。\n"
-                        + BaselineVerifier.slackSummary(r)));
-    }
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    BaselineVerifier baseline;
-    /**
      * 使用者在 Slack 要求中斷的任務 → 要求者。只放在記憶體：服務重啟時執行中的那一輪本來就會中斷。
      * 與「中止任務」不同，中斷只停這一輪，任務回到 AWAIT_HUMAN，工作區、次數與 session 都保留。
      */
@@ -748,8 +736,6 @@ public class FlowEngine {
                     flow.receipts.put(flow.node, report);
                     flow.blockedFindings.remove(flow.node);
                     if (node.gate() == Gate.REQUIREMENTS && Traceability.requirementsReason(report) == null) {
-                        // 重訂需求時 baselineRevision 也會先清空，以 baselineHistory 判斷是否第一次。
-                        if (flow.baselineRevision == null && flow.baselineHistory.isEmpty()) remindBaseline(task);
                         flow.baselineRevision = Traceability.digest(report);
                         flow.issueScopeChangeAuthorized = false;
                         audit.record(task.id(), node.role(), AuditLog.ACTION_STATE, "建立需求基準=" + flow.baselineRevision + "；負責人=" + flow.acceptanceOwner);

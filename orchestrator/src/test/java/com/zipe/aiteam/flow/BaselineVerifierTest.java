@@ -61,7 +61,7 @@ class BaselineVerifierTest {
         assertThat(report.problems()).extracting(BaselineVerifier.Result::outcome).containsExactly(BaselineVerifier.Outcome.FAIL);
         assertThat(baseline.alreadyVerified(sha)).isTrue();
         assertThat(baseline.latest()).contains(report);
-        assertThat(baseline.notice(snapshot.definition())).contains("系統事實", "npm test", "程式或測試失敗", "不是本任務造成的", "需求階段", "問候", "out_of_scope");
+        assertThat(baseline.notice(snapshot.definition())).contains("系統事實", "npm test", "程式或測試失敗", "不是本任務造成的", "需求階段", "由你判斷", "無關時不必提及");
         assertThat(BaselineVerifier.slackSummary(report)).contains("⚠️ 基準驗證未通過", "❌ npm test", "結束碼 1", "不會阻擋任務");
     }
 

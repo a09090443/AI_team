@@ -246,10 +246,9 @@ public class BaselineVerifier {
         for (Result r : report.problems())
             out.append("\n- ").append(String.join(" ", r.argv())).append("：").append(label(r.outcome()))
                .append(r.summary() == null ? "" : "；" + com.zipe.aiteam.runtime.Diagnostics.clip(r.summary(), 600));
-        return out.append("\n這是既有問題，不是本任務造成的。本任務若不處理它，系統獨立驗證仍會在同一個指令失敗；")
-                .append("需求階段就要說明是否納入範圍，必要時請需求負責人決定，不要等到驗證失敗才回報。")
-                .append("這只影響要修改並經系統獨立驗證的任務：純詢問、問候或沒有具體要求的訊息不要提及，也不要列進 out_of_scope，")
-                .append("除非使用者問的就是這些指令或建置狀態。").toString();
+        return out.append("\n這是既有問題的背景資料，不是本任務造成的，也不是使用者的要求；是否與本次要求有關由你判斷。")
+                .append("本任務會修改並經系統獨立驗證時，不處理它就會在同一個指令失敗：需求階段就要說明是否納入範圍，")
+                .append("必要時請需求負責人決定，不要等到驗證失敗才回報。與使用者要求無關時不必提及。").toString();
     }
 
     /** 給管理者看的 Slack 摘要。 */
