@@ -50,7 +50,11 @@ def poll(home, config):
         service = node.get("gate")=="SERVICE" and target==c["target"]
         if not service and not any(jobs_dir.glob("*.json")):
             continue
-        queue = root / client.RELATIVE
+        try:
+            queue = root / client.request_directory(flow)
+        except ValueError:
+            # The client reports the same configuration gap to the role; nothing can be queued here.
+            continue
         if queue.is_symlink() or queue.resolve()!=queue.absolute():
             continue
         pending = queue / "request.json"
@@ -144,7 +148,7 @@ def reconcile(home, config, task, job_id, head, digest):
     root = home / "workspaces" / ("task-" + task)
     if client.source_head(root) != head:
         raise ValueError("source HEAD mismatch")
-    if hashlib.sha256(ssh_client.archive_source(root)).hexdigest() != digest:
+    if hashlib.sha256(ssh_client.archive_source(root, c)).hexdigest() != digest:
         raise ValueError("source archive mismatch")
     result = ssh_client.remote_result(c, job_id)
     if (not result or result.get("id") != job_id or result.get("action") not in {"prepare","start"}

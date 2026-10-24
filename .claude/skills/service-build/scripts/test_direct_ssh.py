@@ -9,12 +9,14 @@ from types import SimpleNamespace
 from unittest.mock import patch
 import ssh_client as direct
 import ssh_target as target
+import service_fixture as fx
 
 class DirectTests(unittest.TestCase):
     def fixture(self, tmp):
-        root=Path(tmp).resolve()/"task-123";root.mkdir()
+        root=fx.workspace(tmp,data=fx.flow("example-dev"))
         c={"transport":"direct-ssh","target":"example-dev","destination":"deploy@192.0.2.2","port":22,
-           "identity_file":str(Path(tmp)/"identity"),"known_hosts_file":str(Path(tmp)/"known_hosts")}
+           "identity_file":str(Path(tmp)/"identity"),"known_hosts_file":str(Path(tmp)/"known_hosts"),
+           "source_paths":fx.SOURCE_PATHS}
         for k in ("identity_file","known_hosts_file"): Path(c[k]).write_text("fixture")
         f=Path(tmp)/"config.json";f.write_text(json.dumps(c));return root,c,f
 
@@ -28,9 +30,18 @@ class DirectTests(unittest.TestCase):
                 c["transport"]=bad;f.write_text(json.dumps(c))
                 with self.assertRaises(ValueError): direct.config(f)
 
+    def test_missing_source_paths_fail_explicitly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _,c,f=self.fixture(tmp)
+            for bad in (None,[],["../escape"],[".git"],["deploy/.secrets"],["a","a"]):
+                if bad is None:c.pop("source_paths",None)
+                else:c["source_paths"]=bad
+                f.write_text(json.dumps(c))
+                with self.subTest(bad=bad),self.assertRaisesRegex(ValueError,"SSH_CONFIG_REQUIRED"):direct.config(f)
+
     def test_reuses_pending_request_and_keeps_it_on_transport_failure(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root,c,f=self.fixture(tmp);queue=direct.client.directory(root)
+            root,c,f=self.fixture(tmp);queue=fx.queue(root)
             req={"id":"a"*32,"action":"health","task":"123","created":int(time.time())-10000}
             (queue/"request.json").write_text(json.dumps(req))
             with patch.object(direct.client,"workspace",return_value=root), patch.object(direct.client,"authorized",return_value=True), patch.object(direct.subprocess,"run",return_value=SimpleNamespace(stdout=b"",returncode=255)):
@@ -43,11 +54,11 @@ class DirectTests(unittest.TestCase):
             with patch.object(direct.client,"workspace",return_value=root),patch.object(direct.client,"authorized",return_value=False),patch.object(direct.subprocess,"run") as run:
                 with self.assertRaises(ValueError): direct.run(f,"prepare")
                 run.assert_not_called()
-            self.assertFalse((root/direct.client.RELATIVE).exists())
+            self.assertFalse((root/fx.QUEUE).exists())
 
     def test_success_receipt_is_bound_to_action_target_id_and_archive(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root,c,f=self.fixture(tmp);queue=direct.client.directory(root)
+            root,c,f=self.fixture(tmp);queue=fx.queue(root)
             req={"id":"a"*32,"action":"health","task":"123","created":int(time.time())}
             (queue/"request.json").write_text(json.dumps(req))
             response=dict(id=req["id"],action="health",target="other",source_sha256=None,exit_code=0,completed=1,evidence=["HEALTH_PASS: fixture"])
@@ -61,7 +72,7 @@ class DirectTests(unittest.TestCase):
 
     def test_unreconciled_legacy_accepted_request_never_executes(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root,c,f=self.fixture(tmp);queue=direct.client.directory(root)
+            root,c,f=self.fixture(tmp);queue=fx.queue(root)
             req={"id":"a"*32,"action":"start","task":"123","created":1}
             (queue/"request.json").write_text(json.dumps(req));(queue/(req["id"]+".accepted")).write_text("accepted")
             with patch.object(direct.client,"workspace",return_value=root),patch.object(direct.client,"authorized",return_value=True),patch.object(direct.subprocess,"run") as run:
@@ -69,26 +80,26 @@ class DirectTests(unittest.TestCase):
                 run.assert_not_called()
 
     def test_missing_committed_deployment_paths_are_reported_before_archive(self):
-        with patch.object(direct.subprocess,"check_output",side_effect=[b"", b"bestpartner-service\0docs/sql\0"]) as git:
-            with self.assertRaisesRegex(direct.SourcePreflightError,"SOURCE_MISSING_PATHS:.*docs/docker/sit"):
-                direct.archive_source(Path("fixture"))
+        with patch.object(direct.subprocess,"check_output",side_effect=[b"", b"app-service\0deploy/sql\0"]) as git:
+            with self.assertRaisesRegex(direct.SourcePreflightError,"SOURCE_MISSING_PATHS: .*deploy/sit;"):
+                direct.archive_source(Path("fixture"),{"source_paths":fx.SOURCE_PATHS})
             self.assertEqual(2,git.call_count)
 
     def test_dirty_source_is_not_reported_as_ssh_failure(self):
-        with patch.object(direct.subprocess,"check_output",return_value=b" M docs/docker/sit/file") as git:
+        with patch.object(direct.subprocess,"check_output",return_value=b" M deploy/sit/file") as git:
             with self.assertRaisesRegex(direct.SourcePreflightError,"SOURCE_WORKSPACE_DIRTY"):
-                direct.archive_source(Path("fixture"))
+                direct.archive_source(Path("fixture"),{"source_paths":fx.SOURCE_PATHS})
             self.assertEqual(1,git.call_count)
 
     def test_source_preflight_failure_persists_specific_receipt_without_ssh(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root,c,f=self.fixture(tmp);queue=direct.client.directory(root)
+            root,c,f=self.fixture(tmp);queue=fx.queue(root)
             req={"id":"a"*32,"action":"start","task":"123","created":int(time.time())}
             (queue/"request.json").write_text(json.dumps(req))
-            with patch.object(direct.client,"workspace",return_value=root),patch.object(direct.client,"authorized",return_value=True),patch.object(direct,"archive_source",side_effect=direct.SourcePreflightError("SOURCE_MISSING_PATHS: docs/docker/sit")),patch.object(direct.subprocess,"run") as ssh:
+            with patch.object(direct.client,"workspace",return_value=root),patch.object(direct.client,"authorized",return_value=True),patch.object(direct,"archive_source",side_effect=direct.SourcePreflightError("SOURCE_MISSING_PATHS: deploy/sit")),patch.object(direct.subprocess,"run") as ssh:
                 self.assertEqual(1,direct.run(f,"start"));ssh.assert_not_called()
             result=json.loads((queue/(req["id"]+".json")).read_text())
-            self.assertEqual(["SOURCE_MISSING_PATHS: docs/docker/sit"],result["evidence"])
+            self.assertEqual(["SOURCE_MISSING_PATHS: deploy/sit"],result["evidence"])
             self.assertFalse((queue/"request.json").exists())
 
 class TargetTests(unittest.TestCase):
@@ -99,7 +110,7 @@ class TargetTests(unittest.TestCase):
 
     def execute_fixture(self,tmp):
         base=Path(tmp);state=base/"state";lib=base/"lib";lib.mkdir()
-        config=base/"target.json";config.write_text(json.dumps({"target":"sit","source_manifest":str(base/"manifest.json")}))
+        config=base/"target.json";config.write_text(json.dumps({"target":"sit","source_manifest":str(base/"manifest.json"),"service":fx.SERVICE}))
         return state,lib,config
 
     def test_cached_receipt_prevents_reexecution_and_rejects_id_reuse(self):
@@ -128,7 +139,7 @@ class ExecutionTests(unittest.TestCase):
     def test_client_keeps_uncertain_receipt_request_for_explicit_retry(self):
         import client
         with tempfile.TemporaryDirectory() as tmp:
-            root=Path(tmp).resolve()/"task-123";queue=client.directory(root)
+            root=fx.workspace(tmp);queue=fx.queue(root)
             req={"id":"a"*32,"action":"start","task":"123","created":int(time.time())}
             (queue/"request.json").write_text(json.dumps(req))
             (queue/(req["id"]+".json")).write_text(json.dumps(dict(req,exit_code=75)))
@@ -139,12 +150,12 @@ class ExecutionTests(unittest.TestCase):
                 self.assertEqual(0,client.submit("start",timeout=5))
             self.assertTrue((queue/"request.json").exists())
 
-    def target_start(self,tmp,data,digest=None,invoke=False):
+    def target_start(self,tmp,data,digest=None,invoke=False,service=fx.SERVICE):
         import hashlib
         base=Path(tmp);state=base/"state"
         config=base/"target.json"
         # A stale legacy manifest reference must never block a normal new version.
-        config.write_text(json.dumps({"target":"sit","source_manifest":str(base/"nonexistent-old-manifest")}))
+        config.write_text(json.dumps({"target":"sit","source_manifest":str(base/"nonexistent-old-manifest"),"service":service}))
         try:import fcntl
         except ImportError:fcntl=SimpleNamespace(LOCK_EX=2,flock=lambda *args:None)
         def completed(argv,stdout,**kwargs):
@@ -167,7 +178,7 @@ class ExecutionTests(unittest.TestCase):
         return stream.getvalue()
 
     def test_new_committed_source_needs_no_manifest_update(self):
-        for path in ["bestpartner-service/new-file.txt","docs/docker/sit/docker-compose.yml"]:
+        for path in ["app-service/new-file.txt","deploy/sit/docker-compose.yml"]:
             with self.subTest(path=path),tempfile.TemporaryDirectory() as tmp:
                 result=self.target_start(tmp,self.archive(path),invoke=True)
                 self.assertEqual(0,result["exit_code"])
@@ -177,9 +188,19 @@ class ExecutionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(1,self.target_start(tmp,self.archive("../../etc/passwd"))["exit_code"])
 
+    def test_archive_outside_configured_source_paths_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(1,self.target_start(tmp,self.archive("deploy/other/file"))["exit_code"])
+
+    def test_missing_target_service_configuration_is_explicit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result=self.target_start(tmp,self.archive("app-service/file"),service=None)
+            self.assertEqual(1,result["exit_code"])
+            self.assertTrue(result["evidence"][0].startswith("SERVICE_CONFIG_REQUIRED:"))
+
     def test_archive_digest_mismatch_still_rejected_before_guest(self):
         with tempfile.TemporaryDirectory() as tmp:
-            self.assertEqual(1,self.target_start(tmp,self.archive("bestpartner-service/file"),digest="0"*64)["exit_code"])
+            self.assertEqual(1,self.target_start(tmp,self.archive("app-service/file"),digest="0"*64)["exit_code"])
 
     def test_malformed_archive_has_a_failure_receipt(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -229,7 +250,7 @@ class ReliabilityTests(unittest.TestCase):
     def test_pending_accepted_returns_zero_without_task_authorization(self):
         import client
         with tempfile.TemporaryDirectory() as tmp:
-            root=Path(tmp).resolve()/"task-123";q=client.directory(root)
+            root=fx.workspace(tmp);q=fx.queue(root)
             req=dict(id="a"*32,task="123",action="health",created=1)
             (q/"request.json").write_text(json.dumps(req));(q/("a"*32+".accepted")).touch()
             with patch.object(client,"workspace",return_value=root),patch.object(client,"authorized",side_effect=AssertionError("accepted job needs no new authorization")):
@@ -246,7 +267,7 @@ class ReliabilityTests(unittest.TestCase):
             db.execute("create table task(id text,state text)")
             db.execute("create table flow_run(task_id text,data text)")
             db.execute("insert into task values ('123','AWAIT_HUMAN')")
-            db.execute("insert into flow_run values ('123',?)",(json.dumps({"activeNode":"service"}),))
+            db.execute("insert into flow_run values ('123',?)",(json.dumps(fx.flow(service_node=False)),))
             db.commit();db.close()
             job=dict(version=1,id="a"*32,task="123",node="service",action="start",target="sit",
                      source_head="head",source_sha256="b"*64,state="UNCERTAIN",updated=1,
@@ -264,7 +285,7 @@ class ReliabilityTests(unittest.TestCase):
     def test_paused_task_reports_inactive_before_worker_offline(self):
         import client
         with tempfile.TemporaryDirectory() as tmp:
-            root=Path(tmp).resolve()/"task-123";q=client.directory(root)
+            root=fx.workspace(tmp);q=fx.queue(root)
             (q/"request.json").write_text(json.dumps(dict(id="a"*32,task="123",action="health",created=1)))
             with patch.object(client,"workspace",return_value=root),patch.object(client,"authorized",return_value=False),patch("builtins.print") as output:
                 self.assertEqual(75,client.submit("health",timeout=0))
@@ -274,7 +295,7 @@ class ReliabilityTests(unittest.TestCase):
     def test_active_task_without_executor_heartbeat_reports_offline(self):
         import client
         with tempfile.TemporaryDirectory() as tmp:
-            root=Path(tmp).resolve()/"task-123";q=client.directory(root)
+            root=fx.workspace(tmp);q=fx.queue(root)
             (q/"request.json").write_text(json.dumps(dict(id="a"*32,task="123",action="health",created=1)))
             with patch.object(client,"workspace",return_value=root),patch.object(client,"authorized",return_value=True),patch("builtins.print") as output:
                 self.assertEqual(75,client.submit("health",timeout=0))
@@ -284,19 +305,14 @@ class ReliabilityTests(unittest.TestCase):
         import client
         import sqlite3
         with tempfile.TemporaryDirectory() as tmp:
-            home=Path(tmp).resolve();root=home/"workspaces"/"task-123"
-            root.mkdir(parents=True)
-            db=sqlite3.connect(home/"ai-team.db")
-            db.execute("create table flow_run(task_id text,data text)")
-            flow={"snapshot":{"definition":{"project":{"serviceTarget":{"name":"sit"}}}}}
-            db.execute("insert into flow_run values (?,?)",("123",json.dumps(flow)));db.commit();db.close()
+            root=fx.workspace(tmp,data=fx.flow(service_node=False));home=root.parent.parent
             receipt=dict(id="a"*32,action="start",target="sit",exit_code=0)
             client.atomic_json(home/"operation-jobs"/"123"/("a"*32+".json"),
-                               dict(task="123",action="start",target="sit",source_head="head",
+                               dict(task="123",node="service",action="start",target="sit",source_head="head",
                                     state="SUCCEEDED",verified=True,result=receipt))
             with patch.object(client,"workspace",return_value=root),patch.object(client,"source_head",return_value="head"):
                 self.assertEqual(0,client.submit("start",timeout=0))
-                self.assertFalse((root/client.RELATIVE/"request.json").exists())
+                self.assertFalse((root/fx.QUEUE/"request.json").exists())
 
     def test_finished_remote_start_can_be_queried_without_archive(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -455,7 +471,7 @@ class MockProtocolTests(unittest.TestCase):
     def test_pending_other_action_returns_existing_health(self):
         import client
         with tempfile.TemporaryDirectory() as tmp:
-            root=Path(tmp).resolve()/"task-123";queue=client.directory(root)
+            root=fx.workspace(tmp);queue=fx.queue(root)
             req=dict(id="a"*32,action="health",task="123",created=1)
             (queue/"request.json").write_text(json.dumps(req))
             with patch.object(client,"workspace",return_value=root),patch("builtins.print") as output:
@@ -489,7 +505,7 @@ class MockProtocolTests(unittest.TestCase):
         db=sqlite3.connect(home/"ai-team.db")
         db.execute("create table task(id text,state text)");db.execute("create table flow_run(task_id text,data text)")
         db.execute("insert into task values ('123',?)",(state,))
-        db.execute("insert into flow_run values ('123',?)",(json.dumps({"activeNode":"service"}),))
+        db.execute("insert into flow_run values ('123',?)",(json.dumps(fx.flow(service_node=False)),))
         db.commit();db.close()
         job=dict(version=1,id="a"*32,task="123",node="service",action="start",target="sit",
                  source_head="head",source_sha256="b"*64,state="RUNNING",updated=1,
@@ -547,7 +563,7 @@ class MockProtocolTests(unittest.TestCase):
             (home/"operation-jobs"/"123"/(job["id"]+".json")).unlink()
             with patch.object(executor.ssh_client,"config",return_value={"target":"sit"}):
                 executor.poll(home,None)
-            self.assertFalse((root/client.RELATIVE).exists())
+            self.assertFalse((root/fx.QUEUE).exists())
 
     def test_terminal_journal_and_receipt_are_untouched(self):
         import ssh_executor as executor
@@ -562,7 +578,7 @@ class MockProtocolTests(unittest.TestCase):
 
     def test_job_cleanup_refuses_another_jobs_container(self):
         import guest
-        item={"Config":{"Labels":{"ai-team.service-build":"bestpartner-sit","ai-team.operation-id":"c"*32}}}
+        item={"Config":{"Labels":{"ai-team.service-build":"example-dev","ai-team.operation-id":"c"*32}}}
         with patch.object(guest,"OPERATION_ID","a"*32),patch.object(guest,"BUILD_NAME","ai-team-build-"+"a"*32),patch.object(guest.subprocess,"run",return_value=SimpleNamespace(returncode=0,stdout=json.dumps([item]))) as run:
             with self.assertRaisesRegex(ValueError,"different operation"):guest.remove_owned_build()
             self.assertEqual(1,run.call_count)
@@ -572,9 +588,9 @@ class RollbackTests(unittest.TestCase):
     def fixture(self,tmp):
         root=Path(tmp).resolve();previous=root/"releases"/"old";new=root/"releases"/"new"
         for release in (previous,new):
-            (release/"docs/docker/sit").mkdir(parents=True);(release/"docs/docker/sit/docker-compose.yml").touch()
-        (previous/"bestpartner-service/build").mkdir(parents=True)
-        (previous/"bestpartner-service/build/app-runner.jar").write_bytes(b"existing-jar")
+            (release/"deploy/sit").mkdir(parents=True);(release/"deploy/sit/docker-compose.yml").touch()
+        (previous/"app-service/build").mkdir(parents=True)
+        (previous/"app-service/build/app-runner.jar").write_bytes(b"existing-jar")
         (root/"active").write_text(str(previous))
         return root,previous,new
 
@@ -586,7 +602,8 @@ class RollbackTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,"rollback=SUCCEEDED"):guest.activate_release(new,previous)
                 command=run.call_args_list[1].args[0]
                 self.assertIn(str(previous/guest.COMPOSE),command)
-                self.assertEqual(["up","-d","--build","--no-deps","bestpartner"],command[-5:])
+                self.assertEqual(["up","-d","--build","--no-deps","app"],command[-5:])
+                self.assertEqual("example-dev",command[command.index("--project-name")+1])
                 self.assertNotIn("gradle"," ".join(command).lower())
                 healthy.assert_called_once_with(previous)
             self.assertEqual(str(previous),(root/"active").read_text())
@@ -605,7 +622,7 @@ class RollbackTests(unittest.TestCase):
         import guest
         with tempfile.TemporaryDirectory() as tmp:
             root,previous,new=self.fixture(tmp)
-            (previous/"bestpartner-service/build/app-runner.jar").unlink()
+            (previous/"app-service/build/app-runner.jar").unlink()
             with patch.object(guest,"ROOT",root),patch.object(guest,"run",side_effect=ValueError("failure")) as run:
                 with self.assertRaisesRegex(ValueError,"NOT_AVAILABLE"):guest.activate_release(new,previous)
                 self.assertEqual(1,run.call_count)
@@ -614,7 +631,7 @@ class RollbackTests(unittest.TestCase):
         import guest
         with tempfile.TemporaryDirectory() as tmp:
             root,previous,new=self.fixture(tmp)
-            archive=root/"source.tar";archive.write_bytes(ExecutionTests().archive("bestpartner-service/build.gradle.kts"))
+            archive=root/"source.tar";archive.write_bytes(ExecutionTests().archive("app-service/build.gradle.kts"))
             with patch.object(guest,"ROOT",root),patch.object(guest,"provision_secrets"),patch.object(guest,"build_budget",return_value=(3000,1000)),patch.object(guest,"run_build",side_effect=ValueError("build failed")),patch.object(guest,"run") as run,patch.object(guest,"activate_release") as activate:
                 with self.assertRaisesRegex(ValueError,"build failed"):guest.start_locked(archive)
                 run.assert_not_called();activate.assert_not_called()
@@ -699,8 +716,7 @@ class NullFlowTests(unittest.TestCase):
         import ssh_executor as executor
         with tempfile.TemporaryDirectory() as tmp:
             home,root,job=MockProtocolTests().executor_fixture(tmp)
-            valid={"node":"service","activeNode":"service","snapshot":{"definition":{
-                "nodes":{"service":{"gate":"SERVICE"}},"project":{"serviceTarget":{"name":"sit"}}}}}
+            valid=fx.flow()
             bad=[None,[],"legacy",{"snapshot":None},{"snapshot":{"definition":None}},
                  {"snapshot":{"definition":{"project":None}}},
                  {"snapshot":{"definition":{"project":{"serviceTarget":None}}}},
@@ -727,7 +743,7 @@ class NullFlowTests(unittest.TestCase):
                 self.assertTrue(execute.call_args.kwargs["allow_launch"])
             for index in range(1,len(bad)+1):
                 self.assertFalse(client.authorized(home/"workspaces"/("task-"+str(index)),"sit"))
-                self.assertFalse((home/"workspaces"/("task-"+str(index))/client.RELATIVE).exists())
+                self.assertFalse((home/"workspaces"/("task-"+str(index))/fx.QUEUE).exists())
             self.assertTrue(client.authorized(root,"sit"))
 
     def test_null_checkpoint_target_is_not_reused_or_crash(self):

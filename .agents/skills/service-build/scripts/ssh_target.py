@@ -27,12 +27,13 @@ def request(text, expected_target):
         raise ValueError("invalid archive digest")
     return parts[2], parts[3], digest
 
-def verify_source(data):
+def verify_source(data, config):
     # Deployment authorization comes from the enrolled SSH key and active SERVICE
-    # request. Validate archive structure, not a per-version administrator manifest.
+    # request. Validate archive structure against the configured product source
+    # paths, not a per-version administrator manifest.
     sys.path.insert(0, str(LIB))
-    from guest import validate_archive
-    with validate_archive(data):
+    from guest import service_settings, validate_archive
+    with validate_archive(data, service_settings(config)["source_paths"]):
         pass
 
 def atomic_record(path, value):
@@ -174,10 +175,11 @@ def execute(text):
             try:
                 if len(data)>MAX_ARCHIVE or hashlib.sha256(data).hexdigest()!=digest:
                     raise ValueError("archive digest mismatch")
-                verify_source(data)
-            except (ValueError, tarfile.TarError):
+                verify_source(data, c)
+            except (ValueError, tarfile.TarError) as exc:
+                reason = str(exc) if str(exc).startswith("SERVICE_CONFIG_REQUIRED:") else "Source integrity or format check failed"
                 result = dict(id=job,action=action,target=c["target"],source_sha256=digest,
-                              completed=int(time.time()),exit_code=1,evidence=["Source integrity or format check failed"])
+                              completed=int(time.time()),exit_code=1,evidence=[reason[:1400]])
                 atomic_record(record,result)
                 return result
             (STATE / (job+".source")).write_bytes(data)
@@ -225,7 +227,7 @@ def worker(text):
                     data=read_source(job)
                     if len(data)>MAX_ARCHIVE or hashlib.sha256(data).hexdigest()!=digest:
                         raise ValueError("archive size or digest mismatch")
-                    verify_source(data)
+                    verify_source(data, c)
                     archive=Path(tmp)/"source.tar";archive.write_bytes(data);argv.append(str(archive))
                 log=STATE/(job+".log")
                 with log.open("w") as out:

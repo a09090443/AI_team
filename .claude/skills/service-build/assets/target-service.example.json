@@ -1,0 +1,12 @@
+{
+  "root": "/opt/ai-team-example-dev",
+  "source_paths": ["backend", "docs/docker/sit", "docs/sql"],
+  "compose_file": "docs/docker/sit/docker-compose.yml",
+  "compose_project": "example-dev",
+  "app_service": "app",
+  "database_service": "postgres",
+  "app_directory": "backend",
+  "health_url": "http://127.0.0.1/",
+  "env_file": ".env.sit",
+  "db_password_file": ".secrets/sit-db-password"
+}

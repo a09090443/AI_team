@@ -28,6 +28,10 @@ def config(path):
         f = Path(c[key])
         if not f.is_absolute() or f.is_symlink() or not f.is_file():
             raise ValueError("SSH_ENROLLMENT_REQUIRED: missing enrolled key or host fingerprint")
+    paths = c.get("source_paths")
+    if (not isinstance(paths, list) or not 1 <= len(paths) <= 16 or len(set(map(str, paths))) != len(paths)
+            or any(client.relative_path(p) is None or "/." in "/" + p for p in paths)):
+        raise ValueError("SSH_CONFIG_REQUIRED: source_paths must list the committed repository paths to deploy")
     return c
 
 def command(c, action, request_id, digest=None):
@@ -46,10 +50,10 @@ def command(c, action, request_id, digest=None):
 class SourcePreflightError(ValueError):
     pass
 
-def archive_source(root):
+def archive_source(root, c):
     if subprocess.check_output(["git", "-C", str(root), "status", "--porcelain"]).strip():
         raise SourcePreflightError("SOURCE_WORKSPACE_DIRTY: commit the approved deployment changes before start; SSH was not attempted")
-    paths = ["bestpartner-service", "docs/docker/sit", "docs/sql"]
+    paths = c["source_paths"]
     existing = subprocess.check_output(["git", "-C", str(root), "ls-tree", "-z", "--name-only", "HEAD", "--", *paths]).decode("utf-8").split("\0")
     missing = [path for path in paths if path not in existing]
     if missing:
@@ -64,7 +68,8 @@ def run(config_file, action):
         raise ValueError("unsupported action")
     c = config(config_file)
     root = client.workspace()
-    existing_queue = root / client.RELATIVE
+    relative = client.request_directory(client.task_flow(root))
+    existing_queue = root / relative
     existing = existing_queue / "request.json"
     if existing.exists():
         req = json.loads(existing.read_text())
@@ -76,7 +81,7 @@ def run(config_file, action):
                 return value["exit_code"]
     if not client.authorized(root, c["target"]):
         raise ValueError("service stage is not active for this target")
-    queue = client.directory(root)
+    queue = client.directory(root, relative)
     pending = queue / "request.json"
     if pending.exists():
         # Preserve an old broker request ID; it is never rewritten to fake an active stage.
@@ -98,7 +103,7 @@ def run(config_file, action):
     digest = None
     if action == "start":
         try:
-            data = archive_source(root)
+            data = archive_source(root, c)
         except SourcePreflightError as error:
             receipt = dict(id=request["id"],action=action,target=c["target"],source_sha256=None,
                            exit_code=1,completed=int(time.time()),evidence=[str(error)])
@@ -195,7 +200,7 @@ def execute_job(c, root, job, allow_launch=True, cancel=False):
             return None
         if client.source_head(root) != job["source_head"]:
             raise ValueError("source HEAD changed")
-        data = archive_source(root) if job["action"] == "start" else None
+        data = archive_source(root, c) if job["action"] == "start" else None
         new_digest = hashlib.sha256(data).hexdigest() if data else None
         if digest is not None and new_digest != digest:
             raise ValueError("source archive changed during same-ID retry")

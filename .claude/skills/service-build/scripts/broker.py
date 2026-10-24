@@ -25,6 +25,8 @@ def checked_config(path):
         raise ValueError("unsupported host transport")
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", config["target"]):
         raise ValueError("invalid target name")
+    from guest import source_paths
+    config["source_paths"] = source_paths(config.get("source_paths"))
     if mode == "virtualbox":
         if str(uuid.UUID(config["vm_uuid"])) != config["vm_uuid"]:
             raise ValueError("VM UUID must be explicitly enrolled")
@@ -70,8 +72,9 @@ class Broker:
 
     def remote(self, mode, task, data=None):
         home = self.c["agent_home"]
+        paths = self.c["source_paths"] if mode == "broker-source" else []
         return self.ssh(["python3", self.c["client_path"], mode,
-                         home + "/workspaces/task-" + str(task), self.c["target"]], data)
+                         home + "/workspaces/task-" + str(task), self.c["target"], *paths], data)
 
     def vbox(self, verb, args, timeout=1900):
         password_file = Path(self.c["password_file"])
@@ -94,7 +97,7 @@ class Broker:
 
     def verify_source(self, data):
         from guest import validate_archive
-        archive = validate_archive(data)
+        archive = validate_archive(data, self.c["source_paths"])
         actual = {x.name: hashlib.sha256(archive.extractfile(x).read()).hexdigest()
                   for x in archive.getmembers() if x.isfile()}
         expected = json.loads(Path(self.c["source_manifest"]).read_text())

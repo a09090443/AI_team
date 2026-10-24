@@ -17,8 +17,7 @@
 可提交的設定由系統核對後代為提交；`.env`、真實 `.env.*`、`.secrets`、`.ssh`、`.pem`／`.key` 禁止在此路線修改。
 `.env.*.example`／`.env.*.template` 可作不含真實憑證的範本。
 
-**已知限制**：服務建置 skill 的固定腳本（`guest.py`、`client.py`、`enroll.py`、`ssh_client.py`）目前仍寫死第一個接入專案的
-產品目錄、Compose 專案與服務名稱，路由、收據與授權機制是通用的，但其他產品要先把這些路徑參數化才能用。
+服務建置 skill 的固定腳本不含任何產品路徑，產品差異全部來自管理者設定（見下方「產品配置」）。
 專案自己的部署參考（`skills/service-build/references/<project>.md`）放在實例 overlay，撰寫要求見 skill 的 `references/project-template.md`。
 
 ## 部署目標與操作
@@ -47,6 +46,21 @@
 `teams/skills/service-build/scripts/client.py` 接受固定參數，另外提供 `diagnose`。
 operations 與角色工具白名單裡的 client 路徑是各實例的部署設定，安裝位置不同時要調整。
 模型只在工作區的服務部署目錄寫入請求並等待收據，不直接取得管理者權限。
+
+### 產品配置
+
+內附 skill 的產品差異分三處設定，缺任何一項時固定工具明確失敗（`SERVICE_CONFIG_REQUIRED`／`SSH_CONFIG_REQUIRED`），不猜測、不退回舊路徑：
+
+| 設定 | 位置 | 內容 |
+|---|---|---|
+| 請求目錄 | 團隊配置 `serviceTarget.checks.start` 指向的操作 | 該操作的 `writes` 必須恰好一個目錄（例如 `docs/docker/sit/.agent-service`）；client 與 Agent VM 執行器都從任務快照讀取，四個 service 操作應宣告同一目錄 |
+| 封裝來源 | Agent VM 直連設定 `~/.config/ai-team/ssh-targets/<target>.json` 的 `source_paths` | start 以 `git archive HEAD <source_paths>` 封裝；缺件時回 `SOURCE_MISSING_PATHS` |
+| 目標佈局 | 目標 VM `/etc/ai-team-service/target.json` 的 `service`（由 `install-ssh-target.sh` 第四個參數寫入，範本 `assets/target-service.example.json`） | `root`（release、機密與快取目錄）、`source_paths`（目標端獨立驗證壓縮檔只含這些路徑）、`compose_file`、`compose_project`（也是資料卷前綴與建置容器標籤）、`app_service`、`database_service`、`app_directory`、`health_url`、`env_file`／`db_password_file`（release 內指向機密的連結名稱） |
+
+兩端的 `source_paths` 要一致；目標端拒收清單以外的檔案，是不信任 Agent VM 的獨立檢查。
+建置與機密內容仍是內建配方：`app_directory` 以 `gradle` 容器建置出 `*-runner.jar`（Quarkus uber-jar），
+機密產生資料庫密碼與該格式的加密設定 env。建置方式不同的產品要先擴充 `guest.py` 的配方，不能只改上述設定。
+既有實例的升級步驟見 [SSH 直連部署](direct-ssh-deployment.md#既有實例遷移到產品配置)。
 
 `service-build` 的唯一來源在 `.agents/skills/service-build/`，同步腳本產生 Claude 與 Slack runtime 套件。
 `nodes.service.skills` 與 `service_triage.skills` 指定 SKILL.md 及參考檔；載入時固定內容與版本，派工時注入模型提示。

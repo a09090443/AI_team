@@ -36,8 +36,10 @@ start 封裝前會預檢版控路徑：缺件回 `SOURCE_MISSING_PATHS`，未提
 
 1. 等現有任務停止執行後安排網路維護。建立 VM 間的 Internal／Host-only 或共享 NAT Network，確認位址不同且互通；保留原有管理入口與產品資料。
 2. Agent VM 保留專用私鑰（600），只把公鑰交目標管理者。從目標 VM 本機取得 SSH 主機公鑰並核對指紋，再登錄 Agent VM 的專用 known_hosts。
-3. 將工具與 Agent 公鑰傳到目標，以管理者權限執行 `install-ssh-target.sh <既有登入帳號> <Agent公鑰檔> <target名稱>`。不新增任意 sudo 或 root shell。
-4. 管理者依 `assets/direct-ssh.example.json` 在 Agent VM 放 `~/.config/ai-team/ssh-targets/<target名稱>.json`，填真實互通位址、私鑰與 known_hosts 引用。
+3. 將工具與 Agent 公鑰傳到目標，依 `assets/target-service.example.json` 寫好產品服務配置，以管理者權限執行
+   `install-ssh-target.sh <既有登入帳號> <Agent公鑰檔> <target名稱> <服務配置檔>`。配置不合法時在變更前中止；不新增任意 sudo 或 root shell。
+4. 管理者依 `assets/direct-ssh.example.json` 在 Agent VM 放 `~/.config/ai-team/ssh-targets/<target名稱>.json`，填真實互通位址、私鑰與 known_hosts 引用，
+   以及與目標相同的 `source_paths`（欄位說明見[產品配置](service-delivery.md#產品配置)）。
 5. 依 `assets/ai-team-ssh-deploy.service` 安裝使用者服務，核對實例路徑後 `systemctl --user daemon-reload`、`systemctl --user enable --now ai-team-ssh-deploy.service`。沿用 INSTALL 的 linger 前置條件。
 6. 驗證公鑰登入、錯誤指紋拒絕、固定入口拒絕任意命令、傳輸毀損與不合法壓縮檔拒絕，以及重啟後執行器自動可用。此時 Windows broker 應維持停止。
 7. 更新服務提示、skill 與非機密恢復說明後，在 Slack 以原任務／受控配置更新或承接完成 prepare、start、health。舊快照若仍要求 Windows，不直接改資料庫或偽造核准。
@@ -45,6 +47,26 @@ start 封裝前會預檢版控路徑：缺件回 `SOURCE_MISSING_PATHS`，未提
 只有兩台 VM 的上述實測成功才可標為已啟用；Python 單元測試不是網路、公鑰或部署端對端證據。
 不在此流程中自動清空資料卷、更換資料庫密碼。
 日常維運：`systemctl --user status ai-team-ssh-deploy.service`；需要恢復才 `systemctl --user restart ai-team-ssh-deploy.service`。
+
+## 既有實例遷移到產品配置
+
+在產品路徑改由設定提供之前安裝的實例，目標 VM 的 `target.json` 只有 `target`、Agent VM 直連設定沒有 `source_paths`。
+新版腳本不會猜測舊路徑，依下列順序升級可不中斷服務、不動資料：
+
+1. **Agent VM 先補設定**（部署新版 orchestrator 前）：在 `~/.config/ai-team/ssh-targets/<target>.json` 加入 `source_paths`，
+   填原本固定封裝的版控路徑。新版 `ssh_client.py` 載入設定時會檢查；漏補時 `ai-team-ssh-deploy.service` 啟動失敗
+   （`journalctl --user -u ai-team-ssh-deploy.service` 可見 `SSH_CONFIG_REQUIRED`），角色端看到 `SERVICE_EXECUTOR_OFFLINE`。
+2. **團隊配置不用改**：既有 service 操作的 `writes` 已是唯一的請求目錄，新舊快照都適用。只有 `writes` 不是恰好一項時才要調整，並依配置遷移流程處理既有任務。
+3. **部署新版 orchestrator**：skill 腳本隨 `teams/skills/` 更新，重啟 `ai-team-ssh-deploy.service`。
+   目標 VM 上的舊 `guest.py`／`ssh_target.py` 仍可用（SSH 協定未變），所以第 4 步可另排時間。
+4. **目標 VM 重新安裝固定入口**：寫好服務配置，**沿用原本的值**——`root` 填原 release 目錄、`compose_project` 填原 Compose 專案名、
+   `compose_file` 填原 Compose 檔路徑，資料卷、機密與建置容器標籤才會延續；`app_service`／`database_service` 填原服務名。
+   以同一個登入帳號、公鑰與 target 名稱重跑 `install-ssh-target.sh` 並加上配置檔；它保留資料、既有公鑰與 `/var/lib/ai-team-service` 收據。
+5. **驗證**：先以固定操作執行 health（不重建）確認讀到既有 active release 且容器相符，再做 start。
+   health 失敗就先修正配置，不要 start：`root` 填錯而專案名正確時，start 看到既有資料卷卻找不到機密會拒絕；
+   但 `compose_project` 填錯會被當成新的 Compose 專案、建立新的空資料卷，因此必須以 health 先確認。
+
+各實例實際填入的值屬個人環境紀錄，記在本機 `.ai/records/`，不寫進本文。
 
 ## 持久長作業恢復
 

@@ -36,7 +36,7 @@ VirtualBox／宿主機工具只可用於管理者一次性的網路與 SSH 初�
 ## 配套
 
 - 專案部署參考：讀取節點 skills 引用的 `references/<project>.md`（放在實例 overlay，不在公開 repo）；撰寫要求見 [references/project-template.md](references/project-template.md)。各產品提供自己的部署參考與檢查操作，不套用其他產品的路徑。
-- 目前 `guest.py`、`client.py`、`enroll.py`、`ssh_client.py` 仍寫死第一個接入專案的目錄與 Compose 名稱（產品路徑參數化尚未完成），其他產品接入前要先參數化。
+- 產品路徑不寫在腳本：目標 VM 的 `/etc/ai-team-service/target.json` 由 `install-ssh-target.sh` 依 [assets/target-service.example.json](assets/target-service.example.json) 寫入目錄、來源路徑、Compose 專案與服務名稱；Agent VM 直連設定以 `source_paths` 列出要封裝的版控路徑；工作區請求目錄取自 `serviceTarget.checks.start` 操作唯一的 `writes`。任何一項缺少時固定工具回 `SERVICE_CONFIG_REQUIRED`／`SSH_CONFIG_REQUIRED` 並停止，不猜測；這是管理者設定缺口，如實回報，不自行改設定。
 - 主機執行與換機設定：讀取 [references/host-setup.md](references/host-setup.md)。
 - `scripts/client.py <action>` 是角色沙箱的固定入口。`ssh_executor.py` 在 Agent VM 由 systemd 自動常駐，核對本地任務授權後呼叫 `ssh_client.py` 直接 SSH；不需 Windows 代辦。`ssh_client.py <管理者設定> <action>` 是同機固定執行器的同步直連入口；`ssh_target.py` 與 `guest.py` 是目標機 root-owned 固定入口。
 - `install-ssh-target.sh` 由管理者在目標 VM 一次性執行，安裝受限公鑰、sudo 規則與目標名稱；不建立逐版來源清單；不清除資料或其他公鑰。

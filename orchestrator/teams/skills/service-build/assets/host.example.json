@@ -1,5 +1,10 @@
 {
   "target": "example-dev",
+  "source_paths": [
+    "backend",
+    "docs/docker/sit",
+    "docs/sql"
+  ],
   "dedicated_sit_vm": true,
   "vm_uuid": "00000000-0000-0000-0000-000000000000",
   "guest_user": "dev",

@@ -27,8 +27,8 @@ def main():
         raise ValueError("source approval exists; review differences before replacing it")
     b = Broker(config)
     root = config["agent_home"] + "/workspaces/task-" + args.source_task
-    data = b.ssh(["git", "-C", root, "archive", "HEAD", "bestpartner-service", "docs/docker/sit", "docs/sql"])
-    archive = validate_archive(data)
+    data = b.ssh(["git", "-C", root, "archive", "HEAD", *config["source_paths"]])
+    archive = validate_archive(data, config["source_paths"])
     manifest = {member.name: hashlib.sha256(archive.extractfile(member).read()).hexdigest()
                 for member in archive.getmembers() if member.isfile()}
     destination.parent.mkdir(parents=True, exist_ok=True)

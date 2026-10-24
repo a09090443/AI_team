@@ -68,7 +68,8 @@ agent_team/
 │       │   │   └── host-setup.md     # SSH／VirtualBox 主機設定與換機
 │       │   ├── assets/
 │       │   │   ├── host.example.json # 無憑證的主機設定範本
-│       │   │   ├── direct-ssh.example.json # Agent VM 直連設定（只含金鑰引用）
+│       │   │   ├── direct-ssh.example.json # Agent VM 直連設定（金鑰引用與 source_paths）
+│       │   │   ├── target-service.example.json # 目標 VM 的產品配置（目錄、Compose 專案與服務）
 │       │   │   └── ai-team-ssh-deploy.service # Agent VM 自動部署服務範本
 │       │   └── scripts/
 │       │       ├── ssh_client.py     # Agent VM 固定 SSH 直連操作
@@ -78,6 +79,7 @@ agent_team/
 │       │       ├── install-ssh-target.sh # 一次性目標公鑰與固定 sudo 設定
 │       │       ├── test_direct_ssh.py # 直連授權、收據與重試測試
 │       │       ├── test_service_support.py # 網址更正、追問授權與修復回歸測試
+│       │       ├── service_fixture.py # 測試共用的通用產品配置與任務工作區
 │       │       ├── client.py         # Agent 固定操作入口與任務授權
 │       │       ├── broker.py         # 主機連線與固定操作執行
 │       │       ├── guest.py          # 目標環境安裝、建置、啟動與檢查
@@ -104,7 +106,8 @@ agent_team/
 │       │   │   └── host-setup.md     # SSH／VirtualBox 主機設定與換機
 │       │   ├── assets/
 │       │   │   ├── host.example.json # 無憑證的主機設定範本
-│       │   │   ├── direct-ssh.example.json # Agent VM 直連設定（只含金鑰引用）
+│       │   │   ├── direct-ssh.example.json # Agent VM 直連設定（金鑰引用與 source_paths）
+│       │   │   ├── target-service.example.json # 目標 VM 的產品配置（目錄、Compose 專案與服務）
 │       │   │   └── ai-team-ssh-deploy.service # Agent VM 自動部署服務範本
 │       │   └── scripts/
 │       │       ├── ssh_client.py     # Agent VM 固定 SSH 直連操作
@@ -114,6 +117,7 @@ agent_team/
 │       │       ├── install-ssh-target.sh # 一次性目標公鑰與固定 sudo 設定
 │       │       ├── test_direct_ssh.py # 直連授權、收據與重試測試
 │       │       ├── test_service_support.py # 網址更正、追問授權與修復回歸測試
+│       │       ├── service_fixture.py # 測試共用的通用產品配置與任務工作區
 │       │       ├── client.py         # Agent 固定操作入口與任務授權
 │       │       ├── broker.py         # 主機連線與固定操作執行
 │       │       ├── guest.py          # 目標環境安裝、建置、啟動與檢查
@@ -266,7 +270,8 @@ agent_team/
 │   │   │       │   └── host-setup.md
 │   │   │       ├── assets/
 │   │   │       │   ├── host.example.json
-│   │   │       │   ├── direct-ssh.example.json # Agent VM 直連設定（只含金鑰引用）
+│   │   │       │   ├── direct-ssh.example.json # Agent VM 直連設定（金鑰引用與 source_paths）
+│   │   │       │   ├── target-service.example.json # 目標 VM 的產品配置（目錄、Compose 專案與服務）
 │   │   │       │   └── ai-team-ssh-deploy.service # Agent VM 自動部署服務範本
 │   │   │       └── scripts/
 │   │   │           ├── ssh_client.py     # Agent VM 固定 SSH 直連操作
@@ -276,6 +281,7 @@ agent_team/
 │   │   │           ├── install-ssh-target.sh # 一次性目標公鑰與固定 sudo 設定
 │   │   │           ├── test_direct_ssh.py # 直連授權、收據與重試測試
 │   │   │           ├── test_service_support.py # 網址更正、追問授權與修復回歸測試
+│   │   │           ├── service_fixture.py # 測試共用的通用產品配置與任務工作區
 │   │   │           ├── client.py
 │   │   │           ├── broker.py
 │   │   │           ├── guest.py

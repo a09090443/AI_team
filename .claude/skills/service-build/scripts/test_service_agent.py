@@ -14,6 +14,7 @@ from unittest.mock import patch
 import broker
 import client
 import guest
+import service_fixture as fx
 
 
 def archive(entries):
@@ -33,32 +34,48 @@ def archive(entries):
 
 class SourceTests(unittest.TestCase):
     def test_valid_product_archive(self):
-        data = archive([("bestpartner-service/build.gradle.kts", tarfile.REGTYPE),
-                        ("docs/docker/sit/docker-compose.yml", tarfile.REGTYPE)])
-        self.assertEqual(2, len(guest.validate_archive(data).getmembers()))
+        data = archive([("deploy", tarfile.DIRTYPE), ("app-service/build.gradle.kts", tarfile.REGTYPE),
+                        ("deploy/sit/docker-compose.yml", tarfile.REGTYPE)])
+        self.assertEqual(3, len(guest.validate_archive(data, fx.SOURCE_PATHS).getmembers()))
 
-    def test_archive_rejects_escape_secret_and_links(self):
-        for name, kind in [("/etc/passwd", tarfile.REGTYPE), ("docs/../../etc/passwd", tarfile.REGTYPE),
-                           ("bestpartner-service/.env.sit", tarfile.REGTYPE),
-                           ("docs/.ssh/id_rsa", tarfile.REGTYPE), ("docs/docker/link", tarfile.SYMTYPE),
-                           ("docs/docker/hardlink", tarfile.LNKTYPE), ("docs/docker/fifo", tarfile.FIFOTYPE)]:
+    def test_archive_rejects_escape_secret_links_and_unconfigured_paths(self):
+        for name, kind in [("/etc/passwd", tarfile.REGTYPE), ("deploy/../../etc/passwd", tarfile.REGTYPE),
+                           ("app-service/.env.sit", tarfile.REGTYPE), ("README.md", tarfile.REGTYPE),
+                           ("deploy/other/file", tarfile.REGTYPE), ("deploy/sitx/file", tarfile.REGTYPE),
+                           ("deploy/sit/.ssh/id_rsa", tarfile.REGTYPE), ("deploy/sit/link", tarfile.SYMTYPE),
+                           ("deploy/sit/hardlink", tarfile.LNKTYPE), ("deploy/sit/fifo", tarfile.FIFOTYPE)]:
             with self.subTest(name=name), self.assertRaises(ValueError):
-                guest.validate_archive(archive([(name, kind)]))
+                guest.validate_archive(archive([(name, kind)]), fx.SOURCE_PATHS)
+
+    def test_service_settings_never_guess_missing_values(self):
+        with self.assertRaisesRegex(ValueError, "SERVICE_CONFIG_REQUIRED: target configuration has no service"):
+            guest.service_settings({"target": "sit"})
+        partial = dict(fx.SERVICE)
+        del partial["compose_project"], partial["root"]
+        with self.assertRaisesRegex(ValueError, "missing service settings: root, compose_project"):
+            guest.service_settings({"service": partial})
+        for key, value in [("root", "/"), ("root", "relative/dir"), ("compose_file", "other/docker-compose.yml"),
+                           ("app_directory", "../escape"), ("compose_project", "Bad Name"),
+                           ("database_service", "app"), ("health_url", "file:///etc/passwd"),
+                           ("env_file", "deploy/sit/.env"), ("source_paths", [".git"])]:
+            with self.subTest(key=key, value=value), self.assertRaisesRegex(ValueError, "SERVICE_CONFIG_REQUIRED"):
+                guest.service_settings({"service": dict(fx.SERVICE, **{key: value})})
+        self.assertEqual(fx.SERVICE, guest.service_settings({"service": fx.SERVICE}))
 
     def test_source_pin_is_enforced_before_guest_execution(self):
         with tempfile.TemporaryDirectory() as tmp:
             manifest = Path(tmp) / "manifest.json"
-            manifest.write_text(json.dumps({"bestpartner-service/build.gradle.kts": "0" * 64}))
-            b = broker.Broker({"state_directory": tmp, "source_manifest": str(manifest)})
+            manifest.write_text(json.dumps({"app-service/build.gradle.kts": "0" * 64}))
+            b = broker.Broker({"state_directory": tmp, "source_manifest": str(manifest), "source_paths": fx.SOURCE_PATHS})
             with self.assertRaisesRegex(ValueError, "manifest"):
-                b.verify_source(archive([("bestpartner-service/build.gradle.kts", tarfile.REGTYPE)]))
+                b.verify_source(archive([("app-service/build.gradle.kts", tarfile.REGTYPE)]))
 
 
 class QueueTests(unittest.TestCase):
     def test_accepted_request_waits_even_when_poll_heartbeat_is_stale(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp).resolve() / "task-123"
-            queue = client.directory(root)
+            root = fx.workspace(tmp)
+            queue = fx.queue(root)
             request = {"id": "a" * 32, "task": "123", "action": "prepare", "created": int(time.time())}
             (queue / "request.json").write_text(json.dumps(request))
             (queue / (request["id"] + ".accepted")).write_text("accepted")
@@ -78,16 +95,10 @@ class QueueTests(unittest.TestCase):
 
     def test_only_active_service_tasks_can_request_privileged_work(self):
         with tempfile.TemporaryDirectory() as tmp:
-            home = Path(tmp).resolve()
-            root = home / "workspaces/task-123"
-            root.mkdir(parents=True)
-            c = sqlite3.connect(home / "ai-team.db")
-            c.executescript("create table task(id text,state text); create table flow_run(task_id text,data text);")
-            flow = {"node": "service", "activeNode": "service", "snapshot": {"definition": {
-                "nodes": {"service": {"gate": "SERVICE"}}, "project": {"serviceTarget": {"name": "bestpartner-dev"}}}}}
-            c.execute("insert into task values('123','STAGE_RUNNING')")
-            c.execute("insert into flow_run values('123',?)", (json.dumps(flow),))
-            c.commit()
+            flow = fx.flow("example-dev")
+            root = fx.workspace(tmp, data=flow)
+            c = sqlite3.connect(root.parent.parent / "ai-team.db")
+            self.assertTrue(client.authorized(root, "example-dev"))
             self.assertTrue(client.authorized(root))
             c.execute("update task set state='AWAIT_HUMAN'")
             c.commit()
@@ -96,20 +107,44 @@ class QueueTests(unittest.TestCase):
             flow["snapshot"]["definition"]["project"]["serviceTarget"]["name"] = "other-host"
             c.execute("update flow_run set data=?", (json.dumps(flow),))
             c.commit()
+            self.assertFalse(client.authorized(root, "example-dev"))
+            self.assertTrue(client.authorized(root))
+            del flow["snapshot"]["definition"]["project"]["serviceTarget"]["name"]
+            c.execute("update flow_run set data=?", (json.dumps(flow),))
+            c.commit()
             self.assertFalse(client.authorized(root))
             c.close()
 
+    def test_request_directory_comes_only_from_start_operation_writes(self):
+        self.assertEqual(Path(fx.QUEUE), client.request_directory(fx.flow()))
+        for writes in (None, [], [fx.QUEUE, "other"], ["../escape"], ["deploy/*"], ["/abs"]):
+            flow = fx.flow()
+            flow["snapshot"]["definition"]["project"]["operations"]["service-start"]["writes"] = writes
+            with self.subTest(writes=writes), self.assertRaisesRegex(ValueError, "SERVICE_CONFIG_REQUIRED"):
+                client.request_directory(flow)
+
+    def test_active_service_without_request_directory_fails_explicitly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            flow = fx.flow()
+            flow["snapshot"]["definition"]["project"]["operations"] = {}
+            root = fx.workspace(tmp, data=flow)
+            with patch.object(client, "workspace", return_value=root), \
+                    self.assertRaisesRegex(ValueError, "SERVICE_CONFIG_REQUIRED"):
+                client.submit("prepare", timeout=0)
+            self.assertFalse((root / fx.QUEUE).exists())
+
     def test_rejects_stale_wrong_task_and_unknown_action(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp).resolve() / "task-123"
-            queue = client.directory(root)
+            root = fx.workspace(tmp)
+            queue = fx.queue(root)
+            relative = client.relative_path(fx.QUEUE)
             baseline = {"id": "a" * 32, "task": "123", "action": "prepare", "created": int(time.time())}
             for changes in [{"task": "124"}, {"action": "shell"}, {"created": 0}, {"id": "../bad"}]:
                 (queue / "request.json").write_text(json.dumps(baseline | changes))
                 with self.assertRaises(ValueError):
-                    client.broker_read(root)
+                    client.broker_read(root, relative)
             (queue / "request.json").write_text(json.dumps(baseline))
-            self.assertEqual(baseline, client.broker_read(root))
+            self.assertEqual(baseline, client.broker_read(root, relative))
 
     def test_broker_replays_receipt_without_reexecuting(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -222,15 +257,17 @@ class HealthTests(unittest.TestCase):
     def test_http_alone_cannot_claim_success(self):
         details = [{"State": {"Running": True, "Health": {"Status": "unhealthy"}},
                     "Config": {"Labels": {"com.docker.compose.service": "postgres"}}},
-                   {"State": {"Running": True}, "Config": {"Labels": {"com.docker.compose.service": "bestpartner"}}}]
-        with patch("subprocess.check_output", side_effect=["db app", json.dumps(details)]), self.assertRaisesRegex(ValueError, "PostgreSQL"):
+                   {"State": {"Running": True}, "Config": {"Labels": {"com.docker.compose.service": "app"}}}]
+        with patch("subprocess.check_output", side_effect=["db app", json.dumps(details)]) as output, \
+                self.assertRaisesRegex(ValueError, "database health"):
             guest.health(Path("/test"))
+        self.assertEqual(["ps", "-q", "postgres", "app"], output.call_args_list[0].args[0][-4:])
 
     def test_existing_volume_without_secrets_is_not_reset(self):
         with tempfile.TemporaryDirectory() as tmp:
             with patch.object(guest, "ROOT", Path(tmp)), patch.dict(sys.modules, {
                     "cryptography.hazmat.primitives.ciphers.aead": SimpleNamespace(AESGCM=None)}), \
-                    patch("subprocess.check_output", return_value="bestpartner-sit_sit-postgres-data\n"), \
+                    patch("subprocess.check_output", return_value="example-dev_sit-postgres-data\n"), \
                     patch.object(guest, "run") as run, self.assertRaisesRegex(ValueError, "existing SIT volumes"):
                 guest.provision_secrets(Path(tmp) / "release")
             run.assert_not_called()

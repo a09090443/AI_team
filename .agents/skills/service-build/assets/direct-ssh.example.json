@@ -1,6 +1,11 @@
 {
   "transport": "direct-ssh",
   "target": "example-dev",
+  "source_paths": [
+    "backend",
+    "docs/docker/sit",
+    "docs/sql"
+  ],
   "destination": "deploy@192.0.2.20",
   "port": 22,
   "identity_file": "/home/agent/.ssh/ai-team-dev-ed25519",

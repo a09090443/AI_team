@@ -13,10 +13,102 @@ import subprocess
 import sys
 import tarfile
 import time
+import urllib.parse
 import urllib.request
 
-ROOT = Path("/opt/ai-team-bestpartner-sit")
-COMPOSE = "docs/docker/sit/docker-compose.yml"
+CONFIG = Path("/etc/ai-team-service/target.json")
+# Product layout comes only from the administrator's target configuration (see configure()).
+ROOT = COMPOSE = PROJECT = APP_SERVICE = DB_SERVICE = APP_DIR = HEALTH_URL = ENV_LINK = PASSWORD_LINK = None
+SOURCE_PATHS = ()
+SAFE_PART = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]*")
+
+
+def config_error(detail):
+    return ValueError("SERVICE_CONFIG_REQUIRED: " + detail
+                      + "; update the administrator service configuration (assets/target-service.example.json)")
+
+
+def relative_path(value, name, hidden=False):
+    parts = value.split("/") if isinstance(value, str) and len(value) <= 200 else []
+    if not parts or any(not (SAFE_PART.fullmatch(p) or hidden and p.startswith(".") and SAFE_PART.fullmatch(p[1:]))
+                        or p in {".git", ".ssh"} for p in parts):
+        raise config_error("invalid " + name)
+    return "/".join(parts)
+
+
+def source_paths(value):
+    if not isinstance(value, list) or not 1 <= len(value) <= 16:
+        raise config_error("source_paths must list 1-16 committed repository paths")
+    paths = [relative_path(p, "source_paths entry") for p in value]
+    if len(set(paths)) != len(paths):
+        raise config_error("duplicate source_paths entry")
+    return paths
+
+
+def under(path, sources):
+    return any(path == s or path.startswith(s + "/") for s in sources)
+
+
+def service_settings(config):
+    """Validate the product section of /etc/ai-team-service/target.json; never guess missing values."""
+    s = config.get("service") if isinstance(config, dict) else None
+    if not isinstance(s, dict):
+        raise config_error("target configuration has no service section")
+    missing = [k for k in ("root", "source_paths", "compose_file", "compose_project", "app_service",
+                           "database_service", "app_directory", "health_url", "env_file", "db_password_file")
+               if k not in s]
+    if missing:
+        raise config_error("missing service settings: " + ", ".join(missing))
+    root = s["root"]
+    if (not isinstance(root, str) or not re.fullmatch(r"(/[A-Za-z0-9_][A-Za-z0-9_.-]*){2,8}", root)
+            or ".." in root.split("/")):
+        raise config_error("root must be a dedicated absolute directory such as /opt/ai-team-<name>")
+    paths = source_paths(s["source_paths"])
+    compose = relative_path(s["compose_file"], "compose_file")
+    app = relative_path(s["app_directory"], "app_directory")
+    if not under(compose, paths) or not under(app, paths):
+        raise config_error("compose_file and app_directory must be inside source_paths")
+    if not isinstance(s["compose_project"], str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,62}", s["compose_project"]):
+        raise config_error("invalid compose_project")
+    services = [s["app_service"], s["database_service"]]
+    if any(not isinstance(x, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,62}", x) for x in services) \
+            or services[0] == services[1]:
+        raise config_error("app_service and database_service must be two different Compose service names")
+    url = urllib.parse.urlsplit(s["health_url"]) if isinstance(s["health_url"], str) else None
+    if not url or url.scheme not in {"http", "https"} or not url.hostname or url.username or url.password:
+        raise config_error("health_url must be an http(s) URL reachable inside the target VM")
+    env = relative_path(s["env_file"], "env_file", hidden=True)
+    password = relative_path(s["db_password_file"], "db_password_file", hidden=True)
+    if env == password or under(env, paths) or under(password, paths):
+        raise config_error("env_file and db_password_file must be distinct release links outside source_paths")
+    return dict(root=root, source_paths=paths, compose_file=compose, compose_project=s["compose_project"],
+                app_service=services[0], database_service=services[1], app_directory=app,
+                health_url=s["health_url"], env_file=env, db_password_file=password)
+
+
+def configure(settings):
+    global ROOT, COMPOSE, PROJECT, APP_SERVICE, DB_SERVICE, APP_DIR, HEALTH_URL, ENV_LINK, PASSWORD_LINK
+    global SOURCE_PATHS, BUILD_NAME, BUILD_LABEL
+    ROOT = Path(settings["root"])
+    COMPOSE = settings["compose_file"]
+    PROJECT = settings["compose_project"]
+    APP_SERVICE, DB_SERVICE = settings["app_service"], settings["database_service"]
+    APP_DIR = settings["app_directory"]
+    HEALTH_URL = settings["health_url"]
+    ENV_LINK, PASSWORD_LINK = settings["env_file"], settings["db_password_file"]
+    SOURCE_PATHS = tuple(settings["source_paths"])
+    if not OPERATION_ID:
+        BUILD_NAME = "ai-team-build-" + PROJECT
+    BUILD_LABEL = "ai-team.service-build=" + PROJECT
+
+
+def load_settings(path=None):
+    path = path or CONFIG
+    try:
+        config = json.loads(path.read_text())
+    except (OSError, ValueError):
+        raise config_error("cannot read " + str(path))
+    return service_settings(config)
 
 
 def run(argv, **kwargs):
@@ -58,14 +150,23 @@ def prepare():
     print("PREPARED: SSH, Docker and Compose; no database volumes removed")
 
 
-def validate_archive(data):
+def archive_entry_allowed(parts, member, sources):
+    for source in sources:
+        s = tuple(source.split("/"))
+        # Inside a configured source path, or a parent directory entry that git archive emits for it.
+        if parts[:len(s)] == s or (member.isdir() and s[:len(parts)] == parts):
+            return True
+    return False
+
+
+def validate_archive(data, sources):
+    sources = source_paths(list(sources))
     archive = tarfile.open(fileobj=io.BytesIO(data))
     total = 0
     for member in archive.getmembers():
         p = PurePosixPath(member.name)
         if (p.is_absolute() or ".." in p.parts or not p.parts
-                or p.parts[0] not in {"bestpartner-service", "docs"}
-                or (p.parts[0] == "docs" and len(p.parts) > 1 and p.parts[1] not in {"sql", "docker"})
+                or not archive_entry_allowed(p.parts, member, sources)
                 or any(x in {".git", ".ssh", ".secrets"} or x.startswith(".env") for x in p.parts)
                 or not (member.isfile() or member.isdir())):
             raise ValueError("unsafe deployment archive entry")
@@ -99,7 +200,7 @@ def provision_secrets(release):
         raise ValueError("partial secrets detected; preserve and repair manually, do not rotate database password")
     if not env.exists():
         existing = subprocess.check_output(["docker", "volume", "ls", "--format", "{{.Name}}"], text=True)
-        if any(x.startswith("bestpartner-sit_") for x in existing.splitlines()):
+        if any(x.startswith(PROJECT + "_") for x in existing.splitlines()):
             raise ValueError("existing SIT volumes without secrets; automatic reset is forbidden")
         password, encryption, crypto = [secrets.token_urlsafe(32) for _ in range(3)]
         iv = secrets.token_bytes(12)
@@ -117,33 +218,34 @@ def provision_secrets(release):
                           + "\nOPENROUTER_API_KEY=\n")
         finally:
             os.umask(old)
-    (release / ".secrets").mkdir(mode=0o700)
-    (release / ".secrets/sit-db-password").symlink_to(password_file)
-    (release / ".env.sit").symlink_to(env)
+    for link, source in ((PASSWORD_LINK, password_file), (ENV_LINK, env)):
+        (release / link).parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        (release / link).symlink_to(source)
 
 
 def compose(release, *args):
-    return ["docker", "compose", "--project-name", "bestpartner-sit", "-f", str(release / COMPOSE), *args]
+    return ["docker", "compose", "--project-name", PROJECT, "-f", str(release / COMPOSE), *args]
 
 
 def health(release):
     # Inspect containers directly: Compose versions differ in JSON array/JSON Lines output.
-    ids = subprocess.check_output(compose(release, "ps", "-q", "postgres", "bestpartner"), text=True).split()
+    ids = subprocess.check_output(compose(release, "ps", "-q", DB_SERVICE, APP_SERVICE), text=True).split()
     if len(ids) != 2:
         raise ValueError("database and application must both be running")
     details = json.loads(subprocess.check_output(["docker", "inspect", *ids], text=True))
     if any(not d["State"]["Running"] for d in details):
         raise ValueError("a required container is not running")
-    if any(d["Config"].get("Labels", {}).get("com.docker.compose.service") == "postgres"
+    if any(d["Config"].get("Labels", {}).get("com.docker.compose.service") == DB_SERVICE
            and d["State"].get("Health", {}).get("Status") != "healthy" for d in details):
-        raise ValueError("PostgreSQL health check failed")
-    with urllib.request.urlopen("http://127.0.0.1/view/chat", timeout=15) as response:
+        raise ValueError("database health check failed")
+    with urllib.request.urlopen(HEALTH_URL, timeout=15) as response:
         if response.status != 200:
             raise ValueError("application health page failed")
     if any(str(release / COMPOSE) not in d["Config"].get("Labels", {}).get("com.docker.compose.project.config_files", "").split(",")
-           for d in details if d["Config"].get("Labels",{}).get("com.docker.compose.service") == "bestpartner"):
+           for d in details if d["Config"].get("Labels",{}).get("com.docker.compose.service") == APP_SERVICE):
         raise ValueError("container release does not match active start")
-    print("HEALTH_PASS: release=" + release.name + "; PostgreSQL and backend running; /view/chat HTTP 200")
+    print("HEALTH_PASS: release=" + release.name + "; database and application running; "
+          + (urllib.parse.urlsplit(HEALTH_URL).path or "/") + " HTTP 200")
 
 
 def build_budget(meminfo=None):
@@ -161,8 +263,9 @@ def build_budget(meminfo=None):
 OPERATION_ID = os.environ.get("AI_TEAM_OPERATION_ID", "")
 if OPERATION_ID and not re.fullmatch(r"[0-9a-f]{32}", OPERATION_ID):
     raise ValueError("invalid operation identity")
-BUILD_NAME = "ai-team-build-" + OPERATION_ID if OPERATION_ID else "ai-team-bestpartner-build"
-BUILD_LABEL = "ai-team.service-build=bestpartner-sit"
+# Without an operation identity configure() names the build after the Compose project.
+BUILD_NAME = "ai-team-build-" + OPERATION_ID if OPERATION_ID else None
+BUILD_LABEL = None
 
 
 def remove_owned_build(timeout=30):
@@ -172,7 +275,7 @@ def remove_owned_build(timeout=30):
             return
         raise ValueError("cannot verify build container absence")
     item = json.loads(found.stdout)[0]
-    if item.get("Config", {}).get("Labels", {}).get("ai-team.service-build") != "bestpartner-sit":
+    if item.get("Config", {}).get("Labels", {}).get("ai-team.service-build") != PROJECT:
         raise ValueError("build container name belongs to another owner")
     if OPERATION_ID and item.get("Config",{}).get("Labels",{}).get("ai-team.operation-id") != OPERATION_ID:
         raise ValueError("build belongs to a different operation")
@@ -298,8 +401,8 @@ def previous_release():
     if (release.parent != ROOT/"releases" or release.resolve()!=release.absolute()
             or not (release/COMPOSE).is_file()):
         return None
-    jars = list((release/"bestpartner-service"/"build").glob("*-runner.jar"))
-    jars += list((release/"bestpartner-service"/"build"/"libs").glob("*-runner.jar"))
+    jars = list((release/APP_DIR/"build").glob("*-runner.jar"))
+    jars += list((release/APP_DIR/"build"/"libs").glob("*-runner.jar"))
     if not any(p.is_file() and not p.is_symlink() and p.resolve().is_relative_to(release.resolve()) for p in jars):
         return None
     return release
@@ -335,7 +438,7 @@ def activate_release(release, previous):
             try:
                 # Rebuild only the application image from the prior existing JAR.
                 # --no-deps prevents any database creation/restart or schema rollback.
-                run(compose(previous,"up","-d","--build","--no-deps","bestpartner"))
+                run(compose(previous,"up","-d","--build","--no-deps",APP_SERVICE))
                 wait_healthy(previous)
                 outcome.update(rollback="SUCCEEDED",summary="Previous application recovered; new deployment remains failed")
             except Exception:
@@ -348,7 +451,7 @@ def activate_release(release, previous):
 def start_locked(archive_file):
     previous = previous_release()
     data = Path(archive_file).read_bytes()
-    archive = validate_archive(data)
+    archive = validate_archive(data, SOURCE_PATHS)
     digest = hashlib.sha256(data).hexdigest()
     releases = ROOT / "releases"
     releases.mkdir(parents=True, exist_ok=True)
@@ -359,7 +462,7 @@ def start_locked(archive_file):
     (release / "source-sha256").write_text(digest)
     (release / "operation-id").write_text(OPERATION_ID)
     provision_secrets(release)
-    service = release / "bestpartner-service"
+    service = release / APP_DIR
     (ROOT / "pending").write_text(str(release))
     memory, heap = build_budget()
     cache = ROOT / "gradle-cache"
@@ -386,7 +489,7 @@ def repair():
         release=previous_release()
         if release is None:
             raise ValueError("no verified active release to recover; data retained")
-        run(compose(release,"up","-d","--no-deps","--no-build","bestpartner"))
+        run(compose(release,"up","-d","--no-deps","--no-build",APP_SERVICE))
         wait_healthy(release)
         print("REPAIR_PASS: existing release="+release.name+"; no source build; database and data volumes retained")
 
@@ -394,9 +497,16 @@ def repair():
 def main():
     if os.geteuid() != 0:
         raise ValueError("reviewed service operations require administrator execution in the target VM")
+    global BUILD_NAME, OPERATION_ID
     action = sys.argv[1]
+    try:
+        configure(load_settings())
+    except ValueError as exc:
+        # Surface the missing configuration through the fixed receipt instead of guessing a layout.
+        print("DIAGNOSIS: " + json.dumps(dict(error_kind="SERVICE_CONFIG_REQUIRED", progress="not_started",
+                                             summary=str(exc)[:600])), flush=True)
+        raise
     if action == "cancel-build":
-        global BUILD_NAME, OPERATION_ID
         job = sys.argv[2]
         if not re.fullmatch(r"[0-9a-f]{32}",job):
             raise ValueError("invalid cancellation identity")
@@ -437,7 +547,7 @@ def main():
                 data = json.loads(subprocess.check_output(["docker", "inspect", container], text=True))[0]
                 state = data["State"]
                 print("DIAGNOSIS: " + json.dumps({
-                    "service": data["Config"].get("Labels", {}).get("com.docker.compose.service") if data["Config"].get("Labels", {}).get("com.docker.compose.service") in {"postgres","bestpartner"} else "other",
+                    "service": data["Config"].get("Labels", {}).get("com.docker.compose.service") if data["Config"].get("Labels", {}).get("com.docker.compose.service") in {DB_SERVICE,APP_SERVICE} else "other",
                     "status": state.get("Status"), "exit_code": state.get("ExitCode"),
                     "oom_killed": state.get("OOMKilled"),
                     "health": state.get("Health", {}).get("Status")}, ensure_ascii=True))

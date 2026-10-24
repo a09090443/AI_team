@@ -12,6 +12,7 @@ import urllib.error
 import support
 import guest
 import ssh_target
+import service_fixture  # configures guest with project-neutral settings
 
 class SupportTests(unittest.TestCase):
     def setUp(self):
@@ -180,7 +181,7 @@ class SupportTests(unittest.TestCase):
     def test_existing_release_repair_never_builds_or_touches_database(self):
         with patch.dict(sys.modules,{'fcntl':SimpleNamespace(LOCK_EX=1,LOCK_NB=2,flock=lambda *args:None)}),tempfile.TemporaryDirectory() as tmp,patch.object(guest,'ROOT',Path(tmp)),patch.object(guest,'previous_release',return_value=Path(tmp)/'releases/old'),patch.object(guest,'compose',side_effect=lambda release,*args:list(args)),patch.object(guest,'run') as run,patch.object(guest,'wait_healthy') as health:
             guest.repair()
-            self.assertEqual(('up','-d','--no-deps','--no-build','bestpartner'),tuple(run.call_args.args[0]));health.assert_called_once()
+            self.assertEqual(('up','-d','--no-deps','--no-build','app'),tuple(run.call_args.args[0]));health.assert_called_once()
     def test_missing_active_release_is_not_redeployed(self):
         with patch.dict(sys.modules,{'fcntl':SimpleNamespace(LOCK_EX=1,LOCK_NB=2,flock=lambda *args:None)}),tempfile.TemporaryDirectory() as tmp,patch.object(guest,'ROOT',Path(tmp)),patch.object(guest,'previous_release',return_value=None),patch.object(guest,'run') as run:
             with self.assertRaises(ValueError):guest.repair()
