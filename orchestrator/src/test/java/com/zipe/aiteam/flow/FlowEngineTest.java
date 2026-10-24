@@ -164,6 +164,30 @@ class FlowEngineTest {
         assertThat(FlowEngine.spinoffTitles(store.flow(task.id()).orElseThrow())).containsExactly("文件計數改 69", "補 API 範例");
     }
 
+    @Test void baselineReminderSkipsQuestions() {
+        // spring-starters #1006：只說「你好」，任務一建立就貼出基準驗證失敗；純詢問不會走到系統獨立驗證，不該提醒。
+        engine.baseline = failedBaseline();
+        engine.prepare(task);
+        mode = "question";
+        engine.run(task);
+        verify(slack, never()).post(any(), any(), any(), contains("基準驗證沒有通過"));
+    }
+
+    @Test void baselineReminderPostsOnceWhenRequirementsAreEstablished() {
+        engine.baseline = failedBaseline();
+        engine.prepare(task);
+        verify(slack, never()).post(any(), any(), any(), contains("基準驗證沒有通過"));
+        engine.run(task);
+        verify(slack, times(1)).post(any(), eq("c"), eq("t"), contains("基準驗證沒有通過"));
+    }
+
+    private BaselineVerifier failedBaseline() {
+        BaselineVerifier baseline = mock(BaselineVerifier.class);
+        when(baseline.latest()).thenReturn(Optional.of(new BaselineVerifier.Report("rev", "main", "sha", "s", "e",
+                List.of(new BaselineVerifier.Result(List.of("npm", "test"), BaselineVerifier.Outcome.FAIL, 1, "log", "MailTest 失敗")), null)));
+        return baseline;
+    }
+
     @Test void spinoffTitlesFallBackToNumbersWhenMissingOrMisaligned() {
         // 舊快照沒有 out_of_scope_titles；長度對不上時無法確定對應，不可貼錯標題。
         mode = "question";
