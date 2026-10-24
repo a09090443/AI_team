@@ -9,7 +9,7 @@ description: 在 AI Team 專案中開始任何工作、回答專案問題、或�
 
 ## 1. 開工：先讀文件
 
-1. 讀 `.ai/context.md`、`.ai/progress.md`。
+1. 讀本機 `.ai/context.md`、`.ai/progress.md`（不進版控；不存在時依 AGENTS.md 建立）。
 2. 讀 `docs-site/agent/index.md` 的「依任務找文件」，找出本次任務對應的文件。
 3. 需要找檔案時查 `docs-site/agent/project-tree.md`。
 4. 查 `docs-site/catalog.mjs` 確認文件狀態：`current` 可據以行動、`record`／`decision` 是證據與理由、`historical` 不可照做。

@@ -20,3 +20,6 @@ orchestrator/target/
 **/__pycache__/
 *.pyc
 docs-site/build-public/
+
+# 個人開發交接紀錄（只留本機，見 AGENTS.md「跨工具交接」）
+.ai/

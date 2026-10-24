@@ -1,4 +1,5 @@
-// .ai 交接檔保存規則檢查，build 前自動執行，失敗時結束碼 1（規則見 AGENTS.md「跨工具交接」）：
+// .ai 交接檔保存規則檢查，build 前自動執行，失敗時結束碼 1（規則見 AGENTS.md「跨工具交接」）。
+// .ai/ 只存在開發者本機、不進版控，檔案不存在時跳過該項檢查（例如 CI 或新 clone）：
 // 1. context.md 不超過 CONTEXT_MAX_LINES 行（覆寫成目前狀態，無法自動修正）。
 // 2. progress.md 不超過 PROGRESS_MAX_LINES 行；--fix 依日期由新到舊排序，並把最舊日期的條目整天移到
 //    .ai/archive/progress-YYYY-MM.md，直到低於上限。
@@ -49,16 +50,22 @@ const render = (preamble, entries) => {
 
 const errors = [];
 
-// 1. context.md
 const contextFile = path.join(aiDir, 'context.md');
-const contextLines = lineCount(read(contextFile));
+const progressFile = path.join(aiDir, 'progress.md');
+const decisionsFile = path.join(aiDir, 'decisions.md');
+if (![contextFile, progressFile, decisionsFile].some((file) => fs.existsSync(file))) {
+  console.log('交接檔檢查略過：沒有 .ai/ 交接檔');
+  process.exit(0);
+}
+
+// 1. context.md
+const contextLines = fs.existsSync(contextFile) ? lineCount(read(contextFile)) : 0;
 if (contextLines > CONTEXT_MAX_LINES) {
   errors.push(`.ai/context.md 有 ${contextLines} 行，超過 ${CONTEXT_MAX_LINES} 行：請改寫成目前狀態，已完成的移到 progress.md`);
 }
 
 // 2. progress.md
-const progressFile = path.join(aiDir, 'progress.md');
-const progressText = read(progressFile);
+const progressText = fs.existsSync(progressFile) ? read(progressFile) : '';
 if (lineCount(progressText) > PROGRESS_MAX_LINES) {
   if (!fix) {
     errors.push(`.ai/progress.md 超過 ${PROGRESS_MAX_LINES} 行：執行 node docs-site/scripts/check-handoff.mjs --fix 歸檔最舊的條目`);
@@ -88,27 +95,28 @@ if (lineCount(progressText) > PROGRESS_MAX_LINES) {
 }
 
 // 3. decisions.md 索引
-const decisionsFile = path.join(aiDir, 'decisions.md');
-const decisionsText = read(decisionsFile);
-const headings = decisionsText.split('\n')
-  .filter((line) => /^#{1,3} \d{4}-\d{2}-\d{2}/.test(line))
-  .map((line) => line.replace(/^#+ /, ''));
-const index = [INDEX_START, ...sortEntries(headings.map((h) => ({ date: dateOf(h), lines: [h] })))
-  .map((entry) => `- ${entry.lines[0]}`), INDEX_END].join('\n');
-const start = decisionsText.indexOf(INDEX_START);
-const end = decisionsText.indexOf(INDEX_END);
-const current = start >= 0 && end > start ? decisionsText.slice(start, end + INDEX_END.length) : null;
-if (current !== index) {
-  if (!fix) {
-    errors.push('.ai/decisions.md 開頭索引與條目不一致：執行 node docs-site/scripts/check-handoff.mjs --fix 重產索引');
-  } else if (current !== null) {
-    fs.writeFileSync(decisionsFile, decisionsText.replace(current, index));
-  } else {
-    // 索引放在檔案標題與說明之後、第一則條目之前。
-    const lines = decisionsText.split('\n');
-    const first = lines.findIndex((line, i) => i > 0 && /^#{1,3} /.test(line));
-    lines.splice(first, 0, '## 索引', '', index, '');
-    fs.writeFileSync(decisionsFile, lines.join('\n'));
+const decisionsText = fs.existsSync(decisionsFile) ? read(decisionsFile) : null;
+if (decisionsText !== null) {
+  const headings = decisionsText.split('\n')
+    .filter((line) => /^#{1,3} \d{4}-\d{2}-\d{2}/.test(line))
+    .map((line) => line.replace(/^#+ /, ''));
+  const index = [INDEX_START, ...sortEntries(headings.map((h) => ({ date: dateOf(h), lines: [h] })))
+    .map((entry) => `- ${entry.lines[0]}`), INDEX_END].join('\n');
+  const start = decisionsText.indexOf(INDEX_START);
+  const end = decisionsText.indexOf(INDEX_END);
+  const current = start >= 0 && end > start ? decisionsText.slice(start, end + INDEX_END.length) : null;
+  if (current !== index) {
+    if (!fix) {
+      errors.push('.ai/decisions.md 開頭索引與條目不一致：執行 node docs-site/scripts/check-handoff.mjs --fix 重產索引');
+    } else if (current !== null) {
+      fs.writeFileSync(decisionsFile, decisionsText.replace(current, index));
+    } else {
+      // 索引放在檔案標題與說明之後、第一則條目之前。
+      const lines = decisionsText.split('\n');
+      const first = lines.findIndex((line, i) => i > 0 && /^#{1,3} /.test(line));
+      lines.splice(first < 0 ? lines.length : first, 0, '## 索引', '', index, '');
+      fs.writeFileSync(decisionsFile, lines.join('\n'));
+    }
   }
 }
 

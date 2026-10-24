@@ -248,7 +248,7 @@ The structured response preserves endpoint, error code, and root cause. The aggr
 
 ## 本專案的交接檔（AI Team）
 
-在本 repo 中，持久的交接摘要寫進 `.ai/` 三份檔案，保存規則以 `AGENTS.md`「跨工具交接」為準：
+在本 repo 中，持久的交接摘要寫進 `.ai/` 三份檔案（只留本機、不進版控，不存在時自行建立），保存規則以 `AGENTS.md`「跨工具交接」為準：
 
 - `.ai/context.md`：**覆寫**成目前狀態（進行中工作、待處理事項、已知未解、環境備忘），上限 60 行。
   改寫時保留仍有效的限制與下一步，只移除已完成或被取代的內容。

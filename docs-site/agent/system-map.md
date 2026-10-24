@@ -139,7 +139,7 @@ agent 不能自行指定角色或跳到任意節點。
 | `deploy/bootstrap/` | 從零建置工具（新機只用這裡） |
 | `deploy/deploy-orchestrator.sh`、`deploy-jar-safe.sh` | 既有 VM 的受控部署（新機不用） |
 | `deploy/agent-manifests/` | 角色 Slack App manifest |
-| `.ai/` | Codex 與 Claude Code 的跨工具交接紀錄（不是執行設定） |
+| `.ai/` | 開發者本機的跨工具交接紀錄（不進版控、不是執行設定） |
 
 ## 執行時資料在哪（正式機）
 

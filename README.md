@@ -50,7 +50,7 @@ deploy/
 ├── agent-manifests/            # 各角色的 Slack App manifest
 └── deploy-*.sh                 # 既有 VM 的受控部署（新機不用）
 docs-site/                      # 文件網站：docs/ 原始文件、agent/ 入口頁、catalog.mjs 目錄
-.ai/                            # 各 AI 工具的跨工具交接記錄（archive/ 為歸檔）
+.ai/                            # 開發者本機的跨工具交接紀錄（不進版控）
 ```
 
 角色定義與 schema 刻意放在 jar 之外 —— 調整提示詞不需重新編譯，改完重啟即可。
@@ -125,5 +125,6 @@ Copilot、Gemini CLI）都讀它；`CLAUDE.md` 只有 `@AGENTS.md` 一行。共�
 以 `node .agents/sync-agent-config.mjs` 產生各工具設定，見 [AI 工具設定](docs-site/agent/ai-tools.md)。
 各 AI 工具的對話 session 不互通，`.ai/context.md`（目前狀態，覆寫）、`.ai/progress.md`（近期進度）、
 `.ai/decisions.md`（決策，只追加）是唯一的交接面：開場先讀，完成工作單位後寫回；舊進度依月份歸檔到 `.ai/archive/`。
+`.ai/` 只留在開發者本機、不進版控，clone 後沒有這個目錄是正常的，需要時依 `AGENTS.md` 自行建立。
 
 憑證不進版控。`env.sh` 已列入 `.gitignore`，token 不放進團隊定義 JSON。
