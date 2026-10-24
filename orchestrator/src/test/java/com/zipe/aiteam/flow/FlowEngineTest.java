@@ -1666,6 +1666,41 @@ class FlowEngineTest {
         assertThat(calls).containsExactly("intake:coordinator", "service:builder");
         verifyNoInteractions(verifier, publisher);
     }
+    void serviceWrites(String pattern) throws Exception {
+        var f = store.flow(task.id()).orElseThrow();
+        ObjectNode d = mapper.valueToTree(f.snapshot.definition());
+        ((ObjectNode)d.path("nodes").path("service")).putArray("writablePaths").add(pattern);
+        f.snapshot = new TeamDefinition.Snapshot("service-version", mapper.treeToValue(d, TeamDefinition.class), f.snapshot.repository(), f.snapshot.assets());
+        store.saveFlow(task.id(), f);
+    }
+    @Test void successfulServiceSavesDeploymentFilesWithoutSecrets() throws Exception {
+        enableService(true); serviceWrites("deploy/**"); mode = "serviceSuccess";
+        when(props.homePath()).thenReturn(tmp);
+        Path ws = tmp.resolve("ws"); Files.createDirectories(ws.resolve("deploy/sandbox"));
+        Files.writeString(ws.resolve("deploy/sandbox/start.sh"), "echo start");
+        Files.writeString(ws.resolve("deploy/.env.sit"), "SECRET=1");
+        when(workspace.pathFor("42")).thenReturn(ws);
+        when(workspace.changedPathsSinceBase("42")).thenReturn(List.of("deploy/sandbox/start.sh", "deploy/.env.sit", "src/Product.java"));
+        engine.run(task);
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.COMPLETED);
+        var manifest = mapper.readTree(tmp.resolve("service-context/test-host.files/manifest.json").toFile());
+        assertThat(manifest.path("task").asText()).isEqualTo("42");
+        assertThat(manifest.path("files")).hasSize(1);
+        assertThat(manifest.path("files").get(0).path("path").asText()).isEqualTo("deploy/sandbox/start.sh");
+    }
+    @Test void serviceRestoresSavedDeploymentFilesAndTellsTheRole() throws Exception {
+        enableService(true); serviceWrites("deploy/**"); mode = "serviceSuccess";
+        when(props.homePath()).thenReturn(tmp);
+        Path previous = tmp.resolve("previous"); Files.createDirectories(previous.resolve("deploy"));
+        Files.writeString(previous.resolve("deploy/start.sh"), "echo saved");
+        ServiceArtifacts.save(tmp, "test-host", "41", "abc", previous, List.of("deploy/start.sh"), List.of("deploy/**"));
+        Path ws = tmp.resolve("ws"); Files.createDirectories(ws);
+        when(workspace.pathFor("42")).thenReturn(ws);
+        engine.run(task);
+        assertThat(Files.readString(ws.resolve("deploy/start.sh"))).isEqualTo("echo saved");
+        verify(workspace).commitPaths(eq("42"), eq(List.of("deploy/start.sh")), contains("還原前次部署檔（來源任務 #41）"));
+        assertThat(store.flow(task.id()).orElseThrow().context).contains("前次成功部署的部署檔", "deploy/start.sh");
+    }
     @Test void serviceTypedTimeoutResumesSuccessfulJobWithoutAnotherVisit() throws Exception {
         enableService(true); mode="serviceOperationTimeout"; engine.run(task);
         assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.COMPLETED);

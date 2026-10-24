@@ -66,16 +66,8 @@ print(checksum.hexdigest())
 SNAPSHOT
 }
 
-workspace_snapshot() {
-  for ws in "$root"/workspaces/task-*/; do
-    [ -d "$ws/.git" ] || continue
-    echo "== $ws"
-    git -C "$ws" rev-parse HEAD
-    git -C "$ws" status --porcelain=v1
-    git -C "$ws" diff --binary | sha256sum
-    git -C "$ws" diff --cached --binary | sha256sum
-  done | sha256sum
-}
+# 逐工作區比對：新版啟動會依規則清掉已結束任務的工作區，這不算部署改動了任務（規則見 bootstrap/workspace-check.sh）。
+workspace_snapshot() { bash "$source_root/deploy/bootstrap/workspace-check.sh" snapshot "$root"; }
 
 backup=$(mktemp -d "$root/orchestrator-backup.XXXXXX")
 cp -p "$root/orchestrator/target/$jar" "$backup/$jar"
@@ -118,10 +110,11 @@ for attempt in {1..60}; do
     snapshot > "$backup/tasks.after"
     workspace_snapshot > "$backup/workspaces.after"
     cmp "$backup/tasks.before" "$backup/tasks.after"
-    cmp "$backup/workspaces.before" "$backup/workspaces.after"
+    bash "$source_root/deploy/bootstrap/workspace-check.sh" compare \
+      "$backup/workspaces.before" "$backup/workspaces.after" "$root/ai-team.db"
     test "$(sha256sum "$root/orchestrator/target/$jar" | cut -d' ' -f1)" = "$expected"
     ! grep -q ' ERROR ' "$root/orchestrator.log"
-    echo 'PASS: 所有任務資料與所有任務工作區部署前後完全一致'
+    echo 'PASS: 所有任務資料與仍在的任務工作區部署前後完全一致（已結束任務的工作區由啟動清理依規則刪除）'
     echo "PASS: 未結束的任務（未續跑、未改核准）："
     sed 's/^/  /' "$backup/open-tasks.before"
     sha256sum "$root/orchestrator/target/$jar"

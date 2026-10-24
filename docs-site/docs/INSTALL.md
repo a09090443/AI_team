@@ -436,7 +436,7 @@ Slack 相關問題見 [建立 Slack App](slack-agent-apps.md#疑難排解)。
 
 ## 升級既有 Orchestrator
 
-使用`deploy/deploy-orchestrator.sh <隔離來源根目錄>`，以AI_TEAM_HOME指定既有實例。候選JAR、src/main及teams必須來自隔離建置；orchestrator/full-build.log須是該候選來源的完整成功驗證紀錄。不得在執行中target做clean/build，也不打包env.sh或CLI登入檔。部署的teams是來源teams疊上實例team-overlay的合併結果（`deploy/bootstrap/stage-teams.sh`），停服務前以候選JAR逐一驗證；啟用中的配置不在來源也不在overlay、或線上teams的overlay檔被直接修改時中止，不動線上服務。既有任務仍保留原快照。
+使用`deploy/deploy-orchestrator.sh <隔離來源根目錄>`，以AI_TEAM_HOME指定既有實例。候選JAR、src/main及teams必須來自隔離建置；orchestrator/full-build.log須是該候選來源的完整成功驗證紀錄。不得在執行中target做clean/build，也不打包env.sh或CLI登入檔。部署的teams是來源teams疊上實例team-overlay的合併結果（`deploy/bootstrap/stage-teams.sh`），停服務前以候選JAR逐一驗證；啟用中的配置不在來源也不在overlay、或線上teams的overlay檔被直接修改時中止，不動線上服務。既有任務仍保留原快照。部署後的工作區比對容許新版啟動清理刪除已結束任務的工作區（`deploy/bootstrap/workspace-check.sh`），其他工作區必須完全不變，否則自動回復。
 
 升級前確認無執行中或排隊任務，備份JAR、teams（含本次合併結果teams.deployed）與SQLite，核對全部任務工作區；切換後檢查Spring、沙箱、角色Socket Mode及資料一致性，失敗由腳本回復程式與資產。task/flow_run/task_checkpoint/direct_request/stage_result/quota_retry六表以唯讀交易逐列JSON編碼後雜湊，避免SQLite CLI輸出大型JSON時長時間占用CPU；快照只保存雜湊，不輸出任務或憑證內容。
 

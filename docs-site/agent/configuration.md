@@ -191,7 +191,7 @@ plan 的 protected_path_changes 明列需跨 runtime 改派的檔案；不新增
 
 ### 2026-10-19 部署脈絡（已部署）
 
-實例可放 service-context/&lt;target&gt;.json，提供不含機密的宿主程式、設定路徑、啟動指令與歷史收據索引；詳見 [服務建置](/docs/service-delivery)。此檔僅供說明，不增加操作權限。
+實例可放 service-context/&lt;target&gt;.json，提供不含機密的宿主程式、設定路徑、啟動指令與歷史收據索引；詳見 [服務建置](/docs/service-delivery)。此檔僅供說明，不增加操作權限。同目錄的 `<target>.files/` 由系統自動維護：保存最近一次成功交付的部署檔，下次部署前還原到工作區（[部署檔保存與還原](/docs/service-delivery#部署檔保存與還原)）。
 
 
 ### SSH 直連規格

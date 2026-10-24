@@ -167,7 +167,7 @@ plan.protected_path_changes 由實作前置計畫提供，ProtectedPathFallback 
 
 ### 2026-10-19 部署脈絡（已部署）
 
-服務目標的歷史背景由 TaskStore.serviceHistory → ServiceDeploymentContext → ConfiguredExecutor 注入所有正式節點；管理者說明讀自實例 service-context/&lt;target&gt;.json，不自動執行管理命令。
+服務目標的歷史背景由 TaskStore.serviceHistory → ServiceDeploymentContext → ConfiguredExecutor 注入所有正式節點；管理者說明讀自實例 service-context/&lt;target&gt;.json，不自動執行管理命令。service 節點交付成功時 FlowEngine 以 ServiceArtifacts 把部署檔存到 service-context/&lt;target&gt;.files/，下次執行 service 節點前補回工作區並提交。
 
 
 ### SSH 直連規格

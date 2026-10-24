@@ -106,6 +106,18 @@ operations 與角色工具白名單裡的 client 路徑是各實例的部署設�
 客體單次操作上限 1200 秒、client 等待 1500 秒，整個 SERVICE 節點仍受該節點 `timeoutSeconds` 限制（節點上限 3600 秒）。
 長作業與模型回合分開保存，見 [SSH 直連部署](direct-ssh-deployment.md#持久長作業恢復)。
 
+### 部署檔保存與還原
+
+service 節點通過完成閘門時（`ServiceArtifacts`），系統把本任務相對基準有變更、位於該節點 `writablePaths` 內的檔案
+（例如 agent 為 sandbox 目標寫的 `start.sh`／`health.sh`）保存到實例目錄 `$AI_TEAM_HOME/service-context/<target>.files/`
+（`manifest.json` 記錄來源任務、HEAD 與每檔 SHA256）。機密路徑（`.env*`、`.secrets`、`.ssh`、金鑰）不保存；超過 200 檔或 2 MiB 不保存並記稽核；
+這次沒有符合的變更就保留上一份。保存失敗只記稽核，不影響交付。
+
+下次同目標的 service 節點執行前，系統把保存的檔案補進工作區——**只補工作區沒有的路徑**，repo 已有的版本優先、不覆蓋；
+補進的檔案由系統提交（「還原前次部署檔（來源任務 #M）」），所以 restricted 目標要求的乾淨工作區照常成立。
+同時在角色提示加一段說明，請它先沿用、失敗再依新證據修正。manifest 或檔案雜湊不符時整份不還原。
+起因：服務任務完成後工作區會被啟動清理刪除，部署檔若只在工作區，下次就得重寫。
+
 ## 完成條件與證據限制
 
 `Gate.SERVICE` 要求：

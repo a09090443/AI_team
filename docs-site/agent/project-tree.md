@@ -174,6 +174,7 @@ agent_team/
 │   │   │   ├── FileComparison.java # 指定舊檔比對的計畫契約、路徑驗證與能力說明
 │   │   │   ├── OperationJobs.java   # 跨專案持久作業日誌、檢查點與明確取消
 │   │   │   ├── ServiceDelivery.java # 服務建置目標、可用性檢查與完成契約
+│   │   │   ├── ServiceArtifacts.java # 交付成功的部署檔保存到實例目錄、下次部署還原
 │   │   │   ├── ServiceDeploymentContext.java # 同目標部署歷史與非機密宿主恢復入口
 │   │   │   ├── ServiceSupport.java # 持久診斷等待、結案後證據與回覆檢查
 │   │   │   ├── OperationContract.java # 專案操作契約（operations）
@@ -254,6 +255,7 @@ agent_team/
 │   │   ├── agent/
 │   │   ├── flow/
 │   │   │   ├── OperationJobsTest.java # 跨專案作業日誌、來源綁定及取消
+│   │   │   ├── ServiceArtifactsTest.java # 部署檔保存排除機密、只補缺檔、竄改與超量
 │   │   │   └── ServiceSupportTest.java # 入口對應、對話回覆與交付閘門測試
 │   │   ├── runtime/
 │   │   │   ├── RuntimeTimedOutTest.java # 逾時型別與證據保存
@@ -363,6 +365,8 @@ agent_team/
 │   │   ├── restore.sh                # 還原到新目錄
 │   │   ├── stage-teams.sh            # 部署用 teams：來源配置疊上實例 team-overlay 並逐一靜態驗證
 │   │   ├── test-stage-teams.sh       # stage-teams 合併與擋停規則測試
+│   │   ├── workspace-check.sh        # 部署前後逐工作區比對（容許啟動清理刪除已結束任務）
+│   │   ├── test-workspace-check.sh   # workspace-check 比對規則測試
 │   │   ├── test-bootstrap.sh         # bootstrap fixture 測試
 │   │   └── test-linux-platform.sh    # 平台辨識 fixture 測試
 │   ├── deploy-orchestrator.sh        # 通用受控部署與六表逐列快照（隔離 JAR、src/main、teams＋實例 overlay）

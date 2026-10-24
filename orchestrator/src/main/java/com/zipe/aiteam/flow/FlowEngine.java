@@ -576,6 +576,7 @@ public class FlowEngine {
                 if (aborted(task)) return;
                 if (result == null && interruptRequests.containsKey(task.id()) && stopForInterrupt(task, flow)) return;
                 if (result == null) {
+                    if (node.gate() == Gate.SERVICE) restoreServiceArtifacts(task, flow);
                     collectServiceSupport(task,flow,runner);
                     if(aborted(task) || stopForInterrupt(task,flow))return;
                     try (var progress = new StageProgress(slack, store, task,
@@ -705,6 +706,7 @@ public class FlowEngine {
                     // auditScope 已核對限寫路徑；不讓 runtime 自行提交或把未提交成果當成完成。
                     List<String> dirty = workspaces.uncommittedPaths(task.id());
                     if (!dirty.isEmpty()) workspaces.commitPaths(task.id(), dirty, "任務 #" + task.id() + " 服務建置設定");
+                    saveServiceArtifacts(task, flow, node);
                 }
                 // 只有產出是「主張」的唯讀節點才需要這條規則；產物型節點的 commit 與測試結果
                 // 由下游獨立驗證再查一次。#1014 的 implementation 就是因為一個 for 迴圈被誤判。
@@ -2475,6 +2477,38 @@ public class FlowEngine {
             throw new IllegalStateException("診斷來源無法核對，保留原作業",e);
         }
     }
+    /** 交付成功的部署檔保存到實例目錄，下次同目標部署還原（ServiceArtifacts）；失敗只記稽核，不影響本次交付。 */
+    private void saveServiceArtifacts(Task task, FlowRun flow, Node node) {
+        if (props.homePath() == null) return;
+        try {
+            var saved = ServiceArtifacts.save(props.homePath(), flow.snapshot.definition().project().serviceTarget().name(),
+                    task.id(), workspaces.headSha(task.id()), workspaces.pathFor(task.id()),
+                    workspaces.changedPathsSinceBase(task.id()), node.writablePaths());
+            if (saved != null) audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY,
+                    "已保存本次部署檔供下次部署沿用：" + String.join("、", saved.files()));
+        } catch (Exception e) {
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_ERROR, "保存部署檔失敗（不影響本次交付）：" + e.getMessage());
+        }
+    }
+
+    /** 前次成功部署的部署檔補進工作區並由系統提交，讓 restricted 目標的乾淨工作區要求照常成立。 */
+    private void restoreServiceArtifacts(Task task, FlowRun flow) {
+        if (props.homePath() == null) return;
+        try {
+            var restored = ServiceArtifacts.restore(props.homePath(), flow.snapshot.definition().project().serviceTarget().name(),
+                    workspaces.pathFor(task.id()));
+            if (restored == null || restored.added().isEmpty()) return;
+            workspaces.commitPaths(task.id(), restored.added(),
+                    "任務 #" + task.id() + " 還原前次部署檔（來源任務 #" + restored.sourceTask() + "）");
+            flow.context = FlowContext.append(flow.context, ServiceArtifacts.notice(restored));
+            store.saveFlow(task.id(), flow);
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY,
+                    "已還原任務 #" + restored.sourceTask() + " 的部署檔：" + String.join("、", restored.added()));
+        } catch (Exception e) {
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_ERROR, "還原前次部署檔失敗，改由角色自行準備：" + e.getMessage());
+        }
+    }
+
     private void collectServiceSupport(Task task,FlowRun flow,Node node) {
         var target=flow.snapshot.definition().project().serviceTarget();
         if(target==null || !ServiceSupport.configured(props.homePath(),target.name()))return;
