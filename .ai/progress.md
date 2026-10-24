@@ -20,7 +20,8 @@
 - 已核對的文件：configurable-team、engineering-workflow、failure-reporting、review-gate、data-model、agent/configuration、agent/operations、agent/system-map、catalog、project-tree。已修正：以上全部（configurable-team 的兩條已知問題改寫為新行為）。docs build 通過。
 - 2026-10-24：commit e6050ae 並 push；部署前發現 monitor 啟動 2 秒就檢查會改動任務資料、觸發部署腳本回復，改為啟動 10 分鐘後首次檢查（13e3784）。Linux /home/agent/deploy-13e3784 check-source 通過、mvn clean verify 831 項 0 失敗，JAR fa240497…；使用者放行後 08:09 部署 bestpartner，見 deploy-2026-09-06-v2 同日段落。
 - 08:19 實測：monitor 標記 PR #1～#5 已合併、PR #6 開始同步（衝突檔正確），但同步輪重跑原計畫的受保護路徑分段改派，稽核把合併帶進來的 16 個檔案誤判越權而停下。修正 2a97bcc（同步輪不跑改派段＋回歸測試），Linux 832 項 0 失敗，08:32 部署（JAR f836e30c…）。#1056 由負責人結案。
-- 未做：#1055 續跑後的完整端對端（解衝突→驗證→審查→自動推回）。
+- 08:33 續跑因沿用改派段留下的 codex checkpoint 被跨引擎檢查擋下；修正 c3565f1，Linux 832 項 0 失敗，08:44 部署（JAR 77010962…）。
+- **真實端對端通過（08:46–09:15）**：續跑後 builder 解衝突→合併核對→獨立驗證→QA 驗收→審查→自動推回 PR #6（522c2a9→71bd7ad），全程無真人介入；全新 clone 核對與 dev 無衝突、無衝突標記、差異仍為原 PR 的 11 檔。
 
 ## 2026-10-23 #1056「修正 PR 衝突問題」分析（Claude Code，僅分析，未改程式／未動線上任務）
 

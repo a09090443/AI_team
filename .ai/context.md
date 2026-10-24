@@ -27,7 +27,7 @@
 
 ## 正在進行
 
-- **2026-10-24 已開 PR 衝突同步＋主 repo 先 fetch（Claude Code，最高優先）**：e6050ae＋13e3784＋2a97bcc 已 push；08:32 部署 bestpartner 修正版（JAR f836e30c…、PID 301330、備份 orchestrator-backup.PBlHgR，Linux 832 項 0 失敗）。首輪同步（08:19）因重跑改派段誤判越權停下，已修正。下一步：負責人在 #1055 按「續跑」，觀察解衝突→驗證→審查→自動推回 PR #6；#1056 已 ABORTED。/home/agent/prsync-build.j5Flph 是中途停掉的舊建置，可刪。
+- **2026-10-24 已開 PR 衝突同步＋主 repo 先 fetch（Claude Code）**：已部署 bestpartner（c3565f1，JAR 77010962…，PID 307850）並真實端對端通過：PR #6 自動同步後推回 71bd7ad，與 dev 無衝突。下一步：負責人在 GitHub 審核合併 PR #6；其他實例要開啟需另行部署與設定。/home/agent/prsync-build.j5Flph 可刪。
 
 - **2026-10-23 簡單任務效率五項修正（Claude Code，最高優先）**：commit 8269d27 已於 23:45～23:51 部署三個實例（JAR 5fc7db7b…，檢查全部通過）。下一步：以下一個小型任務對照 #1053～#1055 的耗時與停頓。細節見 progress 同日條目。
 
