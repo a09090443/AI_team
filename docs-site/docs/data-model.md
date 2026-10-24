@@ -251,7 +251,7 @@ v2 配置式流程的整份執行快照，對應 `com.zipe.aiteam.flow.FlowRun`�
 | `automaticHandoffKeys` | Set&lt;String&gt; | 已使用的事件證據鍵，防止同一受阻事件重複消耗事件額度 |
 | `automaticHandoffExtensionKeys` | Set&lt;String&gt; | 已使用的人工延長授權碼；綁定配置、受阻證據與 HEAD，永久保留以防重放 |
 | `workspaceReady` / `workspacePath` | boolean / String | 工作區是否已備妥、路徑 |
-| `context` | String | 滾動交接紀錄，預設空字串。上限 20000 字元，單筆事件上限 6000 字元；**超量時淘汰最舊的段落而不是截斷新內容**，並在開頭標示已淘汰。舊版以留頭截尾的 `clip` 累加，context 一旦飽和就永久凍結，之後的受阻報告與使用者補充都會被靜默丟棄（#1014） |
+| `context` | String | 滾動交接紀錄，預設空字串。上限 20000 字元，單筆事件上限 6000 字元；**超量時淘汰最舊的段落而不是截斷新內容**，並在開頭標示已淘汰。舊版以留頭截尾的 `clip` 累加，context 一旦飽和就永久凍結，之後的受阻報告與使用者補充都會被靜默丟棄 |
 | `lastBlockReason` | String | 上一次受阻原因，回報時附在訊息裡（截斷 4500 字元） |
 | `acceptanceOwner` | String | 需求／驗收負責人，來自 `task.requester_user_id`。所有核准都比對這個值 |
 | `ownerPublishBy` | String | 負責人以「開 PR」命令發布、但審查還沒跑時記下指令者；走到發布核准節點且檢查全過就直接發布。停下等人時清除。2026-10-08 起。null 也會寫出，所以新版存過的任務舊 JAR 都讀不了（回滾要注意） |
@@ -415,13 +415,13 @@ TeamDefinition.Project 新增選填 serviceTarget：name（目標名稱）與 ch
 舊報告缺此欄位仍可解析，但不從文字自動推測新的分段改派；舊快照需更新 schema／計畫或承接新任務。
 
 
-### 2026-10-19 部署脈絡（已部署 bestpartner）
+### 2026-10-19 部署脈絡
 
 stage_attempt 現在也供 TaskStore.serviceHistory 查詢同頻道、同目標 SERVICE 歷史報告（最近 12 筆，排除本任務）；以當時 flow_run 的節點 gate 核對，不把分流摘要當服務收據。未新增資料表或序列化欄位。
 
-## 工作區外的長作業 journal（2026-10-20 已部署 bestpartner）
+## 工作區外的長作業 journal（2026-10-20）
 
-本次不新增 SQLite table、Task.State 或 FlowRun 欄位。OperationJobs 讀取實例 AI_TEAM_HOME/operation-jobs/&lt;task&gt;/&lt;id&gt;.json；標準 workspaces 佈局下 Python executor 由 workspace 的 home 定位同一路徑。journal 在模型工作區外，由固定執行器原子保存；工作區 docs/docker/sit/.agent-service/ 的請求／收據是工具交付通道，不取代可信 journal。
+本次不新增 SQLite table、Task.State 或 FlowRun 欄位。OperationJobs 讀取實例 AI_TEAM_HOME/operation-jobs/&lt;task&gt;/&lt;id&gt;.json；標準 workspaces 佈局下 Python executor 由 workspace 的 home 定位同一路徑。journal 在模型工作區外，由固定執行器原子保存；工作區服務部署目錄（例如 docs/docker/sit/.agent-service/）的請求／收據是工具交付通道，不取代可信 journal。
 
 | journal 欄位 | 用途 |
 |---|---|
@@ -445,17 +445,17 @@ fingerprint 由作業 id、state、sourceHead、errorKind 組合計算 SHA256，
 
 取消要求另存 AI_TEAM_HOME/operation-cancellations/&lt;task&gt;/&lt;id&gt;.json，含 version、id、task、node、requested_at、reason=user_interrupt；只要求取消原 pending job。獨立 heartbeat 為 AI_TEAM_HOME/operation-executor-heartbeat。目標 root 在 /var/lib/ai-team-service/ 保存 id.request、id.source、id.running、id.cancel 與 id.json 等作業證據；不要把 agent journal 與目標收據當同一份資料。
 
-備份／換機須一併考量 journal、取消要求、原 task／flow_run、工作區 HEAD 與目標收據；只備份 SQLite 無法重建長作業證據，本文不宣稱現有備份腳本已自動涵蓋這些新目錄。此版本已部署 bestpartner，重啟／取消／晚到收據的所有真實故障組合尚未全面演練。
+備份／換機須一併考量 journal、取消要求、原 task／flow_run、工作區 HEAD 與目標收據；只備份 SQLite 無法重建長作業證據，本文不宣稱現有備份腳本已自動涵蓋這些新目錄。重啟／取消／晚到收據的所有真實故障組合尚未全面演練。
 
 
-## 服務追問診斷資料（已部署bestpartner，非DB schema變更）
+## 服務追問診斷資料（非DB schema變更）
 
 service-support/&lt;對話或service task&gt;/current.json是本次固定工具診斷：target、parent、observed_at、endpoints、healthy、repair_attempted、operations。endpoint含audience、url、probe_url、probe_origin、user_route_verified（Agent VM probe固定false）、http_status與healthy；operations保存受限SSH收據。health/diagnose/repair.json保存原id/action/target與result，repair另外持久attempts、最多兩次。
 
 dialogue-evidence/&lt;對話task&gt;/deployment-evidence.txt保存已結案來源清理時的歷史脈絡，附明確「非產品repository」說明；獨立.git只供runtime對話資料夾運作，不是原程式或其commit。沒有改Task/FlowRun欄位或原始schema。備份需包含service-support及service-context才能保存診斷與入口對應。
 
 
-### 持久診斷檢查點（已部署bestpartner）
+### 持久診斷檢查點
 
 新增非DB檔案service-support/<task>/job.json：version=1、task、parent、target、generation（transitions/visits/supplements，正式SERVICE另含來源HEAD及服務作業指紋）、started_at、deadline、updated_at、state（RUNNING/COMPLETED/FAILED）、phase。job.lock是Linux程序互斥；current.json新增task/generation，完成結果須匹配job身分與generation，進行中的舊結果不能當目前健康。repair-policy.json的fingerprint是diagnose證據SHA256，用於攔截相同證據下已失敗修復的原樣重試；原repair.json的ID/attempts仍是對帳與預算依據。沒有修改schema.sql或FlowRun序列化欄位。備份須包含以上檔案。
 

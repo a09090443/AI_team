@@ -157,8 +157,7 @@ opencode 的狀態散在兩處，只給一處會讓認證或 resume 其中一項
 **建置與部署**：隔離目錄 `opencode-build.TLQba7`，`mvn clean package`
 → `Tests run: 257, Failures: 0, Errors: 0, Skipped: 10`（其中 `OpenCodeRuntimeTest` 20/20，
 略過的 10 項是照舊的 opt-in 實機測試）。jar SHA256
-`3fb67dbc8b4f53efbd024fc544cdc95e2f300f5f425c7370a4540c42cbbbca64`，PID 75366，
-備份 `opencode-backup.WhXo1u`。部署前後 task／flow_run／checkpoint／stage_result 雜湊一致。
+`3fb67dbc8b4f53efbd024fc544cdc95e2f300f5f425c7370a4540c42cbbbca64`。部署前後 task／flow_run／checkpoint／stage_result 雜湊一致。
 
 **安裝**：`npm install --global --prefix ~/.local/node opencode-ai@1.18.19`，33 秒、3 個套件。
 `~/.local/node/bin/opencode` 是 symlink 指向 `…/opencode-ai/bin/opencode.exe` ——

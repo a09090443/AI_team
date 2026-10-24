@@ -2,10 +2,10 @@
 
 取代原先 Code Reviewer「不阻斷」策略。
 
-任務 #1010 的 reviewer 回報 bwrap 建立 `.agents` 時遇到唯讀檔案系統，
+起因：reviewer 回報 bwrap 建立 `.agents` 時遇到唯讀檔案系統，
 未取得 commit、diff 或程式碼；結果為 COMMENT、空 findings、LOW confidence。
 舊流程未檢查結果，且例外也會略過，因此錯誤進入 AWAIT_PR_APPROVAL。
-使用者隨後中止 #1010，log 未記錄發布，工作區仍保留。
+該任務後來由使用者中止，未發布。
 
 新報告必須提供 verification_status 與 blockers。只有 VERIFIED、
 HIGH／MEDIUM confidence、APPROVE／COMMENT、空 blockers、非空 checked，
@@ -29,7 +29,7 @@ HIGH／MEDIUM confidence、APPROVE／COMMENT、空 blockers、非空 checked，
 
 ## 審查收斂與建議（2026-09-26）
 
-#1019 連續 7 次審查都退回，且每次提出前一輪沒提過的新問題，幾乎都是「測試驗得不夠細」，而 ReviewGate 把任何 blocker 都視為不可發布。
+起因：一個任務連續 7 次審查都退回，且每次提出前一輪沒提過的新問題，幾乎都是「測試驗得不夠細」，而 ReviewGate 把任何 blocker 都視為不可發布。
 審查規則（`teams/prompts/review.md`）改為：
 - blockers 只放必須改的：產品行為錯誤、需求／驗收條件未實作、安全或資料風險、某驗收條件完全沒有測試或證據。
 - 測試強度不足列為 findings MEDIUM／LOW，不擋發布；不得要求核准計畫以外的額外組合。
@@ -43,7 +43,7 @@ ReviewGate 的硬性條件不變。規則是配置資產，只套用到新任務
 
 ## 審查等級限定三級（2026-10-06）
 
-bestpartner #1022 的審查結論是 APPROVE、沒有 blockers，但 findings 有一項 `INFO`（「資料庫類測試沒有核實」的提醒）。
+起因：審查結論是 APPROVE、沒有 blockers，但 findings 有一項 `INFO`（「資料庫類測試沒有核實」的提醒）。
 `ReviewGate` 只放行 MEDIUM／LOW，把 `INFO` 判為「Code Review 有 HIGH 或無法判定等級的問題」而擋下發布；
 負責人兩次選「接受保留並發布」「授權發布」都繞不過（核准不能覆蓋這道閘門），分流沒有可重派的節點，只能一再停下。
 原因是配置式審查 schema（`teams/schemas/review.json`）的 `severity` 只要求非空字串，提示詞也沒限定等級。
@@ -56,7 +56,7 @@ bestpartner #1022 的審查結論是 APPROVE、沒有 blockers，但 findings �
 
 ## 負責人命令開 PR 與放行提醒等級（2026-10-06）
 
-#1022 套不到上面的新規則（舊快照），流程內沒有路徑能開 PR。新增驗收負責人在 Slack 命令開 PR：
+舊快照的任務套不到上面的新規則，流程內沒有路徑能開 PR。新增驗收負責人在 Slack 命令開 PR：
 `開 PR #<id>`（或 `補充 #<id> 開 PR`）、停止訊息的「開 PR」按鈕、agent 選項 `action=publish` 都送同一串指令 `開 PR`，
 由 `FlowEngine.ownerPublish` 處理，判斷集中在 `OwnerPublish.evaluate`。
 
@@ -78,8 +78,8 @@ bestpartner #1022 的審查結論是 APPROVE、沒有 blockers，但 findings �
 
 ### 放行未核實事項、補跑審查（2026-10-08）
 
-bestpartner 的測試規範要求需要外部 API 金鑰、資料庫的情境一律標「無法核實」，`QaGate` 卻把任何 `uncertainties` 當成禁止發布，
-連負責人的 `開 PR` 也放行不了。#1029 驗收 7 個情境全數 PASS 仍開不了 PR，審查也因此從未執行。
+專案的測試規範可能要求需要外部 API 金鑰、資料庫的情境一律標「無法核實」，`QaGate` 卻把任何 `uncertainties` 當成禁止發布，
+連負責人的 `開 PR` 也放行不了：驗收情境全數 PASS 仍開不了 PR，審查也因此從未執行。
 
 - **可放行的驗收失敗**（`OwnerPublish.waivableUncertainties`）：把 `uncertainties` 清空後，驗收報告能通過 `FlowGates.blockingReason`
   （判定 PASS、`verify_passed`、逐情境 PASS 且有證據、沒有 HIGH、引用目前的需求基準與測試計畫）。任何情境 FAIL 或其他缺漏都不能放行。

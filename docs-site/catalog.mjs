@@ -23,7 +23,6 @@ export const categories = [
   { id: 'gates', label: '失敗、審查與額度', description: '失敗回報契約、發布阻擋、額度暫停與自動續跑。' },
   { id: 'runtime', label: 'Runtime 與沙箱契約', description: 'Codex／opencode CLI 參數、雙層沙箱、本機測試網路、模型指定。' },
   { id: 'decisions', label: '架構決策（ADR）', description: '受阻交接、受阻發現連續性、Backend／QA 角色決策。' },
-  { id: 'deploy', label: '部署紀錄', description: '既有 VM 的部署版本、雜湊與維運方式。' },
 ];
 
 export const docs = [
@@ -129,7 +128,7 @@ export const docs = [
     status: 'current',
     summary: 'Agent VM 直連目標、受限公鑰與固定操作；取代 Windows broker 的規格、一次性設定與未完成驗收。',
     readWhen: '設定 SSH 直連部署、管理公鑰與主機指紋，或排查部署通道。',
-    code: ['orchestrator/src/main/java/com/zipe/aiteam/flow/ServiceSupport.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/OperationJobs.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/FlowEngine.java', 'orchestrator/src/main/java/com/zipe/aiteam/runtime/RuntimeTimedOut.java', 'orchestrator/src/main/java/com/zipe/aiteam/sandbox/SandboxUnitCleanup.java', '.agents/skills/service-build/', 'orchestrator/teams/skills/service-build/', 'orchestrator/teams/prompts/service.md', 'orchestrator/teams/prompts/service-triage.md', 'orchestrator/teams/bestpartner.json'],
+    code: ['orchestrator/src/main/java/com/zipe/aiteam/flow/ServiceSupport.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/OperationJobs.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/FlowEngine.java', 'orchestrator/src/main/java/com/zipe/aiteam/runtime/RuntimeTimedOut.java', 'orchestrator/src/main/java/com/zipe/aiteam/sandbox/SandboxUnitCleanup.java', '.agents/skills/service-build/', 'orchestrator/teams/skills/service-build/', 'orchestrator/teams/prompts/service.md', 'orchestrator/teams/prompts/service-triage.md'],
   },
   {
     id: 'service-delivery',
@@ -302,13 +301,4 @@ export const docs = [
     code: ['orchestrator/schemas/impl-schema.json', 'orchestrator/src/main/java/com/zipe/aiteam/task/QaGate.java'],
   },
 
-  // 部署紀錄
-  {
-    id: 'deploy-2026-09-06-v2',
-    title: '2026-09-06 v2 部署',
-    category: 'deploy',
-    status: 'record',
-    summary: '既有 VM 以 team.env 啟用 v2 的版本雜湊、驗證證據、安全修正與維運方式。',
-    readWhen: '查既有 VM 的部署方式與 v2 啟用設定。',
-  },
 ];

@@ -51,10 +51,10 @@
   - 依使用者要求在 `~/.bashrc` 最前面加入工具鏈 PATH 區塊（原檔備份 `~/.bashrc.bak-ai-team`），非互動式 SSH 可直接找到
     claude／codex／java／mvn／node。
   - 證據保存在 VM 的 `~/rebuild-evidence/`（provision、cli-install、install-app、repo-verify 紀錄）。
-  - Slack：依使用者決定**沿用既有的 6 個 App**（未另建測試 App），新建公開測試頻道 `#ai-agents`（`C0C6ECHH44S`）並邀請 6 個 App；
+  - Slack：依使用者決定**沿用既有的 6 個 App**（未另建測試 App），新建公開測試頻道並邀請 6 個 App；
     白名單填使用者 member ID。12 個 token 由使用者本人執行指令，從舊 VM env.sh 經 stdin 匯入新 VM
     （`~/import-slack-tokens.sh`，只回報已填／空白，不輸出值）。
-  - 使用者本人完成 Claude（claude.ai 訂閱）與 Codex（ChatGPT）登入；preflight PASS（spring-starters 靜態配置驗證通過）。
+  - 使用者本人完成 Claude（claude.ai 訂閱）與 Codex（ChatGPT）登入；preflight PASS（團隊配置靜態驗證通過）。
   - 因共用 Slack App，先停舊 VM `AI` 的服務並 ACPI 關機（停前確認無執行中／排隊任務；舊 VM 原為 saved state，
     headless 開機時正式服務隨之恢復並曾重新連上 Slack）。
   - 新 VM `service.sh start`：0 ERROR，啟動 7.9 秒；沙箱越界寫入自檢、工具鏈自檢（java、mvn、node、npm、git、tar、mkdir）通過；
@@ -64,7 +64,7 @@
 
 - **2026-09-15**：既有 VM 全新隔離目錄完整 Maven package 289 項、0 失敗、10 項 opt-in 略過；
   AutomaticHandoff／FlowEngine 針對測試 37 項通過；check-source 通過。正式部署後自檢與五角色 Socket Mode 啟動通過，
-  部署前後主要 DB 表與 #1014 工作區雜湊一致。
+  部署前後主要 DB 表與既有任務工作區雜湊一致。
 - **2026-09-13 文件一致性修正**：INSTALL 補入原本漏掉的 `orchestrator/teams/` 打包、兩端 SHA256 比對、
   固定工具鏈 URL／checksum；env 範本與 preflight 統一 `AI_TEAM_CHANNEL_ID` 為必填；補上 Codex resume 選項位置的防復發檢查。
   應用測試 263 項（10 項 opt-in）。

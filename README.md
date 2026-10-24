@@ -116,7 +116,6 @@ v2 流程加入需求基準與追溯、前置契約與失效傳遞、系統獨�
 | 直接對角色提問 | [direct-agent-requests.md](docs-site/docs/direct-agent-requests.md) |
 | 失敗與發布閘門 | [failure-reporting.md](docs-site/docs/failure-reporting.md)、[review-gate.md](docs-site/docs/review-gate.md) |
 | Session 與用量 | [quota-continuation.md](docs-site/docs/quota-continuation.md) |
-| 現行 VM 部署實測 | [deploy-2026-09-06-v2.md](docs-site/docs/deploy-2026-09-06-v2.md) |
 
 ## 開發規範
 

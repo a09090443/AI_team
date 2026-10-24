@@ -49,7 +49,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 
 ## 團隊配置 JSON
 
-結構對所有專案相同；`orchestrator/teams/` 內附的配置可當範例，各自啟用的功能見[實例一覽](/docs/configurable-team#各專案實例的功能啟用狀態)。
+結構對所有專案相同；`orchestrator/teams/` 內附的配置可當範例，可用的功能開關見[功能開關一覽](/docs/configurable-team#功能開關一覽)。
 所有 prompt／schema 路徑必須在配置檔所在目錄內，跳脫或 symlink 指向外部會被拒絕。
 
 ```json
@@ -157,9 +157,7 @@ bash deploy/bootstrap/check-source.sh
 
 選填，null＝停用。欄位 `modelTimeoutRecoveries`（0～3）、`maxTimeoutSeconds`（0～3600）、`verificationContinuations`（0～3）、
 `requirementChangeOptions`、`channelCommandRouting`、`deferUnverifiable`（2026-10-23，缺欄位為 false）、
-`pullRequestSyncRounds`（0～3，缺欄位為 0）、`pullRequestSyncAutoPush`（缺欄位為 false）。各實例的啟用狀態見[實例一覽](/docs/configurable-team#各專案實例的功能啟用狀態)：
-- bestpartner 為 2／3600／2／true／true／true／2／true；
-- dynamic-api 與 spring-starters 為 0／0／0／false／false／true／0／false，只開延後驗收。
+`pullRequestSyncRounds`（0～3，缺欄位為 0）、`pullRequestSyncAutoPush`（缺欄位為 false）。各欄位可分別開關，只開部分欄位時其餘行為與未設定相同。
 
 可原地配置遷移。PR 衝突同步的兩個欄位讀**目前**配置（舊任務快照沒有），見 [已開 PR 的衝突同步](/docs/engineering-workflow#已開-pr-的衝突同步2026-10-23)。
 行為與邊界見 [失敗回報](/docs/failure-reporting)「管理者授權的自主恢復」一節。
@@ -195,11 +193,11 @@ plan 的 protected_path_changes 明列需跨 runtime 改派的檔案；不新增
 實例可放 service-context/&lt;target&gt;.json，提供不含機密的宿主程式、設定路徑、啟動指令與歷史收據索引；詳見 [服務建置](/docs/service-delivery)。此檔僅供說明，不增加操作權限。
 
 
-### 2026-10-19 SSH 直連規格（已啟用）
+### SSH 直連規格
 
-Agent VM 的 systemd 固定部署執行器已啟用，以 SSH 公鑰直連 dev VM；網路、公鑰、主機指紋、受限入口與 health 已實測，不需要 Windows broker。#1046 的舊 skill 快照須新任務承接；dev VM 曾 heartbeat 停止，經使用者核准重啟後已重新驗證健康與8088入口，當機根因待查。本輪未重部署產品或續跑 Slack。詳見 [直連部署](/docs/direct-ssh-deployment)。
+Agent VM 的 systemd 固定部署執行器以 SSH 公鑰直連目標 VM；網路、公鑰、主機指紋、受限入口與 health 已實測，不需要 Windows broker。舊 skill 快照的任務須新任務承接。詳見 [直連部署](/docs/direct-ssh-deployment)。
 
-## 長作業恢復的設定邊界（2026-10-20 已部署）
+## 長作業恢復的設定邊界（2026-10-20）
 
 AI_TEAM_RESUME_OPERATION_TASK 在一般 recoverOnStartup 之後讀取，只接受單一數字任務編號；限定配置流程、非角色對話、AWAIT_HUMAN、node=activeNode、乾淨工作區與有效同 HEAD journal。由中央佇列排 RESUME_QUEUED；不是套用新快照、重新核准計畫或核准 PR。管理者應先以固定 executor --reconcile 驗證原成功收據，用後清除變數；程式不會自動修改你的 env 檔。
 
@@ -207,7 +205,7 @@ AI_TEAM_RESUME_OPERATION_TASK 在一般 recoverOnStartup 之後讀取，只接�
 
 標準佈局下，Java 依 AI_TEAM_HOME、Python 依 workspace 的 home 定位 operation-jobs、operation-cancellations、operation-executor-heartbeat。journal 不在模型工作區；自訂 workspaces 位置時須核對兩者是否指向同一實例 home，不可假稱任意佈局已實測。可信 prepare/start 只在 task／activeNode／target／HEAD 相符時重用，health 仍須核對 start release。詳見[直連部署](/docs/direct-ssh-deployment)。
 
-此契約已部署；未修改 env.sh／team.env，正式恢復使用一次性啟動變數。實測範圍與任務結果見直連部署紀錄。
+正式恢復使用一次性啟動變數，不需修改 env.sh／team.env。
 
 
 ## 服務追問支援（已部署）

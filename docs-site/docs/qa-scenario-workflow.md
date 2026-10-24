@@ -18,7 +18,7 @@ QA 規劃在 Backend 與工作區建立之前，以需求和既有契約設計�
 （文件文字、設定值、檔案是否存在、表格結構）；程式行為仍須引用真正的操作，缺操作仍要受阻。驗收時 `command` 寫
 `inspect-content：<檔案>:<行或範圍>`、`evidence` 引用讀到的內容；系統同時在驗收上下文附上「本次已提交的變更檔案」
 （`WorkspaceManager.changedPathsSinceBase`，系統查得）。配置不能自行宣告同名操作（`OperationContract.INSPECT_CONTENT`）。
-起因：bestpartner #1010／#1011 只改一行文件，任何配置都寫不出「讀某檔某行」的固定指令，任務永遠卡在測試計畫。
+起因：只改一行文件的任務，任何配置都寫不出「讀某檔某行」的固定指令，任務永遠卡在測試計畫。
 
 **系統內建 `compare-unchanged-files`**（2026-10-10 實作，部署狀態見交接紀錄）：驗證指定既有檔案未被修改。
 計畫在情境的 `operation_ids` 引用此 ID，`unchanged_paths` 填 1–100 個明確的 repo 相對檔案路徑；
@@ -35,7 +35,7 @@ QA 使用系統收據 `fileComparison` 的逐檔結果、版本與紀錄路徑�
 發布前檢查收據綁定目前 HEAD、需求、配置、完整計畫、比較基準與路徑清單，並核對比對紀錄雜湊及內容。
 `baseline_revision` 是**需求內容雜湊**，不是 Git commit，不能拿來做程式差異比對。
 這項能力不會自動新增或刪除需求，也不保證模型列出的路徑完整；計畫覆蓋與程式審查仍須核對使用者要求。
-已配置且釘選 SHA256 的固定 bash 腳本可引用操作 ID；bestpartner 的 `harness-drift-scan` 已提供實作與驗收使用。
+已配置且釘選 SHA256 的固定 bash 腳本可引用操作 ID；例如 repo 的漂移掃描腳本可提供實作與驗收使用。
 未配置的腳本仍不可自行發明操作，見 [跨專案契約](cross-project-execution.md)。需求來源與驗收文字矛盾時先核對，不以刪除檢查掩蓋缺口。
 缺少必要需求決策時向 PM／提出者回報並停止。READY 只代表計畫就緒，不代表環境已驗證。
 
@@ -56,8 +56,8 @@ Code Reviewer 負責程式審查，並取得原測試計畫以查核驗收證據
 判斷在 `QaGate`：驗收報告的 `uncertainties` 非空就擋，不區分是不是需求基準早已約定「本環境無法核實」的項目。
 自動流程不會放行；2026-10-08 起驗收負責人可以用 `開 PR #<id>` 明確放行（其他條件必須全過），PR 說明會列出這些事項，
 審查還沒跑時先補跑審查，見 [review-gate](review-gate.md#放行未核實事項補跑審查2026-10-08)。
-在那之前 bestpartner 的 `testInstructions`（「需要 PostgreSQL、外部 API 金鑰的情境一律標為無法核實」）與這道閘門互相矛盾，
-#1029（langchain4j＋Quarkus 升級）驗收 7 個情境全數 PASS，仍以「QA 仍有未核實事項，禁止發布」停下，負責人只好結案。
+在那之前，專案 `testInstructions` 若要求「需要 PostgreSQL、外部 API 金鑰的情境一律標為無法核實」，就與這道閘門互相矛盾：
+驗收情境全數 PASS，仍以「QA 仍有未核實事項，禁止發布」停下，負責人只好結案。
 這是結構完整性檢查，不能單憑非空 log 字串證明 agent 沒有捏造證據；仍需獨立審查。
 
 額度暫停沿用 WAITING_QUOTA 與人工繼續：QA 規劃可續原 session，尚未建立實作工作區；

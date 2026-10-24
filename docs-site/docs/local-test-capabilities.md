@@ -26,7 +26,7 @@ Codex runtime、LIMITED 範圍、VERIFICATION 閘門、且宣告 node 工具。�
 （2026-10-04 起；原本其他節點缺目錄即失敗，見[配置式團隊](configurable-team.md)）。wildcard 不猜測缺少的目錄，
 路徑祖先或本身是 symlink 時停止。
 
-**localhost 的 HTTP 要帶 NO_PROXY（2026-10-23，#1055）**：Codex 啟用 network proxy 時，指令環境的 `NO_PROXY` 被清空、`NODE_USE_ENV_PROXY=1`，
+**localhost 的 HTTP 要帶 NO_PROXY（2026-10-23）**：Codex 啟用 network proxy 時，指令環境的 `NO_PROXY` 被清空、`NODE_USE_ENV_PROXY=1`，
 Node 的 fetch 連 `localhost`／`127.0.0.1` 也會送進 proxy 而被拒（`Network access to "localhost" was blocked`），Vitest 因此每輪中止；
 原始 TCP 不經 proxy，所以舊預檢抓不到。`shell_environment_policy` 會被 proxy 覆蓋，只有寫在指令本身的環境變數有效（codex-cli 0.156.1 於 VM 實測）。
 因此系統列給 `localTestNetwork` 節點的固定操作一律加上前綴 `env NO_PROXY=localhost,127.0.0.1,::1 no_proxy=localhost,127.0.0.1,::1`（`ConfiguredExecutor.LOOPBACK_NO_PROXY`），
@@ -40,7 +40,7 @@ Node 的 fetch 連 `localhost`／`127.0.0.1` 也會送進 proxy 而被拒（`Net
 
 QA 不在原始文件目錄執行 `npm ci`／build，而是把目前 HEAD 的文件與 llms 檔案複製到 `target/qa-docs`，
 在副本安裝與建置。整個 `target` 是可寫的產物範圍，可刪除並重建其下的 `node_modules`／`build`／`.docusaurus`；原始檔保持唯讀。
-以 zipe-spring-boot-starters 為例：
+以文件網站在 `doc-site/`、根目錄有 llms 檔的專案為例：
 
 ```sh
 mkdir -p target/qa-docs
@@ -55,7 +55,7 @@ cmp llms-full.txt target/qa-docs/doc-site/build/llms-full.txt
 Maven 使用 `-o`；QA 沙箱不為此開放套件站外連。依賴（含升級的新版本）由實作階段下載進共用快取：
 實作節點的 Claude Code 操作跑在只限檔案系統的 systemd 沙箱，可以連外，`mvn`／`gradle`／`npm ci` 會寫進團隊配置 `cachePaths` 宣告的快取。
 QA 遇到快取缺件時，代表實作階段沒有跑過對應建置，要退回實作補跑，不是維運問題。
-（2026-10-07 起兩個實例的 `testInstructions` 都已這樣寫；之前寫的是「快取不足須回報，不得下載」，導致 bestpartner #1025 升級任務停下等維運補快取。）
+（`testInstructions` 應這樣寫；若寫成「快取不足須回報，不得下載」，升級依賴的任務會停下等維運補快取。）
 
 ## 讓既有任務取得這項能力
 

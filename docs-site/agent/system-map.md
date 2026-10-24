@@ -132,7 +132,7 @@ agent 不能自行指定角色或跳到任意節點。
 
 | 路徑 | 內容 |
 |---|---|
-| `orchestrator/teams/*.json` | 團隊配置：每個專案實例一份，流程、角色、權限與操作都寫在配置裡，程式不含專案特例。現有實例與各自啟用的功能見[實例一覽](/docs/configurable-team#各專案實例的功能啟用狀態) |
+| `orchestrator/teams/*.json` | 團隊配置：每個專案實例一份，流程、角色、權限與操作都寫在配置裡，程式不含專案特例。可用的功能開關見[功能開關一覽](/docs/configurable-team#功能開關一覽) |
 | `orchestrator/teams/prompts/`、`schemas/` | 配置式節點的提示與輸出 schema |
 | `orchestrator/prompts/`、`orchestrator/schemas/` | legacy 五角色的提示與 schema |
 | `orchestrator/src/main/resources/schema.sql` | SQLite DDL 唯一來源 |
@@ -170,13 +170,13 @@ plan.protected_path_changes 由實作前置計畫提供，ProtectedPathFallback 
 服務目標的歷史背景由 TaskStore.serviceHistory → ServiceDeploymentContext → ConfiguredExecutor 注入所有正式節點；管理者說明讀自實例 service-context/&lt;target&gt;.json，不自動執行管理命令。
 
 
-### 2026-10-19 SSH 直連規格（已啟用）
+### SSH 直連規格
 
-Agent VM 的 systemd 固定部署執行器已啟用，以 SSH 公鑰直連 dev VM；網路、公鑰、主機指紋、受限入口與 health 已實測，不需要 Windows broker。#1046 的舊 skill 快照須新任務承接；dev VM 曾 heartbeat 停止，經使用者核准重啟後已重新驗證健康與8088入口，當機根因待查。本輪未重部署產品或續跑 Slack。詳見 [直連部署](/docs/direct-ssh-deployment)。
+Agent VM 的 systemd 固定部署執行器以 SSH 公鑰直連目標 VM；網路、公鑰、主機指紋、受限入口與 health 已實測，不需要 Windows broker。舊 skill 快照的任務須新任務承接。詳見 [直連部署](/docs/direct-ssh-deployment)。
 
 2026-10-20：SSH目標取消逐版來源manifest比對，沿用任務SERVICE授權、SSH身分與固定操作；SHA256只作傳輸完整性和收據綁定。新版本不需人工更新清單。
 
-## 持久長作業恢復分層（2026-10-20 已部署）
+## 持久長作業恢復分層（2026-10-20）
 
 client → Agent VM 固定 executor → SSH root 固定入口 → 獨立 systemd job／持久 result。角色仍只呼叫四個固定業務操作；result/status/cancel 由執行器管理，不給模型任意 SSH。Agent journal 與遠端 root 收據分開保存，SQLite 連線明確關閉，heartbeat 獨立於工作區。
 
@@ -184,7 +184,7 @@ OperationJobs 驗證 task／node／HEAD 與結果綁定；ConfiguredExecutor 注
 
 重啟恢復由 TaskOrchestrator.recoverOnStartup → FlowEngine.recover 經中央佇列排原 task；只涵蓋原執行中／RESUME_QUEUED、node=activeNode 且有有效同 HEAD journal 的配置任務。舊 AWAIT_HUMAN 另需管理者先核實收據，再以一次 AI_TEAM_RESUME_OPERATION_TASK 指定。真人中斷產生精確 job 取消要求，模型 timeout／SSH 斷線本身不取消。
 
-已驗證的同 HEAD prepare/start 可重用，health 綁當次 start release。未知結果不新建相同 start；#1048 已成功版本不得重建。流程細節與歷史證據見[直連部署](/docs/direct-ssh-deployment)。已部署；Linux cgroup與SSH背景health已實測。重啟、取消與所有故障組合的真實端對端尚未全面演練，見直連部署紀錄。
+已驗證的同 HEAD prepare/start 可重用，health 綁當次 start release。未知結果不新建相同 start，已成功的版本不得重建。流程細節見[直連部署](/docs/direct-ssh-deployment)。Linux cgroup 與 SSH 背景 health 已實測；重啟、取消與所有故障組合的真實端對端尚未全面演練。
 
 
 ### 服務追問與來源清理（已部署）

@@ -89,33 +89,32 @@ done
 
 ---
 
-## dynamic-api 實例的 App 組
+## 第二個以上實例的 App 組
 
 每個服務實例都要有自己的一組 App（不可共用 App-Level Token，原因見
-[同一台 VM 多個服務實例](configurable-team.md#同一台-vm-多個服務實例)）。dynamic-api 實例（2026-10-17 新增，配置
-`orchestrator/teams/dynamic-api.json`）的 manifest 放在 `deploy/agent-manifests/dynamic-api/`，依第 1 節逐一建立：
+[同一台 VM 多個服務實例](configurable-team.md#同一台-vm-多個服務實例)）。做法是為該實例複製一組 manifest 到
+`deploy/agent-manifests/<實例>/`，把 App 名稱與顯示名稱加上實例前綴（避免在 Slack 裡與其他實例同名），再依第 1 節逐一建立：
 
-| manifest | App 名稱 | App ID | Bot Token | App-Level Token |
-|---|---|---|---|---|
-| `main.yaml` | dynamic-api-ai-team | `A0C9VFTUHK5` | `SLACK_BOT_TOKEN` | `SLACK_APP_TOKEN` |
-| `pm.yaml` | DA PM Agent | `A0C9LBNDEA3` | `SLACK_BOT_TOKEN_PM` | `SLACK_APP_TOKEN_PM` |
-| `architecture.yaml` | DA Architecture Agent | `A0C9LBRTFHV` | `SLACK_BOT_TOKEN_ARCHITECTURE` | `SLACK_APP_TOKEN_ARCHITECTURE` |
-| `backend.yaml` | DA Backend Agent | `A0C9ZQ5CZAS` | `SLACK_BOT_TOKEN_BACKEND` | `SLACK_APP_TOKEN_BACKEND` |
-| `qa.yaml` | DA QA Agent | `A0C9ZQ8UQJ2` | `SLACK_BOT_TOKEN_QA` | `SLACK_APP_TOKEN_QA` |
-| `infrastructure.yaml` | DA Infrastructure Agent | `A0CA1HNBR4J` | `SLACK_BOT_TOKEN_INFRASTRUCTURE` | `SLACK_APP_TOKEN_INFRASTRUCTURE` |
-| `code-review.yaml` | DA Code Reviewer | `A0CA5E836JY` | `SLACK_BOT_TOKEN_CODE_REVIEW` | `SLACK_APP_TOKEN_CODE_REVIEW` |
+| manifest | Bot Token | App-Level Token |
+|---|---|---|
+| `main.yaml`（主 App） | `SLACK_BOT_TOKEN` | `SLACK_APP_TOKEN` |
+| `pm.yaml` | `SLACK_BOT_TOKEN_PM` | `SLACK_APP_TOKEN_PM` |
+| `architecture.yaml` | `SLACK_BOT_TOKEN_ARCHITECTURE` | `SLACK_APP_TOKEN_ARCHITECTURE` |
+| `backend.yaml` | `SLACK_BOT_TOKEN_BACKEND` | `SLACK_APP_TOKEN_BACKEND` |
+| `qa.yaml` | `SLACK_BOT_TOKEN_QA` | `SLACK_APP_TOKEN_QA` |
+| `infrastructure.yaml`（配置有此角色時） | `SLACK_BOT_TOKEN_INFRASTRUCTURE` | `SLACK_APP_TOKEN_INFRASTRUCTURE` |
+| `code-review.yaml` | `SLACK_BOT_TOKEN_CODE_REVIEW` | `SLACK_APP_TOKEN_CODE_REVIEW` |
 
 App ID 可直接開 `https://api.slack.com/apps/<App ID>`：Bot Token 在 **OAuth & Permissions**，App-Level Token 在
 **Basic Information → App-Level Tokens**（名稱 `socket`、scope `connections:write`）。
 
-- 變數名稱與其他實例相同，但填進 **dynamic-api 實例自己的** `env.sh`（例如 `~/ai-team-dynamic-api/env.sh`），值是這組 App 的 token。
-- `builder_codex`（分段改派段）的 `SLACK_BOT_TOKEN_BUILDER_CODEX` 不另建 App，留空時由主 App 以「Backend Agent」名稱代發。
-- 7 個 App 都要 `/invite` 進 `#dynamic-api`，`AI_TEAM_CHANNEL_ID` 填 `C0CA5CXTUHJ`（2026-10-17 建立的公開頻道）；不要把其他實例的 App 留在這個頻道。
-- 狀態（2026-10-17）：7 個 App 已由 manifest 建立、安裝到 AI-team 並邀請進 `#dynamic-api`（建立時在 Review 頁確認主 App 4 個、
-  角色 2 個 scope）。2026-10-18 使用者填入 14 個 token，auth.test 確認身分；服務啟動 log 顯示 6 個角色為獨立帳號、Socket Mode 皆啟動。直接 @ 與流程身分尚未以真實訊息驗證。
+- 變數名稱與其他實例相同，但填進**該實例自己的** `env.sh`（例如 `~/ai-team-<實例>/env.sh`），值是這組 App 的 token。
+- 分段改派段的 Codex 角色（例如 `builder_codex`）通常不另建 App，Bot Token 留空時由主 App 以原角色名稱代發。
+- 這組 App 都要 `/invite` 進該實例的頻道，`AI_TEAM_CHANNEL_ID` 填該頻道 ID；不要把其他實例的 App 留在這個頻道。
+- 建立後以 auth.test 確認身分，服務啟動 log 應顯示各角色為獨立帳號、Socket Mode 皆啟動；直接 @ 與流程身分仍要以真實訊息驗證。
 - 經驗：從瀏覽器自動化帶入 manifest 時，對 CodeMirror 呼叫 `setValue` 不會更新表單狀態，建立出來的是預設 Demo App
   （Slack 會提示 app 沒有 scope）；要以貼上方式（`replaceSelection(..., 'paste')`）帶入，並在 Review 頁核對 scope 數。
-  `?new_app=1&manifest_yaml=` 預填網址在 2026-10-17 未開啟建立視窗。
+  `?new_app=1&manifest_yaml=` 預填網址曾實測無法開啟建立視窗。
 
 ---
 
@@ -149,7 +148,7 @@ App ID 可直接開 `https://api.slack.com/apps/<App ID>`：Bot Token 在 **OAut
 
 ## 新增配置式角色
 
-以下流程適用於 `AI_TEAM_DEFINITION` 啟用的配置式團隊，例如在 bestpartner 新增 Infrastructure Agent。
+以下流程適用於 `AI_TEAM_DEFINITION` 啟用的配置式團隊，例如新增 Infrastructure Agent。
 角色能否執行，與是否有獨立 Slack App 是兩件事：沒有角色 App 時仍可執行節點，但由主 App 代發、無法直接 @ 該角色。
 
 **交付要求**：每次新增 Agent 的完成回報都必須附上本節實際套用後的 Slack 操作方式，包括 manifest 路徑、App 建立／安裝、

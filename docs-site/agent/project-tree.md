@@ -29,7 +29,7 @@ description: repo 每個目錄與檔案的用途，以及「我要找某樣東�
 | 沙箱怎麼包 systemd unit | `sandbox/ExecutionSandbox.java`、`sandbox/SandboxPolicy.java` |
 | 資料表 DDL | `orchestrator/src/main/resources/schema.sql` |
 | 環境變數如何讀取與驗證 | `config/AiTeamProperties.java`；範本 `deploy/env.sh.template` |
-| 目前使用的團隊配置與角色 prompt | `orchestrator/teams/spring-starters.json`（starters 實例）、`orchestrator/teams/bestpartner.json`（bestpartner 實例）、`orchestrator/teams/dynamic-api.json`（dynamic-api 實例）、`orchestrator/teams/prompts/` |
+| 團隊配置與角色 prompt | `orchestrator/teams/*.json`（每個專案實例一份）、`orchestrator/teams/prompts/` |
 | 新機安裝與維運腳本 | `deploy/bootstrap/` |
 | 文件原文 | `docs-site/docs/`（索引見[文件目錄](/catalog)） |
 
@@ -64,7 +64,7 @@ agent_team/
 │       ├── service-build/            # 可攜式服務建置 skill（來源／同步鏡像）
 │       │   ├── SKILL.md              # 環境檢查、建置、啟動與有界修復流程
 │       │   ├── references/
-│       │   │   ├── bestpartner.md    # 產品部署契約與檢查限制
+│       │   │   ├── bestpartner.md    # 範例專案的部署契約與檢查限制
 │       │   │   └── host-setup.md     # SSH／VirtualBox 主機設定與換機
 │       │   ├── assets/
 │       │   │   ├── host.example.json # 無憑證的主機設定範本
@@ -100,7 +100,7 @@ agent_team/
 │       ├── service-build/            # 可攜式服務建置 skill（來源／同步鏡像）
 │       │   ├── SKILL.md              # 環境檢查、建置、啟動與有界修復流程
 │       │   ├── references/
-│       │   │   ├── bestpartner.md    # 產品部署契約與檢查限制
+│       │   │   ├── bestpartner.md    # 範例專案的部署契約與檢查限制
 │       │   │   └── host-setup.md     # SSH／VirtualBox 主機設定與換機
 │       │   ├── assets/
 │       │   │   ├── host.example.json # 無憑證的主機設定範本
@@ -282,9 +282,9 @@ agent_team/
 │   │   │           ├── enroll.py
 │   │   │           ├── login.ps1         # Windows 遮蔽輸入與私人登入檔
 │   │   │           └── test_service_agent.py
-│   │   ├── spring-starters.json      # 現行正式配置：zipe-spring-boot-starters
-│   │   ├── bestpartner.json          # bestpartner 實例（Kotlin/Quarkus＋Gradle、Vue）；不跑需資料庫的測試
-│   │   ├── dynamic-api.json          # dynamic-api 實例（Spring Boot＋Gradle、Next.js）；未配置服務建置節點
+│   │   ├── spring-starters.json      # 專案實例配置（Maven 專案）
+│   │   ├── bestpartner.json          # 專案實例配置（Gradle＋前端，含服務建置路線）
+│   │   ├── dynamic-api.json          # 專案實例配置（Gradle＋Next.js）
 │   │   ├── node-web.json             # Node 專案範例配置
 │   │   ├── prompts/                  # 節點提示
 │   │   │   ├── shared.md             # 所有角色共用的工作分類、任務效率與協作規則（sharedInstructions）
@@ -328,17 +328,17 @@ agent_team/
 │   ├── README.md                     # deploy/ 目錄說明與 Slack 主 App 設定
 │   ├── env.sh.template               # 環境變數範本（複製為 ~/ai-team/env.sh，權限 600）
 │   ├── service-context/              # 管理者提供的非機密部署恢復說明範本
-│   │   └── bestpartner-dev.example.json # broker 入口與舊收據索引（需核對環境後安裝）
+│   │   └── bestpartner-dev.example.json # service-context 範本（需核對環境後安裝）
 │   ├── slack-app-manifest.yaml       # 主 App manifest
-│   ├── agent-manifests/              # 五個既有角色與 bestpartner Infrastructure Agent 的 Slack App manifest；子目錄為其他實例的 App 組
+│   ├── agent-manifests/              # 角色 Slack App manifest；子目錄為其他實例的 App 組
 │   │   ├── pm.yaml
 │   │   ├── architecture.yaml
 │   │   ├── backend.yaml
 │   │   ├── qa.yaml
 │   │   ├── code-review.yaml
-│   │   ├── infrastructure.yaml       # BP Infrastructure Agent：Preview 部署、健康檢查與清理身分
-│   │   └── dynamic-api/              # dynamic-api 實例的主 App 與 6 個「DA」角色 App
-│   │       ├── main.yaml             # 主 App dynamic-api-ai-team（按鈕與流程控制）
+│   │   ├── infrastructure.yaml       # Infrastructure Agent：部署、健康檢查與清理身分
+│   │   └── dynamic-api/              # 第二組實例的主 App 與角色 App
+│   │       ├── main.yaml             # 該實例的主 App（按鈕與流程控制）
 │   │       ├── pm.yaml
 │   │       ├── architecture.yaml
 │   │       ├── backend.yaml

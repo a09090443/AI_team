@@ -5,11 +5,9 @@
 
 ## 背景
 
-#1014 在 2026-09-15 12:57 再次停在 `AWAIT_HUMAN`。查核後確認不是崩潰、額度或部署問題：
+一個真實任務在 2026-09-15 再次停在 `AWAIT_HUMAN`。查核後確認不是崩潰、額度或部署問題：
 
-1. 2026-09-14 15:43 review 節點回報 `REQUEST_CHANGES`，CONFIRMED HIGH：
-   `MailServiceImpl.java:222` 以 `DeadlineSocketFactory` 覆蓋 SSLSocketFactory，
-   預設 `overall-timeout=30000` 下正常寄送必走該路徑，隱式 TLS（465）退化為明文 TCP。
+1. 前一天 review 節點回報 `REQUEST_CHANGES`，含一項 CONFIRMED HIGH 的安全缺陷（TLS 連線退化為明文）。
 2. 該報告是受阻結果，`FlowEngine` 只在 `block == null` 時寫入 `flow.receipts`，因此沒有保存。
 3. 受阻報告改 append 進 `flow.context`，但當時 `flow.context` 已達 20000 字元上限，
    而 `Diagnostics.clip` 是 `substring(0, max)` — 留頭截尾。`clip(已滿 + 新內容, 20000)`
@@ -53,13 +51,13 @@
 
 - `flow.blockedFindings` 是新欄位，舊快照缺該欄位時為空 Map，不影響既有任務解析。
 - 既有任務的 `flow.context` 若已飽和，新版第一次 append 就會淘汰最舊段落並開始正常運作，
-  但**先前被丟棄的內容不會回來**；#1014 的 review 發現需靠 `blockedFindings` 之外的方式重新取得。
+  但**先前被丟棄的內容不會回來**；當時被丟棄的 review 發現需靠 `blockedFindings` 之外的方式重新取得。
 - 角色工具變更會改變配置版本；既有任務使用凍結快照，不會自動獲得新工具。
 
 ## 追加（同日）：停止訊息必須說明下一步
 
 同一個缺陷類型還有第二個出口：系統知道自己在等哪一種決定、也知道有哪些人工指令可用，
-但停止訊息只寫「請補充具體答案」。#1014 因此在 `AWAIT_HUMAN` 停了三天 ——
+但停止訊息只寫「請補充具體答案」。同一任務因此在 `AWAIT_HUMAN` 停了三天 ——
 報告顯示「建議後續階段：human」，卻沒有任何地方告訴驗收負責人該送出什麼。
 
 `HumanOptions` 依目前流程狀態列出真的可用的選項（需求變更核准、測試計畫核准、
@@ -68,8 +66,8 @@
 
 ## 修正（2026-09-16）：ToolTrust 過寬，誤判了成功的實作
 
-原規則對所有節點套用，結果在 #1014 否決了一份真正成功的 implementation 報告：
-它已 `SUCCESS`、`verify_passed=true`、提交 `fa96f9f` 且工作區乾淨，只因為中途為了 SC-18 的
+原規則對所有節點套用，結果否決了一份真正成功的 implementation 報告：
+它已 `SUCCESS`、`verify_passed=true`、已提交且工作區乾淨，只因為中途為了某個情境的
 重複量測跑了一次 `for i in 1 2 3; do mvn ...; done`——開頭是 `for`，不符合 `Bash(mvn *)`。
 
 連鎖後果：報告只進 `blockedFindings` 沒進 `receipts` → verification 啟動前的前置契約檢查失敗 →
@@ -100,20 +98,14 @@
 `HumanOptions.resumeWillProceed` 同時要求：目前節點在本輪還沒做出判斷（沒有 receipt 也沒有
 受阻發現）、前置契約都有效、驗收節點的計畫核准仍有效，而且「未達上限」或「有受控恢復授權」或
 「同一受阻事件已登記且轉手站數未滿」。原樣重跑一個已經下過結論的節點只會得到同樣的結論——
-#1014 反覆送「續跑」卻原地踏步，正是沒有人知道什麼時候續跑有用。
+負責人反覆送「續跑」卻原地踏步，正是沒有人知道什麼時候續跑有用。
 可以直接繼續時，不再同時推「延長額度」按鈕，避免多做一步、白用一次授權。
 
 ## 修正（2026-10-10）：一般指令失敗不等於工具拒絕
 
-#1033 的 Codex `git diff --check` 因 SQL 檔尾空白行 exit 2，舊 ToolTrust 卻以
+Codex 的 `git diff --check` 因 SQL 檔尾空白行 exit 2，舊 ToolTrust 卻以
 `command_execution` 不在角色工具白名單為由作廢設計報告。
 現在 runtime 為這類事件標記 `COMMAND_FAILURE`，ToolTrust 不以它推論缺少工具權限；
 FlowEngine 保留 RUNTIME_CALL 稽核與下游 context 證據。真正拒絕仍維持原檢查，
-未解除的驗收失敗仍須 BLOCKED。bestpartner 設計受阻交 triage，沿用既有交接預算與前置閘門。
-本項程式與配置修正尚待部署，既有等待任務不會因此自動續跑。
-
-### 部署更新（2026-10-10）
-
-上述一般指令失敗分類與 bestpartner 設計受阻分流已部署。Linux 隔離完整建置 587 項、0 失敗、0 錯誤、11 略過；
-JAR SHA256 為 `2f44c42f4c6f470c465cadbc6c3371fc5fd93d9c41522604ead2f553c4e18ffd`。
-服務啟動與沙箱自檢通過，任務資料及工作區前後一致；#1033 仍等待人工，未自動續跑，模型實際修復結果仍待驗證。
+未解除的驗收失敗仍須 BLOCKED。設計受阻同時改交 triage，沿用既有交接預算與前置閘門。
+既有等待任務不會因此自動續跑；模型實際修復結果仍待驗證。

@@ -12,9 +12,10 @@
   現有的真人閘門（計畫核准、PR 核准、OAuth 等）在有同等安全的自動機制取代、且經使用者同意前維持不變。
 - **通用性**：專案特有的指令、路徑、工具與流程放在配置（`orchestrator/teams/`、manifest、team.env），
   不寫死在 Java 程式、共用 prompt 或 schema；新功能預設對所有團隊配置可用，以配置開關啟用，
-  並以至少一個非 bestpartner 的情境檢查是否仍成立。只為單一專案寫特例時，必須在決策紀錄說明理由。
-  文件也一樣：系統說明以功能與配置欄位描述，不以某個專案代表系統；各實例的啟用狀態只記在
-  [實例一覽](docs-site/docs/configurable-team.md#各專案實例的功能啟用狀態)，個別專案的取捨只寫在該實例的配置段落與部署紀錄。
+  並以至少一個與原需求不同專案的情境檢查是否仍成立。只為單一專案寫特例時，必須在決策紀錄說明理由。
+  文件也一樣：`docs-site` 只寫通用的功能、配置欄位與設計理由，不以某個專案代表系統，也不寫個人實例的紀錄
+  （專案名稱、任務編號、內網位址、部署版本與 PID）；舉例用 `<project>` 或內附的 node-web 範例。
+  各實例的啟用狀態、配置取捨與部署紀錄是個人環境的紀錄，記在本機 `.ai/records/`（不進版控）。
 - **任務效率**：派工的 agent（含 orchestrator 的分類／分流角色與開發本專案的 AI 工具）要先確認能否縮短任務執行時間：
   選最短可行路徑、合併同類工作、只跑與變更相關的驗證、重用仍有效的結果；
   不為簡單任務加入不必要的節點、角色、文件、測試或抽象化。精簡以不降低驗收標準與安全邊界為前提。
@@ -60,7 +61,7 @@
 - 資料表與欄位說明（含四張 JSON 快照表的結構）：[docs-site/docs/data-model.md](docs-site/docs/data-model.md)；
   DDL 以 `orchestrator/src/main/resources/schema.sql` 為準，改 schema 或 `FlowRun`／`Checkpoint`
   等序列化型別時要同步更新本文，並注意沒有遷移機制、舊資料解析失敗會直接拋錯。
-- 現行 VM 部署版本與實測：[docs-site/docs/deploy-2026-09-06-v2.md](docs-site/docs/deploy-2026-09-06-v2.md)；使用 team.env 啟用 v2，#1011 已依使用者確認清理。
+- 現行 VM 部署版本與實測：本機 `.ai/records/deploy-log.md`；各實例配置與啟用狀態：本機 `.ai/records/instances.md`（都不進版控，新機沒有時自行建立）。
 - 失敗與發布閘門：[docs-site/docs/failure-reporting.md](docs-site/docs/failure-reporting.md)、[docs-site/docs/review-gate.md](docs-site/docs/review-gate.md)。
 - Session 與用量：[docs-site/docs/quota-continuation.md](docs-site/docs/quota-continuation.md)。
 - 真人計畫核准與 Slack 按鈕：[docs-site/docs/plan-approval-buttons.md](docs-site/docs/plan-approval-buttons.md)；核准收據綁版本，計畫核准不等於核准 PR。

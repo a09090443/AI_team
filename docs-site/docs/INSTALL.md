@@ -191,13 +191,13 @@ loginctl show-user "$USER" -p Linger   # 應為 Linger=yes
 ```bash
 bash ~/ai-team-source/deploy/bootstrap/check-source.sh
 bash ~/ai-team-source/deploy/bootstrap/install-app.sh ~/ai-team-source ~/ai-team
-git clone --no-single-branch https://github.com/a09090443/zipe-spring-boot-starters.git ~/ai-team/zipe-spring-boot-starters
-git -C ~/ai-team/zipe-spring-boot-starters rev-parse --is-shallow-repository
-git -C ~/ai-team/zipe-spring-boot-starters rev-parse origin/develop
+git clone --no-single-branch <目標專案 repo URL> ~/ai-team/<repo 目錄>
+git -C ~/ai-team/<repo 目錄> rev-parse --is-shallow-repository
+git -C ~/ai-team/<repo 目錄> rev-parse origin/<基準分支>
 ```
 
 安裝器在獨立暫存目錄建置並跑完整測試，失敗不安裝；成功不啟動、不覆蓋已有目的地。
-repo 不可 shallow；基準分支在 env.sh 指定 develop。演練記錄基準 SHA。
+repo 不可 shallow；基準分支在 env.sh 指定。演練記錄基準 SHA。
 新 VM 自行下載 Maven 相依並執行 repo verify，記錄冷快取耗時，不複製舊 ~/.m2。
 
 ### 5.1 同一台 VM 再加一個專案（第二個服務實例）
@@ -211,7 +211,7 @@ git clone --no-single-branch <新專案 repo> ~/ai-team-web/<repo 目錄>
 ```
 
 - `~/ai-team-web/env.sh` 的 `AI_TEAM_HOME` 改指向新目錄（範本預設 `$HOME/ai-team`），`AI_TEAM_REPO` 指向新 clone。
-- `team.env` 設該專案的 `AI_TEAM_DEFINITION` 與 **`AI_TEAM_INSTANCE`**；原本的實例也要設（例如 `starters`），名稱不可重複。
+- `team.env` 設該專案的 `AI_TEAM_DEFINITION` 與 **`AI_TEAM_INSTANCE`**；原本的實例也要設（例如 `projecta`），名稱不可重複。
 - 另建一組 Slack App 與一個頻道；**不可與其他實例共用 App token**。
 - 啟停與查詢都用該目錄下的腳本（`bash ~/ai-team-web/service.sh status`）。
 - 第一次啟動後，頻道會出現「🔎 基準驗證」：系統在基準分支最新 commit 跑一次配置的驗證指令（2026-10-18 起，見 [基準驗證](baseline-verification.md)）。
@@ -219,7 +219,7 @@ git clone --no-single-branch <新專案 repo> ~/ai-team-web/<repo 目錄>
 
 ### 5.2 Gradle 專案的額外前置
 
-團隊配置以 `gradle` 為工具（例如 [bestpartner 配置](configurable-team.md#bestpartner-配置)）時，另外安裝與 repo
+團隊配置以 `gradle` 為工具（見 [配置經驗](configurable-team.md#配置經驗gradle前端與多-runtime-專案)）時，另外安裝與 repo
 gradlew 同版的官方 Gradle，並以官方 SHA256 核對（2026-10-03 新 VM 實測 8.14.5）：
 
 ```bash
@@ -287,8 +287,8 @@ Reviewer 預設 codex、AI_TEAM_CODE_REVIEW=on。不要關掉審查來取得綠�
 
 ### 6.1 真人核准閘門（必讀，否則全管線驗收會停住）
 
-`teams/spring-starters.json` 與 `teams/node-web.json` 目前都是 `"requirePlanApproval": true`。
-這代表 QA 驗收**不會自動派工**：系統會先把完整測試計畫貼進討論串，等需求／驗收負責人
+團隊配置設 `"requirePlanApproval": true`（例如內附的 `teams/node-web.json`）時，
+QA 驗收**不會自動派工**：系統會先把完整測試計畫貼進討論串，等需求／驗收負責人
 （`acceptanceOwner`，也就是開任務的人）核准之後才執行。照舊流程等它自己跑會一直等不到。
 
 在任務原討論串 @主機器人（不是只 tag 角色），指令都是「補充 #編號 …」的形式：
@@ -390,7 +390,7 @@ preflight 本機通過不代表登入或 Slack 成功。核對本次啟動 log�
 | 發布 | 只在隔離測試 repo、人工核准後測試推分支與開 PR |
 | 還原 | 停機備份→新目錄還原→DB integrity_check；登入／session 另驗證 |
 
-原 #1010 的 Reviewer bwrap/.agents 問題已於 2026-09-09 修正（派工前自動建立掛載點，
+Reviewer 的 bwrap/.agents 問題已於 2026-09-09 修正（派工前自動建立掛載點，
 含兩項實機雙層沙箱測試）；若在新機重現，代表跑的是舊版或掛載條件不同，
 必須記錄為阻擋並查明原因，不能宣稱全管線成功，也不可改用放寬沙箱的方式繞過。
 不用刻意耗光訂閱驗證 quota；先用模擬錯誤測試狀態機，標明未做真實耗盡測試。
@@ -428,7 +428,7 @@ Slack 相關問題見 [建立 Slack App](slack-agent-apps.md#疑難排解)。
 
 ## 服務執行工具（2026-10-21）
 
-安裝程式也放置 `teams/skills/service-build/scripts/client.py`。bestpartner 自動 SIT 建置依[服務建置](/docs/service-delivery)與[SSH直連部署](/docs/direct-ssh-deployment)，由Agent VM的固定執行器經已登錄SSH公鑰直接連到目標VM；日常部署不需Windows broker。一般Linux orchestrator安裝不會自行取得其他VM的登入權限，主機初次設定依上述文件完成。
+安裝程式也放置 `teams/skills/service-build/scripts/client.py`。啟用服務建置路線的團隊，自動 SIT 建置依[服務建置](/docs/service-delivery)與[SSH直連部署](/docs/direct-ssh-deployment)，由Agent VM的固定執行器經已登錄SSH公鑰直接連到目標VM；日常部署不需Windows broker。一般Linux orchestrator安裝不會自行取得其他VM的登入權限，主機初次設定依上述文件完成。
 
 
 ## 升級既有 Orchestrator

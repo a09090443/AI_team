@@ -41,7 +41,7 @@ Bot Token 控制發言身分；App-Level Token 用於 Socket Mode 與直接 ment
 
 ## 配置式團隊的結構
 
-從 `orchestrator/teams/spring-starters.json` 或 `node-web.json` 開始，連同其相對引用的 prompts／schemas 一起維護。
+從內附的 `orchestrator/teams/node-web.json` 範例開始，連同其相對引用的 prompts／schemas 一起維護。
 
 | 區塊 | 負責內容 |
 |---|---|

@@ -42,7 +42,7 @@ const sections = [
   {
     number: '06',
     title: '部署與驗證',
-    description: 'Linux 支援狀態、重建證據、部署紀錄與已知缺口。',
+    description: 'Linux 支援狀態、重建證據與已知缺口。',
     to: '/docs/rebuild-verification',
     meta: 'OPERATIONS',
   },
