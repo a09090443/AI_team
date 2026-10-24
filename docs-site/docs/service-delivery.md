@@ -81,6 +81,8 @@ operations 與角色工具白名單裡的 client 路徑是各實例的部署設�
   `/opt/ai-team-sandbox/<target>/runs/<job>/source` 執行，`AI_TEAM_SANDBOX_HOME=/opt/ai-team-sandbox/<target>/home` 跨次保留，只留最近 5 次執行。
 - 收據：成功 `EXEC_PASS`，失敗 `EXEC_FAILED: exit=N`，都附最後 30 行輸出（每行最多 300 字，遮蔽密碼／token 樣式）。
   沿用既有的 job ID、OPERATION_PENDING、取消與同 ID 對帳；同 ID 重送時工作樹內容不同會判為不確定，不會換內容重跑。
+  腳本或子程序被訊號中止（exit 137 或負值）時，收據多一行「疑似記憶體不足、目標總記憶體 N MiB」的提示，agent 應調低建置記憶體後重試；
+  作業程序本身被系統停掉而沒有收據時，回 `WORKER_DIED`（見 [SSH 直連部署](direct-ssh-deployment.md#執行方式與權限)）。
 - 檢查與完成條件不變：在團隊配置把 `serviceTarget.checks` 的操作 argv 設成 `client.py exec <部署目錄>/sandbox/start.sh`、
   `…/health.sh` 等，腳本由 agent 撰寫與修復。health 由 agent 撰寫，屬自陳證據；sandbox 目標應同時登錄 `access_endpoints`，
   讓系統從 Agent VM 獨立探測。

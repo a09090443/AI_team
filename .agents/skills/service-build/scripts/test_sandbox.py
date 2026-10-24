@@ -60,7 +60,7 @@ class GuestExecTests(unittest.TestCase):
             try:
                 guest.sandbox_exec(archive, "example-dev")
             finally:
-                printed = [call.args[0] for call in output.call_args_list]
+                printed = self.printed = [call.args[0] for call in output.call_args_list]
         return printed
 
     def test_success_reports_redacted_tail_and_pass_marker(self):
@@ -152,7 +152,8 @@ class TargetEntryTests(unittest.TestCase):
             same = payload([("ssh_target.py", b"A = 1\n"), ("guest.py", b"B = 1\n")])
             (lib / "entry").write_bytes(b"A = 1\n"); (lib / "guest.py").write_bytes(b"B = 1\n")
             c = json.loads(config.read_text())
-            with patch.object(target, "STATE", state), patch.object(target, "LIB", lib), patch.object(target, "ENTRY", lib / "entry"):
+            with patch.object(target, "STATE", state), patch.object(target, "LIB", lib), patch.object(target, "ENTRY", lib / "entry"), \
+                    patch.object(target, "unit_status", return_value={"LoadState": "loaded", "ActiveState": "active"}):
                 result = target.upgrade_entry("a" * 32, hashlib.sha256(same).hexdigest(), same, c)
                 self.assertTrue(result["evidence"][0].startswith("UPGRADE_UNCHANGED"))
                 newer = payload([("ssh_target.py", b"A = 2\n"), ("guest.py", b"B = 2\n")])
@@ -262,6 +263,69 @@ class ExecutorIntakeTests(unittest.TestCase):
             executor.maybe_upgrade(None, state)
             executor.maybe_upgrade(None, state)
             upgrade.assert_called_once()
+
+
+class DeadWorkerTests(unittest.TestCase):
+    """A unit killed without a receipt (e.g. OOM) must become a definite failure, not an endless wait."""
+    def context(self, tmp):
+        state, lib, config = TargetEntryTests().context(tmp, "sandbox")
+        job = "a" * 32
+        text = "ai-team-service sit exec " + job + " " + "b" * 64
+        (state / (job + ".request")).write_text(text)
+        (state / (job + ".running")).write_text("exec")
+        log = Path(tmp) / "sandbox/sit/runs" / job / "run.log"
+        log.parent.mkdir(parents=True)
+        log.write_text("BUILD started\nGradle daemon killed\n")
+        return state, lib, config, job
+
+    def query(self, tmp, unit):
+        state, lib, config, job = self.context(tmp)
+        with patch.dict("sys.modules", fcntl=fcntl), patch.object(target, "STATE", state), patch.object(target, "CONFIG", config), \
+                patch.object(target, "LIB", lib), patch.object(target.os, "geteuid", return_value=0, create=True), \
+                patch.object(guest, "SANDBOX_BASE", Path(tmp) / "sandbox"), patch.object(target, "unit_status", return_value=unit):
+            return target.execute("ai-team-service sit result " + job), state, job
+
+    def test_stopped_unit_without_receipt_reports_failure_with_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result, state, job = self.query(tmp, {"LoadState": "loaded", "ActiveState": "failed", "Result": "oom-kill"})
+            self.assertEqual((1, "FAILED", "WORKER_DIED"), (result["exit_code"], result["state"], result["error_kind"]))
+            self.assertIn("systemd result=oom-kill", result["evidence"][0])
+            self.assertIn("EXEC_OUTPUT: Gradle daemon killed", result["evidence"])
+            self.assertEqual(("exec", "b" * 64), (result["action"], result["source_sha256"]))
+            self.assertFalse((state / (job + ".running")).exists())
+            self.assertEqual(result, json.loads((state / (job + ".json")).read_text()))
+            direct.validate_receipt(result, {"target": "sit"}, "exec", job, "b" * 64)
+
+    def test_running_or_unknown_unit_is_never_declared_dead(self):
+        for unit in ({"LoadState": "loaded", "ActiveState": "active"}, None, {"LoadState": "not-found"}):
+            with self.subTest(unit=unit), tempfile.TemporaryDirectory() as tmp:
+                result, state, job = self.query(tmp, unit)
+                self.assertEqual(75, result["exit_code"])
+                self.assertTrue((state / (job + ".running")).exists())
+
+    def test_stale_marker_does_not_block_entry_upgrade(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state, lib, config, job = self.context(tmp)
+            newer = payload([("ssh_target.py", b"A = 2\n"), ("guest.py", b"B = 2\n")])
+            with patch.object(target, "STATE", state), patch.object(target, "LIB", lib), patch.object(target, "ENTRY", lib / "entry"):
+                with patch.object(target, "unit_status", return_value={"LoadState": "loaded", "ActiveState": "failed"}):
+                    result = target.upgrade_entry("c" * 32, hashlib.sha256(newer).hexdigest(), newer, json.loads(config.read_text()))
+                    self.assertTrue(result["evidence"][0].startswith("UPGRADE_PASS"))
+                (lib / "entry").write_bytes(b"old")
+                with patch.object(target, "unit_status", return_value={"LoadState": "loaded", "ActiveState": "active"}):
+                    result = target.upgrade_entry("c" * 32, hashlib.sha256(newer).hexdigest(), newer, json.loads(config.read_text()))
+                    self.assertEqual(75, result["exit_code"])
+
+
+class OomHintTests(unittest.TestCase):
+    def test_killed_script_explains_memory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = GuestExecTests()
+            with self.assertRaises(ValueError):
+                runner.run_exec(tmp, 137, ["Starting Gradle"])
+            hint = [x for x in runner.printed if "likely out of memory" in x]
+            self.assertEqual(1, len(hint))
+            self.assertTrue(runner.printed[-1].startswith("EXEC_FAILED: exit=137"))
 
 
 if __name__ == "__main__":

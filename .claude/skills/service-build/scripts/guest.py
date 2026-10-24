@@ -236,6 +236,15 @@ def sandbox_exec(archive_file, target):
             code = None
     for line in output_tail(log):
         print("EXEC_OUTPUT: " + line)
+    if code is not None and (code < 0 or code == 137):
+        try:
+            total = int(next(x.split()[1] for x in Path("/proc/meminfo").read_text().splitlines()
+                             if x.startswith("MemTotal:"))) // 1024
+        except (OSError, StopIteration, ValueError):
+            total = None
+        print("EXEC_OUTPUT: script or a child was killed by a signal (exit " + str(code) + "); likely out of memory"
+              + ("" if total is None else ", the target has " + str(total) + " MiB")
+              + "; cap build memory (JVM -Xmx, Gradle --max-workers, container --memory) or add swap")
     if code != 0:
         print("EXEC_FAILED: exit=" + ("timeout" if code is None else str(code)), flush=True)
         raise ValueError("sandbox script failed")

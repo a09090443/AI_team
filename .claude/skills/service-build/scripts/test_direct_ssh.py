@@ -355,7 +355,7 @@ class MockProtocolTests(unittest.TestCase):
         argv=run.call_args[0][0]
         self.assertEqual("systemd-run",argv[0])
         self.assertIn("--unit=ai-team-service-job-"+"a"*32+".service",argv)
-        for value in ("KillMode=control-group","TimeoutStopSec=30s","RuntimeMaxSec=7000s"):
+        for value in ("KillMode=control-group","TimeoutStopSec=30s","RuntimeMaxSec=7000s","OOMPolicy=continue"):
             self.assertIn("--property="+value,argv)
         self.assertTrue(any("ExecStopPost=" in x and x.endswith("cancel-build "+"a"*32) for x in argv))
         self.assertNotIn("start_new_session",run.call_args.kwargs)

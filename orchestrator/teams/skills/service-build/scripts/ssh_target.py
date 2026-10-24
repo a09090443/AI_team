@@ -65,7 +65,7 @@ def upgrade_entry(job, digest, data, config):
     installed = {"ssh_target.py": ENTRY, "guest.py": LIB / "guest.py"}
     if all(path.is_file() and path.read_bytes() == files[name] for name, path in installed.items()):
         return dict(result, exit_code=0, evidence=["UPGRADE_UNCHANGED: installed entry already matches"])
-    if any(STATE.glob("*.running")):
+    if any(unit_active(unit_status(p.name[:-len(".running")])) for p in STATE.glob("*.running")):
         return dict(result, exit_code=75, state="DEFERRED", evidence=["Upgrade deferred until running operations finish"])
     for name, path in installed.items():
         fd, temp = tempfile.mkstemp(dir=path.parent, prefix=".upgrade-")
@@ -122,11 +122,37 @@ def spawn_worker(text, job):
     proc = subprocess.run(["systemd-run","--quiet","--unit="+unit_name(job),
             "--property=KillMode=control-group","--property=TimeoutStopSec=30s",
             "--property=RuntimeMaxSec=7000s",
+            # An OOM kill must stop only the offending process; the worker still has to write the receipt.
+            "--property=OOMPolicy=continue",
             "--property=ExecStopPost=/usr/bin/python3 "+str(LIB/"guest.py")+" cancel-build "+job,
             "/usr/bin/python3",str(Path(__file__).resolve()),"--worker",text],
             stdin=subprocess.DEVNULL,capture_output=True,timeout=20)
     if proc.returncode:
         raise OSError("systemd job launch not confirmed")
+
+
+def unit_active(status):
+    # Unknown systemd state counts as active: never assume a worker is gone without evidence.
+    return status is None or status.get("ActiveState") in {"active","activating","deactivating"}
+
+
+def worker_died(job, status, config):
+    """The unit stopped without a receipt (e.g. killed with its job): report a definite failure instead of waiting forever."""
+    accepted = STATE / (job+".request")
+    action, _, digest = request(accepted.read_text(), config["target"])
+    evidence = ["Target worker stopped without a receipt; systemd result=" + str(status.get("Result"))
+                + "; service data retained; inspect the target and run a new operation"]
+    if action == "exec":
+        sys.path.insert(0, str(LIB))
+        import guest
+        log = guest.SANDBOX_BASE / config["target"] / "runs" / job / "run.log"
+        if log.is_file() and not log.is_symlink():
+            evidence += ["EXEC_OUTPUT: " + line for line in guest.output_tail(log)]
+    result = dict(id=job,target=config["target"],action=action,source_sha256=digest,completed=int(time.time()),
+                  exit_code=1,state="FAILED",error_kind="WORKER_DIED",evidence=evidence)
+    atomic_record(STATE / (job+".json"), result)
+    (STATE / (job+".running")).unlink(missing_ok=True)
+    return result
 
 
 def cleanup_build(job):
@@ -204,6 +230,9 @@ def execute(text):
             if not accepted.exists() and not (STATE/(job+".running")).exists():
                 return dict(id=job,target=c["target"],state="UNKNOWN",exit_code=75)
             status = unit_status(job)
+            if (status and status.get("LoadState") == "loaded" and not unit_active(status) and accepted.exists()
+                    and (STATE/(job+".running")).exists() and not (STATE/(job+".cancel")).exists()):
+                return worker_died(job, status, c)
             state = "RUNNING" if status and status.get("ActiveState") in {"active","activating","deactivating"} else "UNCERTAIN"
             if (status and status.get("LoadState")=="not-found" and not (STATE/(job+".running")).exists()
                     and not (STATE/(job+".cancel")).exists()):

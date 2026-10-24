@@ -26,6 +26,8 @@ agent 使用已提交且乾淨的工作區自行 prepare、start、health 與修
 
 請求 ID、target、action、來源 digest 必須與收據完全相符；成功還須有對應完成標記與整數結束碼。
 相同 ID 已完成就取回收據，不重建；不確定中斷保留 running 標記與原請求。
+目標 job unit 以 `OOMPolicy=continue` 執行：記憶體不足時只停掉吃爆的程序，記錄程序照常寫回收據。若 systemd 已確認 unit 停止（failed／inactive）卻沒有收據，
+查詢結果時改記為 `FAILED`／`WORKER_DIED`（附 systemd 結果，exec 另附最後 30 行輸出）並清除 running 標記，不再無限等待；unit 狀態不明或仍在執行時照舊回不確定。
 舊 Windows worker 已接單但沒有收據時不能直接換通道重做，須核對舊現場。
 歷史成功只作背景，本次需實際啟動與健康檢查；回報列程式／服務名稱、版本、目標、網址和限制。
 
@@ -55,7 +57,7 @@ start 封裝前會預檢版控路徑：缺件回 `SOURCE_MISSING_PATHS`，未提
 - `exec`：只由 Agent VM 執行器送出，內容是 agent 腳本與工作樹 tar（帶 SHA256）。目標端核對 `mode`、digest 與 tar 結構後，照既有 job 機制
   以獨立 systemd unit 執行；`restricted` 目標一律回 `SANDBOX_NOT_ENABLED`。
 - `upgrade`：Agent VM 直連設定也寫 `"mode": "sandbox"` 時，`ai-team-ssh-deploy.service` 啟動後與每 10 分鐘把本機 skill 的
-  `ssh_target.py`、`guest.py` 送到目標。目標先編譯檢查，內容相同回 `UPGRADE_UNCHANGED`；有作業執行中時延後；否則原子替換固定入口與 guest。
+  `ssh_target.py`、`guest.py` 送到目標。目標先編譯檢查，內容相同回 `UPGRADE_UNCHANGED`；有 unit 仍在執行的作業時延後（已停止的殘留標記不會擋升級）；否則原子替換固定入口與 guest。
   journal 會出現 `ENTRY_UPGRADE: …`。所以部署新版 orchestrator 並重啟 `ai-team-ssh-deploy.service` 後，沙箱目標的入口自動跟上，不需要再登入目標。
 
 把既有目標轉成 sandbox：在服務配置加 `"mode": "sandbox"`（原 service 設定可保留，固定操作照舊可用），由管理者**最後一次**重跑
