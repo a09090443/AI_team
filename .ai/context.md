@@ -27,7 +27,7 @@
 
 ## 正在進行
 
-- **2026-10-23 已開 PR 衝突同步＋主 repo 先 fetch（Claude Code，最高優先）**：來源完成、未 commit／未部署（細節見 progress 同日條目、decisions）。Linux 隔離建置 /home/agent/prsync-build.j5Flph。下一步：commit；部署 bestpartner 需使用者同意；部署後中止 #1056，以 PR #6（任務 1055，衝突檔 docs-site/docs/getting-started/installation.md）做真實端對端。
+- **2026-10-24 已開 PR 衝突同步＋主 repo 先 fetch（Claude Code，最高優先）**：e6050ae＋13e3784 已 push，08:09 部署 bestpartner（JAR fa240497…、PID 293718、備份 orchestrator-backup.qxRdKk，Linux 831 項 0 失敗）。下一步：觀察 PR #6（任務 1055，衝突檔 docs-site/docs/getting-started/installation.md）由 monitor 自動同步的真實端對端；#1056 待使用者同意後中止。/home/agent/prsync-build.j5Flph 是中途停掉的舊建置，可刪。
 
 - **2026-10-23 簡單任務效率五項修正（Claude Code，最高優先）**：commit 8269d27 已於 23:45～23:51 部署三個實例（JAR 5fc7db7b…，檢查全部通過）。下一步：以下一個小型任務對照 #1053～#1055 的耗時與停頓。細節見 progress 同日條目。
 

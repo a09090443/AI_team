@@ -2304,6 +2304,24 @@ class FlowEngineTest {
         verify(slack, times(1)).post(any(), eq("c"), eq("t"), contains("GitHub 已確認 PR 不再衝突"));
     }
 
+    @Test void syncRoundSkipsTheProtectedPathDelegationOfTheOriginalPlan() throws Exception {
+        // #1055 同步第 1 輪：原計畫的受保護檔案改派段又跑一次，稽核把合併帶進來的基準變更算成越權。
+        mode = "protectedRule";
+        enableProtectedPathFallback();
+        when(workspace.uncommittedPaths("42")).thenReturn(List.of(".claude/rules/api-endpoints.md"), List.of());
+        when(workspace.auditPaths(eq("42"), anyString())).thenReturn(List.of(".claude/rules/api-endpoints.md"), List.of());
+        String published = publishedAndSyncEnabled(true).publishedHead;   // 系統代為提交改派段後的 commit
+        when(publisher.status(PR_URL)).thenReturn(new PullRequestPublisher.PullRequestState(1, "open", false, false, "dirty", "feature/task42", published, "main"));
+        when(workspace.mergeBase(eq("42"), any(), eq("main"), eq(published))).thenAnswer(c -> {
+            workspaceHead = "merged"; return new WorkspaceManager.BaseMerge(SYNC_BASE, List.of("README.md"), false); });
+        when(publisher.update("42", "feature/task42", PR_URL, published)).thenReturn(new PullRequestPublisher.Result("feature/task42", PR_URL, 1));
+        List<Runnable> jobs = new ArrayList<>();
+        engine.checkPullRequest(task, null, jobs::add);
+        jobs.getFirst().run();
+        assertThat(calls).contains("implementation:builder").doesNotContain("implementation:builder_codex");
+        verify(publisher).update("42", "feature/task42", PR_URL, published);
+    }
+
     @Test void syncWithoutAutoPushWaitsForApprovalAndThenUpdatesInsteadOfOpeningANewPr() throws Exception {
         publishedAndSyncEnabled(false);
         List<Runnable> jobs = new ArrayList<>();
