@@ -148,7 +148,7 @@ opencode 的狀態散在兩處，只給一處會讓認證或 resume 其中一項
 | `orchestrator/src/main` 全量編譯（javac，依賴取自既有 fat jar） | 通過 |
 | 以實錄 JSONL 跑 `OpenCodeRuntime.parse()`（純文字／含工具／錯誤三種） | 15 項全通過 |
 | `OpenCodeRuntimeTest`（JUnit） | 通過（在 VM 上跑，20 項）—— 見第七節 |
-| `deploy/bootstrap/check-source.sh` | 見 `.ai/progress.md` 當次紀錄 |
+| `deploy/bootstrap/check-source.sh` | 見 `.ai/archive/progress-2026-09.md` 當次紀錄 |
 
 ---
 

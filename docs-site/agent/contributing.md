@@ -10,9 +10,12 @@ description: agent 在本 repo 修改程式、配置或文件時必須遵守的�
 
 ## 開工與收尾
 
-- 開工先讀 `.ai/context.md`（當前工作）與 `.ai/progress.md`（進度），不要重問已寫在裡面的脈絡。
-- 完成一個工作單位 → 更新 `.ai/progress.md`；做出架構或選型決策 → 追加 `.ai/decisions.md`（不覆蓋舊條目）；
-  中斷或換手 → 更新 `.ai/context.md`。Codex 與 Claude Code 的 session 不互通，這三份檔案是唯一交接面。
+- 開工先讀 `.ai/context.md`（目前狀態）與 `.ai/progress.md`（近期進度），`.ai/decisions.md` 只看開頭索引；不要重問已寫在裡面的脈絡。
+- 完成一個工作單位 → 在 `.ai/progress.md` 最上方新增條目；做出架構或選型決策 → 追加 `.ai/decisions.md`（不覆蓋舊條目）；
+  中斷或換手 → **覆寫** `.ai/context.md` 成最新狀態。各工具的 session 不互通，這三份檔案是唯一交接面。
+- 保存上限（`npm run build` 前檢查）：context 60 行、progress 300 行、decisions 索引需與條目一致。
+  超過或索引過期時執行 `node docs-site/scripts/check-handoff.mjs --fix`：舊進度依月份移到 `.ai/archive/`、重產決策索引；
+  context 超過上限需自行改寫。歸檔只供 grep 查詢，開場不讀。
 - 回應與 commit 使用台灣繁體中文，格式 `<類型>(<範圍>): <主旨>`，類型如 `新增`、`修復`、`重構`、`文件`、`設定`。
 
 ## 改哪裡

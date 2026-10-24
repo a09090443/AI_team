@@ -98,7 +98,7 @@ App-Level Token 留空**：發言與交接 tag 使用同一個角色身分，不
 （事件會送到持有 App-Level Token 的第一個實例，它只記錄「忽略非指定頻道」後丟棄）。角色 App 要另外邀請進第二個頻道。
 **不可**在兩個實例填同一個 App-Level Token，否則 Slack 會把事件分給任一條連線。
 
-**驗證狀態**：unit 命名、glob 互不配對與 preflight 檢查有程式測試與 VM 實測紀錄（見 `.ai/progress.md` 2026-10-03）；
+**驗證狀態**：unit 命名、glob 互不配對與 preflight 檢查有程式測試與 VM 實測紀錄（見 `.ai/archive/progress-2026-10.md` 2026-10-03）；
 2026-10-03 已在同一台 VM 同時啟動 starters 與 bestpartner 兩個實例（各自 0 ERROR、自檢 unit 帶各自字首、443 連線分屬各自 PID）。
 **兩個實例的真實 Slack 端對端（提需求→PR）尚未驗證**。
 

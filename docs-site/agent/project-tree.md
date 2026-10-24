@@ -17,7 +17,7 @@ description: repo 每個目錄與檔案的用途，以及「我要找某樣東�
 |---|---|
 | 專案規範、agent 必讀規則 | `AGENTS.md` |
 | 共用 skills、MCP 設定 | `.agents/`（說明見 [AI 工具設定](ai-tools.md)） |
-| 目前進行中的工作、進度、決策 | `.ai/context.md`、`.ai/progress.md`、`.ai/decisions.md` |
+| 目前進行中的工作、進度、決策 | `.ai/context.md`、`.ai/progress.md`、`.ai/decisions.md`（舊紀錄在 `.ai/archive/`） |
 | Slack 指令怎麼被解析 | `orchestrator/src/main/java/com/zipe/aiteam/slack/SlackListener.java` |
 | 按鈕版面與 action_id | `slack/SlackBlocks.java`、`slack/HumanGate.java`、`slack/HumanInput.java`、`slack/PlanReview.java`、`slack/SpinoffButtons.java` |
 | 配置式流程怎麼走、停止與承接 | `flow/FlowEngine.java`、`flow/FlowLimits.java` |
@@ -127,9 +127,12 @@ agent_team/
 ├── .mcp.json                         # 產生檔：Claude Code MCP
 ├── opencode.json                     # 產生檔：opencode MCP
 ├── .ai/                              # 跨工具交接紀錄；給人與 agent 看，不是執行設定
-│   ├── context.md                    # 當前工作、卡關、換手資訊
-│   ├── progress.md                   # 工作進度（由新到舊）
-│   └── decisions.md                  # 架構與選型決策（只追加）
+│   ├── context.md                    # 目前狀態（覆寫，上限 60 行）
+│   ├── progress.md                   # 近期工作進度（由新到舊，上限 300 行）
+│   ├── decisions.md                  # 架構與選型決策（只追加，開頭有索引）
+│   └── archive/                      # 移出主檔的舊紀錄，只供查詢、開場不讀
+│       ├── context-2026-10-24.md     # 改為覆寫前的舊版 context.md
+│       └── progress-*.md             # 依月份（YYYY-MM）歸檔的 progress 條目
 ├── .vscode/
 │   ├── settings.json                 # 編輯器設定；chat.useAgentsMdFile 讓 Copilot 讀 AGENTS.md
 │   └── mcp.json                      # 產生檔：VS Code Copilot MCP
@@ -412,7 +415,8 @@ agent_team/
     │   └── llms-txt.mjs              # build 後產生 llms.txt、llms-full.txt 與 .md 原文
     ├── scripts/
     │   ├── check-public-output.mjs   # 發布前掃描憑證樣式與內部產物
-    │   └── check-catalog.mjs         # 檢查文件目錄與目錄樹是否與實際檔案一致
+    │   ├── check-catalog.mjs         # 檢查文件目錄與目錄樹是否與實際檔案一致
+    │   └── check-handoff.mjs         # 檢查 .ai 交接檔上限與索引；--fix 歸檔舊進度、重產索引
     └── src/
         ├── css/
         │   ├── custom.css            # 內部站樣式

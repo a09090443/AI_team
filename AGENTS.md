@@ -23,10 +23,15 @@
 - 回應與 commit 使用台灣繁體中文；commit 格式遵循使用者提供的全域規範。
 - **本檔是所有 AI 工具的唯一規則來源**（Codex、Claude Code、Cursor、opencode、Copilot、Gemini CLI 等）。
   `CLAUDE.md` 只含 `@AGENTS.md` 一行，不得在其他工具專屬檔案另寫規則；skills 與 MCP 的單一來源見下方「AI 工具設定」。
-- **跨工具交接**：每個 session 開場先讀 `.ai/context.md`（當前工作）、`.ai/progress.md`（進度），
-  再依「文件優先」找到相關文件，之後才動手；不要重問已寫在裡面的脈絡。
-  完成工作單位更新 `.ai/progress.md`，做出架構或選型決策追加 `.ai/decisions.md`（不覆蓋舊條目），
-  中斷、卡關或換手更新 `.ai/context.md`。各工具的對話 session 不互通，這三份檔案是唯一的交接面。
+- **跨工具交接**：每個 session 開場先讀 `.ai/context.md`（當前工作）、`.ai/progress.md`（近期進度），
+  再依「文件優先」找到相關文件，之後才動手；不要重問已寫在裡面的脈絡。`.ai/decisions.md` 開場只看開頭索引，需要時再讀對應條目。
+  各工具的對話 session 不互通，這三份檔案是唯一的交接面。保存規則（`docs-site` build 會檢查）：
+  - `context.md` **覆寫**：只寫現在的狀態、進行中工作、待處理事項、已知未解與環境備忘，上限 60 行；
+    中斷、卡關或換手時改寫成最新狀態，已完成的移到 progress，不在這裡累積流水帳（舊版查 git 歷史）。
+  - `progress.md` 完成工作單位時在**最上方**新增條目（`## YYYY-MM-DD 標題`），每則盡量 10 行內；主檔上限 300 行，
+    超過時執行 `node docs-site/scripts/check-handoff.mjs --fix`，最舊日期的條目會整天移到 `.ai/archive/progress-YYYY-MM.md`。
+    歸檔只供查詢（grep），開場不讀；文件引用舊紀錄時寫歸檔路徑。
+  - `decisions.md` 做出架構或選型決策時追加條目（不覆蓋舊條目，保留全文），再執行同一指令重產開頭索引。
 - `.ai/` 是給人與 agent 看的交接紀錄，不是 orchestrator 執行時讀的設定；orchestrator 給下游 agent 的規範在
   `orchestrator/teams/prompts/`（配置式）與 `orchestrator/prompts/`（legacy），不是本檔。
 - 大範圍修改先提出計畫讓使用者確認再實作（有 plan mode 的工具使用 plan mode）。
@@ -128,8 +133,10 @@
   或工具明確提示上下文容量不足。短任務與沒有新增重要資訊時不要反覆摘要；不可臆測工具未提供的 token 使用率。
 - 採結構化增量摘要，保留原始目標與完成條件、使用者最新修正與限制、已核准範圍、版本／commit、
   檔案異動、決策理由、驗證證據等級、未解問題、已排除方法及下一步。每次只合併新增資訊，避免反覆重寫造成遺失。
-- 沿用 `.ai/context.md`（目前狀態）、`.ai/progress.md`（完成紀錄）、`.ai/decisions.md`（追加決策）保存交接，
-  不新增另一套記憶檔。歷史 log 與報告以路徑索引按需查詢，不把全文再貼進摘要；保留歷史證據，不自行刪除。
+- 沿用 `.ai/context.md`（目前狀態，覆寫）、`.ai/progress.md`（完成紀錄，超過上限歸檔）、`.ai/decisions.md`（追加決策）保存交接，
+  不新增另一套記憶檔；保存規則見上方「跨工具交接」。改寫 context.md 時保留仍有效的限制、未解問題與下一步，
+  只移除已完成或已被取代的內容。歷史 log 與報告以路徑索引按需查詢，不把全文再貼進摘要；
+  歷史證據移到 `.ai/archive/` 或留在 git 歷史，不自行刪除。
 - 摘要後核對能否回答「目標是什麼、哪些限制仍有效、改了哪些檔案、驗證到哪一級、下一步是什麼」。
   整理完成後繼續已授權工作，不因摘要停下來要求確認。
 - 此規則是 agent 的行為要求，不代表已啟用 CLI 原生 compaction；不可宣稱寫出摘要就已移除舊對話。

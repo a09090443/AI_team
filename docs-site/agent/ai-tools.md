@@ -76,7 +76,8 @@ Claude Code 鏡像由同步腳本產生。其餘工具沿用上表的原生 skil
 交出方先更新摘要與交接檔，接手方先讀取並核對現場；突發中斷未及整理時，由接手方先重建並核實摘要。
 這是共用提示規則，並非計時器或強制程式閘門；各工具是否遵循仍需實際觀察，無 token 遙測時不設定假定百分比。
 
-摘要須依 `AGENTS.md` 使用台灣繁體中文，沿用 `.ai/context.md`、`.ai/progress.md`、`.ai/decisions.md` 的交接分工，
+摘要須依 `AGENTS.md` 使用台灣繁體中文，沿用 `.ai/context.md`（覆寫）、`.ai/progress.md`（超過上限歸檔）、
+`.ai/decisions.md`（只追加）的交接分工與保存上限（見 [貢獻流程](contributing.md#開工與收尾)），
 保留使用者限制、核准範圍、原始目標、目前版本、未解問題與證據位置，並區分程式測試與真實端對端驗證。
 詳細 log 按需讀取；不要把摘要再附上完整歷史而增加負擔。skill 提供整理方法，不會自行刪除 CLI 對話歷史、
 切換 session 或啟用 runtime 原生 compaction；也未自動注入 Slack agent 的 `node.skills` 或改動已保存的任務快照。

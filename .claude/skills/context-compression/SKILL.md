@@ -246,6 +246,17 @@ The structured response preserves endpoint, error code, and root cause. The aggr
 
 7. **Probe-based evaluation gives false confidence**: Probes can pass despite critical information being lost, because the probes test only what they ask about. A probe set that checks file names but not function signatures will miss signature loss. Design probes to cover all six evaluation dimensions, and rotate probe sets across evaluation runs to avoid blind spots.
 
+## 本專案的交接檔（AI Team）
+
+在本 repo 中，持久的交接摘要寫進 `.ai/` 三份檔案，保存規則以 `AGENTS.md`「跨工具交接」為準：
+
+- `.ai/context.md`：**覆寫**成目前狀態（進行中工作、待處理事項、已知未解、環境備忘），上限 60 行。
+  改寫時保留仍有效的限制與下一步，只移除已完成或被取代的內容。
+- `.ai/progress.md`：完成工作單位時在最上方新增 `## YYYY-MM-DD 標題` 條目；主檔上限 300 行，
+  超過時執行 `node docs-site/scripts/check-handoff.mjs --fix`，最舊日期的條目整天移到 `.ai/archive/progress-YYYY-MM.md`。
+- `.ai/decisions.md`：只追加，保留全文；追加後以同一指令重產開頭索引。
+- 開場只讀 context、progress 主檔與 decisions 索引；歸檔需要時再 grep，不要整份讀入。
+
 ## Integration
 
 This skill connects to several others in the collection:
