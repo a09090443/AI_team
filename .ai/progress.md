@@ -19,7 +19,8 @@
 - 測試：新增 PullRequestSyncTest 9、PullRequestMonitorTest 1、WorkspaceManagerTest 4（真 git 衝突）、FlowEngineTest 5、ConfiguredExecutorTest 2，TeamCatalogTest 更新 1。本機完整 831 項僅 3 項既有 Windows 環境失敗（symlink、/bin/sh、CRLF）。Linux 驗證見下一行。
 - 已核對的文件：configurable-team、engineering-workflow、failure-reporting、review-gate、data-model、agent/configuration、agent/operations、agent/system-map、catalog、project-tree。已修正：以上全部（configurable-team 的兩條已知問題改寫為新行為）。docs build 通過。
 - 2026-10-24：commit e6050ae 並 push；部署前發現 monitor 啟動 2 秒就檢查會改動任務資料、觸發部署腳本回復，改為啟動 10 分鐘後首次檢查（13e3784）。Linux /home/agent/deploy-13e3784 check-source 通過、mvn clean verify 831 項 0 失敗，JAR fa240497…；使用者放行後 08:09 部署 bestpartner，見 deploy-2026-09-06-v2 同日段落。
-- 未做：真實端對端（PR #6 自動同步待觀察）；中止 #1056 待使用者同意。
+- 08:19 實測：monitor 標記 PR #1～#5 已合併、PR #6 開始同步（衝突檔正確），但同步輪重跑原計畫的受保護路徑分段改派，稽核把合併帶進來的 16 個檔案誤判越權而停下。修正 2a97bcc（同步輪不跑改派段＋回歸測試），Linux 832 項 0 失敗，08:32 部署（JAR f836e30c…）。#1056 由負責人結案。
+- 未做：#1055 續跑後的完整端對端（解衝突→驗證→審查→自動推回）。
 
 ## 2026-10-23 #1056「修正 PR 衝突問題」分析（Claude Code，僅分析，未改程式／未動線上任務）
 
