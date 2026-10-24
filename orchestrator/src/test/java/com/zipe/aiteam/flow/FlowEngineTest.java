@@ -2317,8 +2317,13 @@ class FlowEngineTest {
         when(publisher.update("42", "feature/task42", PR_URL, published)).thenReturn(new PullRequestPublisher.Result("feature/task42", PR_URL, 1));
         List<Runnable> jobs = new ArrayList<>();
         engine.checkPullRequest(task, null, jobs::add);
+        // 舊版在同步輪跑過改派段後停下：留下 codex 的 checkpoint，續跑時原角色（claude）不能沿用（#1055 08:33）。
+        FlowRun interrupted = store.flow("42").orElseThrow();
+        interrupted.activeNode = "implementation"; interrupted.beforeHead = published; store.saveFlow("42", interrupted);
+        store.saveCheckpoint(new Checkpoint("42", "implementation", "codex", "opus", "codex-session", "上次的脈絡", published, null));
         jobs.getFirst().run();
         assertThat(calls).contains("implementation:builder").doesNotContain("implementation:builder_codex");
+        assertThat(resumed).noneMatch(r -> r.startsWith("implementation:"));
         verify(publisher).update("42", "feature/task42", PR_URL, published);
     }
 

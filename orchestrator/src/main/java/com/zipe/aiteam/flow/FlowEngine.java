@@ -1079,7 +1079,11 @@ public class FlowEngine {
         if (fb == null || flow.dialogue) return null;
         // PR 衝突同步輪只解衝突：原計畫要改的受保護檔案已在原 PR 的 commit 裡，不重跑改派段。
         // 改派段的寫入稽核以本輪起點為準，會把合併帶進來的基準變更誤判成越權（#1055 同步第 1 輪）。
-        if (PullRequestSync.resolving(flow, flow.node)) return null;
+        // 舊版在同步輪留下的改派段 checkpoint 屬於另一個 runtime，原角色不能沿用，否則續跑會被跨引擎檢查擋下（#1055 08:33）。
+        if (PullRequestSync.resolving(flow, flow.node)) {
+            if (!sameRuntime(task.continuation(), flow.snapshot.definition().roles().get(node.role()))) task.continuation(null);
+            return null;
+        }
         var done = flow.delegatedParts.get(flow.node);
         if (done != null && Objects.equals(done.startHead(), flow.beforeHead)) return null;
         Role primaryRole = flow.snapshot.definition().roles().get(node.role());
