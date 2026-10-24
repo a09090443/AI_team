@@ -230,8 +230,8 @@ public class WorkspaceManager {
      * 順序：明確設定 > develop > origin 的預設分支 > 主 repo 目前的分支。
      *
      * develop 優先的理由：走 gitflow 的專案，變更不該以 master 為基準。
-     * zipe-spring-boot-starters 的 AGENTS.md 明訂「feature → develop → master，
-     * 不可直接進 master」—— 從 master 開分支會做出一個永遠合不進去的 PR。
+     * 這類專案規定「feature → develop → master，不可直接進 master」——
+     * 從 master 開分支會做出一個永遠合不進去的 PR。
      * 這是慣例而非通則，所以可用 AI_TEAM_BASE_BRANCH 覆寫，並且一定記錄選了什麼。
      */
     private String detectBaseBranch(Path repo) throws WorkspaceException {

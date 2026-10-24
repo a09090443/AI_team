@@ -165,7 +165,7 @@ class FlowEngineTest {
     }
 
     @Test void baselineReminderSkipsQuestions() {
-        // spring-starters #1006：只說「你好」，任務一建立就貼出基準驗證失敗；純詢問不會走到系統獨立驗證，不該提醒。
+        // #1006：只說「你好」，任務一建立就貼出基準驗證失敗；純詢問不會走到系統獨立驗證，不該提醒。
         engine.baseline = failedBaseline();
         engine.prepare(task);
         mode = "question";
@@ -1189,7 +1189,7 @@ class FlowEngineTest {
         store = new TaskStore(new JdbcTemplate(ds));
         when(catalog.enabled()).thenReturn(true);
         boolean spring = info.getTestMethod().orElseThrow().getName().startsWith("spring");
-        when(catalog.snapshot()).thenReturn(TeamCatalog.load(Path.of(spring ? "teams/spring-starters.json" : "teams/node-web.json"), key -> tmp.resolve("repo").toString()));
+        when(catalog.snapshot()).thenReturn(TeamCatalog.load(Path.of(spring ? "teams/maven-library.json" : "teams/node-web.json"), key -> tmp.resolve("repo").toString()));
         // 既有流程測試維持「不需計畫核准」契約；新核准測試另明確啟用。
         var original = catalog.snapshot();
         // Existing scenarios exercise persisted pre-issue-tracking snapshots. New contract tests opt in explicitly.
@@ -1217,7 +1217,7 @@ class FlowEngineTest {
             FlowRun flow = c.getArgument(1); TeamDefinition.Node node = c.getArgument(2); calls.add(flow.node + ":" + node.role());
             Task executing = c.getArgument(0);
             if (mode.equals("dialogueWrongUrl")) {
-                var answer=mapper.createObjectNode().put("answer","請開http://172.30.46.20/").put("execution_status","COMPLETED").putNull("failure_report");
+                var answer=mapper.createObjectNode().put("answer","請開http://192.0.2.20/").put("execution_status","COMPLETED").putNull("failure_report");
                 return new AgentRuntime.RuntimeResult("session","",answer,0.1,false,tmp.resolve("log"),"model",null);
             }
             if (executing.continuation() != null) resumed.add(flow.node + ":" + executing.continuation().sessionId());
@@ -1271,7 +1271,7 @@ class FlowEngineTest {
             if (node.gate() == TeamDefinition.Gate.TEST_PLAN && mode.equals("inspect")) {
                 ((ObjectNode) report.path("scenarios").get(0)).putArray("operation_ids").add(OperationContract.INSPECT_CONTENT);
             } else if (node.gate() == TeamDefinition.Gate.TEST_PLAN
-                    && "spring-starters".equals(flow.snapshot.definition().id())) {
+                    && "maven-library".equals(flow.snapshot.definition().id())) {
                 ((ObjectNode) report.path("scenarios").get(0)).putArray("operation_ids").add("qa-java");
             }
             boolean firstAutomaticVerification = mode.equals("automaticRepair")
@@ -2652,7 +2652,7 @@ class FlowEngineTest {
         verify(slack).post(any(), eq("c"), eq("t"), contains("還沒有確定的需求清單"));
     }
     @Test void newConfigurationSendsABlockedTestPlanToTriageFirst() {
-        for (String team : List.of("teams/spring-starters.json", "teams/node-web.json")) {
+        for (String team : List.of("teams/maven-library.json", "teams/node-web.json")) {
             var definition = assertDoesNotThrowLoad(team);
             definition.nodes().forEach((id, node) -> {
                 if (node.gate() == TeamDefinition.Gate.TEST_PLAN) assertThat(node.blocked()).as(team + " " + id).isEqualTo("triage");

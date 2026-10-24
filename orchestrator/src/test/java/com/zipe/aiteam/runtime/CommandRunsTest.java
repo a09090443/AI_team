@@ -8,7 +8,7 @@ import java.time.Instant;
 import java.util.List;
 import static org.assertj.core.api.Assertions.*;
 
-/** 樣本格式取自 2026-10-18 VM 上的真實紀錄（dynamic-api #1001 Claude 實作、bestpartner #1042 Codex 驗收）。 */
+/** 樣本格式取自 2026-10-18 VM 上的真實紀錄（#1001 Claude 實作、#1042 Codex 驗收）。 */
 class CommandRunsTest {
     @TempDir Path tmp;
 

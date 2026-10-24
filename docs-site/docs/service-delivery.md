@@ -17,6 +17,10 @@
 可提交的設定由系統核對後代為提交；`.env`、真實 `.env.*`、`.secrets`、`.ssh`、`.pem`／`.key` 禁止在此路線修改。
 `.env.*.example`／`.env.*.template` 可作不含真實憑證的範本。
 
+**已知限制**：服務建置 skill 的固定腳本（`guest.py`、`client.py`、`enroll.py`、`ssh_client.py`）目前仍寫死第一個接入專案的
+產品目錄、Compose 專案與服務名稱，路由、收據與授權機制是通用的，但其他產品要先把這些路徑參數化才能用。
+專案自己的部署參考（`skills/service-build/references/<project>.md`）放在實例 overlay，撰寫要求見 skill 的 `references/project-template.md`。
+
 ## 部署目標與操作
 
 `project.serviceTarget` 由管理者設定，模型不能自行增加主機。例子只示意欄位，操作須另外宣告與授權：

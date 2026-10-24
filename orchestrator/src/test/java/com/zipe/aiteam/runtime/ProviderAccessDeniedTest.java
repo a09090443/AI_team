@@ -4,7 +4,7 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 
 class ProviderAccessDeniedTest {
-    /** bestpartner #1042（2026-10-14）triage.stdout.json 的實際內容（只保留判定用欄位）。 */
+    /** #1042（2026-10-14）triage.stdout.json 的實際內容（只保留判定用欄位）。 */
     static final String ORG_DISABLED = "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":true,\"terminal_reason\":\"api_error\","
             + "\"api_error_status\":403,\"api_error_code\":\"oauth_not_allowed_for_organization\","
             + "\"result\":\"Your organization has disabled Claude subscription access for Claude Code · Use an Anthropic API key instead, or ask your admin to enable access\"}";

@@ -17,7 +17,7 @@ class ContractRecoveryTest {
     @BeforeEach void setup() throws Exception {
         Path repo = tmp.resolve("repo");
         Files.createDirectories(repo.resolve(".git"));
-        flow = new FlowRun(TeamCatalog.load(Path.of("teams/spring-starters.json"), key -> repo.toString()));
+        flow = new FlowRun(TeamCatalog.load(Path.of("teams/maven-library.json"), key -> repo.toString()));
         flow.node = "verification";
         flow.workspaceReady = true;
     }

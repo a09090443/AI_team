@@ -24,6 +24,34 @@ export AI_TEAM_DEFINITION="$AI_TEAM_HOME/teams/<project>.json"
 新安裝會複製 `orchestrator/teams/`；既有服務升級須一併部署此資料夾與新版 jar，
 先備份資料庫及舊版檔案，再確認無執行中／排隊任務後重啟。不可在執行中的 target/ 建置。
 服務啟動時完整讀取配置與資產；修改配置後須重啟，新任務才採用新版本。
+專案自己的配置不放在 repo，而放在實例 overlay，見下一節。
+
+## 內附範例與實例 overlay
+
+repo 的 `orchestrator/teams/` 只放共用 prompts、schemas、skills 與三份通用範例；各專案實例的配置不進公開 repo。
+
+| 範例 | 用途 |
+|---|---|
+| `node-web.json` | Node 專案；功能開關全關，也是測試的對照組 |
+| `maven-library.json` | Maven 多模組函式庫；開延後驗收、角色諮詢、計畫自動核准 |
+| `gradle-fullstack.json` | Gradle 後端＋npm 前端＋文件站；啟用[功能開關一覽](#功能開關一覽)的全部項目（含服務建置路線，引用 `skills/service-build/references/project-template.md`） |
+
+**實例 overlay**：專案配置（`<project>.json`、專屬 prompt、`skills/service-build/references/<project>.md` 等）放在
+`$AI_TEAM_HOME/team-overlay/`（可用 `AI_TEAM_TEAM_OVERLAY` 改位置），目錄結構與 `teams/` 相同。
+`AI_TEAM_DEFINITION` 仍指向 `$AI_TEAM_HOME/teams/<project>.json`：
+
+- `deploy-orchestrator.sh` 以 `deploy/bootstrap/stage-teams.sh` 把來源 teams 與 overlay 合併到暫存目錄，
+  用候選 JAR 逐一 `--validate-team`，通過後才停服務並覆蓋線上 `teams/`。
+- **在停服務前中止**的情況：啟用中的配置不在來源也不在 overlay；任何合併後的配置驗證失敗；
+  線上 `teams/` 裡的 overlay 檔與 overlay 內容不同（代表有人直接改了 `teams/`，覆蓋會遺失修改，須先把要保留的版本放回 overlay）。
+- 來源沒有的舊檔不刪；部署備份的 `teams.deployed/` 是本次實際套用的合併結果。
+- `install-app.sh <來源> <新目錄> [overlay]` 新安裝時一併複製 overlay；`backup.sh` 備份 `team-overlay/`。
+
+**為什麼不把專案 json 放到 teams 以外**：`TeamCatalog` 只接受配置檔所在目錄內的 prompt／schema／skill（symlink 指出去也拒絕），
+所以專案 json 必須和共用 prompts 位於同一個目錄；overlay 是在部署時疊進 `teams/`，而不是另開目錄引用。
+
+**修改實例配置**：改 overlay 的檔案，再複製到 `teams/`（或等下次部署帶入）並重啟；只改 `teams/` 會讓下次部署擋停。
+overlay 本身的版本管理（私有 repo 或本機紀錄）由各實例的維運者決定。
 
 可在啟動前只做靜態驗證，不連 Slack、不呼叫模型：
 
@@ -115,6 +143,7 @@ App-Level Token 留空**：發言與交接 tag 使用同一個角色身分，不
 | 文件略過產品建置 | `docOnlyPaths` |
 | 計畫自動核准 | `autoApprovePlanWhenValid` |
 
+內附範例的啟用情形見[內附範例與實例 overlay](#內附範例與實例-overlay)。
 各部署實例實際啟用哪些功能、為何這樣設定，屬於該實例的維運紀錄，由維運者自行保存在本機（例如 `.ai/records/`），不寫在本文件。
 
 ## 配置經驗（Gradle、前端與多 runtime 專案）
@@ -444,7 +473,7 @@ Runnable 交給 TaskOrchestrator，由真正的執行中工作與 FIFO 排隊清
   皆需重新核准。只有驗收負責人可以承接，原任務之後不再接受操作，現場與歷史保留。
 - **`補充 #編號 狀態`**：唯讀，重新貼出目前狀態與真的可用的選項，不啟動 agent。
 - **部署**：`deploy/deploy-orchestrator.sh <隔離來源根目錄>` 不指名任何任務；前置條件是沒有任務在跑
-  或排隊、沒有 agent 程序、所有團隊配置通過驗證，並比對所有任務資料與所有任務工作區在部署前後一致。
+  或排隊、沒有 agent 程序、來源 teams 疊上實例 overlay 後所有團隊配置通過驗證，並比對所有任務資料與所有任務工作區在部署前後一致。
 - **卡在重試上限時**：目前這一步無法再啟動、延長也幫不上忙時，停止訊息不再提供選擇題、補充或「繼續」
   （按了都不會重新執行），而是說明原因。管理者部署修正後的配置，送「補充 #編號 狀態」會出現
   「檢視配置更新」→「核准配置更新」→「重新執行這一步」三顆依序出現的按鈕。受控恢復授權

@@ -7,7 +7,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 class SandboxUnitCleanupTest {
     @TempDir Path root;
-    final String unit = "ai-team-bestpartner-1048-service-unique";
+    final String unit = "ai-team-example-1048-service-unique";
     @Test void stopsExactServiceBeforeReapingLauncher() throws Exception {
         Process launcher = mock(Process.class);
         var calls = new ArrayList<List<String>>();

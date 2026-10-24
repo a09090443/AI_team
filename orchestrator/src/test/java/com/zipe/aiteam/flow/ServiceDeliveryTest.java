@@ -9,7 +9,7 @@ import static org.assertj.core.api.Assertions.*;
 class ServiceDeliveryTest {
     final ObjectMapper mapper = new ObjectMapper();
     FlowRun flow(boolean target) throws Exception {
-        ObjectNode d = (ObjectNode) mapper.readTree(Files.readString(Path.of("teams/bestpartner.json")));
+        ObjectNode d = (ObjectNode) mapper.readTree(Files.readString(Path.of("teams/gradle-fullstack.json")));
         if (target) {
             ((ObjectNode)d.path("project")).set("serviceTarget", mapper.readTree("""
                 {"name":"sit-host","checks":{"start":"service-start","health":"service-health"}}

@@ -29,7 +29,7 @@ description: repo 每個目錄與檔案的用途，以及「我要找某樣東�
 | 沙箱怎麼包 systemd unit | `sandbox/ExecutionSandbox.java`、`sandbox/SandboxPolicy.java` |
 | 資料表 DDL | `orchestrator/src/main/resources/schema.sql` |
 | 環境變數如何讀取與驗證 | `config/AiTeamProperties.java`；範本 `deploy/env.sh.template` |
-| 團隊配置與角色 prompt | `orchestrator/teams/*.json`（每個專案實例一份）、`orchestrator/teams/prompts/` |
+| 團隊配置與角色 prompt | `orchestrator/teams/*.json`（內附通用範例；各專案實例的配置放在實例 `team-overlay/`，不進 repo）、`orchestrator/teams/prompts/` |
 | 新機安裝與維運腳本 | `deploy/bootstrap/` |
 | 文件原文 | `docs-site/docs/`（索引見[文件目錄](/catalog)） |
 
@@ -64,7 +64,7 @@ agent_team/
 │       ├── service-build/            # 可攜式服務建置 skill（來源／同步鏡像）
 │       │   ├── SKILL.md              # 環境檢查、建置、啟動與有界修復流程
 │       │   ├── references/
-│       │   │   ├── bestpartner.md    # 範例專案的部署契約與檢查限制
+│       │   │   ├── project-template.md # 專案部署參考的撰寫範本（實際參考放實例 overlay）
 │       │   │   └── host-setup.md     # SSH／VirtualBox 主機設定與換機
 │       │   ├── assets/
 │       │   │   ├── host.example.json # 無憑證的主機設定範本
@@ -100,7 +100,7 @@ agent_team/
 │       ├── service-build/            # 可攜式服務建置 skill（來源／同步鏡像）
 │       │   ├── SKILL.md              # 環境檢查、建置、啟動與有界修復流程
 │       │   ├── references/
-│       │   │   ├── bestpartner.md    # 範例專案的部署契約與檢查限制
+│       │   │   ├── project-template.md # 專案部署參考的撰寫範本（實際參考放實例 overlay）
 │       │   │   └── host-setup.md     # SSH／VirtualBox 主機設定與換機
 │       │   ├── assets/
 │       │   │   ├── host.example.json # 無憑證的主機設定範本
@@ -262,7 +262,7 @@ agent_team/
 │   │   │   └── service-build/
 │   │   │       ├── SKILL.md          # 建置流程（不得手改產生檔）
 │   │   │       ├── references/
-│   │   │       │   ├── bestpartner.md
+│   │   │       │   ├── project-template.md
 │   │   │       │   └── host-setup.md
 │   │   │       ├── assets/
 │   │   │       │   ├── host.example.json
@@ -282,10 +282,9 @@ agent_team/
 │   │   │           ├── enroll.py
 │   │   │           ├── login.ps1         # Windows 遮蔽輸入與私人登入檔
 │   │   │           └── test_service_agent.py
-│   │   ├── spring-starters.json      # 專案實例配置（Maven 專案）
-│   │   ├── bestpartner.json          # 專案實例配置（Gradle＋前端，含服務建置路線）
-│   │   ├── dynamic-api.json          # 專案實例配置（Gradle＋Next.js）
-│   │   ├── node-web.json             # Node 專案範例配置
+│   │   ├── maven-library.json        # Maven 多模組函式庫範例配置（延後驗收、角色諮詢）
+│   │   ├── gradle-fullstack.json     # Gradle＋前端＋文件站範例配置（啟用全部功能開關，含服務建置路線）
+│   │   ├── node-web.json             # Node 專案範例配置（功能開關全關，作為對照組）
 │   │   ├── prompts/                  # 節點提示
 │   │   │   ├── shared.md             # 所有角色共用的工作分類、任務效率與協作規則（sharedInstructions）
 │   │   │   ├── intake.md             # 需求整理（PM）
@@ -328,23 +327,15 @@ agent_team/
 │   ├── README.md                     # deploy/ 目錄說明與 Slack 主 App 設定
 │   ├── env.sh.template               # 環境變數範本（複製為 ~/ai-team/env.sh，權限 600）
 │   ├── service-context/              # 管理者提供的非機密部署恢復說明範本
-│   │   └── bestpartner-dev.example.json # service-context 範本（需核對環境後安裝）
+│   │   └── example-dev.example.json  # service-context 範本（需核對環境後安裝）
 │   ├── slack-app-manifest.yaml       # 主 App manifest
-│   ├── agent-manifests/              # 角色 Slack App manifest；子目錄為其他實例的 App 組
+│   ├── agent-manifests/              # 角色 Slack App manifest（其他實例的 App 組由各實例自行保存）
 │   │   ├── pm.yaml
 │   │   ├── architecture.yaml
 │   │   ├── backend.yaml
 │   │   ├── qa.yaml
 │   │   ├── code-review.yaml
-│   │   ├── infrastructure.yaml       # Infrastructure Agent：部署、健康檢查與清理身分
-│   │   └── dynamic-api/              # 第二組實例的主 App 與角色 App
-│   │       ├── main.yaml             # 該實例的主 App（按鈕與流程控制）
-│   │       ├── pm.yaml
-│   │       ├── architecture.yaml
-│   │       ├── backend.yaml
-│   │       ├── qa.yaml
-│   │       ├── infrastructure.yaml
-│   │       └── code-review.yaml
+│   │   └── infrastructure.yaml       # Infrastructure Agent：部署、健康檢查與清理身分
 │   ├── bootstrap/                    # 從零建置工具（新機只用這裡），安裝後位於 ~/ai-team/
 │   │   ├── provision.sh              # 以已核實 checksum 的官方封存檔安裝工具鏈
 │   │   ├── toolchain.tsv.example     # 工具鏈 URL／checksum 範本
@@ -358,11 +349,12 @@ agent_team/
 │   │   ├── audit.sh                  # 唯讀 SQLite 稽核查詢
 │   │   ├── backup.sh                 # 停機備份（排除憑證與 session）
 │   │   ├── restore.sh                # 還原到新目錄
+│   │   ├── stage-teams.sh            # 部署用 teams：來源配置疊上實例 team-overlay 並逐一靜態驗證
+│   │   ├── test-stage-teams.sh       # stage-teams 合併與擋停規則測試
 │   │   ├── test-bootstrap.sh         # bootstrap fixture 測試
 │   │   └── test-linux-platform.sh    # 平台辨識 fixture 測試
-│   ├── deploy-orchestrator.sh        # 通用受控部署與六表逐列快照（隔離 JAR、src/main、teams）
+│   ├── deploy-orchestrator.sh        # 通用受控部署與六表逐列快照（隔離 JAR、src/main、teams＋實例 overlay）
 │   ├── deploy-jar-safe.sh            # 只換 JAR 的受控部署，失敗自動回復
-│   ├── engineering-v2-team.env       # 既有 VM 的 team.env（指定 AI_TEAM_DEFINITION）
 │   └── test-maven-settings.xml       # 測試用空白 Maven settings
 └── docs-site/                        # 文件網站（Docusaurus），主要讀者為 AI agent
     ├── README.md                     # 網站結構與維護方式

@@ -14,7 +14,7 @@ class AgentDispatchTest {
     FlowRun flow;
     @BeforeEach void setup() throws Exception {
         Files.createDirectories(temp.resolve(".git"));
-        flow = new FlowRun(TeamCatalog.load(Path.of("teams/bestpartner.json"), k -> temp.toString()));
+        flow = new FlowRun(TeamCatalog.load(Path.of("teams/gradle-fullstack.json"), k -> temp.toString()));
     }
     ObjectNode report(String role) {
         ObjectNode report = mapper.createObjectNode();

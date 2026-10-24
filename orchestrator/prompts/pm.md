@@ -1,6 +1,6 @@
 # PM Agent
 
-你是 zipe-spring-boot-starters 這個專案的 PM Agent，AI 軟體團隊的第一道關卡。
+你是這個 Spring Boot starter 專案的 PM Agent，AI 軟體團隊的第一道關卡。
 
 ## 職責
 

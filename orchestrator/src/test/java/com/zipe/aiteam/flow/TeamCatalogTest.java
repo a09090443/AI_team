@@ -19,13 +19,13 @@ class TeamCatalogTest {
                 else Files.copy(path, destination);
             }
         }
-        var before = TeamCatalog.load(teams.resolve("bestpartner.json"), key -> tmp.resolve("repo").toString());
+        var before = TeamCatalog.load(teams.resolve("gradle-fullstack.json"), key -> tmp.resolve("repo").toString());
         var node = before.definition().nodes().get("service");
         String original = ConfiguredExecutor.skillInstructions(before, node);
         assertThat(original).contains("name: service-build", "本次須");
         assertThat(node.withRole("coordinator").skills()).isEqualTo(node.skills());
         Files.writeString(teams.resolve("skills/service-build/SKILL.md"), "changed skill content");
-        var after = TeamCatalog.load(teams.resolve("bestpartner.json"), key -> tmp.resolve("repo").toString());
+        var after = TeamCatalog.load(teams.resolve("gradle-fullstack.json"), key -> tmp.resolve("repo").toString());
         assertThat(after.revision()).isNotEqualTo(before.revision());
         assertThat(ConfiguredExecutor.skillInstructions(before, node)).isEqualTo(original);
         assertThat(ConfiguredExecutor.skillInstructions(after, node)).contains("changed skill content");
@@ -43,7 +43,7 @@ class TeamCatalogTest {
     }
 
     @Test void designBlockCanBeTriagedWithoutBypassingPrerequisites() throws Exception {
-        for (String team : List.of("bestpartner", "dynamic-api", "spring-starters")) {
+        for (String team : List.of("gradle-fullstack", "maven-library")) {
             var definition = mapper.readValue(Files.readString(Path.of("teams/" + team + ".json")), TeamDefinition.class);
             TeamCatalog.validate(definition);
             assertThat(definition.nodes().get("design").blocked()).as(team).isEqualTo("triage");
@@ -53,7 +53,7 @@ class TeamCatalogTest {
         }
     }
     @Test void deployedTeamsEnableCollaborationWhileNodeExampleStaysOptOut() throws Exception {
-        for (String team : List.of("bestpartner", "dynamic-api", "spring-starters")) {
+        for (String team : List.of("gradle-fullstack", "maven-library")) {
             var definition = mapper.readValue(Files.readString(Path.of("teams/" + team + ".json")), TeamDefinition.class);
             TeamCatalog.validate(definition);
             assertThat(definition.collaboration()).as(team).isNotNull();
@@ -63,7 +63,7 @@ class TeamCatalogTest {
     }
     @Test void sharedInstructionsAreFrozenForEveryBundledTeamAndOmittedWhenUnset() throws Exception {
         Files.createDirectories(tmp.resolve(".git"));
-        for (String team : List.of("bestpartner", "dynamic-api", "spring-starters", "node-web")) {
+        for (String team : List.of("gradle-fullstack", "maven-library", "node-web")) {
             var snapshot = TeamCatalog.load(Path.of("teams/" + team + ".json"), key -> tmp.toString());
             assertThat(snapshot.definition().sharedInstructions()).as(team).isEqualTo("prompts/shared.md");
             assertThat(snapshot.assets().get("prompts/shared.md")).as(team).contains("任務效率", "工作分類");
@@ -72,7 +72,7 @@ class TeamCatalogTest {
         assertThat(mapper.writeValueAsString(mapper.treeToValue(config, TeamDefinition.class))).doesNotContain("sharedInstructions");
     }
     @Test void springBuilderCanBuildDocsWithoutBroadNpmOrPmWriteAccess() throws Exception {
-        var definition = mapper.readValue(Files.readString(Path.of("teams/spring-starters.json")), TeamDefinition.class);
+        var definition = mapper.readValue(Files.readString(Path.of("teams/maven-library.json")), TeamDefinition.class);
         TeamCatalog.validate(definition);
         assertThat(definition.roles().get("builder").tools()).contains("Bash(npm ci)", "Bash(npm run build)")
                 .doesNotContain("Bash(npm *)", "Bash(npx *)");
@@ -81,14 +81,14 @@ class TeamCatalogTest {
         assertThat(definition.project().cachePaths()).contains(".npm");
     }
     @Test void bundledTeamsHaveNoInspectionToolWarnings() throws Exception {
-        for (String name : java.util.List.of("spring-starters", "node-web")) {
+        for (String name : java.util.List.of("maven-library", "node-web")) {
             var definition = mapper.readValue(Files.readString(Path.of("teams/" + name + ".json")), TeamDefinition.class);
             assertThat(TeamCatalog.warnings(definition)).as(name).isEmpty();
         }
     }
     @Test void warnsWhenAReadOnlyJudgingNodesRoleCannotInspectAnything() throws Exception {
         // 新專案常見的錯：分流／審查角色只給 Read/Grep/Glob，執行時一查 git 就被工具遭拒規則作廢。
-        var json = (ObjectNode) mapper.readTree(Files.readString(Path.of("teams/spring-starters.json")));
+        var json = (ObjectNode) mapper.readTree(Files.readString(Path.of("teams/maven-library.json")));
         var tools = ((ObjectNode) json.path("roles").path("coordinator")).putArray("tools");
         tools.add("Read").add("Grep").add("Glob");
         var definition = mapper.treeToValue(json, TeamDefinition.class);
@@ -97,7 +97,7 @@ class TeamCatalogTest {
                 .anyMatch(w -> w.contains("節點 triage") && w.contains("coordinator") && w.contains("Bash(git log *)"));
     }
     @Test void qaModelEffortAndOldSnapshotCompatibility() throws Exception {
-        var definition = mapper.readValue(Files.readString(Path.of("teams/spring-starters.json")), TeamDefinition.class);
+        var definition = mapper.readValue(Files.readString(Path.of("teams/maven-library.json")), TeamDefinition.class);
         TeamCatalog.validate(definition);
         var qa = definition.roles().get("tester");
         assertThat(qa.model()).isEqualTo("gpt-5.6-sol");
@@ -163,12 +163,12 @@ class TeamCatalogTest {
         ((ObjectNode)config.path("project").path("autonomy")).put("modelTimeoutRecoveries", 2).put("maxTimeoutSeconds", 3601);
         assertThatThrownBy(() -> validate(config)).hasMessageContaining("project.autonomy");
     }
-    @Test void bestpartnerEnablesAutonomyOthersDoNot() throws Exception {
+    @Test void fullstackEnablesAutonomyOthersDoNot() throws Exception {
         Files.createDirectories(tmp.resolve(".git"));
-        assertThat(TeamCatalog.load(Path.of("teams/bestpartner.json"), key -> tmp.toString()).definition().project().autonomy())
+        assertThat(TeamCatalog.load(Path.of("teams/gradle-fullstack.json"), key -> tmp.toString()).definition().project().autonomy())
                 .isEqualTo(new TeamDefinition.Autonomy(2, 3600, 2, true, true, true, 2, true));
-        // dynamic-api、spring-starters 只開延後驗收（2026-10-23），PR 衝突同步未開；node-web 是範例配置，維持停用。
-        for (String team : java.util.List.of("spring-starters", "dynamic-api"))
+        // maven-library 只開延後驗收，PR 衝突同步未開；node-web 作為對照組，全部停用。
+        for (String team : java.util.List.of("maven-library"))
             assertThat(TeamCatalog.load(Path.of("teams/" + team + ".json"), key -> tmp.toString()).definition().project().autonomy())
                     .isEqualTo(new TeamDefinition.Autonomy(0, 0, 0, false, false, true));
         assertThat(TeamCatalog.load(Path.of("teams/node-web.json"), key -> tmp.toString()).definition().project().autonomy()).isNull();

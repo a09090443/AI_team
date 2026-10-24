@@ -3,7 +3,7 @@ display_information:
   description: 開 PR 前的第二意見
   background_color: "#6b5b95"
   long_description: >-
-    這是 zipe-spring-boot-starters 專案 AI 軟體團隊中的「Code Reviewer」角色，
+    這是目標專案 AI 軟體團隊中的「Code Reviewer」角色，
     以 workspace 內獨立使用者的身分存在，讓每個角色的發言在討論串中可以被清楚區分，
     也能被個別 @ 提及與查看個人檔案。它在 QA 之後、開 PR 之前檢視即將送出的最終狀態，
     看的是設計與可維護性、規範遵循、向後相容性與錯誤處理，並提出具體的 review 意見。

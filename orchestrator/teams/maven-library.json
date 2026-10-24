@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "id": "spring-starters",
+  "id": "maven-library",
   "project": {
     "requirePlanApproval": true,
     "autoApprovePlanWhenValid": true,
@@ -15,8 +15,8 @@
     "operations": {
       "java-verify": {"nodes": ["implementation"], "directory": ".", "argv": ["mvn", "-B", "verify"], "writes": ["."]},
       "docs-install": {"nodes": ["implementation"], "directory": "doc-site", "argv": ["npm", "ci"], "writes": ["doc-site/node_modules"]},
-      "qa-java": {"nodes": ["verification"], "directory": ".", "argv": ["mvn", "-B", "-o", "-pl", "base-spring-boot-starter", "verify"], "writes": ["base-spring-boot-starter/target"]},
-      "qa-reactor": {"nodes": ["verification"], "directory": ".", "argv": ["mvn", "-B", "-o", "verify"], "writes": ["target", "base-spring-boot-starter/target", "db-spring-boot-starter/target", "example-keycloak/target", "iam-spring-boot-starter/target", "job-spring-boot-starter/target", "keycloak-spring-boot-starter/target", "logon-spring-boot-starter/target", "starters_example/target", "web-service-spring-boot-starter/target", "web-spring-boot-starter/target"]},
+      "qa-java": {"nodes": ["verification"], "directory": ".", "argv": ["mvn", "-B", "-o", "-pl", "core-module", "verify"], "writes": ["core-module/target"]},
+      "qa-reactor": {"nodes": ["verification"], "directory": ".", "argv": ["mvn", "-B", "-o", "verify"], "writes": ["target", "core-module/target", "db-module/target", "auth-example/target", "iam-module/target", "job-module/target", "auth-module/target", "logon-module/target", "examples/target", "web-service-module/target", "web-module/target"]},
       "qa-docs-dir": {"nodes": ["verification"], "directory": ".", "argv": ["mkdir", "-p", "target/qa-docs"], "writes": ["target"]},
       "qa-docs-snapshot": {"nodes": ["verification"], "directory": ".", "argv": ["git", "archive", "--output=target/qa-docs/snapshot.tar", "HEAD", "doc-site", "llms.txt", "llms-full.txt"], "writes": ["target"]},
       "qa-docs-extract": {"nodes": ["verification"], "directory": ".", "argv": ["tar", "-x", "-f", "target/qa-docs/snapshot.tar", "-C", "target/qa-docs"], "writes": ["target"]},
@@ -35,7 +35,7 @@
       "tar",
       "mkdir"
     ],
-    "name": "zipe-spring-boot-starters",
+    "name": "maven-library-example",
     "repositoryEnv": "AI_TEAM_REPO",
     "baseBranch": "develop",
     "buildInstructions": "依 AGENTS.md 與專案 skills；mvn -B verify。需生成的文件必須依規定產生，未完成不能宣稱通過。文件建置請在 doc-site 目錄執行 npm ci（有 lockfile）或 npm install（無 lockfile），再執行 npm run build；使用 PATH 上的 npm，不使用 npx 或絕對路徑替代。",
@@ -94,7 +94,7 @@
       "runtime": "claude-code",
       "model": "opus",
       "prompt": "prompts/design.md",
-      "capabilities": "應用架構、模組與 starter 邊界、API、相依方向與向後相容性設計；唯讀分析。",
+      "capabilities": "應用架構、模組邊界、API、相依方向與向後相容性設計；唯讀分析。",
       "botTokenEnv": "SLACK_BOT_TOKEN_ARCHITECTURE",
       "appTokenEnv": "SLACK_APP_TOKEN_ARCHITECTURE",
       "tools": [
@@ -108,7 +108,7 @@
       "runtime": "claude-code",
       "model": "opus",
       "prompt": "prompts/implement.md",
-      "capabilities": "Java／Spring Boot starter 程式、設定、測試與文件實作；可在工作區修改並依契約建置測試，也承接文件站維護。",
+      "capabilities": "Java 函式庫程式、設定、測試與文件實作；可在工作區修改並依契約建置測試，也承接文件站維護。",
       "botTokenEnv": "SLACK_BOT_TOKEN_BACKEND",
       "appTokenEnv": "SLACK_APP_TOKEN_BACKEND",
       "tools": [
@@ -269,16 +269,16 @@
       "writablePaths": [
         "**/src/test/**",
         "**/target/**",
-        "base-spring-boot-starter/target/**",
-        "db-spring-boot-starter/target/**",
-        "example-keycloak/target/**",
-        "iam-spring-boot-starter/target/**",
-        "job-spring-boot-starter/target/**",
-        "keycloak-spring-boot-starter/target/**",
-        "logon-spring-boot-starter/target/**",
-        "starters_example/target/**",
-        "web-service-spring-boot-starter/target/**",
-        "web-spring-boot-starter/target/**",
+        "core-module/target/**",
+        "db-module/target/**",
+        "auth-example/target/**",
+        "iam-module/target/**",
+        "job-module/target/**",
+        "auth-module/target/**",
+        "logon-module/target/**",
+        "examples/target/**",
+        "web-service-module/target/**",
+        "web-module/target/**",
         "target/**"
       ],
       "localTestNetwork": true,

@@ -23,18 +23,18 @@ class ProtectedPathFallbackTest {
         when(claude.isProtectedWrite(anyString())).thenCallRealMethod();
     }
 
-    ObjectNode bestpartner() throws Exception {
-        return (ObjectNode) mapper.readTree(Files.readString(Path.of("teams/bestpartner.json")));
+    ObjectNode fullstack() throws Exception {
+        return (ObjectNode) mapper.readTree(Files.readString(Path.of("teams/gradle-fullstack.json")));
     }
     TeamDefinition definition(ObjectNode json) throws Exception { return mapper.treeToValue(json, TeamDefinition.class); }
 
     @Test void extractsPathLikeTokensFromRequirementText() {
-        assertThat(ProtectedPathFallback.mentionedPaths("把 `.claude/rules/api-endpoints.md` 第 49 行改成 admin，依據 bestpartner-service/src/A.kt。"))
-                .contains(".claude/rules/api-endpoints.md", "bestpartner-service/src/A.kt");
+        assertThat(ProtectedPathFallback.mentionedPaths("把 `.claude/rules/api-endpoints.md` 第 49 行改成 admin，依據 backend/src/A.kt。"))
+                .contains(".claude/rules/api-endpoints.md", "backend/src/A.kt");
     }
 
     @Test void delegatesOnlyExplicitPlanPathsNotMentionsOrOtherReceipts() throws Exception {
-        var flow = new FlowRun(TeamCatalog.load(Path.of("teams/bestpartner.json"), key -> tmp.toString()));
+        var flow = new FlowRun(TeamCatalog.load(Path.of("teams/gradle-fullstack.json"), key -> tmp.toString()));
         var node = flow.snapshot.definition().nodes().get("implementation");
         flow.receipts.put("intake", mapper.createObjectNode().put("summary", "不要修改 .claude/rules/a.md"));
         assertThat(ProtectedPathFallback.needed(flow, node, "參考 .claude/rules/a.md", claude)).isEmpty();
@@ -78,20 +78,20 @@ class ProtectedPathFallbackTest {
     }
 
     @Test void configurationIsValidatedStrictly() throws Exception {
-        TeamCatalog.validate(definition(bestpartner()));
+        TeamCatalog.validate(definition(fullstack()));
         for (String bad : new String[]{".claude/**", ".claude/settings/**", ".git/**", ".claude/*/x/**", "../x/**", ".claude/rules"}) {
-            var json = bestpartner();
+            var json = fullstack();
             var fb = (ObjectNode) json.path("nodes").path("implementation").path("protectedPathFallback");
             fb.putArray("paths").add(bad);
             assertThatThrownBy(() -> TeamCatalog.validate(definition(json))).as(bad).hasMessageContaining("protectedPathFallback");
         }
-        var sameRuntime = bestpartner();
+        var sameRuntime = fullstack();
         ((ObjectNode) sameRuntime.path("nodes").path("implementation").path("protectedPathFallback")).put("role", "architect");
         assertThatThrownBy(() -> TeamCatalog.validate(definition(sameRuntime))).hasMessageContaining("不同 runtime");
-        var missing = bestpartner();
+        var missing = fullstack();
         ((ObjectNode) missing.path("nodes").path("implementation").path("protectedPathFallback")).put("role", "nobody");
         assertThatThrownBy(() -> TeamCatalog.validate(definition(missing))).hasMessageContaining("不存在");
-        var wrongNode = bestpartner();
+        var wrongNode = fullstack();
         ((ObjectNode) wrongNode.path("nodes").path("verification")).set("protectedPathFallback",
                 wrongNode.path("nodes").path("implementation").path("protectedPathFallback").deepCopy());
         assertThatThrownBy(() -> TeamCatalog.validate(definition(wrongNode))).hasMessageContaining("只能設在實作節點");

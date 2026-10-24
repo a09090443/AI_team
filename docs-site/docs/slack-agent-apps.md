@@ -92,8 +92,8 @@ done
 ## 第二個以上實例的 App 組
 
 每個服務實例都要有自己的一組 App（不可共用 App-Level Token，原因見
-[同一台 VM 多個服務實例](configurable-team.md#同一台-vm-多個服務實例)）。做法是為該實例複製一組 manifest 到
-`deploy/agent-manifests/<實例>/`，把 App 名稱與顯示名稱加上實例前綴（避免在 Slack 裡與其他實例同名），再依第 1 節逐一建立：
+[同一台 VM 多個服務實例](configurable-team.md#同一台-vm-多個服務實例)）。做法是為該實例複製一組 manifest（主 App 取自 `deploy/slack-app-manifest.yaml`、角色取自 `deploy/agent-manifests/*.yaml`），
+存放在該實例自己的位置（例如實例目錄或私有 repo，不放進公開 repo），把 App 名稱與顯示名稱加上實例前綴（避免在 Slack 裡與其他實例同名），再依第 1 節逐一建立：
 
 | manifest | Bot Token | App-Level Token |
 |---|---|---|

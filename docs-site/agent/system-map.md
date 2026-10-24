@@ -132,7 +132,7 @@ agent 不能自行指定角色或跳到任意節點。
 
 | 路徑 | 內容 |
 |---|---|
-| `orchestrator/teams/*.json` | 團隊配置：每個專案實例一份，流程、角色、權限與操作都寫在配置裡，程式不含專案特例。可用的功能開關見[功能開關一覽](/docs/configurable-team#功能開關一覽) |
+| `orchestrator/teams/*.json` | 團隊配置的內附範例（node-web、maven-library、gradle-fullstack）；各專案實例的配置放實例 `team-overlay/`，部署時疊進 `teams/`（[實例 overlay](/docs/configurable-team#內附範例與實例-overlay)）。流程、角色、權限與操作都寫在配置裡，程式不含專案特例。可用的功能開關見[功能開關一覽](/docs/configurable-team#功能開關一覽) |
 | `orchestrator/teams/prompts/`、`schemas/` | 配置式節點的提示與輸出 schema |
 | `orchestrator/prompts/`、`orchestrator/schemas/` | legacy 五角色的提示與 schema |
 | `orchestrator/src/main/resources/schema.sql` | SQLite DDL 唯一來源 |

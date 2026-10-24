@@ -3,7 +3,7 @@ display_information:
   description: 需求分類與任務拆解
   background_color: "#4a90d9"
   long_description: >-
-    這是 zipe-spring-boot-starters 專案 AI 軟體團隊中的「PM Agent」角色，
+    這是目標專案 AI 軟體團隊中的「PM Agent」角色，
     以 workspace 內獨立使用者的身分存在，讓每個角色的發言在討論串中可以被清楚區分，
     也能被個別 @ 提及與查看個人檔案。它負責理解來自 Slack 的需求、判斷任務類型與優先度、找出受影響的模組，並決定需要哪些下游角色參與。
     本 App 會接收允許頻道內直接 @本角色的訊息，只有中央白名單內的真實使用者可以提出請求。

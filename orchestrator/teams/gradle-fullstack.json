@@ -1,16 +1,18 @@
 {
   "version": 2,
-  "id": "dynamic-api",
+  "id": "gradle-fullstack",
   "project": {
     "requirePlanApproval": true,
     "autoApprovePlanWhenValid": true,
     "autonomy": {
-      "modelTimeoutRecoveries": 0,
-      "maxTimeoutSeconds": 0,
-      "verificationContinuations": 0,
-      "requirementChangeOptions": false,
-      "channelCommandRouting": false,
-      "deferUnverifiable": true
+      "modelTimeoutRecoveries": 2,
+      "maxTimeoutSeconds": 3600,
+      "verificationContinuations": 2,
+      "requirementChangeOptions": true,
+      "channelCommandRouting": true,
+      "deferUnverifiable": true,
+      "pullRequestSyncRounds": 2,
+      "pullRequestSyncAutoPush": true
     },
     "operations": {
       "backend-compile": {
@@ -23,17 +25,16 @@
           "-p",
           "backend",
           "--no-daemon",
-          "compileJava",
-          "compileTestJava",
-          "-x",
-          "buildFrontend"
+          "compileKotlin",
+          "compileTestKotlin"
         ],
         "writes": [
           "backend/build",
-          "backend/.gradle"
+          "backend/.gradle",
+          "backend/.kotlin"
         ]
       },
-      "backend-test": {
+      "backend-test-a": {
         "nodes": [
           "implementation"
         ],
@@ -44,12 +45,57 @@
           "backend",
           "--no-daemon",
           "test",
-          "-x",
-          "buildFrontend"
+          "--tests",
+          "com.example.app.architecture.ArchitectureTest",
+          "--tests",
+          "com.example.app.util.UtilTest",
+          "--tests",
+          "com.example.app.converter.ConverterTest"
         ],
         "writes": [
           "backend/build",
-          "backend/.gradle"
+          "backend/.gradle",
+          "backend/.kotlin"
+        ]
+      },
+      "backend-test-b": {
+        "nodes": [
+          "implementation"
+        ],
+        "directory": ".",
+        "argv": [
+          "gradle",
+          "-p",
+          "backend",
+          "--no-daemon",
+          "test",
+          "--tests",
+          "com.example.app.service.ServiceTest"
+        ],
+        "writes": [
+          "backend/build",
+          "backend/.gradle",
+          "backend/.kotlin"
+        ]
+      },
+      "backend-test-code-executor": {
+        "nodes": [
+          "implementation"
+        ],
+        "directory": ".",
+        "argv": [
+          "gradle",
+          "-p",
+          "backend",
+          "--no-daemon",
+          "test",
+          "--tests",
+          "com.example.app.service.SlowTimeoutTest"
+        ],
+        "writes": [
+          "backend/build",
+          "backend/.gradle",
+          "backend/.kotlin"
         ]
       },
       "ui-install": {
@@ -60,49 +106,12 @@
         "argv": [
           "npm",
           "--prefix",
-          "nextjs-dynamic-api-manager",
+          "frontend",
           "ci"
         ],
         "writes": [
-          "nextjs-dynamic-api-manager/node_modules",
-          "nextjs-dynamic-api-manager/.next",
-          "nextjs-dynamic-api-manager/out"
-        ]
-      },
-      "ui-type-check": {
-        "nodes": [
-          "implementation"
-        ],
-        "directory": ".",
-        "argv": [
-          "npm",
-          "--prefix",
-          "nextjs-dynamic-api-manager",
-          "run",
-          "type-check"
-        ],
-        "writes": [
-          "nextjs-dynamic-api-manager/node_modules",
-          "nextjs-dynamic-api-manager/.next",
-          "nextjs-dynamic-api-manager/out"
-        ]
-      },
-      "ui-lint": {
-        "nodes": [
-          "implementation"
-        ],
-        "directory": ".",
-        "argv": [
-          "npm",
-          "--prefix",
-          "nextjs-dynamic-api-manager",
-          "run",
-          "lint"
-        ],
-        "writes": [
-          "nextjs-dynamic-api-manager/node_modules",
-          "nextjs-dynamic-api-manager/.next",
-          "nextjs-dynamic-api-manager/out"
+          "frontend/node_modules",
+          "frontend/dist"
         ]
       },
       "ui-build": {
@@ -113,14 +122,30 @@
         "argv": [
           "npm",
           "--prefix",
-          "nextjs-dynamic-api-manager",
+          "frontend",
           "run",
           "build"
         ],
         "writes": [
-          "nextjs-dynamic-api-manager/node_modules",
-          "nextjs-dynamic-api-manager/.next",
-          "nextjs-dynamic-api-manager/out"
+          "frontend/node_modules",
+          "frontend/dist"
+        ]
+      },
+      "ui-test": {
+        "nodes": [
+          "implementation"
+        ],
+        "directory": ".",
+        "argv": [
+          "npm",
+          "--prefix",
+          "frontend",
+          "run",
+          "test"
+        ],
+        "writes": [
+          "frontend/node_modules",
+          "frontend/dist"
         ]
       },
       "docs-install": {
@@ -156,7 +181,7 @@
           "docs-site/node_modules"
         ]
       },
-      "qa-backend-test": {
+      "qa-backend-test-a": {
         "nodes": [
           "verification"
         ],
@@ -168,12 +193,59 @@
           "--offline",
           "--no-daemon",
           "test",
-          "-x",
-          "buildFrontend"
+          "--tests",
+          "com.example.app.architecture.ArchitectureTest",
+          "--tests",
+          "com.example.app.util.UtilTest",
+          "--tests",
+          "com.example.app.converter.ConverterTest"
         ],
         "writes": [
           "backend/build",
-          "backend/.gradle"
+          "backend/.gradle",
+          "backend/.kotlin"
+        ]
+      },
+      "qa-backend-test-b": {
+        "nodes": [
+          "verification"
+        ],
+        "directory": ".",
+        "argv": [
+          "gradle",
+          "-p",
+          "backend",
+          "--offline",
+          "--no-daemon",
+          "test",
+          "--tests",
+          "com.example.app.service.ServiceTest"
+        ],
+        "writes": [
+          "backend/build",
+          "backend/.gradle",
+          "backend/.kotlin"
+        ]
+      },
+      "qa-backend-test-code-executor": {
+        "nodes": [
+          "verification"
+        ],
+        "directory": ".",
+        "argv": [
+          "gradle",
+          "-p",
+          "backend",
+          "--offline",
+          "--no-daemon",
+          "test",
+          "--tests",
+          "com.example.app.service.SlowTimeoutTest"
+        ],
+        "writes": [
+          "backend/build",
+          "backend/.gradle",
+          "backend/.kotlin"
         ]
       },
       "qa-ui-install": {
@@ -184,52 +256,15 @@
         "argv": [
           "npm",
           "--prefix",
-          "nextjs-dynamic-api-manager",
+          "frontend",
           "ci",
           "--offline",
           "--no-audit",
           "--no-fund"
         ],
         "writes": [
-          "nextjs-dynamic-api-manager/node_modules",
-          "nextjs-dynamic-api-manager/.next",
-          "nextjs-dynamic-api-manager/out"
-        ]
-      },
-      "qa-ui-type-check": {
-        "nodes": [
-          "verification"
-        ],
-        "directory": ".",
-        "argv": [
-          "npm",
-          "--prefix",
-          "nextjs-dynamic-api-manager",
-          "run",
-          "type-check"
-        ],
-        "writes": [
-          "nextjs-dynamic-api-manager/node_modules",
-          "nextjs-dynamic-api-manager/.next",
-          "nextjs-dynamic-api-manager/out"
-        ]
-      },
-      "qa-ui-lint": {
-        "nodes": [
-          "verification"
-        ],
-        "directory": ".",
-        "argv": [
-          "npm",
-          "--prefix",
-          "nextjs-dynamic-api-manager",
-          "run",
-          "lint"
-        ],
-        "writes": [
-          "nextjs-dynamic-api-manager/node_modules",
-          "nextjs-dynamic-api-manager/.next",
-          "nextjs-dynamic-api-manager/out"
+          "frontend/node_modules",
+          "frontend/dist"
         ]
       },
       "qa-ui-build": {
@@ -240,14 +275,99 @@
         "argv": [
           "npm",
           "--prefix",
-          "nextjs-dynamic-api-manager",
+          "frontend",
           "run",
           "build"
         ],
         "writes": [
-          "nextjs-dynamic-api-manager/node_modules",
-          "nextjs-dynamic-api-manager/.next",
-          "nextjs-dynamic-api-manager/out"
+          "frontend/node_modules",
+          "frontend/dist"
+        ]
+      },
+      "qa-ui-test": {
+        "nodes": [
+          "verification"
+        ],
+        "directory": ".",
+        "argv": [
+          "npm",
+          "--prefix",
+          "frontend",
+          "run",
+          "test"
+        ],
+        "writes": [
+          "frontend/node_modules",
+          "frontend/dist"
+        ]
+      },
+      "drift-scan": {
+        "nodes": [
+          "implementation",
+          "verification"
+        ],
+        "directory": ".",
+        "argv": [
+          "bash",
+          "scripts/drift-scan.sh"
+        ],
+        "writes": [],
+        "scriptSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "service-prepare": {
+        "nodes": [
+          "service"
+        ],
+        "directory": ".",
+        "argv": [
+          "python3",
+          "/home/agent/ai-team/teams/skills/service-build/scripts/client.py",
+          "prepare"
+        ],
+        "writes": [
+          "docs/docker/sit/.agent-service"
+        ]
+      },
+      "service-start": {
+        "nodes": [
+          "service"
+        ],
+        "directory": ".",
+        "argv": [
+          "python3",
+          "/home/agent/ai-team/teams/skills/service-build/scripts/client.py",
+          "start"
+        ],
+        "writes": [
+          "docs/docker/sit/.agent-service"
+        ]
+      },
+      "service-health": {
+        "nodes": [
+          "service"
+        ],
+        "directory": ".",
+        "argv": [
+          "python3",
+          "/home/agent/ai-team/teams/skills/service-build/scripts/client.py",
+          "health"
+        ],
+        "writes": [
+          "docs/docker/sit/.agent-service"
+        ]
+      },
+      "service-diagnose": {
+        "nodes": [
+          "service"
+        ],
+        "directory": ".",
+        "argv": [
+          "python3",
+          "/home/agent/ai-team/teams/skills/service-build/scripts/client.py",
+          "diagnose"
+        ],
+        "writes": [
+          "docs/docker/sit/.agent-service"
         ]
       },
       "qa-docs-dir": {
@@ -357,18 +477,20 @@
       "git",
       "tar",
       "mkdir",
+      "bash",
+      "python3",
       "find"
     ],
-    "name": "dynamic-api",
+    "name": "gradle-fullstack-example",
     "repositoryEnv": "AI_TEAM_REPO",
-    "baseBranch": "master",
-    "buildInstructions": "依 repo 的 AGENTS.md 與 .claude/rules/（單一事實來源）；套件名是 com.dynamicapi。後端用 PATH 上的 gradle（repo 的 gradlew 是 8.7，VM 共用 8.14.5），一律 -p backend --no-daemon，使用已宣告的 backend-* 操作。backend/build.gradle 的前端建置任務寫死 Windows 版 tools/node-*-win-x64/npm.cmd，在 VM 上一定失敗，所以會觸發 processResources 的任務（compileTestJava、test、bootJar、bootRun）都必須加 -x buildFrontend；不得修改 build.gradle 或 tools/ 來繞過。前端以 npm --prefix nextjs-dynamic-api-manager ci／run type-check／run lint／run build；文件以 npm --prefix docs-site ci／run build。frontend/（舊 Angular）與 tools/ 不要修改。新增前端頁面要同步 build.gradle 的 copyNextjsBuild 頁面清單與 SpaController；資料表變更只能新增 db.migration 腳本，不改既有腳本。不使用 pwsh、npx 或絕對路徑替代。",
-    "testInstructions": "先制定情境測試計畫，再驗收；不得只看單元測試數量。後端只有少量測試（ResponseRepositoryTest、DynamicControllerServiceTest）：實作以 backend-test、驗收以 qa-backend-test 執行，系統獨立驗證也會在全新 clone 執行同一個測試指令，結束碼必須為 0 才會進入驗收、審查與發布，任何角色或真人都不能把失敗改記為無法核實後放行。已知問題：正式設定 data-source.properties 的 SQLite 路徑是 Windows 的 D:/tmp，repo 還沒有測試專用設定時，這兩個測試在 Linux 必定失敗；實作遇到時要回報受阻（BLOCKED、verify_passed=false）並附原始錯誤，不得寫成成功。不得修改正式設定、關閉或刪除測試；只有需求明確授權時，才可新增只在測試時生效的設定（例如 backend/src/test/resources）。動態載入（上傳 JAR、啟用 Endpoint／RESTful、Mock 命中）需要啟動服務並以範例 JAR 手動驗證，VM 沙箱內無法完成時標為「無法核實」，不得宣稱通過。前端依序 qa-ui-install、qa-ui-type-check、qa-ui-lint、qa-ui-build。實作階段可以連網下載依賴，backend-*、ui-install 等實作操作會把套件寫進共用快取（Gradle 為 GRADLE_USER_HOME，npm 為 ~/.npm）。QA 的 localTestNetwork 沙箱不連外，所以 qa-* 操作以 --offline 使用同一份快取；快取缺件時判定為實作階段尚未執行對應建置，退回實作補跑，不得繞過沙箱。純文字變更只核對內容及必要一致性，不無條件執行後端／前端回歸。文件站依序 qa-docs-dir、qa-docs-clean、qa-docs-snapshot、qa-docs-extract、qa-docs-install、qa-docs-build，在 target/qa-docs 副本驗證最終 HEAD；實作先執行 docs-install／docs-build 準備快取。原 docs-site 唯讀。",
+    "baseBranch": "dev",
+    "buildInstructions": "依 repo 的 AGENTS.md 與專案規則；套件名是 com.example.app。後端用 PATH 上的 gradle，一律 -p backend --no-daemon，使用已宣告的 backend-* 操作；前端以 npm --prefix frontend ci／run build／run test；文件以 npm --prefix docs-site ci／run build。改動程式、命名或版本設定後，以 bash scripts/drift-scan.sh 確認「新漂移 0 項」。不使用 pwsh、npx 或絕對路徑替代。VM 沒有資料庫與 Docker：需要資料庫的整合測試在此環境一定連不上，不得以修改設定或關閉測試來讓它通過。後端檢查（backend-compile、後端測試、drift-scan）只在本次變更含 backend/** 或版本設定時執行；只改部署檔、前端、docs-site/** 或其他非後端檔時一律不執行，報告寫明「未涉及後端，未執行後端檢查」。",
+    "testInstructions": "先制定情境測試計畫，再驗收；不得只看單元測試數量。後端只執行 qa-backend-test-a、qa-backend-test-b 與 qa-backend-test-code-executor（不需資料庫的測試；負載下容易逾時的測試單獨執行，單獨仍逾時才算失敗）；需要資料庫、外部 API 金鑰或外部憑證的情境一律標為「無法核實」並說明原因，不得宣稱通過，也不得改寫成 mock 後宣稱等同。前端依序 qa-ui-install、qa-ui-build、qa-ui-test；系統獨立驗證收據在目前 commit 已通過的前端安裝、建置、測試與後端測試直接引用收據，不在沙箱重跑，只補收據沒有涵蓋的情境。另以 bash scripts/drift-scan.sh 確認「新漂移 0 項」（只讀）。實作階段可以連網下載依賴，backend-*、ui-install 等實作操作會把套件寫進共用快取（Gradle 為 GRADLE_USER_HOME，npm 為 ~/.npm）。QA 的 localTestNetwork 沙箱不連外，所以 qa-* 操作以 --offline 使用同一份快取；QA 遇到快取缺件時，判定為實作階段尚未執行對應建置，退回實作補跑，不是維運問題，也不得繞過沙箱。純文字變更只核對內容及必要一致性，不無條件執行後端／前端回歸。後端只在變更含 backend/** 或版本設定時執行；未涉及後端時不跑，情境標明「未涉及後端」。文件站依序 qa-docs-dir、qa-docs-clean、qa-docs-snapshot、qa-docs-extract、qa-docs-install、qa-docs-build，在 target/qa-docs 副本驗證最終 HEAD；實作先執行 docs-install／docs-build 準備快取。原 docs-site 唯讀，快取缺件交回實作，不略過必要檢查。",
     "protectedPaths": [
       "backend/src/main/**",
-      "base-jar/src/**",
-      "**/build.gradle",
-      "**/settings.gradle",
+      "**/build.gradle.kts",
+      "**/settings.gradle.kts",
+      "**/gradle.properties",
       "**/package.json",
       "**/package-lock.json"
     ],
@@ -384,13 +506,26 @@
           "backend",
           "--no-daemon",
           "test",
-          "-x",
-          "buildFrontend"
+          "--tests",
+          "com.example.app.architecture.ArchitectureTest",
+          "--tests",
+          "com.example.app.util.UtilTest",
+          "--tests",
+          "com.example.app.converter.ConverterTest"
+        ],
+        [
+          "gradle",
+          "-p",
+          "backend",
+          "--no-daemon",
+          "test",
+          "--tests",
+          "com.example.app.service.ServiceTest"
         ],
         [
           "npm",
           "--prefix",
-          "nextjs-dynamic-api-manager",
+          "frontend",
           "ci",
           "--no-audit",
           "--no-fund"
@@ -398,16 +533,16 @@
         [
           "npm",
           "--prefix",
-          "nextjs-dynamic-api-manager",
+          "frontend",
           "run",
-          "type-check"
+          "build"
         ],
         [
           "npm",
           "--prefix",
-          "nextjs-dynamic-api-manager",
+          "frontend",
           "run",
-          "build"
+          "test"
         ]
       ],
       "timeoutSeconds": 1800,
@@ -418,7 +553,38 @@
         ".agents/**",
         "docs-site/docs/**",
         "docs-site/blog/**"
+      ],
+      "commandScopes": [
+        [
+          "backend/**"
+        ],
+        [
+          "backend/**"
+        ],
+        [
+          "frontend/**"
+        ],
+        [
+          "frontend/**"
+        ],
+        [
+          "frontend/**"
+        ]
+      ],
+      "qaOnlyPaths": [
+        "docs-site/**",
+        "docs/sql/**",
+        "docs/docker/**",
+        ".env.example"
       ]
+    },
+    "serviceTarget": {
+      "name": "example-dev",
+      "checks": {
+        "prepare": "service-prepare",
+        "start": "service-start",
+        "health": "service-health"
+      }
     }
   },
   "roles": {
@@ -479,8 +645,9 @@
         "Bash(gradle *)",
         "Bash(npm --version)",
         "Bash(node --version)",
-        "Bash(npm --prefix nextjs-dynamic-api-manager *)",
+        "Bash(npm --prefix frontend *)",
         "Bash(npm --prefix docs-site *)",
+        "Bash(bash scripts/drift-scan.sh)",
         "Bash(git *)",
         "Bash(ls *)"
       ],
@@ -502,7 +669,8 @@
         "Grep",
         "Glob",
         "Bash(gradle *)",
-        "Bash(npm --prefix nextjs-dynamic-api-manager *)",
+        "Bash(npm --prefix frontend *)",
+        "Bash(bash scripts/drift-scan.sh)",
         "Bash(git *)",
         "Bash(ls *)",
         "Bash(mkdir -p target/qa-docs)",
@@ -527,14 +695,15 @@
         "Grep",
         "Glob",
         "Bash(gradle *)",
-        "Bash(npm --prefix nextjs-dynamic-api-manager *)",
+        "Bash(npm --prefix frontend *)",
         "Bash(git status *)",
         "Bash(git diff *)",
         "Bash(git log *)",
         "Bash(git show *)",
-        "Bash(ls *)"
+        "Bash(ls *)",
+        "Bash(python3 /home/agent/ai-team/teams/skills/service-build/scripts/client.py *)"
       ],
-      "capabilities": "測試／SIT 環境、容器、部署設定與可用性檢查；開發階段依既有工作區契約實作。本專案未設定服務建置目標與主機操作，不得宣稱已部署。"
+      "capabilities": "測試環境部署、啟動與健康檢查；由 Agent VM 經已登錄 SSH 公鑰直接連到目標 VM。不得要求啟動 Windows broker；網路、公鑰或主機指紋尚未登錄時明列缺口。只執行核准固定操作，不取得任意 root shell。"
     },
     "inspector": {
       "name": "Code Reviewer",
@@ -570,16 +739,21 @@
         "Grep",
         "Glob",
         "Bash(gradle *)",
-        "Bash(npm --prefix nextjs-dynamic-api-manager *)",
+        "Bash(npm --prefix frontend *)",
         "Bash(git status *)",
         "Bash(git diff *)",
         "Bash(ls *)"
       ]
     }
   },
+  "collaboration": {
+    "consultPerVisit": 2,
+    "consultPerTask": 12,
+    "questionsPerRound": 2,
+    "boardMaxEntries": 100
+  },
   "entry": "intake",
   "sharedInstructions": "prompts/shared.md",
-  "collaboration": { "consultPerVisit": 2, "consultPerTask": 12, "questionsPerRound": 2, "boardMaxEntries": 100 },
   "maxTransitions": 24,
   "nodes": {
     "intake": {
@@ -596,7 +770,8 @@
       "routes": {
         "question": "end",
         "implementation": "design",
-        "human": "human"
+        "human": "human",
+        "service": "service"
       },
       "requires": [],
       "maxVisits": 3,
@@ -605,7 +780,10 @@
     },
     "design": {
       "kind": "AGENT",
-      "consultRoles": ["builder","tester"],
+      "consultRoles": [
+        "builder",
+        "tester"
+      ],
       "role": "architect",
       "schema": "schemas/analysis.json",
       "scope": "READ_ONLY",
@@ -634,7 +812,11 @@
     "plan": {
       "instructions": "prompts/plan.md",
       "kind": "AGENT",
-      "consultRoles": ["architect","builder","infrastructure"],
+      "consultRoles": [
+        "architect",
+        "builder",
+        "infrastructure"
+      ],
       "role": "tester",
       "schema": "schemas/plan.json",
       "scope": "READ_ONLY",
@@ -654,7 +836,10 @@
     },
     "implementation": {
       "kind": "AGENT",
-      "consultRoles": ["architect","tester"],
+      "consultRoles": [
+        "architect",
+        "tester"
+      ],
       "role": "builder",
       "schema": "schemas/implementation.json",
       "scope": "WORKSPACE",
@@ -669,7 +854,7 @@
         "plan"
       ],
       "maxVisits": 3,
-      "timeoutSeconds": 1800,
+      "timeoutSeconds": 3600,
       "maxTurns": 80,
       "protectedPathFallback": {
         "role": "builder_codex",
@@ -686,7 +871,10 @@
     },
     "verification": {
       "kind": "AGENT",
-      "consultRoles": ["architect","builder"],
+      "consultRoles": [
+        "architect",
+        "builder"
+      ],
       "role": "tester",
       "schema": "schemas/verification.json",
       "scope": "LIMITED",
@@ -694,11 +882,12 @@
       "workspace": true,
       "writablePaths": [
         "**/src/test/**",
+        "frontend/src/**/__tests__/**",
         "backend/build/**",
         "backend/.gradle/**",
-        "nextjs-dynamic-api-manager/node_modules/**",
-        "nextjs-dynamic-api-manager/.next/**",
-        "nextjs-dynamic-api-manager/out/**",
+        "backend/.kotlin/**",
+        "frontend/node_modules/**",
+        "frontend/dist/**",
         "target/qa-docs/**"
       ],
       "localTestNetwork": true,
@@ -716,7 +905,9 @@
     },
     "review": {
       "kind": "AGENT",
-      "consultRoles": ["architect"],
+      "consultRoles": [
+        "architect"
+      ],
       "role": "inspector",
       "schema": "schemas/review.json",
       "scope": "READ_ONLY",
@@ -737,7 +928,12 @@
     "triage": {
       "instructions": "prompts/triage.md",
       "kind": "AGENT",
-      "consultRoles": ["architect","builder","tester","infrastructure"],
+      "consultRoles": [
+        "architect",
+        "builder",
+        "tester",
+        "infrastructure"
+      ],
       "role": "coordinator",
       "schema": "schemas/analysis.json",
       "scope": "READ_ONLY",
@@ -769,6 +965,60 @@
         "verification",
         "review",
         "design"
+      ]
+    },
+    "service": {
+      "kind": "AGENT",
+      "role": "infrastructure",
+      "schema": "schemas/service.json",
+      "scope": "LIMITED",
+      "gate": "SERVICE",
+      "workspace": true,
+      "writablePaths": [
+        "docs/docker/sit/**",
+        "docs-site/docs/getting-started/**"
+      ],
+      "plan": null,
+      "next": "end",
+      "blocked": "service_triage",
+      "routes": {},
+      "requires": [
+        "intake"
+      ],
+      "maxVisits": 3,
+      "timeoutSeconds": 1800,
+      "maxTurns": 60,
+      "instructions": "prompts/service.md",
+      "skills": [
+        "skills/service-build/SKILL.md",
+        "skills/service-build/references/project-template.md"
+      ]
+    },
+    "service_triage": {
+      "kind": "AGENT",
+      "role": "coordinator",
+      "schema": "schemas/analysis.json",
+      "scope": "READ_ONLY",
+      "gate": "REPORT",
+      "workspace": false,
+      "writablePaths": [],
+      "plan": null,
+      "next": "human",
+      "blocked": "human",
+      "routes": {
+        "service": "service",
+        "human": "human"
+      },
+      "requires": [
+        "intake"
+      ],
+      "maxVisits": 3,
+      "timeoutSeconds": 900,
+      "maxTurns": 40,
+      "instructions": "prompts/service-triage.md",
+      "skills": [
+        "skills/service-build/SKILL.md",
+        "skills/service-build/references/project-template.md"
       ]
     }
   }

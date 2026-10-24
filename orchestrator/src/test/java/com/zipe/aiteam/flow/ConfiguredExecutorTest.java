@@ -39,9 +39,9 @@ class ConfiguredExecutorTest {
         assertThat(evidence.resolve(".git")).isDirectory();
     }
     @Test void serviceContextReachesTheRuntimePrompt() throws Exception {
-        flow = new FlowRun(TeamCatalog.load(Path.of("teams/bestpartner.json"), key -> repo.toString()));
+        flow = new FlowRun(TeamCatalog.load(Path.of("teams/gradle-fullstack.json"), key -> repo.toString()));
         flow.node = "intake";
-        when(store.serviceHistory("c", "bestpartner-dev", "42")).thenReturn(List.of(
+        when(store.serviceHistory("c", "example-dev", "42")).thenReturn(List.of(
                 new TaskStore.ServiceHistory("1036", "2026-10-11", "{\"service_status\":\"RUNNING\",\"checks\":[]}")));
         AtomicReference<AgentRuntime.RuntimeRequest> captured = new AtomicReference<>();
         when(runtime.execute(any(), any())).thenAnswer(c -> { captured.set(c.getArgument(0)); return null; });
@@ -143,7 +143,7 @@ class ConfiguredExecutorTest {
 
     @Test void intakeIsToldThatAllowedProtectedPathsAreDelegatedNotStopped() throws Exception {
         // #1014：需求整理一看到 .claude/ 就停下來問人；配置了改派時要說明那些路徑做得到。
-        var definition = TeamCatalog.load(Path.of("teams/bestpartner.json"), key -> repo.toString()).definition();
+        var definition = TeamCatalog.load(Path.of("teams/gradle-fullstack.json"), key -> repo.toString()).definition();
         AgentRuntime claude = mock(AgentRuntime.class);
         when(claude.protectedWritePaths()).thenReturn(List.of(".claude/", ".git/"));
         AgentRuntime codex = mock(AgentRuntime.class);
@@ -160,7 +160,7 @@ class ConfiguredExecutorTest {
 
     @Test void implementationIsToldNotToBuildForDocOnlyChanges() throws Exception {
         // #1018：只改 docs-site 的一行 Markdown，改派的 Codex 角色仍自行跑 Gradle、撞沙箱後回報受阻。
-        var paths = TeamCatalog.load(Path.of("teams/bestpartner.json"), key -> repo.toString()).definition()
+        var paths = TeamCatalog.load(Path.of("teams/gradle-fullstack.json"), key -> repo.toString()).definition()
                 .project().verification().docOnlyPaths();
         assertThat(DocOnlyChanges.qualifies(paths, List.of("docs-site/docs/architecture/tech-stack.md"))).isTrue();
         assertThat(DocOnlyChanges.qualifies(paths, List.of("docs-site/blog/2026-10-04-release.md"))).isTrue();
@@ -213,7 +213,7 @@ class ConfiguredExecutorTest {
         verify(runtime, never()).execute(any(), any());
     }
     @Test void qaUsesSnapshotModelAndReasoningEffort() throws Exception {
-        flow = new FlowRun(TeamCatalog.load(Path.of("teams/spring-starters.json"), key -> repo.toString()));
+        flow = new FlowRun(TeamCatalog.load(Path.of("teams/maven-library.json"), key -> repo.toString()));
         flow.node = "plan";
         when(runtime.id()).thenReturn("codex");
         executor = new ConfiguredExecutor(props, new RuntimeRegistry(List.of(runtime)), mock(ExecutionSandbox.class), workspace, store, preflight);
@@ -437,7 +437,7 @@ class ConfiguredExecutorTest {
     private TeamDefinition springDefinition() throws Exception {
         Path repo = tmp.resolve("spring-repo");
         Files.createDirectories(repo.resolve(".git"));
-        return TeamCatalog.load(Path.of("teams/spring-starters.json"), key -> repo.toString()).definition();
+        return TeamCatalog.load(Path.of("teams/maven-library.json"), key -> repo.toString()).definition();
     }
 
     @Test void grantedOperationsAreListedSoTheAgentDoesNotRefuseThem() throws Exception {
@@ -467,7 +467,7 @@ class ConfiguredExecutorTest {
 
     /** #1055：系統已在全新 clone 通過的指令列給 QA，請它引用收據、不要在沙箱重跑。 */
     @Test void verificationIsToldWhichCommandsTheSystemAlreadyPassed() throws Exception {
-        var flow = new FlowRun(TeamCatalog.load(Path.of("teams/spring-starters.json"), key -> repo.toString()));
+        var flow = new FlowRun(TeamCatalog.load(Path.of("teams/maven-library.json"), key -> repo.toString()));
         var decisions = List.of(
                 new VerificationPlan.Decision(0, List.of("npm", "ci"), VerificationPlan.Action.RUN, "", List.of(), "f0", "l0", "s0", null),
                 new VerificationPlan.Decision(1, List.of("npm", "test"), VerificationPlan.Action.REUSE, "", List.of(), "f1", "l1", "s1", "h0"),
@@ -516,7 +516,7 @@ class ConfiguredExecutorTest {
         assertThat(text).contains("分成多次工具呼叫").doesNotContain("Read").doesNotContain("Grep").doesNotContain("Glob");
     }
 
-    /** spring-starters：builder 是 Claude Code，tester（計畫、驗收）是 Codex。 */
+    /** maven-library：builder 是 Claude Code，tester（計畫、驗收）是 Codex。 */
     private static AgentRuntime runtimeOf(String id) {
         return id.equals("claude-code") ? new ClaudeCodeRuntime(null, null) : new CodexRuntime(null, null);
     }
@@ -530,7 +530,7 @@ class ConfiguredExecutorTest {
     }
 
     @Test void delegatedCodexPartIsNotToldTheOriginalRolesLimits() throws Exception {
-        // bestpartner #1021：分段改派的 Codex 拿到 Claude 的「.claude/ 一律拒寫、不要嘗試」，只做唯讀就回報受阻。
+        // #1021：分段改派的 Codex 拿到 Claude 的「.claude/ 一律拒寫、不要嘗試」，只做唯讀就回報受阻。
         assertThat(ConfiguredExecutor.protectedPathNotice(springDefinition(), "implementation", "tester",
                 ConfiguredExecutorTest::runtimeOf)).isEmpty();
         assertThat(ConfiguredExecutor.protectedPathNotice(springDefinition(), "implementation", "builder",

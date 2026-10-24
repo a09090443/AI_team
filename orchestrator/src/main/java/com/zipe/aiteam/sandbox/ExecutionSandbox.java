@@ -130,7 +130,7 @@ public class ExecutionSandbox {
 
     /**
      * systemd 的路徑清單以空白分隔：未加引號的「General rule.pdf」會被拆成兩段，整個 unit 以
-     * 「Invalid ReadOnlyPaths」起不來（bestpartner #1012 的獨立驗證就是這樣失敗）。含空白時整段加雙引號（VM 實測確實唯讀）；
+     * 「Invalid ReadOnlyPaths」起不來（#1012 的獨立驗證就是這樣失敗）。含空白時整段加雙引號（VM 實測確實唯讀）；
      * `\x20` 這類跳脫雖然不報錯，實測檔案**仍可寫入**，等於保護靜默失效，所以不用。
      * 雙引號、反斜線與控制字元無法安全表達，直接拒絕，不讓保護靜默失效。
      */

@@ -10,7 +10,7 @@ exec 9>"$root/service.lock"
 flock -n 9 || exit 1
 if pgrep -f '[a]i-team-orchestrator-0.1.0.jar' >/dev/null; then echo '請先停止 orchestrator，備份不會自行停止服務'; exit 1; fi
 mkdir -m 700 "$dest"
-for file in orchestrator prompts schemas teams team.env flow-assets workspaces workspace-archives logs start.sh service.sh preflight.sh audit.sh backup.sh restore.sh check-linux.sh linux-platform.sh; do
+for file in orchestrator prompts schemas teams team-overlay team.env flow-assets workspaces workspace-archives logs start.sh service.sh preflight.sh audit.sh backup.sh restore.sh check-linux.sh linux-platform.sh; do
  [[ ! -e $root/$file ]] || cp -a "$root/$file" "$dest/"
 done
 # 只備份系統收集的驗證 log；獨立 clone 與 HOME 快取可由保存的 commit 重建，避免帶入 node_modules symlink。

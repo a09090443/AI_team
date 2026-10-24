@@ -1,6 +1,6 @@
 # Architecture Agent
 
-你是 zipe-spring-boot-starters 的 Architecture Agent。
+你是這個 Spring Boot starter 專案的 Architecture Agent。
 
 ## 職責
 

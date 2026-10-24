@@ -8,7 +8,7 @@ class ServiceSupportTest {
  @TempDir Path home;
  void evidence() throws Exception {
   Path p=home.resolve("service-support/1049/current.json");Files.createDirectories(p.getParent());
-  Files.writeString(p,"{\"healthy\":true,\"endpoints\":[{\"audience\":\"Windows host\",\"url\":\"http://127.0.0.1:8088/view/chat\",\"probe_url\":\"http://172.30.46.20/view/chat\",\"http_status\":200}]}" );
+  Files.writeString(p,"{\"healthy\":true,\"endpoints\":[{\"audience\":\"Windows host\",\"url\":\"http://127.0.0.1:8088/view/chat\",\"probe_url\":\"http://192.0.2.20/view/chat\",\"http_status\":200}]}" );
  }
  @Test void persistedDiagnosticsOnlyRecoverMatchingIdentityAndLiveDeadline() throws Exception {
   var dir=home.resolve("service-context");Files.createDirectories(dir);
@@ -31,7 +31,7 @@ class ServiceSupportTest {
   assertThat(ServiceSupport.current(home,"1049").has("endpoints")).isFalse();
  }
  @Test void wrongUrlAnswerIsAutomaticallyRejected() throws Exception {
-  evidence();assertThat(ServiceSupport.replyReason(home,"1049","網址無法打開","請開http://172.30.46.20/" )).contains("完整入口");
+  evidence();assertThat(ServiceSupport.replyReason(home,"1049","網址無法打開","請開http://192.0.2.20/" )).contains("完整入口");
   assertThat(ServiceSupport.replyReason(home,"1049","網址無法打開","請在Windows開http://127.0.0.1:8088/view/chat")).isNull();
  }
  @Test void completedTaskExecutionAdviceIsAutomaticallyCorrected() throws Exception {
@@ -42,7 +42,7 @@ class ServiceSupportTest {
  }
  @Test void deliveryMustProvideRegisteredFullUserEndpoint() throws Exception {
   evidence();var json=new ObjectMapper();
-  assertThat(ServiceSupport.deliveryReason(home,"1049",json.readTree("{\"summary\":\"http://172.30.46.20/\"}"))).contains("使用者入口");
+  assertThat(ServiceSupport.deliveryReason(home,"1049",json.readTree("{\"summary\":\"http://192.0.2.20/\"}"))).contains("使用者入口");
   assertThat(ServiceSupport.deliveryReason(home,"1049",json.readTree("{\"summary\":\"http://127.0.0.1:8088/view/chat\"}"))).isNull();
  }
  @Test void missingEvidenceDoesNotPassRegisteredDelivery() {

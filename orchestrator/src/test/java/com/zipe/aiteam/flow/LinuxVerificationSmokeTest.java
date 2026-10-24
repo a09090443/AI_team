@@ -37,7 +37,7 @@ class LinuxVerificationSmokeTest {
         Process clone = new ProcessBuilder("git", "clone", "--no-hardlinks", "--quiet", "--", source.toString(), target.toString())
                 .redirectErrorStream(true).redirectOutput(root.resolve("fixture-clone.log").toFile()).start();
         assertThat(clone.waitFor(30, TimeUnit.SECONDS)).isTrue(); assertThat(clone.exitValue()).isZero();
-        FlowRun flow = new FlowRun(TeamCatalog.load(Path.of("teams/spring-starters.json"), key -> source.toString()));
+        FlowRun flow = new FlowRun(TeamCatalog.load(Path.of("teams/maven-library.json"), key -> source.toString()));
         flow.baselineRevision = "deployment-baseline-smoke";
         flow.independentEvidence = verifier.verify(new Task("900001", "none", "none", "deployment", "baseline smoke"), flow);
         assertThat(verifier.blockingReason(flow, flow.independentEvidence.head())).isNull();

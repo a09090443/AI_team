@@ -114,7 +114,7 @@ class SupportTests(unittest.TestCase):
             self.assertEqual("OPERATION_PENDING",result['diagnosis']['category'])
     def fixture(self,home):
         home=Path(home);(home/"service-context").mkdir()
-        endpoint=dict(audience="Windows host",url="http://127.0.0.1:8088/view/chat",probe_url="http://172.30.46.20/view/chat")
+        endpoint=dict(audience="Windows host",url="http://127.0.0.1:8088/view/chat",probe_url="http://192.0.2.20/view/chat")
         config=dict(target="sit",access_endpoints=[endpoint],config_file="private-config",auto_repair_existing_release=True)
         (home/"service-context/sit.json").write_text(json.dumps(config))
         flow=dict(dialogue=True,parentId="1048",dialogueRole="infra",snapshot=dict(definition=dict(project=dict(serviceTarget=dict(name="sit")),nodes=dict(service=dict(gate="SERVICE",role="infra")))) )
@@ -133,7 +133,7 @@ class SupportTests(unittest.TestCase):
         opener=MagicMock();response=SimpleNamespace(status=200)
         opener.open.return_value.__enter__.return_value=response
         with patch.object(support.urllib.request,"build_opener",return_value=opener):
-            out=support.probe(dict(audience="Windows",url="http://127.0.0.1:8088/view/chat",probe_url="http://172.30.46.20/view/chat"))
+            out=support.probe(dict(audience="Windows",url="http://127.0.0.1:8088/view/chat",probe_url="http://192.0.2.20/view/chat"))
         self.assertTrue(out["healthy"]);self.assertFalse(out["user_route_verified"]);self.assertEqual("Agent VM",out["probe_origin"])
         self.assertIsNone(support.NoRedirect().redirect_request(None,None,None,None,None,None))
     def test_http404_is_not_health_success(self):

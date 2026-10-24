@@ -48,8 +48,8 @@ public class FlowEngine {
         audit.record(task.id(), task.requesterUserId(), AuditLog.ACTION_STATE, "固定配置版本 " + catalog.snapshot().revision());
     }
     /**
-     * 已知基準失敗要在需求階段就讓負責人知道，不必等到系統獨立驗證才發現（dynamic-api #1001）。
-     * 只在第一次建立需求基準時提醒：純詢問、問候不會走到系統獨立驗證，提醒只會干擾（spring-starters #1006）。
+     * 已知基準失敗要在需求階段就讓負責人知道，不必等到系統獨立驗證才發現（#1001）。
+     * 只在第一次建立需求基準時提醒：純詢問、問候不會走到系統獨立驗證，提醒只會干擾（#1006）。
      */
     private void remindBaseline(Task task) {
         if (baseline != null) baseline.latest().filter(r -> !r.passed()).ifPresent(r -> slack.post(Identity.SYSTEM,

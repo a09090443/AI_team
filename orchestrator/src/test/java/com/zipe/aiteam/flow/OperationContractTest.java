@@ -23,10 +23,10 @@ class OperationContractTest {
                 List.of("bash", "scripts/check.sh"), List.of(), sha))).isTrue();
     }
     @Test void pinnedScriptMustMatchReviewedContent() throws Exception {
-        var config = config("bestpartner");
-        Path script = tmp.resolve("scripts/harness-drift-scan.sh"); Files.createDirectories(script.getParent());
+        var config = config("gradle-fullstack");
+        Path script = tmp.resolve("scripts/drift-scan.sh"); Files.createDirectories(script.getParent());
         Files.writeString(script, "#!/bin/bash\nexit 0\n");
-        ((ObjectNode)config.path("project").path("operations").path("harness-drift-scan"))
+        ((ObjectNode)config.path("project").path("operations").path("drift-scan"))
                 .put("scriptSha256", IndependentVerifier.hash(script));
         var definition = mapper.treeToValue(config, TeamDefinition.class); TeamCatalog.validate(definition);
         assertThat(OperationContract.scriptPins(definition, "verification", tmp)).containsExactly(script.toRealPath());
@@ -37,7 +37,7 @@ class OperationContractTest {
     ObjectMapper mapper = new ObjectMapper();
     ObjectNode config(String name) throws Exception { return (ObjectNode)mapper.readTree(Files.readString(Path.of("teams/" + name + ".json"))); }
     @Test void bothStacksDeclareOperationsWithoutEngineRoleSwitches() throws Exception {
-        for (String name : List.of("spring-starters", "node-web")) {
+        for (String name : List.of("maven-library", "node-web")) {
             var definition = mapper.treeToValue(config(name), TeamDefinition.class);
             TeamCatalog.validate(definition);
             assertThat(OperationContract.forNode(definition, "implementation")).isNotEmpty();

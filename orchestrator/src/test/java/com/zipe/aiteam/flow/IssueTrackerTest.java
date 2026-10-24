@@ -200,7 +200,7 @@ class IssueTrackerTest {
         assertThat(IssueTracker.completionReason(flow)).contains("不能宣稱");
     }
     @Test void contractIsUniversalFrozenAndOldSnapshotsKeepTheirContract() throws Exception {
-        for(String team:List.of("node-web","spring-starters","bestpartner")) {
+        for(String team:List.of("node-web","maven-library","gradle-fullstack")) {
             FlowRun f=new FlowRun(TeamCatalog.load(Path.of("teams/"+team+".json"),k->tmp.toString()));
             assertThat(IssueTracker.enabled(f)).isTrue();
             Node n=f.snapshot.definition().nodes().get(f.snapshot.definition().entry());

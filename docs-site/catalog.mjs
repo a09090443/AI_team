@@ -92,7 +92,7 @@ export const docs = [
     status: 'current',
     summary: 'AI_TEAM_DEFINITION 團隊 JSON（project／roles／nodes）、scope 與 gate 政策、Agent 依能力自主派工、角色諮詢與共享看板、受阻路由、次數上限、快照相容、承接新任務，以及同一台 VM 多個服務實例（AI_TEAM_INSTANCE）。',
     readWhen: '新增或修改角色、節點、流程，或解釋任務為何停住／能否繼續。',
-    code: ['orchestrator/teams/', 'orchestrator/src/main/java/com/zipe/aiteam/flow/', 'orchestrator/src/main/java/com/zipe/aiteam/task/TaskOrchestrator.java', 'orchestrator/src/main/java/com/zipe/aiteam/sandbox/TaskUnits.java'],
+    code: ['orchestrator/teams/', 'deploy/bootstrap/stage-teams.sh', 'orchestrator/src/main/java/com/zipe/aiteam/flow/', 'orchestrator/src/main/java/com/zipe/aiteam/task/TaskOrchestrator.java', 'orchestrator/src/main/java/com/zipe/aiteam/sandbox/TaskUnits.java'],
   },
   {
     id: 'baseline-verification',

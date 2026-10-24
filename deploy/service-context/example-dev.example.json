@@ -1,0 +1,24 @@
+{
+  "target": "example-dev",
+  "host": "Agent VM（部署連線由此機直接 SSH 至目標 VM）",
+  "program": "/home/agent/ai-team/teams/skills/service-build/scripts/ssh_executor.py",
+  "config_file": "/home/agent/.config/ai-team/ssh-targets/example-dev.json",
+  "start_command": "systemctl --user status ai-team-ssh-deploy.service; systemctl --user restart ai-team-ssh-deploy.service",
+  "notes": "寫明使用者對此主機授權的範圍（例如部署與正常版本更新）、資料與機密是否保留，以及目標工具實際檢查的項目。Agent VM systemd 執行器自動啟動，直接 SSH。既有同任務與來源的 verified prepare/start 沿用持久檢查點；OPERATION_PENDING 交回等待，系統追蹤同 job 並自動接續。模型逾時或 SSH 回覆遺失不等於執行器離線，不以重啟解決正常等待。",
+  "history": [
+    {
+      "at": "YYYY-MM-DD",
+      "task": "<任務編號>",
+      "outcome": "start exit 0；當時 START_PASS、HEALTH_PASS；目前健康未知",
+      "evidence": "<收據路徑或部署紀錄>"
+    }
+  ],
+  "access_endpoints": [
+    {
+      "audience": "使用者實際開啟服務的電腦",
+      "url": "http://127.0.0.1:8088/",
+      "probe_url": "http://192.0.2.20/"
+    }
+  ],
+  "auto_repair_existing_release": true
+}

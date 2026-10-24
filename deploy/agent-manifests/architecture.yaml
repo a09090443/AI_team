@@ -3,7 +3,7 @@ display_information:
   description: 架構分析與實作邊界
   background_color: "#8b6fb0"
   long_description: >-
-    這是 zipe-spring-boot-starters 專案 AI 軟體團隊中的「Architecture Agent」角色，
+    這是目標專案 AI 軟體團隊中的「Architecture Agent」角色，
     以 workspace 內獨立使用者的身分存在，讓每個角色的發言在討論串中可以被清楚區分，
     也能被個別 @ 提及與查看個人檔案。它負責分析既有架構、評估變更的影響與向後相容風險，並定義 Backend 的實作邊界與 QA 的驗收條件。
     本 App 會接收允許頻道內直接 @本角色的訊息，只有中央白名單內的真實使用者可以提出請求。

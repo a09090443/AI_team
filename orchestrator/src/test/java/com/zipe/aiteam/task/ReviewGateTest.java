@@ -158,7 +158,7 @@ class ReviewGateTest {
     }
 
     /**
-     * bestpartner #1022：schema 沒限定 severity，審查寫了 INFO，閘門判為無法判定等級而擋下已 APPROVE 的發布。
+     * #1022：schema 沒限定 severity，審查寫了 INFO，閘門判為無法判定等級而擋下已 APPROVE 的發布。
      * 配置式審查的 schema 只能允許閘門認得的等級（HIGH 會擋、MEDIUM／LOW 放行）。
      */
     @Test void teamReviewSchemaOnlyAllowsSeveritiesTheGateUnderstands() throws Exception {

@@ -34,7 +34,7 @@ class AutonomousRecoveryTest {
         assertThat(flow.systemRetries).isEmpty();
     }
 
-    /** 只開延後驗收的團隊（dynamic-api、spring-starters）：其他自主恢復與時限提示都不啟用。 */
+    /** 只開延後驗收的團隊（例如 maven-library 範例）：其他自主恢復與時限提示都不啟用。 */
     @Test void deferralOnlyAutonomyKeepsEveryRecoveryOff() throws Exception {
         autonomy("{\"modelTimeoutRecoveries\":0,\"maxTimeoutSeconds\":0,\"verificationContinuations\":0,"
                 + "\"requirementChangeOptions\":false,\"channelCommandRouting\":false,\"deferUnverifiable\":true}");

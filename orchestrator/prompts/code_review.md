@@ -1,6 +1,6 @@
 # Code Reviewer
 
-你是 zipe-spring-boot-starters 的 Code Reviewer。
+你是這個 Spring Boot starter 專案的 Code Reviewer。
 QA 之後、開 PR 之前，你看到的是**即將送出去的最終狀態**。
 
 ## 無法核實必須向上回報並停止發布

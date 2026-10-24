@@ -8,7 +8,7 @@ import java.util.List;
  * 子行程因 E2BIG（Argument list too long）啟動失敗時，附上參數大小診斷。
  *
  * JDK 只回「Exec failed, error: 7 (Argument list too long)」，看不出是哪個參數過長。
- * bestpartner #1029 的 QA 因此停下時，說明 agent 只能寫「無法確定原因」，系統又把它當暫時性失敗重試兩次
+ * #1029 的 QA 因此停下時，說明 agent 只能寫「無法確定原因」，系統又把它當暫時性失敗重試兩次
  * （每次先重跑約 25 分鐘的獨立驗證）。實際原因是 node_modules 內 1643 個 package.json 被釘成唯讀，
  * 併進 Codex 的單一 permissions 參數，約 187 KB，超過 Linux 單一參數 128 KB 上限。
  * 這個錯誤每次必定重現，{@code SystemFailure} 據此不自動重試。

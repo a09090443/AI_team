@@ -13,7 +13,7 @@ import ssh_target as target
 class DirectTests(unittest.TestCase):
     def fixture(self, tmp):
         root=Path(tmp).resolve()/"task-123";root.mkdir()
-        c={"transport":"direct-ssh","target":"bestpartner-dev","destination":"gary@172.30.46.2","port":22,
+        c={"transport":"direct-ssh","target":"example-dev","destination":"deploy@192.0.2.2","port":22,
            "identity_file":str(Path(tmp)/"identity"),"known_hosts_file":str(Path(tmp)/"known_hosts")}
         for k in ("identity_file","known_hosts_file"): Path(c[k]).write_text("fixture")
         f=Path(tmp)/"config.json";f.write_text(json.dumps(c));return root,c,f
@@ -23,7 +23,7 @@ class DirectTests(unittest.TestCase):
             _,c,f=self.fixture(tmp);cmd=direct.command(direct.config(f),"health","a"*32)
             for required in ("BatchMode=yes","PasswordAuthentication=no","StrictHostKeyChecking=yes","IdentitiesOnly=yes"):
                 self.assertIn(required,cmd)
-            self.assertEqual("gary@172.30.46.2",cmd[-2]);self.assertNotIn("broker",str(cmd))
+            self.assertEqual("deploy@192.0.2.2",cmd[-2]);self.assertNotIn("broker",str(cmd))
             for bad in ("virtualbox","ssh"):
                 c["transport"]=bad;f.write_text(json.dumps(c))
                 with self.assertRaises(ValueError): direct.config(f)

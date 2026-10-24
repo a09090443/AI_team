@@ -153,9 +153,9 @@ class TransportTests(unittest.TestCase):
 
     def test_virtualbox_login_copy_failure_always_cleans_guest_secret(self):
         with tempfile.TemporaryDirectory() as tmp:
-            b = broker.Broker({"state_directory": tmp, "guest_user": "gary", "password_file": str(Path(tmp) / "login")})
+            b = broker.Broker({"state_directory": tmp, "guest_user": "deploy", "password_file": str(Path(tmp) / "login")})
             request = {"id": "c" * 32, "action": "prepare", "task": "123"}
-            guest_dir = "/home/gary/.ai-team-service-" + request["id"]
+            guest_dir = "/home/deploy/.ai-team-service-" + request["id"]
             def transfer(verb, args, **kwargs):
                 if verb == "copyto" and args[-1] == guest_dir + "/login":
                     self.assertEqual(str((Path(tmp) / "login").resolve()), args[0])

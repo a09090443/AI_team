@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # 通用受控部署：把隔離目錄建好的 orchestrator（JAR、src/main、teams）換到線上服務。
+# teams 是來源內附配置疊上實例 overlay（AI_TEAM_TEAM_OVERLAY，預設 $AI_TEAM_HOME/team-overlay）的結果，見 bootstrap/stage-teams.sh。
 #
 # 不指名任何任務、角色或專案。先前每一版部署腳本都寫死檢查 task-1014，
 # 換一台機器或沒有那個任務就直接失敗；而「任務停在哪個節點、剩幾次額度」這類
@@ -32,12 +33,18 @@ test -z "$(sqlite3 -readonly "$root/ai-team.db" \
   "select id from task where state like '%RUNNING' or state in ('QUEUED','RESUME_QUEUED','TRIAGE_QUEUED');")"
 test -z "$(pgrep -f 'claude|codex|opencode' || true)"
 
-# ---- 所有團隊配置都要通過靜態驗證 ----
-repo_path=$(bash -c 'set -a; . "$1/env.sh" >/dev/null 2>&1; [ -f "$1/team.env" ] && . "$1/team.env" >/dev/null 2>&1; printf %s "${AI_TEAM_REPO:-}"' _ "$root")
+# ---- 來源 teams＋實例 overlay 合併後，所有團隊配置都要通過靜態驗證 ----
+instance_env() {
+  bash -c 'set -a; . "$1/env.sh" >/dev/null 2>&1; [ -f "$1/team.env" ] && . "$1/team.env" >/dev/null 2>&1; printf %s "${!2:-}"' _ "$root" "$1"
+}
+repo_path=$(instance_env AI_TEAM_REPO)
+definition=$(instance_env AI_TEAM_DEFINITION)
+overlay=$(instance_env AI_TEAM_TEAM_OVERLAY); overlay=${overlay:-$root/team-overlay}
 test -d "$repo_path/.git"
-for team in "$build"/teams/*.json; do
-  AI_TEAM_REPO="$repo_path" AI_TEAM_NODE_REPO="$repo_path" java -jar "$build/target/$jar" --validate-team "$team"
-done
+staged=$(mktemp -d "$root/teams-stage.XXXXXX")
+AI_TEAM_REPO="$repo_path" AI_TEAM_DEFINITION="$definition" \
+  bash "$source_root/deploy/bootstrap/stage-teams.sh" "$build/target/$jar" "$build/teams" "$overlay" "$root/teams" "$staged" \
+  || { rm -rf "$staged"; exit 1; }
 
 snapshot() {
   # Stream rows in a read-only transaction. sqlite3 CLI -json can spend minutes escaping large flow snapshots.
@@ -77,6 +84,7 @@ cp -a "$root/teams" "$backup/teams"
 cp -p "$root/orchestrator.log" "$backup/orchestrator.log"
 sqlite3 "$root/ai-team.db" ".backup '$backup/ai-team.db'"
 test "$(sqlite3 -readonly "$backup/ai-team.db" 'pragma integrity_check;')" = ok
+mv "$staged" "$backup/teams.deployed"; staged="$backup/teams.deployed"
 snapshot > "$backup/tasks.before"
 workspace_snapshot > "$backup/workspaces.before"
 sqlite3 -readonly "$root/ai-team.db" \
@@ -97,8 +105,8 @@ cp -p "$build/target/$jar" "$root/orchestrator/target/$jar.next"
 mv "$root/orchestrator/target/$jar.next" "$root/orchestrator/target/$jar"
 # JAR-only 安裝沒有來源目錄；來源不是執行必要資產，不另外建立。
 if [ -d "$root/orchestrator/src/main" ]; then cp -a "$build/src/main/." "$root/orchestrator/src/main/"; fi
-# 角色工具白名單在 teams 配置裡，不在 JAR 裡，必須一起更新。
-cp -a "$build/teams/." "$root/teams/"
+# 角色工具白名單在 teams 配置裡，不在 JAR 裡，必須一起更新；實例配置由 overlay 帶入，來源沒有的舊檔不刪。
+cp -a "$staged/." "$root/teams/"
 bash "$root/service.sh" start 8>&-
 echo "BACKUP=$backup"
 

@@ -340,8 +340,8 @@ public class AiTeamProperties {
     public String baseBranch()     { return baseBranch == null ? "" : baseBranch.trim(); }
 
     /**
-     * 任務分支的前綴。預設 feature/ 是為了符合 zipe-spring-boot-starters 的
-     * 「feature → develop → master」流程（見該 repo 的 AGENTS.md）。
+     * 任務分支的前綴。預設 feature/ 是為了符合 gitflow 專案常見的
+     * 「feature → develop → master」流程。
      */
     public String branchPrefix()   { return branchPrefix; }
 

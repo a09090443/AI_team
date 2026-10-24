@@ -8,7 +8,7 @@ import static com.zipe.aiteam.flow.TeamDefinition.*;
 
 /**
  * 受保護路徑改派：Claude Code 在自動模式一律拒絕寫入 `.claude/` 等路徑（官方 protected paths，權限設定開放不了）。
- * bestpartner #1014 只改 `.claude/rules/api-endpoints.md` 兩個字就停在需求整理。實作節點可配置 fallback：需求要改的
+ * #1014 只改 `.claude/rules/api-endpoints.md` 兩個字就停在需求整理。實作節點可配置 fallback：需求要改的
  * 受保護路徑全部落在管理者允許的 paths 內時，改派給另一個 runtime 的角色（Codex）實作。
  *
  * 安全前提：`.claude/settings*.json` 能定義 hooks 與權限，被改寫後同一工作區後續的 Claude Code 角色會載入並可能執行任意指令。

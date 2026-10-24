@@ -12,7 +12,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 此為系統生成的快照資產，不是要在 teams 下建立同名檔案。細節見[問題完整性](/docs/engineering-workflow#跨專案問題完整性2026-10-11)。
 
 設定分兩處：**`~/ai-team/env.sh`**（權限 600，含憑證，不進版控）與 **團隊配置 JSON**
-（`orchestrator/teams/*.json`，不含憑證，只引用環境變數名稱）。
+（不含憑證，只引用環境變數名稱；內附範例在 `orchestrator/teams/`，各專案實例的配置放實例的 `team-overlay/`）。
 範本是 `deploy/env.sh.template`；欄位驗證在 `config/AiTeamProperties.java` 與 `flow/TeamDefinition.java`。
 
 ## 環境變數
@@ -28,6 +28,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 | `AI_TEAM_ALLOWED_USERS` | 允許觸發的 Slack user ID，逗號分隔（不是顯示名稱） |
 | `AI_TEAM_CHANNEL_ID` | 運作頻道 ID；preflight 視為必填 |
 | `AI_TEAM_DEFINITION` | 團隊配置 JSON 的絕對路徑；**留空＝legacy 五角色模式**。修改後重啟，只影響新任務 |
+| `AI_TEAM_TEAM_OVERLAY` | 實例 overlay 目錄（預設 `$AI_TEAM_HOME/team-overlay`），放專案自己的團隊配置；只有 `deploy-orchestrator.sh` 讀，服務本身不讀。見 [內附範例與實例 overlay](/docs/configurable-team#內附範例與實例-overlay) |
 | `GRADLE_USER_HOME` | 只有 Gradle 專案需要：指向 `$HOME/.cache/gradle`，配置 `cachePaths` 宣告 `.cache/gradle`；沙箱白名單會帶入，系統獨立驗證不受影響 |
 | `AI_TEAM_INSTANCE` | 服務實例名稱（建議放 `team.env`）。單一服務留空；同一台 VM 多個專案服務時**必填且不可重複**，systemd unit 改名為 `ai-team-<實例>-…`。格式見 [多個服務實例](/docs/configurable-team#同一台-vm-多個服務實例) |
 | `AI_TEAM_HOME`、`AI_TEAM_REPO`、`AI_TEAM_WORKSPACES`、`AI_TEAM_LOGS` | 服務根目錄、目標 repo 鏡像、任務工作區、階段 log |

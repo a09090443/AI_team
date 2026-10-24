@@ -176,7 +176,7 @@ public class SlackNotifier {
 
     /**
      * 只有「沒有專屬 token、借用主 App 發言的角色」才覆寫名稱與圖示。系統身分本來就是主 App，
-     * 覆寫會把每個實例的主 App 都改成同一個寫死的名字：bestpartner 的系統訊息曾因此顯示成 zipe-ai-team。
+     * 覆寫會把每個實例的主 App 都改成同一個寫死的名字：第二個實例的系統訊息曾因此顯示成第一個實例的 App 名稱。
      */
     static boolean overridesName(Identity who, boolean hasOwn) {
         return !hasOwn && !Identity.SYSTEM.equals(who);

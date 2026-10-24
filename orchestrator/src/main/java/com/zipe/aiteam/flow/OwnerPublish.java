@@ -13,7 +13,7 @@ import static com.zipe.aiteam.flow.TeamDefinition.*;
  * 負責人可以放行的閘門失敗只有兩種，其餘證據照舊必須有效（判斷用發布核准節點同一套 FlowGates.publicationReason）：
  * 1. 審查其他條件全過、沒有 HIGH，只因 finding 等級寫成 INFO 之類的提醒而被擋（ReviewGate.waivable）。
  *    #1022 的審查 APPROVE、沒有 blockers，卻因一項 INFO 擋下，流程內沒有任何路徑能開 PR。
- * 2. 驗收其他條件全過，只剩 uncertainties（未核實事項）。bestpartner 的測試規範要求外部 API 金鑰、資料庫的情境一律標為
+ * 2. 驗收其他條件全過，只剩 uncertainties（未核實事項）。有些專案的測試規範要求外部 API 金鑰、資料庫的情境一律標為
  *    「無法核實」，QaGate 又把任何未核實事項當成禁止發布，#1029 驗收 7 個情境全數 PASS 仍永遠開不了 PR。
  * 審查還沒執行（沒有收據也沒有被擋的報告）時不能跳過：回傳 pendingReview，由 FlowEngine 先跑審查，通過後再依負責人指令發布。
  * 系統獨立驗證收據不在這裡判斷：缺少時由 FlowEngine 在發布前（或審查前）重跑。

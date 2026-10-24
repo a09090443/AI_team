@@ -212,6 +212,8 @@ git clone --no-single-branch <新專案 repo> ~/ai-team-web/<repo 目錄>
 
 - `~/ai-team-web/env.sh` 的 `AI_TEAM_HOME` 改指向新目錄（範本預設 `$HOME/ai-team`），`AI_TEAM_REPO` 指向新 clone。
 - `team.env` 設該專案的 `AI_TEAM_DEFINITION` 與 **`AI_TEAM_INSTANCE`**；原本的實例也要設（例如 `projecta`），名稱不可重複。
+- 專案自己的團隊配置放在實例的 `team-overlay/`（結構同 `teams/`，不放進公開 repo）；安裝時可用第三個參數帶入：
+  `install-app.sh <來源> <新目錄> <overlay 目錄>`，`AI_TEAM_DEFINITION` 指向 `teams/<專案>.json`。見[內附範例與實例 overlay](configurable-team.md#內附範例與實例-overlay)。
 - 另建一組 Slack App 與一個頻道；**不可與其他實例共用 App token**。
 - 啟停與查詢都用該目錄下的腳本（`bash ~/ai-team-web/service.sh status`）。
 - 第一次啟動後，頻道會出現「🔎 基準驗證」：系統在基準分支最新 commit 跑一次配置的驗證指令（2026-10-18 起，見 [基準驗證](baseline-verification.md)）。
@@ -303,7 +305,8 @@ QA 驗收**不會自動派工**：系統會先把完整測試計畫貼進討論�
 `plan_revision` 由系統在呈現計畫時給出，照抄即可；版本對不上會被拒絕，這是刻意的。
 核准也可以用計畫卡上的按鈕，效果與文字指令相同。
 
-改了 `teams/*.json` 之後，**既有任務不會自動套用**——它跑的是自己的配置快照。
+專案配置要改在實例的 `team-overlay/`，再複製到 `teams/` 並重啟；只改 `teams/` 會讓下次部署因內容不一致而擋停。
+改了團隊配置之後，**既有任務不會自動套用**——它跑的是自己的配置快照。
 要讓進行中的任務改用新配置，得由同一位負責人在原討論串走一次遷移：
 
 | 步驟 | 指令 |
@@ -433,8 +436,8 @@ Slack 相關問題見 [建立 Slack App](slack-agent-apps.md#疑難排解)。
 
 ## 升級既有 Orchestrator
 
-使用`deploy/deploy-orchestrator.sh <隔離來源根目錄>`，以AI_TEAM_HOME指定既有實例。候選JAR、src/main及teams必須來自隔離建置；orchestrator/full-build.log須是該候選來源的完整成功驗證紀錄。不得在執行中target做clean/build，也不打包env.sh或CLI登入檔。更新提示/skill時先保留線上teams JSON，再只覆蓋本輪已核對的資產；既有任務仍保留原快照。
+使用`deploy/deploy-orchestrator.sh <隔離來源根目錄>`，以AI_TEAM_HOME指定既有實例。候選JAR、src/main及teams必須來自隔離建置；orchestrator/full-build.log須是該候選來源的完整成功驗證紀錄。不得在執行中target做clean/build，也不打包env.sh或CLI登入檔。部署的teams是來源teams疊上實例team-overlay的合併結果（`deploy/bootstrap/stage-teams.sh`），停服務前以候選JAR逐一驗證；啟用中的配置不在來源也不在overlay、或線上teams的overlay檔被直接修改時中止，不動線上服務。既有任務仍保留原快照。
 
-升級前確認無執行中或排隊任務，備份JAR、teams與SQLite，核對全部任務工作區；切換後檢查Spring、沙箱、角色Socket Mode及資料一致性，失敗由腳本回復程式與資產。task/flow_run/task_checkpoint/direct_request/stage_result/quota_retry六表以唯讀交易逐列JSON編碼後雜湊，避免SQLite CLI輸出大型JSON時長時間占用CPU；快照只保存雜湊，不輸出任務或憑證內容。
+升級前確認無執行中或排隊任務，備份JAR、teams（含本次合併結果teams.deployed）與SQLite，核對全部任務工作區；切換後檢查Spring、沙箱、角色Socket Mode及資料一致性，失敗由腳本回復程式與資產。task/flow_run/task_checkpoint/direct_request/stage_result/quota_retry六表以唯讀交易逐列JSON編碼後雜湊，避免SQLite CLI輸出大型JSON時長時間占用CPU；快照只保存雜湊，不輸出任務或憑證內容。
 
 由Windows傳送shell腳本時，先把CRLF正規化為LF並執行bash -n。此流程只升級協調器，不重建目標產品、不續跑任務、不核准新計畫或PR。

@@ -1,9 +1,9 @@
 display_information:
   name: zipe-ai-team
-  description: AI Software Team for zipe-spring-boot-starters
+  description: AI Software Team
   background_color: "#2c2d30"
   long_description: >-
-    這是 zipe-spring-boot-starters 專案的 AI 軟體團隊。在 Slack 頻道中 @ 提及即可把開發任務交給它，
+    這是目標專案的 AI 軟體團隊。在 Slack 頻道中 @ 提及即可把開發任務交給它，
     任務會依序經過 PM、Architecture、Backend、QA 四個角色分工處理，每個角色以自己的名稱與圖示發言。
     每個階段的結果都會回報在原本的討論串中，並附上核准、要求重做、中止三個按鈕，
     由真人決定是否進入下一個階段，不會一路跑到底。所有會修改程式碼的操作都在隔離的工作區中進行，

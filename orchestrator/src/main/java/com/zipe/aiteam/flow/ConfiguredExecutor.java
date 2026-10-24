@@ -366,7 +366,7 @@ public class ConfiguredExecutor {
         return protectedPathNotice(definition, nodeId, null, runtimeOf);
     }
     /**
-     * actingRole 是實際執行本節點的角色（分段改派時是改派角色）。bestpartner #1021：改派給 Codex 的那一段拿到
+     * actingRole 是實際執行本節點的角色（分段改派時是改派角色）。#1021：改派給 Codex 的那一段拿到
      * 原角色（Claude）的「.claude/ 一律拒寫、不要嘗試」，與改派說明矛盾，Codex 照這條只做唯讀就回報受阻。
      */
     static String protectedPathNotice(TeamDefinition definition, String nodeId, String actingRole, Function<String, AgentRuntime> runtimeOf) {

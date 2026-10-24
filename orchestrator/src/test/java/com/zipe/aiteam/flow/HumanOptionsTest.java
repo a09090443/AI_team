@@ -14,7 +14,7 @@ class HumanOptionsTest {
     @BeforeEach void setup() throws Exception {
         Path repo = tmp.resolve("repo");
         Files.createDirectories(repo.resolve(".git"));
-        flow = new FlowRun(TeamCatalog.load(Path.of("teams/spring-starters.json"), key -> repo.toString()));
+        flow = new FlowRun(TeamCatalog.load(Path.of("teams/maven-library.json"), key -> repo.toString()));
     }
 
     private String text() { return HumanOptions.render(task, flow, true, true, null); }

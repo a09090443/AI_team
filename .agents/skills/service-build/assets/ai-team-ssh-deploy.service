@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 /home/agent/ai-team-bestpartner/teams/skills/service-build/scripts/ssh_executor.py /home/agent/ai-team-bestpartner /home/agent/.config/ai-team/ssh-targets/bestpartner-dev.json
+ExecStart=/usr/bin/python3 /home/agent/ai-team/teams/skills/service-build/scripts/ssh_executor.py /home/agent/ai-team /home/agent/.config/ai-team/ssh-targets/example-dev.json
 Restart=on-failure
 RestartSec=10
 UMask=0077

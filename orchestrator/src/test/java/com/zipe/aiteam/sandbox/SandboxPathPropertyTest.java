@@ -3,7 +3,7 @@ package com.zipe.aiteam.sandbox;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 
-/** systemd 路徑清單以空白分隔；bestpartner #1012 的「General rule.pdf」讓獨立驗證以 Invalid ReadOnlyPaths 起不來。 */
+/** systemd 路徑清單以空白分隔；#1012 的「General rule.pdf」讓獨立驗證以 Invalid ReadOnlyPaths 起不來。 */
 class SandboxPathPropertyTest {
     @Test void plainPathsKeepTheOptionalPrefixWithoutQuotes() {
         assertThat(ExecutionSandbox.pathProperty("/srv/repo/docs/中文.docx"))
