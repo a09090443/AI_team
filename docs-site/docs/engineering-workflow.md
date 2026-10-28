@@ -73,6 +73,8 @@
 - 入口使用工作契約 `REQUIREMENTS`，不綁定角色名稱。
 - 每項需求保存 `id`、`kind`（FUNCTIONAL／NON_FUNCTIONAL）、描述、可觀察的 `acceptance` 與 `source`。
 - 新任務另將驗收拆成 `acceptance_items`；每項有全域唯一 ID、`criterion` 與 `dimension`。
+  需求與驗收項目 ID 須符合 `^[A-Za-z][A-Za-z0-9_-]{0,63}$`（不可含句點）。2026-10-28 起 `teams/schemas/requirements.json` 以同一 `pattern`
+  限制模型輸出（`Traceability.ID`），Claude CLI 實測會直接輸出合規 ID；之前只在系統檢查時才擋，需求節點得多跑一輪重寫。
   「每個／全部／各種」操作、角色、輸入、狀態及失敗模式必須逐項展開，不能以代表性路徑代替。
 - 保存排除範圍 `out_of_scope` 與待確認問題 `open_questions`；有未解問題不得進實作。
 - 純詢問仍可結束而不建立工作基準；不會為了回答問題強迫執行開發流程。

@@ -12,6 +12,16 @@ class TraceabilityTest {
     ObjectMapper mapper = new ObjectMapper();
     FlowRun flow;
     ObjectNode baseline, plan, result;
+    @Test void requirementsSchemaConstrainsIdsWithTheSameRuleAsTheGate() throws Exception {
+        // #1005：schema 沒限制，模型寫 AC-1.1，被系統退回重寫一次 Opus。
+        JsonNode requirement = mapper.readTree(Files.readString(Path.of("teams/schemas/requirements.json")))
+                .path("properties").path("requirements").path("items").path("properties");
+        String pattern = "^" + Traceability.ID + "$";
+        assertThat(requirement.path("id").path("pattern").asText()).isEqualTo(pattern);
+        assertThat(requirement.path("acceptance_items").path("items").path("properties").path("id").path("pattern").asText()).isEqualTo(pattern);
+        assertThat("AC-1.1").doesNotMatch(Traceability.ID);
+        assertThat("REQ-1-AC-1").matches(Traceability.ID);
+    }
     @BeforeEach void setup() throws Exception {
         Files.createDirectory(tmp.resolve(".git"));
         flow = new FlowRun(TeamCatalog.load(Path.of("teams/node-web.json"), key -> tmp.toString()));

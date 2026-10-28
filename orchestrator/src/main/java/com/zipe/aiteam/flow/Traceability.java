@@ -10,6 +10,8 @@ import static com.zipe.aiteam.flow.TeamDefinition.*;
 /** 對照已保存基準，不讓角色自行宣稱覆蓋完整。 */
 public final class Traceability {
     private Traceability() {}
+    /** 需求與驗收項目 ID。teams/schemas/requirements.json 的 pattern 必須一致，模型輸出時就受限（#1005 寫 AC-1.1 被退回重寫）。 */
+    static final String ID = "[A-Za-z][A-Za-z0-9_-]{0,63}";
     public static String requirementsReason(JsonNode report) {
         if (report == null) return "缺少需求基準";
         if (!text(report, "summary")) return "需求基準缺少摘要";
@@ -24,7 +26,7 @@ public final class Traceability {
         boolean atomicAcceptance = requirements.get(0).has("acceptance_items");
         for (JsonNode requirement : requirements) {
             String id = requirement.path("id").asText();
-            if (!id.matches("[A-Za-z][A-Za-z0-9_-]{0,63}") || !ids.add(id)) return "需求 ID 無效或重複：" + id;
+            if (!id.matches(ID) || !ids.add(id)) return "需求 ID 無效或重複：" + id;
             for (String field : List.of("description", "acceptance", "source"))
                 if (!text(requirement, field)) return "需求 " + id + " 缺少 " + field;
             if (!Set.of("FUNCTIONAL", "NON_FUNCTIONAL").contains(requirement.path("kind").asText())) return "需求類型無效：" + id;
@@ -34,7 +36,7 @@ public final class Traceability {
                 if (!items.isArray() || items.isEmpty()) return "需求 " + id + " 沒有原子驗收項目";
                 for (JsonNode item : items) {
                     String acceptanceId = item.path("id").asText();
-                    if (!acceptanceId.matches("[A-Za-z][A-Za-z0-9_-]{0,63}") || !acceptanceIds.add(acceptanceId))
+                    if (!acceptanceId.matches(ID) || !acceptanceIds.add(acceptanceId))
                         return "驗收項目 ID 無效或重複：" + acceptanceId;
                     if (!text(item, "criterion") || !text(item, "dimension"))
                         return "驗收項目 " + acceptanceId + " 缺少 criterion 或 dimension";
