@@ -79,6 +79,15 @@ public class TeamCatalog {
                     + " 沒有任何可執行的查核工具，只能讀檔；若它需要核實版本控制或建置狀態，"
                     + "請補上唯讀權限（例如 Bash(git log *)、Bash(git show *)），否則工具遭拒時結論會被作廢。");
         });
+        // Claude Code 寫不了 .claude/ 等受保護路徑。沒設改派時，要改這些檔案的任務一定停給真人（#1002），建配置時就該知道。
+        d.nodes().forEach((id, node) -> {
+            if (node.kind() != Kind.AGENT || !node.workspace() || node.scope() == Scope.READ_ONLY || node.protectedPathFallback() != null) return;
+            Role role = d.roles().get(node.role());
+            if (role == null || !"claude-code".equals(role.runtime())) return;
+            warnings.add("節點 " + id + " 由 Claude Code 角色 " + node.role() + " 寫入，但沒有設定 protectedPathFallback；"
+                    + "需求要改 .claude/rules、.claude/skills、.mvn 等受保護路徑時會停下來請真人修改。"
+                    + "要自動處理請設定改派給其他 runtime 的角色（見 multi-runtime 文件）。");
+        });
         return List.copyOf(warnings);
     }
 

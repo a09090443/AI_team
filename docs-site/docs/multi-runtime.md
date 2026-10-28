@@ -62,7 +62,8 @@ stdout／stderr 保留，既有 sessionStarted callback 與 checkpoint 介面維
   allow 規則之前執行，allow 規則不會預先核准受保護路徑。只有 `bypassPermissions` 允許這類寫入，
   但該模式同時讓 `--allowedTools` 不再限制工具，會拿掉縱深防禦的第二層，目前沒有採用。
 - Bash 的輸出重導與 `tee` 目標也會套用同一檢查，改用 shell 指令寫入同樣會被拒。
-- 需求或驗收項目若要求改這些路徑，只能由真人在任務分支手動修改並提交，或把該檔移出需求範圍。
+- 實作節點沒有設定下方的受保護路徑改派、或檔案不在改派範圍內時，需求或驗收項目若要求改這些路徑，
+  只能由真人在任務分支手動修改並提交，或把該檔移出需求範圍。
   目標專案的慣例：會隨版本或功能變動的資訊（版本號、模組清單）不要寫在 `.claude/rules/` 等受保護路徑，
   改寫在建置檔、`AGENTS.md` 或一般文件，受保護路徑只放穩定的規則並指向那些檔案。
 
@@ -72,6 +73,18 @@ stdout／stderr 保留，既有 sessionStarted callback 與 checkpoint 介面維
 唯讀參考、禁止修改與任意路徑提及不是授權。舊計畫沒有清單時不推測改派，需更新配置與計畫或承接新任務。
 這修正了因文字提及而額外修改 `.claude` 檔案的問題；此版本尚未經真實任務驗收。
 `.claude/settings*`、`hooks`、`commands`、`agents`、`plugins`、`.git`、`.mcp.json`、`.vscode`、`.idea`、`.github` 等寫死禁止，配置無法覆蓋。
+
+**`paths` 格式與範本預設（2026-10-28 起）**：
+- 每一項是「明確目錄/**」，或**根目錄的單一檔名**（不含 `/` 與萬用字元，例如 `.npmrc`、`.yarnrc.yml`）。
+  根目錄檔案沒有目錄可寫成 `/**`，所以另外開放；子目錄裡的檔案仍以所在目錄表示（例如 `.mvn/**`、`gradle/wrapper/**`）。
+- 會被自動執行的檔案不能列入（`ProtectedPathFallback.AUTO_EXECUTED`）：`.envrc`、shell rc（`.bash*`、`.zsh*`、`.profile` 等）、
+  `.pre-commit-config.yaml`、`lefthook*`。這些不在禁止清單：計畫列到時照舊判為範圍外、停給真人，不會讓整份計畫無效。
+- 內附範本：`maven-library.json` 預設 `.claude/rules/**`、`.claude/skills/**`、`.mvn/**`（Maven Wrapper 升級會改 `.mvn/wrapper/`）；
+  `gradle-fullstack.json` 為 `.claude/rules/**`、`.claude/skills/**`、`gradle/wrapper/**`；`node-web.json` 是功能全關的對照組，不設定。
+- 配置提醒（`TeamCatalog.warnings`）：寫檔節點的角色是 Claude Code、又沒有 `protectedPathFallback` 時，`--validate-team` 與服務啟動 log
+  都會提醒「改這些路徑會停給真人」。只是提醒，不擋配置。
+
+狀態：程式測試通過；根目錄檔案改派與 `.mvn`／`gradle/wrapper` 改派尚未經真實任務驗收。
 
 **分段改派（2026-10-04 起，取代整節點改派）**：同一輪實作分兩段依序執行（`FlowEngine.runDelegatedPart`）：
 1. 改派段：改派角色只修改 `paths` 內的檔案，不跑建置測試、不 commit（說明 `ProtectedPathFallback.partNotice`）。

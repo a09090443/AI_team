@@ -860,7 +860,8 @@
         "role": "builder_codex",
         "paths": [
           ".claude/rules/**",
-          ".claude/skills/**"
+          ".claude/skills/**",
+          "gradle/wrapper/**"
         ]
       },
       "candidateRoles": [

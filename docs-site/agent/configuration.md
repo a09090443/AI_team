@@ -187,6 +187,7 @@ bash deploy/bootstrap/check-source.sh
 `project.verification.docOnlyPaths` 配合系統 Git 差異與文字副檔名限制略過不相關產品建置，內附配置均已提供；SQL／腳本／設定不適用。
 必要文件站建置另由 verification 操作處理。可配置 qa-docs-dir／clean／snapshot／extract／install／build 等操作，僅寫 target/qa-docs，原 docs-site 唯讀，安裝離線使用實作準備的 npm 快取。
 plan 的 protected_path_changes 明列需跨 runtime 改派的檔案；不新增權限，仍須符合節點 protectedPathFallback.paths。詳見[配置流程](/docs/configurable-team)。尚未部署。
+protectedPathFallback.paths 每項為「明確目錄/**」或根目錄單一檔名（例如 `.npmrc`），不可涵蓋禁止清單或會自動執行的檔案；Claude Code 寫檔節點沒設定時，驗證與啟動 log 會提醒。詳見[多 runtime](/docs/multi-runtime)（2026-10-28 起）。
 
 
 ### 2026-10-19 部署脈絡（已部署）

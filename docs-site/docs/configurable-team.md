@@ -32,8 +32,8 @@ repo 的 `orchestrator/teams/` 只放共用 prompts、schemas、skills 與三份
 
 | 範例 | 用途 |
 |---|---|
-| `node-web.json` | Node 專案；功能開關全關，也是測試的對照組 |
-| `maven-library.json` | Maven 多模組函式庫；開延後驗收、角色諮詢、計畫自動核准 |
+| `node-web.json` | Node 專案；功能開關全關，也是測試的對照組（因此驗證時會提醒沒有設定受保護路徑改派） |
+| `maven-library.json` | Maven 多模組函式庫；開延後驗收、角色諮詢、計畫自動核准、受保護路徑改派（`.claude/rules`、`.claude/skills`、`.mvn`） |
 | `gradle-fullstack.json` | Gradle 後端＋npm 前端＋文件站；啟用[功能開關一覽](#功能開關一覽)的全部項目（含服務建置路線，引用 `skills/service-build/references/project-template.md`） |
 
 **實例 overlay**：專案配置（`<project>.json`、專屬 prompt、`skills/service-build/references/<project>.md` 等）放在

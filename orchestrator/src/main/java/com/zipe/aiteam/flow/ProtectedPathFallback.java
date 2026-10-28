@@ -22,7 +22,16 @@ public final class ProtectedPathFallback {
             ".claude/settings", ".claude/hooks", ".claude/commands", ".claude/agents", ".claude/plugins", ".claude.json",
             ".git", ".mcp.json", ".vscode", ".idea", ".github", ".husky", ".devcontainer");
 
-    /** 配置靜態檢查：只能放在實作節點、角色存在且 runtime 不同、paths 為不涵蓋禁止路徑的目錄 glob。 */
+    /**
+     * 會被 shell、direnv 或 git hook 工具自動執行的根目錄檔案：配置不能把它們列進 paths。
+     * 開放根目錄單一檔案（.npmrc 等）後，避免被拿來植入每次進入工作區或提交時就執行的指令。
+     * 不放進 DENIED：計畫列到它們時照舊判為允許範圍外、停給真人，而不是讓整份計畫無效。
+     */
+    static final List<String> AUTO_EXECUTED = List.of(
+            ".envrc", ".bash", ".zsh", ".zprofile", ".zlogin", ".zlogout", ".profile",
+            ".pre-commit-config.yaml", "lefthook", ".lefthook");
+
+    /** 配置靜態檢查：只能放在實作節點、角色存在且 runtime 不同、paths 為不涵蓋禁止路徑的目錄 glob 或根目錄單一檔案。 */
     static void validate(TeamDefinition d, String nodeId, Node node) {
         Fallback fb = node.protectedPathFallback();
         if (fb == null) return;
@@ -33,10 +42,15 @@ public final class ProtectedPathFallback {
         TeamCatalog.require(!alternate.runtime().equals(primary.runtime()), "protectedPathFallback 的角色必須使用不同 runtime：" + fb.role());
         TeamCatalog.require(fb.paths() != null && !fb.paths().isEmpty() && fb.paths().size() <= 10, "protectedPathFallback.paths 須為 1～10 條");
         for (String pattern : fb.paths()) {
-            TeamCatalog.require(pattern != null && pattern.endsWith("/**") && !pattern.startsWith("/") && !pattern.contains("..")
-                    && !pattern.contains("\\") && pattern.length() > 3 && !pattern.substring(0, pattern.length() - 3).contains("*"),
-                    "protectedPathFallback.paths 須為明確目錄並以 /** 結尾：" + pattern);
-            String base = pattern.substring(0, pattern.length() - 3);
+            // 根目錄的受保護檔案（.npmrc、.yarnrc.yml 等）沒有目錄可寫成 /**，允許逐字列檔名；子目錄的檔案仍以所在目錄表示。
+            boolean rootFile = pattern != null && !pattern.isBlank() && !pattern.contains("/") && !pattern.contains("*")
+                    && !pattern.contains("\\") && !pattern.contains(":") && !pattern.equals(".") && !pattern.equals("..");
+            TeamCatalog.require(rootFile || (pattern != null && pattern.endsWith("/**") && !pattern.startsWith("/") && !pattern.contains("..")
+                    && !pattern.contains("\\") && pattern.length() > 3 && !pattern.substring(0, pattern.length() - 3).contains("*")),
+                    "protectedPathFallback.paths 須為明確目錄並以 /** 結尾，或根目錄的單一檔名：" + pattern);
+            String base = rootFile ? pattern : pattern.substring(0, pattern.length() - 3);
+            for (String executed : AUTO_EXECUTED)
+                TeamCatalog.require(!base.startsWith(executed), "protectedPathFallback.paths 不得包含會被自動執行的檔案 " + executed + "：" + pattern);
             for (String denied : DENIED)
                 TeamCatalog.require(!(denied.startsWith(base + "/") || denied.equals(base) || base.startsWith(denied)),
                         "protectedPathFallback.paths 涵蓋禁止交給改派實作者的路徑 " + denied + "：" + pattern);

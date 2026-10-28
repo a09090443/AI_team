@@ -57,6 +57,9 @@ public class AiTeamApplication implements CommandLineRunner {
                 log.info("配置角色 {}：runtime={} model={}", id, role.runtime(), role.model());
             });
             log.info("新任務使用配置版本 {}；舊任務依其快照或 legacy 相容路徑執行", teamCatalog.snapshot().revision());
+            // 部署時不一定跑過 --validate-team，啟動時再提醒一次。
+            for (String warning : com.zipe.aiteam.flow.TeamCatalog.warnings(teamCatalog.snapshot().definition()))
+                log.warn("配置提醒：{}", warning);
             return;
         }
         for (StageSpec s : new StageSpec[]{

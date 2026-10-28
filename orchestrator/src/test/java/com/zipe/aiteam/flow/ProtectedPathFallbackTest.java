@@ -49,6 +49,23 @@ class ProtectedPathFallbackTest {
         assertThat(ProtectedPathFallback.needed(flow, node, "改 .claude/rules/a.md", claude)).isEmpty();
     }
 
+    @Test void rootFilePathsDelegateExactlyThatFile() throws Exception {
+        when(claude.protectedWritePaths()).thenReturn(List.of(".claude/", ".npmrc", ".yarnrc.yml"));
+        var original = TeamCatalog.load(Path.of("teams/gradle-fullstack.json"), key -> tmp.toString());
+        ObjectNode json = mapper.valueToTree(original.definition());
+        ((ObjectNode) json.path("nodes").path("implementation").path("protectedPathFallback")).putArray("paths").add(".npmrc");
+        var flow = new FlowRun(new TeamDefinition.Snapshot(original.revision() + "-root-file", definition(json),
+                original.repository(), original.assets()));
+        var node = flow.snapshot.definition().nodes().get("implementation");
+        ObjectNode plan = mapper.createObjectNode();
+        plan.putArray("protected_path_changes").add(".npmrc").add(".yarnrc.yml");
+        flow.receipts.put("plan", plan);
+        assertThat(ProtectedPathFallback.needed(flow, node, "", claude))
+                .contains(new ProtectedPathFallback.Need(List.of(".npmrc"), List.of(".yarnrc.yml")));
+        assertThat(ProtectedPathFallback.partViolations(List.of(".npmrc", "sub/.npmrc"), node.protectedPathFallback(),
+                ProtectedPathFallback.plannedPaths(flow, node))).containsExactly("sub/.npmrc");
+    }
+
     @Test void rejectsUnsafeOrContradictoryModificationPlans() {
         for (String path : List.of("../a.md", ".claude/rules/**", ".claude/settings.json", "/tmp/a.md", ".claude//a.md")) {
             ObjectNode plan = mapper.createObjectNode();
@@ -79,12 +96,18 @@ class ProtectedPathFallbackTest {
 
     @Test void configurationIsValidatedStrictly() throws Exception {
         TeamCatalog.validate(definition(fullstack()));
-        for (String bad : new String[]{".claude/**", ".claude/settings/**", ".git/**", ".claude/*/x/**", "../x/**", ".claude/rules"}) {
+        for (String bad : new String[]{".claude/**", ".claude/settings/**", ".git/**", ".claude/*/x/**", "../x/**", ".claude/rules",
+                ".mcp.json", ".gitmodules", "*.rc", ".envrc", ".bashrc", ".pre-commit-config.yaml", "lefthook.yml", "..", ""}) {
             var json = fullstack();
             var fb = (ObjectNode) json.path("nodes").path("implementation").path("protectedPathFallback");
             fb.putArray("paths").add(bad);
             assertThatThrownBy(() -> TeamCatalog.validate(definition(json))).as(bad).hasMessageContaining("protectedPathFallback");
         }
+        // 根目錄受保護檔案沒有目錄可寫成 /**，允許逐字列檔名。
+        var rootFile = fullstack();
+        ((ObjectNode) rootFile.path("nodes").path("implementation").path("protectedPathFallback")).putArray("paths")
+                .add(".claude/rules/**").add(".npmrc").add("gradle/wrapper/**");
+        TeamCatalog.validate(definition(rootFile));
         var sameRuntime = fullstack();
         ((ObjectNode) sameRuntime.path("nodes").path("implementation").path("protectedPathFallback")).put("role", "architect");
         assertThatThrownBy(() -> TeamCatalog.validate(definition(sameRuntime))).hasMessageContaining("不同 runtime");
