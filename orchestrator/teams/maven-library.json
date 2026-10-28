@@ -206,6 +206,7 @@
       "routes": {
         "question": "end",
         "implementation": "design",
+        "light": "plan",
         "human": "human"
       },
       "requires": [],

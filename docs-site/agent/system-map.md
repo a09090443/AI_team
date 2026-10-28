@@ -88,6 +88,8 @@ agent 不能自行指定角色或跳到任意節點。
 - 在主 repo 執行的唯讀節點，派工前先 fetch 遠端記錄（60 秒內不重複），提示寫明記錄時間（`WorkspaceManager.refreshOrigin`，2026-10-23）。
 - 實作節點（`scope=WORKSPACE`）每一輪動手前，系統先把最新基準 merge 進任務分支；有衝突由該輪角色先解，系統核對合併結果（`BaseSync`，2026-10-24）。
 - 流程重走時，前次結果仍然有效（同 commit、前置結果相同、需求沒變或只刪減、沒有新問題）的設計、計畫、實作直接沿用，不呼叫 agent、不計換手（`ReceiptReuse`，2026-10-23）。
+- 需求節點選 `light` 路線時直接進測試計畫；從未執行的 REPORT 節點（設計）在前置與發布檢查視為略過，不補跑（`FlowGates.bypassed`，2026-10-28）。
+  需求與分流節點的 context 附全隊名單，跟著 `collaboration` 開關（`TeamRoster`，2026-10-28）。
 
 ### 人工閘門（永遠需要真人）
 

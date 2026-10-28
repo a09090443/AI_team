@@ -376,7 +376,7 @@ public class FlowEngine {
                     String redo = null;
                     if (node.requires() != null) for (String dependency : node.requires()) {
                         String invalid = FlowGates.blockingReason(flow.snapshot.definition().nodes().get(dependency), flow.receipts.get(dependency), flow);
-                        if (invalid == null) continue;
+                        if (invalid == null || FlowGates.bypassed(flow, dependency)) continue;
                         // 能恢復就停下來讓人決定（附按鈕），不要丟成一般錯誤 —— 否則每次續跑都在同一處失敗。
                         Node needed = flow.snapshot.definition().nodes().get(dependency);
                         boolean workspaceNode = needed != null && needed.workspace() && workspaces.exists(task.id());

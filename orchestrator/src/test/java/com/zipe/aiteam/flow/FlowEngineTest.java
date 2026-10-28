@@ -1239,6 +1239,7 @@ class FlowEngineTest {
             }
             JsonNode report = report(node.gate());
             if (mode.startsWith("service") && flow.node.equals("intake")) ((ObjectNode)report).put("route", "service");
+            if (mode.equals("light") && flow.node.equals("intake")) ((ObjectNode)report).put("route", "light");
             if (mode.equals("draftRepair") && flow.node.equals("intake")
                     && calls.stream().filter(s -> s.startsWith("intake:")).count() == 1)
                 ((ObjectNode)report.path("requirements").get(0)).putArray("acceptance_items");
@@ -1933,6 +1934,31 @@ class FlowEngineTest {
         engine.run(task);
         assertThat(calls).containsExactly("intake:coordinator", "design:architect", "plan:tester", "implementation:builder", "verification:tester", "review:inspector");
         assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL); verifyNoInteractions(publisher);
+    }
+    @Test void springLightRouteSkipsDesignButKeepsEveryContractStage() {
+        // #1002：一行文件修改也被補跑設計；精簡路線只略過建議性的設計，測試計畫、驗收與審查照跑。
+        mode = "light"; engine.run(task);
+        assertThat(calls).containsExactly("intake:coordinator", "plan:tester", "implementation:builder", "verification:tester", "review:inspector");
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL); verifyNoInteractions(publisher);
+    }
+    @Test void onlyAdvisoryStagesThatNeverRanCountAsBypassed() throws Exception {
+        var flow = new FlowRun(TeamCatalog.load(Path.of("teams/maven-library.json"), key -> tmp.resolve("repo").toString()));
+        assertThat(FlowGates.bypassed(flow, "design")).isTrue();
+        for (String contract : List.of("intake", "plan", "implementation", "verification", "review"))
+            assertThat(FlowGates.bypassed(flow, contract)).as(contract).isFalse();
+        flow.blockedFindings.put("design", mapper.createObjectNode());
+        assertThat(FlowGates.bypassed(flow, "design")).isFalse();
+        flow.blockedFindings.clear(); flow.visits.put("design", 0);
+        assertThat(FlowGates.bypassed(flow, "design")).isFalse();
+    }
+    @Test void springDesignThatRanButHasNoValidResultIsStillRedone() {
+        // 略過只適用從未執行的設計；跑過卻沒有有效結果時，照舊退回補做。
+        var flow = store.flow(task.id()).orElseThrow();
+        flow.node = "plan"; flow.visits.put("design", 1);
+        store.saveFlow(task.id(), flow);
+        engine.run(task);
+        assertThat(calls).contains("design:architect");
+        verify(slack, atLeastOnce()).post(any(), any(), any(), contains("系統自動退回"));
     }
     @Test void blockedVerificationReallyRoutesToConfiguredCoordinatorAndHuman() {
         mode = "blocked"; engine.run(task);

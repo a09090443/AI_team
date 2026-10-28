@@ -220,6 +220,7 @@ public class ConfiguredExecutor {
         schema = TeamBoard.schema(schema, flow);
         schema = Consultation.schema(schema, flow, node);
         context.append(TeamBoard.notice(flow, node.role()));
+        context.append(TeamRoster.notice(flow));
         context.append(Consultation.notice(flow, node));
         context.append(Consultation.answers(flow));
         if (!flow.dialogue && AgentDispatch.enabled(node) && node.scope() == Scope.WORKSPACE && "codex".equals(role.runtime()))

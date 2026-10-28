@@ -27,6 +27,17 @@ public final class FlowGates {
             case REVIEW -> ReviewGate.blockingReason(result);
         };
     }
+    /**
+     * 建議性報告（REPORT，例如設計）在本流程從未執行、也沒有結果或受阻報告：是需求節點選了跳過它的路線（精簡路線），
+     * 不是缺漏，前置檢查不必退回補做。#1002 一行文件修改也被補跑設計。執行過但無效時照舊重做；
+     * 需求、測試計畫、實作、驗收、審查等契約階段永遠不能略過。
+     */
+    static boolean bypassed(FlowRun flow, String id) {
+        Node node = flow.snapshot.definition().nodes().get(id);
+        return node != null && node.kind() == Kind.AGENT && node.gate() == Gate.REPORT
+                && !flow.visits.containsKey(id) && flow.receipts.get(id) == null
+                && (flow.blockedFindings == null || !flow.blockedFindings.containsKey(id));
+    }
     public static String publicationReason(FlowRun flow, String head) {
         return publicationReason(flow, head, java.util.Set.of());
     }
@@ -43,7 +54,7 @@ public final class FlowGates {
             if (!Traceability.digest(Traceability.baseline(flow)).equals(flow.baselineRevision)) return "需求基準版本不一致";
         }
         for (String id : approval.requires()) {
-            if (pending.contains(id)) continue;
+            if (pending.contains(id) || bypassed(flow, id)) continue;
             Node node = flow.snapshot.definition().nodes().get(id);
             String block = blockingReason(node, flow.receipts.get(id), flow);
             if (block != null) return id + "：" + block;

@@ -71,7 +71,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 正式階段附在角色提示之後、技能與本次階段指示之前（「【團隊共用工作規則】」區塊）；唯讀對話與諮詢回答不附。
 沒設定時不序列化，revision 不變。四份內附配置都指向 `prompts/shared.md`。
 
-`collaboration` 是選填欄位，用來啟用角色諮詢與共享看板，各欄位的上限如下：
+`collaboration` 是選填欄位，用來啟用角色諮詢、共享看板，以及給需求／分流節點的團隊名單（2026-10-28 起），各欄位的上限如下：
 
 | 欄位 | 範圍 | 說明 |
 |---|---|---|
@@ -122,7 +122,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 | `writablePaths` | `LIMITED` 可寫路徑，支援 `/`、`*`、`**` |
 | `localTestNetwork` | 只允許隔離 namespace 內本機 TCP；限 Codex、`LIMITED`、`VERIFICATION` 節點 |
 | `plan` | 驗收節點引用的計畫節點 |
-| `next`、`blocked`、`routes` | 成功、受阻時的下一站，以及 agent 可回傳的 route 鍵；保留目標 `human`、`end` |
+| `next`、`blocked`、`routes` | 成功、受阻時的下一站，以及 agent 可回傳的 route 鍵；保留目標 `human`、`end`。需求節點可加 `"light": "plan"` 讓小修改略過設計（只能略過未執行的 REPORT 節點），見[團隊名單與精簡路線](/docs/configurable-team#團隊名單與精簡路線2026-10-28) |
 | `requires` | 必須先有有效收據的前置節點；`APPROVAL` 節點至少要涵蓋實作、計畫、驗收、審查 |
 | `maxVisits`、`timeoutSeconds`、`maxTurns` | 相同輸入連續重跑上限（最多 3）、逾時（秒，最多 3600；2026-10-22 前為 1800）、回合上限（最多 80）。`timeoutSeconds` 可用配置遷移套用到舊任務，另兩項不行 |
 

@@ -20,7 +20,8 @@
         "question",
         "implementation",
         "human",
-        "service"
+        "service",
+        "light"
       ]
     },
     "requirements": {

@@ -312,7 +312,22 @@ IssueTracker 驗證穩定 ID、需求對應及逐項證據；FlowEngine 保存�
 設計對簡單變更只寫必要修改點、測試計畫的情境數以能判斷 acceptance 為準、實作不順手重構、審查限本次變更與其影響。
 這些都是提示層級的要求，流程節點與 `requires` 不變；修改會改變配置 revision，需重新部署 teams 才生效，尚未在真實任務驗證。
 
+### 團隊名單與精簡路線（2026-10-28）
+
+起因：需求整理只看得到三條路線、不知道團隊有誰，一行文件修改也照完整流程跑（含設計）。
+
+- **團隊名單**（`TeamRoster`）：需求節點（gate=REQUIREMENTS）與其他節點的受阻目標（分流）在 context 收到全隊名單：
+  角色 ID、顯示名稱、能力描述、runtime、負責哪些階段及是否可寫，以及受保護路徑改派對象。只是說明文字，不授權、不改派，
+  也不納入 `NodeInput` 指紋。與角色諮詢共用 `collaboration` 開關：沒開的配置（node-web 對照組）與舊快照提示不變。
+- **精簡路線**：需求節點的 `routes` 可設 `"light": "plan"`，範圍明確的小修改由 agent 自行選擇略過設計。
+  `FlowGates.bypassed` 判定：前置節點是建議性報告（gate=REPORT）、本流程從未執行過、也沒有結果或受阻報告時，
+  前置檢查與發布檢查視為「路線刻意略過」，不退回補做。跑過但無效時照舊重做；需求、測試計畫、實作、驗收、審查等契約階段永遠不能略過。
+  route 列舉含 `light`，但只有配置該路線時才會出現在可選清單。內附 maven-library、gradle-fullstack 已設定；node-web 沒有。
+- 狀態：程式測試通過；尚未部署，真實任務耗時尚未對照。
+
 ### 文件任務的派工限制與已知問題（2026-10-12 查核）
+
+> 2026-10-28 更新：配置精簡路線（見上節）時，小型文件任務可略過 design；其餘說明仍成立。
 
 文件任務採輕量**工作內容**，並未移除流程節點：有 design 節點的配置仍經 design、plan、implementation、verification、review；
 plan 與 verification 固定由 tester 負責。node-web 範例仍經 builder／frontend。`candidateRoles` 只選執行者，不改 `requires`。
