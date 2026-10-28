@@ -167,9 +167,19 @@ class ConfiguredExecutorTest {
         assertThat(DocOnlyChanges.qualifies(paths, List.of("docs-site/docusaurus.config.ts"))).isFalse();
         assertThat(DocOnlyChanges.qualifies(paths, List.of("docs-site/src/components/Home.tsx"))).isFalse();
         assertThat(DocOnlyChanges.implementationNotice(paths))
-                .contains("docs-site/docs/**", "不要執行後端／前端的編譯與測試操作", "不要因為沒有建置或測試證據而回報 BLOCKED", "照建置規範完整執行");
+                .contains("docs-site/docs/**", "不要執行後端／前端的編譯與測試操作", "不要因為沒有建置或測試證據而回報 BLOCKED", "照建置規範完整執行")
+                // #1004：照規則略過建置後填 false 被擋，分流又要求補跑完整建置。
+                .contains("整個任務分支", "verify_passed", "不因沒有執行產品建置而填 false");
         assertThat(DocOnlyChanges.implementationNotice(null)).isEmpty();
         assertThat(DocOnlyChanges.implementationNotice(List.of())).isEmpty();
+    }
+    @Test void mavenLibraryTreatsAgentRuleMarkdownAsDocsButNotTheirSettings() throws Exception {
+        // #1004：.claude/rules 的 md 不算純文件，一行版本修正也跑了整套 mvn clean verify 並撞上不穩定測試。
+        var paths = TeamCatalog.load(Path.of("teams/maven-library.json"), key -> repo.toString()).definition()
+                .project().verification().docOnlyPaths();
+        assertThat(DocOnlyChanges.qualifies(paths, List.of("AGENTS.md", ".claude/rules/project-overview.md", ".agents/skills/x/SKILL.md"))).isTrue();
+        assertThat(DocOnlyChanges.qualifies(paths, List.of(".claude/settings.json"))).isFalse();
+        assertThat(DocOnlyChanges.qualifies(paths, List.of(".claude/rules/a.md", "base-spring-boot-starter/src/test/java/A.java"))).isFalse();
     }
 
     @Test void delegatedPartAndPrimaryImplementerGetMatchingBoundaries() {

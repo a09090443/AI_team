@@ -58,7 +58,7 @@
         ]
       ],
       "timeoutSeconds": 1800,
-      "docOnlyPaths": ["*.md", "docs/**/*.md", "doc-site/docs/**/*.md", "doc-site/docs/**/*.mdx", "llms.txt", "llms-full.txt"]
+      "docOnlyPaths": ["*.md", "docs/**/*.md", "doc-site/docs/**/*.md", "doc-site/docs/**/*.mdx", "llms.txt", "llms-full.txt", ".claude/**/*.md", ".agents/**/*.md"]
     }
   },
   "roles": {

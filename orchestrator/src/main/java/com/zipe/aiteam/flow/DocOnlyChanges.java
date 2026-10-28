@@ -43,6 +43,9 @@ public final class DocOnlyChanges {
                 + "package.json、各種 lockfile、Dockerfile）、任何 src 目錄，或 gradle／.mvn／.github 目錄，"
                 + "就不要執行後端／前端的編譯與測試操作，也不要因為沒有建置或測試證據而回報 BLOCKED；"
                 + "系統獨立驗證會依 git diff 判定為純文件並同樣略過；QA 核對內容，必要的文件站建置、連結與生成結果仍依計畫驗證。"
+                // #1004：builder 照規則略過建置後如實填 false，被實作閘門擋下，分流再要求補跑 9 分鐘的完整建置；#1002 則沒跑也填 true。
+                + "判定範圍是整個任務分支相對基準的變更（含其他角色已提交的檔案）。符合時 quality_gate.verify_passed 依你實際做的文件檢查"
+                + "（例如 git diff --check、計畫要求的文件站建置）判定，都通過就填 true，不因沒有執行產品建置而填 false。"
                 + "只要有一個檔案不符合，就照建置規範完整執行。";
     }
 

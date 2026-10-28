@@ -170,6 +170,10 @@ Slack 會說明「只改了文件，依專案設定略過建置與測試」，QA
 實作節點（`IMPLEMENTATION` 閘門）在專案有 `docOnlyPaths` 時，系統會在脈絡加一段「純文件變更規則」（`DocOnlyChanges.implementationNotice`）：
 變更全部符合上述條件時不執行後端／前端編譯與測試操作，也不因缺建置證據回報 BLOCKED；有任一檔不符合就照建置規範完整執行
 （2026-10-04 起；否則只改一行 Markdown 時，改派的 Codex 角色仍可能自行跑 Gradle 而受阻）。這是給角色的指示，略過與否仍以系統 git diff 判定為準。
+2026-10-28 起說明也寫明：判定範圍是整個任務分支（含改派段等其他角色已提交的檔案），符合時 `quality_gate.verify_passed` 依實際做的文件檢查
+（例如 `git diff --check`、計畫要求的文件站建置）判定，通過就填 true。起因是角色照規則略過建置後如實填 false，被實作閘門擋下，
+分流又要求補跑完整建置；另一次則是沒跑也填 true，兩種填法不一致。內附 maven-library 的 `docOnlyPaths` 同時加入 `.claude/**/*.md`、`.agents/**/*.md`，
+讓 agent 規則與 skill 文件也算純文件（`.claude/settings.json` 等非文字檔仍不符合）。
 
 **依變更檔案只跑相關指令、重用相同輸入的結果（2026-10-17 起）**：起因是只改文件、網站與設定範本的任務，
 每輪仍跑 23～30 分鐘的後端與前端全套測試，回到驗收階段時同一個 commit 也重跑一次。規則在 `VerificationPlan`，不綁專案名稱：
