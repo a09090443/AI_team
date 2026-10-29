@@ -30,7 +30,7 @@ VirtualBox 主機
 2. VirtualBox 主機（Windows 用 Git Bash）：`deploy/sandbox-vm/create-sandbox-vm.sh <管理目錄> <公鑰檔> <target>`。
    - `deploy/sandbox-vm/Vagrantfile`：固定 `bento/ubuntu-24.04` 版本；NAT＋host-only；停用共享資料夾、剪貼簿與拖放；SSH 只綁 127.0.0.1；
      磁碟搬進管理目錄的 `machine/`（只在第一次開機前搬）。
-   - guest 內建立鎖定帳號 `aiteam`，以 `{"mode":"sandbox"}` 執行 `install-ssh-target.sh`。
+   - guest 內先重新產生 SSH 主機金鑰（bento box 內建固定的主機金鑰，公開映像的所有 VM 共用同一把），再建立鎖定帳號 `aiteam`，以 `{"mode":"sandbox"}` 執行 `install-ssh-target.sh`。
    - 經 Vagrant 管理的通道讀主機公鑰，產生 `agent-known_hosts` 並印出指紋。外部 SSH 首次用 `accept-new`，取得後改成嚴格核對。
    - 新建 VM 時，會清掉 `~/.ssh/known_hosts` 裡同一個轉送埠的舊指紋（原檔保存為 `known_hosts.old`）。
    - `AI_TEAM_SANDBOX_NAME`／`CPUS`／`MEMORY`／`IP`／`ADAPTER` 可調（預設 4 CPU、4096 MB、192.168.56.20）。已有 VM 時沿用，不 destroy。
@@ -96,6 +96,8 @@ exec 時 `DOCKER_HOST` 指向 rootless socket，腳本照常用 `docker`／`dock
 | 任務停在「快取目錄缺失」 | 新機沒有配置宣告的 cachePaths | onboard 建立 |
 | start 回 `SOURCE_TOO_LARGE` | repo 含大型文件與二進位檔，超過 128 MiB | agent 以 `source-paths` 自行縮小；onboard 先量大小警告 |
 | diagnose 回 `SERVICE_CONFIG_REQUIRED` | 舊配置用內建操作，沙箱不支援 | 範本改用 exec；onboard 列出既有配置的內建操作 |
+| 重建後主機指紋沒變 | bento box 內建固定主機金鑰，所有由它建立的 VM 共用（私鑰隨公開映像流出） | 佈建時重新產生主機金鑰 |
+| 重建後第一次登錄連線失敗，重跑即過 | 剛開機的 VM 第一個連線暫時失敗 | register 的連線檢查最多重試三次 |
 | 容器以 root 執行 | 原設計未處理 | rootless Docker |
 | Agent VM 卡死（RCU stall、soft lockup） | VirtualBox 走 Hyper-V（NEM）模式、8 vCPU，加上每晚存檔、隔天還原（依 log 推斷，未實驗驗證） | 維運注意事項（見下） |
 
@@ -108,10 +110,11 @@ exec 時 `DOCKER_HOST` 指向 rootless socket，腳本照常用 `docker`／`dock
 - 主機的 Hyper-V（Docker Desktop／WSL2 會啟用）讓 VirtualBox 改走 NEM 模式，VM 效能變差，多 vCPU 時易出現 RCU stall。
   主機關機前以 `vagrant halt` 正常關機，不要存檔後隔天還原；VM 卡死時依 virtualbox-control skill 經授權才 reset。
 - Vagrant VM 的開機前自訂動作必須能重複執行，否則第二次 `vagrant up` 會失敗。
+- 由 bento box 建立、但沒經本腳本佈建的 VM（例如 Agent VM）仍使用映像內建的共用主機金鑰；要讓指紋核對有意義，需在該 VM 重新產生主機金鑰並更新各處 known_hosts。
 
 ## 驗證範圍
 
 - **程式測試**：`test_sandbox.py`／`test_direct_ssh.py`（exec 來源縮小、rootless 準備順序與 `DOCKER_HOST`）、`test-sandbox-overlay.sh`（補區塊、冪等、保留既有路線）。
-- **腳本實跑**：建 VM、指紋、三個實例 register、入口升級已在一台 Windows／VirtualBox 7.2.16 主機實跑。
-  `sandbox-onboard.sh`、`--rebuild` 與 rootless 準備尚待下一次實機執行。
+- **腳本實跑**：建 VM、`--rebuild`（含主機金鑰重新產生）、三個實例 `sandbox-onboard.sh`（重跑時配置 UNCHANGED、入口 UPGRADE_PASS／UNCHANGED）已在一台 Windows／VirtualBox 7.2.16 主機實跑。
+  rootless 準備要等下一次部署的 prepare 才實際執行。
 - **Slack 端對端**：一個 Gradle＋npm 專案以 root Docker 部署成功；rootless 下的端對端尚未驗證。

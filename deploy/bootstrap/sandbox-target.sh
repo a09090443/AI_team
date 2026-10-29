@@ -48,8 +48,9 @@ Path(path).write_text(json.dumps({"transport": "direct-ssh", "target": target, "
 PY
   chmod 600 "$config"
   # 先以固定協定查一個不存在的 job：能回 UNKNOWN 就代表網路、金鑰、主機指紋、受限入口與 target 名稱都正確。
-  # 失敗就不安裝常駐執行器。
-  out=$(cd "$scripts" && python3 - "$config" <<'PY'
+  # 剛建好或重建的 VM 第一次連線可能暫時失敗，最多試三次；仍失敗就不安裝常駐執行器。
+  for attempt in 1 2 3; do
+    out=$(cd "$scripts" && python3 - "$config" <<'PY'
 import json, secrets, subprocess, sys
 import ssh_client
 c = ssh_client.config(sys.argv[1])
@@ -61,7 +62,10 @@ except (ValueError, IndexError):
     reply = {}
 sys.exit(0 if reply.get("target") == c["target"] and reply.get("state") == "UNKNOWN" else 1)
 PY
-) || { echo "$out"; echo "無法經受限入口連到沙箱，未安裝執行器（檢查網路、金鑰登錄與 known_hosts）"; exit 1; }
+) && break
+    ((attempt < 3)) || { echo "$out"; echo "無法經受限入口連到沙箱，未安裝執行器（檢查網路、金鑰登錄與 known_hosts）"; exit 1; }
+    sleep 10
+  done
   unit=$instance-ssh-deploy.service
   mkdir -p "$HOME/.config/systemd/user"
   cat > "$HOME/.config/systemd/user/$unit" <<UNIT
@@ -97,7 +101,7 @@ UNIT
   [[ $upgrade == *UPGRADE_UNCHANGED* || $upgrade == *UPGRADE_PASS* ]] \
    || { echo "目標沒有接受入口升級，可能不是 sandbox；請確認建 VM 時的服務配置"; exit 1; }
   echo "PASS：$instance 已登錄沙箱目標 $target（$address），執行器 $unit 運作中。"
-  echo "下一步：在該實例的團隊配置設定 project.serviceTarget（name 為 $target），部署後重啟實例。";;
+  ;;
  *)
   sed -n '2,12p' "$0"; exit 1;;
 esac
