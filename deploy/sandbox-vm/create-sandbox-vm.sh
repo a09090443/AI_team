@@ -27,7 +27,8 @@ skill=$here/../../orchestrator/teams/skills/service-build/scripts
 grep -Eq '^ssh-ed25519 [A-Za-z0-9+/=]+( [^ ]+)?$' "$pubfile" || { echo "不是單行 ed25519 公鑰：$pubfile"; exit 1; }
 command -v vagrant >/dev/null || { echo "找不到 vagrant"; exit 1; }
 
-mkdir -p "$dir"
+# machine/ 要先存在，Vagrantfile 開機前的 movevm 才能把磁碟搬進來。
+mkdir -p "$dir/machine"
 # 重建時整台換新，改用本版 Vagrantfile；沿用時不覆寫管理者可能改過的版本。
 if ! $rebuild && [[ -f $dir/Vagrantfile ]] && ! cmp -s "$here/Vagrantfile" "$dir/Vagrantfile"; then
  echo "$dir/Vagrantfile 與 deploy/sandbox-vm/Vagrantfile 不同；請先比對，不覆寫（重建可加 --rebuild）"; exit 1
