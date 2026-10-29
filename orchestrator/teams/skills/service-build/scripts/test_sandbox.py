@@ -46,16 +46,18 @@ class TargetModeTests(unittest.TestCase):
 
 
 class GuestExecTests(unittest.TestCase):
-    def run_exec(self, tmp, code, lines):
+    def run_exec(self, tmp, code, lines, socket=None):
         def script(argv, cwd, env, stdin, stdout, stderr, timeout):
             self.assertEqual("bash", argv[0])
             self.assertTrue(str(cwd).endswith("source"))
             self.assertTrue(env["AI_TEAM_SANDBOX_HOME"].endswith("example-dev/home"))
+            self.env = env
             stdout.write(("\n".join(lines) + "\n").encode())
             return SimpleNamespace(returncode=code)
         archive = Path(tmp) / "payload.tar"
         archive.write_bytes(payload([("run.sh", b"echo hi"), ("source/app/a.txt", b"x")]))
         with patch.object(guest, "SANDBOX_BASE", Path(tmp) / "sandbox"), patch.object(guest, "ROOT", None), \
+                patch.object(guest, "rootless_socket", return_value=socket), \
                 patch.object(guest.subprocess, "run", side_effect=script), patch("builtins.print") as output:
             try:
                 guest.sandbox_exec(archive, "example-dev")
@@ -71,6 +73,42 @@ class GuestExecTests(unittest.TestCase):
             self.assertTrue(printed[-1].startswith("EXEC_PASS: exit=0"))
             run = next((Path(tmp) / "sandbox/example-dev/runs").iterdir())
             self.assertEqual(b"x", (run / "source/app/a.txt").read_bytes())
+
+    def test_scripts_use_rootless_docker_once_prepared(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.run_exec(tmp, 0, ["ok"], socket="/run/user/1001/docker.sock")
+            self.assertEqual("unix:///run/user/1001/docker.sock", self.env["DOCKER_HOST"])
+        with tempfile.TemporaryDirectory() as tmp:
+            self.run_exec(tmp, 0, ["ok"])
+            self.assertNotIn("DOCKER_HOST", self.env)
+
+    def test_prepare_rootless_stops_rootful_before_setup_and_counts_old_containers(self):
+        calls = []
+        def fake_run(argv, **kwargs):
+            calls.append(argv)
+        def fake_subprocess(argv, **kwargs):
+            if argv[:1] == ["id"]:
+                return SimpleNamespace(returncode=1)
+            if argv[:2] == ["systemctl", "is-active"]:
+                return SimpleNamespace(returncode=0)
+            return SimpleNamespace(returncode=0, stdout="aaa\nbbb\n")
+        user = SimpleNamespace(pw_uid=1001, pw_dir="/home/aiteam-docker")
+        with tempfile.TemporaryDirectory() as tmp, patch.object(guest, "run", side_effect=fake_run), \
+                patch.object(guest.subprocess, "run", side_effect=fake_subprocess), \
+                patch.object(guest, "ROOTLESS_APPARMOR", Path(tmp) / "apparmor/usr.bin.rootlesskit"), \
+                patch.object(guest, "ROOTLESS_SYSCTL", Path(tmp) / "rootless.conf"), \
+                patch.object(guest, "rootless_socket", return_value=None), patch.object(guest.time, "sleep"), \
+                patch.dict("sys.modules", pwd=SimpleNamespace(getpwnam=lambda name: user)):
+            (Path(tmp) / "apparmor").mkdir()
+            self.assertEqual(2, guest.prepare_rootless())
+            self.assertIn("userns", (Path(tmp) / "apparmor/usr.bin.rootlesskit").read_text())
+            self.assertIn("ip_unprivileged_port_start=0", (Path(tmp) / "rootless.conf").read_text())
+        names = [" ".join(c) for c in calls]
+        disable = names.index("systemctl disable --now docker.service docker.socket")
+        setup = next(i for i, c in enumerate(names) if "dockerd-rootless-setuptool.sh" in c)
+        self.assertLess(disable, setup)
+        self.assertIn("useradd --create-home --shell /usr/sbin/nologin aiteam-docker", names)
+        self.assertEqual("docker --host unix:///run/user/1001/docker.sock info", names[-1])
 
     def test_failure_is_reported_and_raises(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -170,15 +170,75 @@ def prepare(mode="restricted", target=None):
         run(["apt-get", "update"])
         run(["apt-get", "install", "-y", "docker-ce", "docker-ce-cli", "containerd.io",
              "docker-buildx-plugin", "docker-compose-plugin"])
-    run(["systemctl", "enable", "--now", "ssh", "docker"])
+    run(["systemctl", "enable", "--now", "ssh"] + ([] if mode == "sandbox" else ["docker"]))
     version = subprocess.check_output(["docker", "compose", "version", "--short"], text=True).strip().lstrip("v")
     if tuple(int(x) for x in version.split(".")[:2]) < (2, 30):
         raise ValueError("existing Docker Compose needs a reviewed upgrade to >= 2.30")
     if ROOT is not None:
         ROOT.mkdir(mode=0o700, exist_ok=True)
+    note = ""
     if mode == "sandbox":
         (SANDBOX_BASE / target / "home").mkdir(mode=0o700, parents=True, exist_ok=True)
-    print("PREPARED: SSH, Docker and Compose; mode=" + mode + "; no database volumes removed")
+        kept = prepare_rootless()
+        note = "; docker=rootless (user " + ROOTLESS_USER + ")" + (
+            "; rootful daemon stopped, %d old rootful containers kept but not running" % kept if kept else "")
+    print("PREPARED: SSH, Docker and Compose; mode=" + mode + note + "; no database volumes removed")
+
+
+ROOTLESS_USER = "aiteam-docker"
+# Ubuntu 24.04+ restricts unprivileged user namespaces; Docker's rootless guide grants rootlesskit this profile.
+ROOTLESS_APPARMOR = Path("/etc/apparmor.d/usr.bin.rootlesskit")
+ROOTLESS_SYSCTL = Path("/etc/sysctl.d/90-ai-team-rootless.conf")
+
+
+def rootless_socket():
+    """Socket of the sandbox's rootless Docker daemon, or None before prepare installed it."""
+    try:
+        import pwd
+        uid = pwd.getpwnam(ROOTLESS_USER).pw_uid
+    except (ImportError, KeyError):
+        return None
+    socket = Path("/run/user/%d/docker.sock" % uid)
+    return str(socket) if socket.exists() else None
+
+
+def prepare_rootless():
+    """Sandbox containers run under an unprivileged daemon, so a container escape does not reach root.
+
+    Agent scripts still run as root (they install packages); the rootful daemon is stopped and exec points
+    DOCKER_HOST at the rootless socket, so plain docker / docker compose use it by default.
+    Returns how many rootful containers were left behind (kept on disk, not running)."""
+    import pwd
+    run(["apt-get", "install", "-y", "docker-ce-rootless-extras", "uidmap", "dbus-user-session", "slirp4netns"])
+    if subprocess.run(["id", ROOTLESS_USER], capture_output=True).returncode:
+        run(["useradd", "--create-home", "--shell", "/usr/sbin/nologin", ROOTLESS_USER])
+    run(["passwd", "-l", ROOTLESS_USER], stdout=subprocess.DEVNULL)
+    if ROOTLESS_APPARMOR.parent.is_dir() and not ROOTLESS_APPARMOR.exists():
+        ROOTLESS_APPARMOR.write_text('abi <abi/4.0>,\ninclude <tunables/global>\n\n"/usr/bin/rootlesskit" flags=(unconfined) {\n'
+                                     '  userns,\n\n  include if exists <local/usr.bin.rootlesskit>\n}\n')
+        run(["systemctl", "restart", "apparmor.service"])
+    # Rootless containers may publish any port, including 80.
+    ROOTLESS_SYSCTL.write_text("net.ipv4.ip_unprivileged_port_start=0\n")
+    run(["sysctl", "--system"], stdout=subprocess.DEVNULL)
+    kept = 0
+    if subprocess.run(["systemctl", "is-active", "--quiet", "docker.service"]).returncode == 0:
+        kept = len(subprocess.run(["docker", "--host", "unix:///var/run/docker.sock", "ps", "-aq"],
+                                  capture_output=True, text=True).stdout.split())
+    # The setup tool refuses while a rootful daemon is reachable.
+    run(["systemctl", "disable", "--now", "docker.service", "docker.socket"])
+    user = pwd.getpwnam(ROOTLESS_USER)
+    run(["loginctl", "enable-linger", ROOTLESS_USER])
+    runtime = Path("/run/user/%d" % user.pw_uid)
+    for _ in range(60):
+        if (runtime / "bus").exists():
+            break
+        time.sleep(1)
+    if rootless_socket() is None:
+        env = dict(os.environ, HOME=user.pw_dir, USER=ROOTLESS_USER, XDG_RUNTIME_DIR=str(runtime),
+                   DBUS_SESSION_BUS_ADDRESS="unix:path=" + str(runtime / "bus"))
+        run(["runuser", "-u", ROOTLESS_USER, "--", "dockerd-rootless-setuptool.sh", "install"], env=env, cwd=user.pw_dir)
+    run(["docker", "--host", "unix://" + str(runtime / "docker.sock"), "info"], stdout=subprocess.DEVNULL)
+    return kept
 
 
 def validate_exec_archive(data):
@@ -227,6 +287,9 @@ def sandbox_exec(archive_file, target):
         shutil.rmtree(old, ignore_errors=True)
     env = dict(os.environ, AI_TEAM_SANDBOX_HOME=str(home), AI_TEAM_OPERATION_ID=OPERATION_ID,
                DEBIAN_FRONTEND="noninteractive")
+    socket = rootless_socket()
+    if socket:
+        env["DOCKER_HOST"] = "unix://" + socket
     log = run_dir / "run.log"
     with log.open("wb") as out:
         try:

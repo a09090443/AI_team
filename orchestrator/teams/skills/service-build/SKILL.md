@@ -53,6 +53,9 @@ VirtualBox／宿主機工具只可用於管理者一次性的網路與 SSH 初�
 - health 腳本要實測服務入口（HTTP 狀態、必要容器或程序），不可只 `exit 0`；系統另有登錄入口的獨立探測。
 - 配置中 `serviceTarget.checks` 指向的 exec 操作（例如 start、health 腳本）就是交付檢查，checks 照常填這些操作的結果。
   腳本路徑以配置的操作 argv 為準（內附範本為 `ai-team-sandbox/start.sh`、`health.sh`、`diagnose.sh`）；檔案不存在就先寫，系統會在交付後保存、下次還原。
+- 容器跑在 rootless Docker：prepare 會建立一般帳號 `aiteam-docker` 的 Docker daemon 並停用 root 的 daemon，exec 時 `DOCKER_HOST` 已指向它，
+  腳本直接用 `docker`／`docker compose` 即可。不要重新啟用 root 的 Docker 或改連 `/var/run/docker.sock`；容器的資料用 named volume，
+  bind mount 的目錄要讓 `aiteam-docker` 讀得到（`$AI_TEAM_SANDBOX_HOME` 是 root 專用，不能直接掛進容器），也不要用 `--privileged` 或 host 網路。
 - 沙箱 VM 可能由多個專案共用：安裝狀態、資料與機密放在 `$AI_TEAM_SANDBOX_HOME/<repo 名稱>/`，容器與服務名稱加上 repo 名稱前綴；
   綁定埠前先查是否已被其他程序佔用，選用未佔用的埠並寫在腳本中固定沿用。不要停止、刪除或改動不屬於本專案的容器、服務與檔案。
 restricted 目標回 `SANDBOX_NOT_ENABLED` 時，表示管理者沒有開放，改用固定操作，不要嘗試繞過。
