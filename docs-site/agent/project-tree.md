@@ -388,10 +388,10 @@ agent_team/
 │   │   ├── test-workspace-check.sh   # workspace-check 比對規則測試
 │   │   ├── test-bootstrap.sh         # bootstrap fixture 測試
 │   │   └── test-linux-platform.sh    # 平台辨識 fixture 測試
-│   ├── sandbox-vm/                   # 在 VirtualBox 主機一次建立共用沙箱 VM（agent 部署的應用程式跑在這裡）
+│   ├── sandbox-vm/                   # 在 VirtualBox 主機建立或重建共用沙箱 VM（agent 部署的應用程式跑在這裡）
 │   │   ├── .gitignore                # 排除 Vagrant 狀態、安裝暫存與 known_hosts
 │   │   ├── Vagrantfile               # 沙箱 VM 定義：固定 box 版本、NAT＋host-only、停用主機共享
-│   │   └── create-sandbox-vm.sh      # 建 VM、安裝 mode sandbox 受限入口並產生給 Agent VM 的 known_hosts
+│   │   └── create-sandbox-vm.sh      # 建立／重建（--rebuild）VM、安裝 mode sandbox 受限入口並產生 known_hosts
 │   ├── deploy-orchestrator.sh        # 通用受控部署與六表逐列快照（隔離 JAR、src/main、teams＋實例 overlay）
 │   ├── deploy-jar-safe.sh            # 只換 JAR 的受控部署，失敗自動回復
 │   └── test-maven-settings.xml       # 測試用空白 Maven settings

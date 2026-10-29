@@ -91,7 +91,7 @@ operations 與角色工具白名單裡的 client 路徑是各實例的部署設�
 
 ### 共用沙箱 VM
 
-讓 agent 部署的應用程式跑在另一台可拋棄的 VM，而不是跑 agents 的 Agent VM。VM 由管理者一次建立，之後 agent 從 Slack 自行安裝、部署與修復；
+讓 agent 部署的應用程式跑在另一台可拋棄的 VM，而不是跑 agents 的 Agent VM。VM 由管理者以腳本建立，可隨時重建或多建幾台，之後 agent 從 Slack 自行安裝、部署與修復；
 agent 不負責建立或刪除 VM（Agent VM 碰不到 VirtualBox 主機，給它這個能力等於恢復已移除的主機端 broker）。
 
 ```text
@@ -111,6 +111,14 @@ Windows 主機（VirtualBox）
    它寫入直連設定（`mode: sandbox`、`source_paths: ["."]`），先以固定協定 `status` 確認網路／金鑰／指紋／受限入口，
    再安裝 `<實例目錄名>-ssh-deploy.service` 並等到 journal 出現 `ENTRY_UPGRADE: UPGRADE_UNCHANGED` 或 `UPGRADE_PASS`（目標確實是 sandbox）。
 4. 實例配置填 `project.serviceTarget`（見[內附範例](configurable-team.md#內附範例與實例-overlay)），部署後重啟。
+
+**重建與多台**：沙箱壞掉或要回到乾淨狀態時，確認沒有 agent 正在部署，執行
+`AI_TEAM_SANDBOX_REBUILD_CONFIRM=<VM 名稱> create-sandbox-vm.sh --rebuild <管理目錄> <公鑰檔> <target>`。
+它 `vagrant destroy` 後以本版 Vagrantfile 重建，清掉本機 Vagrant 的舊指紋並重新產生 `agent-known_hosts`；沒有確認變數就拒絕。
+主機公鑰換了，Agent VM 的執行器會因指紋不符拒絕連線（不會自動信任），須對每個實例重跑 `register`（可重複執行）。
+沙箱上的安裝與資料全部消失；agent 寫的部署腳本仍保存在各實例的 `service-context/<target>.files/`，下次部署自動還原再跑。
+要多台（例如每個專案一台），用不同管理目錄、`AI_TEAM_SANDBOX_NAME`、`AI_TEAM_SANDBOX_IP` 與 target 名稱各建一次，各實例 register 到自己的那台。
+Slack agent 不能建立、重建或刪除 VM。
 
 多個實例共用同一個 target 名稱與 `AI_TEAM_SANDBOX_HOME`；skill 規定各專案狀態放在 `$AI_TEAM_SANDBOX_HOME/<repo 名稱>/`、
 綁埠前先確認未被佔用、不動其他專案的容器與檔案。這是規範不是隔離：共用 VM 的 root 彼此可見，要嚴格隔離就每個實例各建一台。
