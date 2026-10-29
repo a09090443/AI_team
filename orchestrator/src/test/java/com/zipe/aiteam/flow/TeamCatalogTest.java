@@ -32,6 +32,50 @@ class TeamCatalogTest {
         assertThatThrownBy(() -> TeamMigration.preview(before, after)).hasMessageContaining("不能原地遷移");
     }
 
+    @Test void bundledTeamsShareSandboxServiceOffByDefaultWithTeamsDirExpanded() throws Exception {
+        Files.createDirectories(tmp.resolve(".git"));
+        String root = Path.of("teams").toRealPath().toString().replace('\\', '/');
+        for (String team : List.of("gradle-fullstack", "maven-library", "node-web")) {
+            var definition = TeamCatalog.load(Path.of("teams/" + team + ".json"), key -> tmp.toString()).definition();
+            assertThat(definition.project().serviceTarget()).as(team).isNull();
+            assertThat(definition.nodes().get("intake").routes()).as(team).containsEntry("service", "service");
+            assertThat(definition.nodes().get("service").gate()).isEqualTo(TeamDefinition.Gate.SERVICE);
+            String client = root + "/skills/service-build/scripts/client.py";
+            assertThat(definition.project().operations().get("service-start").argv()).as(team)
+                    .containsExactly("python3", client, "exec", "ai-team-sandbox/start.sh");
+            assertThat(definition.roles().get("infrastructure").tools()).as(team).contains("Bash(python3 " + client + " *)");
+        }
+        assertThat(Files.readString(Path.of("teams/gradle-fullstack.json"))).doesNotContain("/home/agent");
+    }
+
+    @Test void teamsDirIsExpandedOnlyInOperationArgvAndRoleTools() throws Exception {
+        Files.createDirectories(tmp.resolve(".git"));
+        Path teams = Files.createDirectories(tmp.resolve("teams"));
+        for (String asset : List.of("prompts", "schemas", "skills")) copyTree(Path.of("teams", asset), teams.resolve(asset));
+        var json = config();
+        ((com.fasterxml.jackson.databind.node.ArrayNode) json.path("project").path("requiredTools")).add("python3");
+        ((ObjectNode) json.path("project")).putObject("operations").putObject("probe")
+                .put("directory", ".").putArray("nodes").add("implementation");
+        ((ObjectNode) json.path("project").path("operations").path("probe")).putArray("argv").add("python3").add("${teams}/x.py");
+        ((ObjectNode) json.path("project").path("operations").path("probe")).putArray("writes");
+        ((ObjectNode) json.path("project")).put("buildInstructions", "keep ${teams} literal");
+        Files.writeString(teams.resolve("team.json"), mapper.writeValueAsString(json));
+        var definition = TeamCatalog.load(teams.resolve("team.json"), key -> tmp.toString()).definition();
+        assertThat(definition.project().operations().get("probe").argv())
+                .containsExactly("python3", teams.toRealPath().toString().replace('\\', '/') + "/x.py");
+        assertThat(definition.project().buildInstructions()).isEqualTo("keep ${teams} literal");
+    }
+
+    static void copyTree(Path from, Path to) throws Exception {
+        try (var paths = Files.walk(from)) {
+            for (Path path : paths.toList()) {
+                Path destination = to.resolve(from.relativize(path).toString());
+                if (Files.isDirectory(path)) Files.createDirectories(destination);
+                else Files.copy(path, destination);
+            }
+        }
+    }
+
     @Test void skillsDoNotExpandPathsAndOldNodesStillWork() throws Exception {
         var json = config();
         var node = (ObjectNode) json.path("nodes").path("implementation");

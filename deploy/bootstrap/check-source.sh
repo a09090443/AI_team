@@ -2,7 +2,7 @@
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$root"
-for file in deploy/bootstrap/*.sh; do bash -n "$file"; done
+for file in deploy/bootstrap/*.sh deploy/sandbox-vm/*.sh; do bash -n "$file"; done
 python3 -m unittest discover -s orchestrator/teams/skills/service-build/scripts -p 'test_*.py'
 bash deploy/bootstrap/test-linux-platform.sh
 bash deploy/bootstrap/test-stage-teams.sh

@@ -1650,6 +1650,7 @@ class FlowEngineTest {
         service.put("role", "builder").put("gate", "SERVICE").put("next", "end").put("blocked", "service_triage");
         service.putNull("plan"); service.put("localTestNetwork", false); service.putArray("requires").add("intake");
         service.putObject("routes"); service.remove("candidateRoles"); service.remove("protectedPathFallback");
+        ((com.fasterxml.jackson.databind.node.ArrayNode) service.path("writablePaths")).add("ai-team-sandbox/**");
         nodes.set("service", service);
         ObjectNode triage = ((ObjectNode)nodes.path("triage")).deepCopy();
         triage.putArray("requires").add("intake"); triage.putObject("routes").put("service", "service").put("human", "human");
@@ -2078,7 +2079,7 @@ class FlowEngineTest {
     @Test void workspaceStagesExcludeDeclaredOperationOutputsBeforeAudit() throws Exception {
         engine.run(task);
         // node-web 的固定操作宣告 node_modules、dist、coverage；每個工作區階段開始前都重新排除（#1044）。
-        verify(workspace, atLeastOnce()).excludeOutputDirs(eq("42"), eq(Set.of("node_modules", "dist", "coverage")));
+        verify(workspace, atLeastOnce()).excludeOutputDirs(eq("42"), eq(Set.of("node_modules", "dist", "coverage", "ai-team-sandbox/.agent-service")));
     }
     // ---- 驗收負責人命令開 PR（#1022：審查 APPROVE 但寫了 INFO，閘門擋下、停在分流、收據已被清掉） ----
 

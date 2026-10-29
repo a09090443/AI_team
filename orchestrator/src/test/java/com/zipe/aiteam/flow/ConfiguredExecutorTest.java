@@ -39,7 +39,13 @@ class ConfiguredExecutorTest {
         assertThat(evidence.resolve(".git")).isDirectory();
     }
     @Test void serviceContextReachesTheRuntimePrompt() throws Exception {
-        flow = new FlowRun(TeamCatalog.load(Path.of("teams/gradle-fullstack.json"), key -> repo.toString()));
+        // 範本預設不啟用服務目標；這裡模擬實例配置填入 serviceTarget。
+        var loaded = TeamCatalog.load(Path.of("teams/gradle-fullstack.json"), key -> repo.toString());
+        var tree = (com.fasterxml.jackson.databind.node.ObjectNode) new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(loaded.definition());
+        ((com.fasterxml.jackson.databind.node.ObjectNode) tree.path("project")).set("serviceTarget", new com.fasterxml.jackson.databind.ObjectMapper().readTree(
+                "{\"name\":\"example-dev\",\"checks\":{\"prepare\":\"service-prepare\",\"start\":\"service-start\",\"health\":\"service-health\"}}"));
+        flow = new FlowRun(new TeamDefinition.Snapshot(loaded.revision(),
+                new com.fasterxml.jackson.databind.ObjectMapper().treeToValue(tree, TeamDefinition.class), loaded.repository(), loaded.assets()));
         flow.node = "intake";
         when(store.serviceHistory("c", "example-dev", "42")).thenReturn(List.of(
                 new TaskStore.ServiceHistory("1036", "2026-10-11", "{\"service_status\":\"RUNNING\",\"checks\":[]}")));
@@ -406,7 +412,7 @@ class ConfiguredExecutorTest {
         when(workspace.untrackedOutputDirs(eq(repo), anyCollection())).thenReturn(List.of("src"));
         // 系統只略過工作區回報為「沒有追蹤檔」的目錄；這裡故意回報 src 以確認略過確實生效。
         assertThat(executor.policy(flow, verification, runtime, repo).readOnlyPins()).doesNotContain(repo.resolve("src/main.ts"));
-        verify(workspace).untrackedOutputDirs(repo, Set.of("node_modules", "dist", "coverage"));
+        verify(workspace).untrackedOutputDirs(repo, Set.of("node_modules", "dist", "coverage", "ai-team-sandbox/.agent-service"));
         when(workspace.untrackedOutputDirs(eq(repo), anyCollection())).thenReturn(List.of());
         assertThat(executor.policy(flow, verification, runtime, repo).readOnlyPins()).contains(repo.resolve("src/main.ts"));
     }

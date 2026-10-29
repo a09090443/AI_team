@@ -2,6 +2,8 @@
 
 日常部署固定為 Agent VM → SSH 公鑰認證 → 目標 VM。Windows 只可協助最初配置虛擬網路或傳送公鑰，不運行部署 broker。
 
+整台可拋棄的共用沙箱 VM 由管理者用 repo 的 deploy/sandbox-vm/create-sandbox-vm.sh（VirtualBox 主機）與 deploy/bootstrap/sandbox-target.sh（Agent VM）一次完成下列步驟；agent 不自行建立 VM。
+
 1. 確認兩台 VM 有互通位址：同一個 Internal Network／Host-only／共享 NAT Network 均可；兩個獨立 NAT 的相同 10.0.2.15 不可當互通位址。變更虛擬網卡需維護時段，不中斷進行中任務。
 2. 在 Agent VM 以 ssh-keygen 建立專用 Ed25519 金鑰，保留私鑰權限 600；不覆寫現有金鑰。只傳公鑰到目標 VM。
 3. 由管理者在目標 VM 直接核對 SSH 主機公鑰指紋，再寫入 Agent VM 的專用 known_hosts。禁止把 ssh-keyscan 單獨當身分驗證，也禁止 StrictHostKeyChecking=no。

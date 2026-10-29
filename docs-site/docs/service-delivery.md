@@ -87,6 +87,35 @@ operations 與角色工具白名單裡的 client 路徑是各實例的部署設�
   `…/health.sh` 等，腳本由 agent 撰寫與修復。health 由 agent 撰寫，屬自陳證據；sandbox 目標應同時登錄 `access_endpoints`，
   讓系統從 Agent VM 獨立探測。
 - 權限邊界：root 只到這台 VM。Slack token、Agent 私鑰與其他實例資料都不在目標上；目標沒有任何 Agent VM 的登入憑證。
+- sandbox 直連設定的 `source_paths` 可寫 `["."]`，exec 送整個工作樹（仍排除 `.git`、`.ssh`、`.secrets`、`.env*`）；restricted 目標不接受。
+
+### 共用沙箱 VM
+
+讓 agent 部署的應用程式跑在另一台可拋棄的 VM，而不是跑 agents 的 Agent VM。VM 由管理者一次建立，之後 agent 從 Slack 自行安裝、部署與修復；
+agent 不負責建立或刪除 VM（Agent VM 碰不到 VirtualBox 主機，給它這個能力等於恢復已移除的主機端 broker）。
+
+```text
+Windows 主機（VirtualBox）
+├── Agent VM：orchestrator 實例 ×N ── 各自的 ai-team-<實例>-ssh-deploy.service
+│        │  SSH 公鑰（受限入口），經主機轉送到 host-only 位址
+│        ▼
+└── 沙箱 VM（mode sandbox，NAT＋host-only）：各專案的應用程式；使用者從主機開 http://<host-only IP>:<埠>
+```
+
+1. Agent VM：`deploy/bootstrap/sandbox-target.sh keygen` 產生專用 Ed25519 金鑰（已存在沿用），只印公鑰。
+2. VirtualBox 主機（Windows 用 Git Bash）：`deploy/sandbox-vm/create-sandbox-vm.sh <管理目錄> <公鑰檔> <target>`。
+   以 `deploy/sandbox-vm/Vagrantfile`（固定 `bento/ubuntu-24.04` 版本、停用共享資料夾／剪貼簿／拖放、SSH 只綁 localhost）建 VM，
+   guest 內建立鎖定帳號 `aiteam` 並以 `{"mode":"sandbox"}` 執行 `install-ssh-target.sh`；經 Vagrant 管理通道讀主機公鑰，產生 `agent-known_hosts` 並印出指紋。
+   CPU／記憶體／IP／host-only 介面可用 `AI_TEAM_SANDBOX_*` 環境變數調整（預設 4 CPU、4096 MB、192.168.56.20）。已有 VM 時沿用，不 destroy。
+3. Agent VM：把 known_hosts 傳過去，對每個實例執行 `sandbox-target.sh register <實例 home> <target> <IP> <known_hosts>`。
+   它寫入直連設定（`mode: sandbox`、`source_paths: ["."]`），先以固定協定 `status` 確認網路／金鑰／指紋／受限入口，
+   再安裝 `<實例目錄名>-ssh-deploy.service` 並等到 journal 出現 `ENTRY_UPGRADE: UPGRADE_UNCHANGED` 或 `UPGRADE_PASS`（目標確實是 sandbox）。
+4. 實例配置填 `project.serviceTarget`（見[內附範例](configurable-team.md#內附範例與實例-overlay)），部署後重啟。
+
+多個實例共用同一個 target 名稱與 `AI_TEAM_SANDBOX_HOME`；skill 規定各專案狀態放在 `$AI_TEAM_SANDBOX_HOME/<repo 名稱>/`、
+綁埠前先確認未被佔用、不動其他專案的容器與檔案。這是規範不是隔離：共用 VM 的 root 彼此可見，要嚴格隔離就每個實例各建一台。
+Agent VM 只有 NAT 網卡時，靠 VirtualBox NAT 經主機轉送連到 host-only 位址；若不通，需替 Agent VM 加 host-only 網卡（要重啟 Agent VM）。
+沒有登錄 `access_endpoints` 時，health 只有 agent 自寫腳本的自陳證據；應用的埠由 agent 決定，部署後可再把使用者入口登錄進 service-context。
 
 `service-build` 的唯一來源在 `.agents/skills/service-build/`，同步腳本產生 Claude 與 Slack runtime 套件。
 `nodes.service.skills` 與 `service_triage.skills` 指定 SKILL.md 及參考檔；載入時固定內容與版本，派工時注入模型提示。

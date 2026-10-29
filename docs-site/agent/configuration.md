@@ -165,14 +165,16 @@ bash deploy/bootstrap/check-source.sh
 
 ## 服務建置與指定腳本
 
-`project.serviceTarget` 指定管理者核准的服務目標名稱及檢查操作 ID（至少 start、health）；null 時不能啟動 service runtime。
+`project.serviceTarget` 指定管理者核准的服務目標名稱及檢查操作 ID（至少 start、health）；null 時不能啟動 service runtime，intake 也會被告知不要選 service 路線。三份內附範例都帶沙箱版 service 節點，`serviceTarget` 預設 null（關閉），實例填入即啟用（[內附範例](/docs/configurable-team#內附範例與實例-overlay)）。
+
+操作 `argv` 與角色 `tools` 中的 `${teams}` 在載入時展開成配置所在的 teams 目錄（反斜線轉成斜線），只在這兩處展開；快照存展開後的路徑。
 `Gate.SERVICE` 限 LIMITED 工作區，成功直接 end，不套用開發 QA／PR 閘門；完整欄位與證據限制見 [服務建置](/docs/service-delivery)。
 `project.operations.*.scriptSha256` 僅可配固定的 bash 相對腳本，內容必須吻合且執行時唯讀；見 [跨專案契約](/docs/cross-project-execution)。
 
 
 ## 服務執行工具（2026-10-10）
 
-服務建置以 `project.operations` 的四個 `service-*` 操作與 `serviceTarget` 指定目標；Agent VM 的 `~/.config/ai-team/ssh-targets/<目標名稱>.json` 指定 destination、port、identity_file、known_hosts_file 與 source_paths（start 封裝的版控路徑），固定執行器依即時 SERVICE 狀態授權。工作區請求目錄是 `serviceTarget.checks.start` 操作唯一的 `writes`；目標 VM 的產品佈局（目錄、Compose 專案與服務名）由 `install-ssh-target.sh` 寫入 `/etc/ai-team-service/target.json`。缺項時固定工具明確失敗。服務配置與直連設定的 `mode: sandbox` 宣告整台目標可拋棄：agent 可用 `client.py exec <腳本>` 以 root 自行安裝與啟動，固定入口由執行器自動升級（[沙箱目標](/docs/service-delivery#沙箱目標sandbox)）。詳見 [服務建置](/docs/service-delivery#產品配置)。
+服務建置以 `project.operations` 的四個 `service-*` 操作與 `serviceTarget` 指定目標；Agent VM 的 `~/.config/ai-team/ssh-targets/` 直連設定（`sandbox-target.sh register` 產生的檔名為 `<目標名稱>-<實例目錄名>.json`；執行器以設定檔路徑加鎖，同一台目標的多個實例須各用一份）指定 destination、port、identity_file、known_hosts_file 與 source_paths（start 封裝的版控路徑；sandbox 目標可寫 `["."]` 送整個工作樹），固定執行器依即時 SERVICE 狀態授權。工作區請求目錄是 `serviceTarget.checks.start` 操作唯一的 `writes`；目標 VM 的產品佈局（目錄、Compose 專案與服務名）由 `install-ssh-target.sh` 寫入 `/etc/ai-team-service/target.json`。缺項時固定工具明確失敗。服務配置與直連設定的 `mode: sandbox` 宣告整台目標可拋棄：agent 可用 `client.py exec <腳本>` 以 root 自行安裝與啟動，固定入口由執行器自動升級（[沙箱目標](/docs/service-delivery#沙箱目標sandbox)）。詳見 [服務建置](/docs/service-delivery#產品配置)。
 
 
 ### 節點 skill

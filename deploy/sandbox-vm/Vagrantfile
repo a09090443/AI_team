@@ -1,0 +1,45 @@
+# AI Team 共用沙箱 VM（mode sandbox）：agent 部署的應用程式跑在這裡，不跑在 Agent VM。
+# 由 create-sandbox-vm.sh 複製到管理目錄並寫好 sandbox.json；設定值都從 sandbox.json 讀，不直接拼接使用者輸入。
+# 安全設定依 virtualbox-control skill 的 ubuntu-create 規範：固定 box 版本、停用共享資料夾／剪貼簿／拖放、SSH 只綁 localhost。
+require "json"
+
+settings = JSON.parse(File.read(File.join(__dir__, "sandbox.json")))
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "bento/ubuntu-24.04"
+  config.vm.box_version = "202510.26.0"
+  config.vm.hostname = settings.fetch("name")
+
+  config.ssh.forward_agent = false
+  config.ssh.forward_x11 = false
+  config.ssh.insert_key = true
+  config.ssh.keys_only = true
+  # 首次建立時為 trust on first use；create-sandbox-vm.sh 取得主機公鑰後改成 always。
+  config.ssh.verify_host_key = settings.fetch("verify_host_key") == "always" ? :always : :accept_new
+  config.ssh.extra_args = ["-o", "ForwardAgent=no", "-o", "ForwardX11=no", "-o", "ClearAllForwardings=yes"]
+  config.vm.synced_folder ".", "/vagrant", disabled: true
+  config.vm.network "forwarded_port", guest: 22, host: 2223, host_ip: "127.0.0.1", id: "ssh", auto_correct: true
+  # host-only：Agent VM 經主機轉送連入部署，使用者也從主機開啟服務的任何埠；不對區網開放。
+  config.vm.network "private_network", ip: settings.fetch("ip"), name: settings.fetch("host_only_adapter")
+
+  config.vm.provider "virtualbox" do |vb|
+    vb.name = settings.fetch("name")
+    vb.cpus = settings.fetch("cpus")
+    vb.memory = settings.fetch("memory")
+    vb.gui = false
+    vb.customize ["modifyvm", :id, "--clipboard-mode", "disabled"]
+    vb.customize ["modifyvm", :id, "--clipboard-file-transfers", "disabled"]
+    vb.customize ["modifyvm", :id, "--drag-and-drop", "disabled"]
+  end
+
+  # 只在 guest 內做最小初始化：安裝受限 SSH 入口（target.json 為 mode sandbox）。不在主機執行任何指令。
+  config.vm.provision "file", source: File.join(__dir__, "install"), destination: "/tmp/ai-team-install"
+  config.vm.provision "shell", args: [settings.fetch("target")], inline: <<~SHELL
+    set -euo pipefail
+    id aiteam >/dev/null 2>&1 || useradd --create-home --shell /bin/bash aiteam
+    passwd -l aiteam >/dev/null
+    printf '{"mode": "sandbox"}\\n' > /tmp/ai-team-install/target.json
+    bash /tmp/ai-team-install/install-ssh-target.sh aiteam /tmp/ai-team-install/agent.pub "$1" /tmp/ai-team-install/target.json
+    rm -rf /tmp/ai-team-install
+  SHELL
+end

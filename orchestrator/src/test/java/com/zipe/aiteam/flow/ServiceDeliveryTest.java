@@ -44,6 +44,13 @@ class ServiceDeliveryTest {
     @Test void absentTargetCannotBeClaimedAsRunning() throws Exception {
         assertThat(ServiceDelivery.blockingReason(report(), flow(false))).contains("尚未配置", "主機");
     }
+    @Test void intakeIsToldServiceRouteIsOffUntilTargetConfigured() throws Exception {
+        var off = flow(false);
+        var intake = off.snapshot.definition().nodes().get("intake");
+        assertThat(ServiceDelivery.notice(off, intake)).contains("尚未由管理者設定部署目標", "不要選 service 路線");
+        var on = flow(true);
+        assertThat(ServiceDelivery.notice(on, intake)).contains("服務建置與開發分流", "sit-host").doesNotContain("不要選 service 路線");
+    }
     @Test void wrongHostOrFilesOnlyCannotComplete() throws Exception {
         assertThat(ServiceDelivery.blockingReason(report().put("target", "other-host"), flow(true))).contains("目標");
         assertThat(ServiceDelivery.blockingReason(report().put("service_status", "NOT_RUNNING"), flow(true))).contains("尚未");

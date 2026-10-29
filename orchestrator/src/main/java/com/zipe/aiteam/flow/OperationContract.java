@@ -38,7 +38,8 @@ public final class OperationContract {
             TeamCatalog.require(!FileComparison.OPERATION.equals(id), "操作 ID " + FileComparison.OPERATION + " 為系統保留的檔案比對");
             relative(op.directory());
             TeamCatalog.require(op.argv() != null && !op.argv().isEmpty() && op.argv().size() <= 32
-                    && op.argv().stream().allMatch(s -> s != null && s.matches("[A-Za-z0-9_./:=+@,-]{1,200}")), "操作 argv 僅允許明確參數，不支援 shell 表達式：" + id);
+                    // ${teams} 在 TeamCatalog.load 展開成實際路徑；未展開的範本也要能通過靜態驗證。
+                    && op.argv().stream().allMatch(s -> s != null && s.replace(TeamCatalog.TEAMS_DIR, "/teams").matches("[A-Za-z0-9_./:=+@,-]{1,200}")), "操作 argv 僅允許明確參數，不支援 shell 表達式：" + id);
             // #1043：Codex CLI（0.156.1 實測）在啟動前拒絕 rm -f 類指令，任務跑到這步才失敗；載入配置時就擋。
             TeamCatalog.require(!"rm".equals(op.argv().getFirst()),
                     "操作不可使用 rm（Codex 會拒絕執行）：" + id + "；清空目錄請改用 find <目錄> -mindepth 1 -delete");

@@ -39,6 +39,16 @@ class DirectTests(unittest.TestCase):
                 f.write_text(json.dumps(c))
                 with self.subTest(bad=bad),self.assertRaisesRegex(ValueError,"SSH_CONFIG_REQUIRED"):direct.config(f)
 
+    def test_whole_tree_source_only_for_sandbox(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _,c,f=self.fixture(tmp);c["source_paths"]=["."]
+            f.write_text(json.dumps(c))
+            with self.assertRaisesRegex(ValueError,"SSH_CONFIG_REQUIRED"):direct.config(f)
+            c["mode"]="sandbox";f.write_text(json.dumps(c))
+            self.assertEqual(["."],direct.config(f)["source_paths"])
+            c["source_paths"]=[".","app-service"];f.write_text(json.dumps(c))
+            with self.assertRaisesRegex(ValueError,"SSH_CONFIG_REQUIRED"):direct.config(f)
+
     def test_reuses_pending_request_and_keeps_it_on_transport_failure(self):
         with tempfile.TemporaryDirectory() as tmp:
             root,c,f=self.fixture(tmp);queue=fx.queue(root)

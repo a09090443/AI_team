@@ -36,6 +36,8 @@ start 封裝前會預檢版控路徑：缺件回 `SOURCE_MISSING_PATHS`，未提
 
 ## 一次性啟用
 
+可拋棄的沙箱目標改用腳本完成下列步驟（建 VM、受限入口、known_hosts、直連設定與執行器），見 [共用沙箱 VM](service-delivery.md#共用沙箱-vm)；以下是手動步驟與 restricted 目標的作法。
+
 1. 等現有任務停止執行後安排網路維護。建立 VM 間的 Internal／Host-only 或共享 NAT Network，確認位址不同且互通；保留原有管理入口與產品資料。
 2. Agent VM 保留專用私鑰（600），只把公鑰交目標管理者。從目標 VM 本機取得 SSH 主機公鑰並核對指紋，再登錄 Agent VM 的專用 known_hosts。
 3. 將工具與 Agent 公鑰傳到目標，依 `assets/target-service.example.json`（或可拋棄主機用 `assets/target-sandbox.example.json`）寫好服務配置，以管理者權限執行

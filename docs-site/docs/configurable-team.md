@@ -34,7 +34,16 @@ repo 的 `orchestrator/teams/` 只放共用 prompts、schemas、skills 與三份
 |---|---|
 | `node-web.json` | Node 專案；功能開關全關，也是測試的對照組（因此驗證時會提醒沒有設定受保護路徑改派） |
 | `maven-library.json` | Maven 多模組函式庫；開延後驗收、角色諮詢、計畫自動核准、受保護路徑改派（`.claude/rules`、`.claude/skills`、`.mvn`） |
-| `gradle-fullstack.json` | Gradle 後端＋npm 前端＋文件站；啟用[功能開關一覽](#功能開關一覽)的全部項目（含服務建置路線，引用 `skills/service-build/references/project-template.md`） |
+| `gradle-fullstack.json` | Gradle 後端＋npm 前端＋文件站；啟用[功能開關一覽](#功能開關一覽)的全部項目（服務建置路線同下，service 節點另引用 `skills/service-build/references/project-template.md`） |
+
+三份範例都內附同一組**沙箱版服務建置路線**（2026-10-29）：`infrastructure` 角色、`service`／`service_triage` 節點、intake 的 `service` 路線，
+以及 `service-prepare`／`service-start`／`service-health`／`service-diagnose` 四個操作（後三者以 `client.py exec` 執行 agent 寫在 `ai-team-sandbox/` 的腳本）。
+範例的 `project.serviceTarget` 為 `null`，等於關閉：intake 會被告知不要選 service 路線。實例要啟用時，先依 [服務建置](service-delivery.md#共用沙箱-vm) 接好沙箱 VM，
+再在實例配置填 `serviceTarget`（`name` 為沙箱 target 名稱，`checks` 為 `{"prepare":"service-prepare","start":"service-start","health":"service-health"}`）。
+node-web 的 infrastructure 用 claude-code（不新增 Codex 依賴），其他兩份用 codex。
+
+操作 argv 與角色工具可寫 `${teams}`，載入時展開成該配置所在的 teams 目錄（例如 `${teams}/skills/service-build/scripts/client.py`），
+實例安裝目錄不同也不必改配置；快照保存展開後的實際路徑。
 
 **實例 overlay**：專案配置（`<project>.json`、專屬 prompt、`skills/service-build/references/<project>.md` 等）放在
 `$AI_TEAM_HOME/team-overlay/`（可用 `AI_TEAM_TEAM_OVERLAY` 改位置），目錄結構與 `teams/` 相同。
@@ -532,7 +541,8 @@ Runnable 交給 TaskOrchestrator，由真正的執行中工作與 FIFO 排隊清
 
 配置 `service` 節點的團隊，intake 可選 service，由 Infrastructure 在 LIMITED 設定／手冊範圍建置並驗證服務，受阻交 service_triage。
 這是 Gate.SERVICE 契約，不更動產品開發的 IMPLEMENTATION 前置測試計畫，也不能用來直接發布 PR。
-未設定 serviceTarget 時明確停止等待主機與操作資訊；詳見 [服務建置](service-delivery.md)。
+未設定 serviceTarget 時明確停止等待主機與操作資訊，intake 的派工說明也會註明 service 路線未啟用、不要選；詳見 [服務建置](service-delivery.md)。
+服務建置節點只寫管理者列出的部署目錄，不會產生「Claude 寫檔節點沒設改派」的提醒。
 
 
 ## 配置式 skills

@@ -1,0 +1,4 @@
+.vagrant/
+install/
+sandbox.json
+agent-known_hosts

@@ -10,6 +10,7 @@ checks 的 name／operation_id 必須對應 serviceTarget.checks，acceptance_id
 不得輸出憑證值，真實機密檔不得提交。此階段不開 PR，完成回報提供服務位址、檢查結果與仍需留意的限制。
 
 目標是 sandbox（prepare 收據有 mode=sandbox）時，依 service-build skill 的「沙箱目標」段自行撰寫並以 client.py exec 執行安裝、啟動與健康檢查腳本，自己補齊缺的軟體，不交回使用者安裝。
+沙箱 VM 可能與其他專案共用：狀態放在 $AI_TEAM_SANDBOX_HOME/<repo 名稱>/，先確認埠未被佔用，不動其他專案的容器、服務與檔案。
 
 部署通道固定為 Agent VM → SSH 公鑰認證 → 目標 VM，使用 ssh_client.py 與目標機受限固定入口，沒有 Windows broker。只讀已登錄目標、獨立私鑰引用與 pinned known_hosts，不重問已保存資訊，也不自行新增登入或 sudo 權限。SSH 失敗明確區分網路不可達、公鑰／指紋／受限入口缺口，提供具體處理者與步驟，不要求啟動宿主程式。舊快照仍引用 broker 時要說明需遷移配置，不得回頭使用 Windows。
 系統注入的歷史只作背景；過去部署成功、本次尚未完成與目前健康未知要分開說明，舊成功不得填成本次 checks。完成後明列程式／服務名稱、部署 commit、目標 VM、存取網址及本次檢查結果。

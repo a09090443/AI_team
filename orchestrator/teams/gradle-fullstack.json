@@ -321,11 +321,11 @@
         "directory": ".",
         "argv": [
           "python3",
-          "/home/agent/ai-team/teams/skills/service-build/scripts/client.py",
+          "${teams}/skills/service-build/scripts/client.py",
           "prepare"
         ],
         "writes": [
-          "docs/docker/sit/.agent-service"
+          "ai-team-sandbox/.agent-service"
         ]
       },
       "service-start": {
@@ -335,11 +335,12 @@
         "directory": ".",
         "argv": [
           "python3",
-          "/home/agent/ai-team/teams/skills/service-build/scripts/client.py",
-          "start"
+          "${teams}/skills/service-build/scripts/client.py",
+          "exec",
+          "ai-team-sandbox/start.sh"
         ],
         "writes": [
-          "docs/docker/sit/.agent-service"
+          "ai-team-sandbox/.agent-service"
         ]
       },
       "service-health": {
@@ -349,11 +350,12 @@
         "directory": ".",
         "argv": [
           "python3",
-          "/home/agent/ai-team/teams/skills/service-build/scripts/client.py",
-          "health"
+          "${teams}/skills/service-build/scripts/client.py",
+          "exec",
+          "ai-team-sandbox/health.sh"
         ],
         "writes": [
-          "docs/docker/sit/.agent-service"
+          "ai-team-sandbox/.agent-service"
         ]
       },
       "service-diagnose": {
@@ -363,11 +365,12 @@
         "directory": ".",
         "argv": [
           "python3",
-          "/home/agent/ai-team/teams/skills/service-build/scripts/client.py",
-          "diagnose"
+          "${teams}/skills/service-build/scripts/client.py",
+          "exec",
+          "ai-team-sandbox/diagnose.sh"
         ],
         "writes": [
-          "docs/docker/sit/.agent-service"
+          "ai-team-sandbox/.agent-service"
         ]
       },
       "qa-docs-dir": {
@@ -578,14 +581,7 @@
         ".env.example"
       ]
     },
-    "serviceTarget": {
-      "name": "example-dev",
-      "checks": {
-        "prepare": "service-prepare",
-        "start": "service-start",
-        "health": "service-health"
-      }
-    }
+    "serviceTarget": null
   },
   "roles": {
     "coordinator": {
@@ -701,7 +697,7 @@
         "Bash(git log *)",
         "Bash(git show *)",
         "Bash(ls *)",
-        "Bash(python3 /home/agent/ai-team/teams/skills/service-build/scripts/client.py *)"
+        "Bash(python3 ${teams}/skills/service-build/scripts/client.py *)"
       ],
       "capabilities": "測試環境部署、啟動與健康檢查；由 Agent VM 經已登錄 SSH 公鑰直接連到目標 VM。不得要求啟動 Windows broker；網路、公鑰或主機指紋尚未登錄時明列缺口。restricted 目標只執行核准固定操作，不取得任意 root shell；目標為 sandbox（prepare 收據 mode=sandbox）時，依 service-build skill 自行撰寫並以 client.py exec 執行安裝、啟動與修復腳本。"
     },
@@ -977,8 +973,7 @@
       "gate": "SERVICE",
       "workspace": true,
       "writablePaths": [
-        "docs/docker/sit/**",
-        "docs-site/docs/getting-started/**"
+        "ai-team-sandbox/**"
       ],
       "plan": null,
       "next": "end",

@@ -34,8 +34,10 @@ def config(path):
         if not f.is_absolute() or f.is_symlink() or not f.is_file():
             raise ValueError("SSH_ENROLLMENT_REQUIRED: missing enrolled key or host fingerprint")
     paths = c.get("source_paths")
+    # A sandbox target may receive the whole working tree ["."]; exec still drops .git, .ssh, .secrets and .env*.
+    whole = paths == ["."] and c.get("mode") == "sandbox"
     if (not isinstance(paths, list) or not 1 <= len(paths) <= 16 or len(set(map(str, paths))) != len(paths)
-            or any(client.relative_path(p) is None or "/." in "/" + p for p in paths)):
+            or (not whole and any(client.relative_path(p) is None or "/." in "/" + p for p in paths))):
         raise ValueError("SSH_CONFIG_REQUIRED: source_paths must list the committed repository paths to deploy")
     if c.get("mode", "restricted") not in {"restricted", "sandbox"}:
         raise ValueError("SSH_CONFIG_REQUIRED: mode must be restricted or sandbox")

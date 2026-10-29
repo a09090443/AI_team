@@ -3,12 +3,18 @@
   "id": "node-web",
   "project": {
     "requirePlanApproval": true,
+    "serviceTarget": null,
     "operations": {
       "install": {"nodes": ["implementation", "frontend", "verification"], "directory": ".", "argv": ["npm", "ci"], "writes": ["node_modules"]},
       "build": {"nodes": ["implementation", "frontend", "verification"], "directory": ".", "argv": ["npm", "run", "build"], "writes": ["dist"]},
-      "test": {"nodes": ["implementation", "frontend", "verification"], "directory": ".", "argv": ["npm", "test"], "writes": ["coverage"]}
+      "test": {"nodes": ["implementation", "frontend", "verification"], "directory": ".", "argv": ["npm", "test"], "writes": ["coverage"]},
+      "service-prepare": {"nodes": ["service"], "directory": ".", "argv": ["python3", "${teams}/skills/service-build/scripts/client.py", "prepare"], "writes": ["ai-team-sandbox/.agent-service"]},
+      "service-start": {"nodes": ["service"], "directory": ".", "argv": ["python3", "${teams}/skills/service-build/scripts/client.py", "exec", "ai-team-sandbox/start.sh"], "writes": ["ai-team-sandbox/.agent-service"]},
+      "service-health": {"nodes": ["service"], "directory": ".", "argv": ["python3", "${teams}/skills/service-build/scripts/client.py", "exec", "ai-team-sandbox/health.sh"], "writes": ["ai-team-sandbox/.agent-service"]},
+      "service-diagnose": {"nodes": ["service"], "directory": ".", "argv": ["python3", "${teams}/skills/service-build/scripts/client.py", "exec", "ai-team-sandbox/diagnose.sh"], "writes": ["ai-team-sandbox/.agent-service"]}
     },
     "requiredTools": [
+      "python3",
       "node",
       "npm",
       "git"
@@ -142,6 +148,28 @@
         "Bash(git *)",
         "Bash(ls *)"
       ]
+    },
+    "infrastructure": {
+      "name": "Infrastructure Agent",
+      "runtime": "claude-code",
+      "model": "sonnet",
+      "prompt": "prompts/infrastructure.md",
+      "botTokenEnv": "SLACK_BOT_TOKEN_INFRASTRUCTURE",
+      "appTokenEnv": "SLACK_APP_TOKEN_INFRASTRUCTURE",
+      "tools": [
+        "Read",
+        "Write",
+        "Edit",
+        "Grep",
+        "Glob",
+        "Bash(git status *)",
+        "Bash(git diff *)",
+        "Bash(git log *)",
+        "Bash(git show *)",
+        "Bash(ls *)",
+        "Bash(python3 ${teams}/skills/service-build/scripts/client.py *)"
+      ],
+      "capabilities": "服務建置：在管理者登錄的目標部署、啟動與健康檢查；目標為 sandbox（prepare 收據 mode=sandbox）時，依 service-build skill 自行撰寫並以 client.py exec 執行安裝、啟動與修復腳本，不限技術棧。"
     }
   },
   "entry": "intake",
@@ -162,7 +190,8 @@
       "routes": {
         "question": "end",
         "implementation": "plan",
-        "human": "human"
+        "human": "human",
+        "service": "service"
       },
       "requires": [],
       "maxVisits": 3,
@@ -306,6 +335,57 @@
       "maxVisits": 3,
       "timeoutSeconds": 1800,
       "maxTurns": 80
+    },
+    "service": {
+      "kind": "AGENT",
+      "role": "infrastructure",
+      "schema": "schemas/service.json",
+      "scope": "LIMITED",
+      "gate": "SERVICE",
+      "workspace": true,
+      "writablePaths": [
+        "ai-team-sandbox/**"
+      ],
+      "plan": null,
+      "next": "end",
+      "blocked": "service_triage",
+      "routes": {},
+      "requires": [
+        "intake"
+      ],
+      "maxVisits": 3,
+      "timeoutSeconds": 1800,
+      "maxTurns": 60,
+      "instructions": "prompts/service.md",
+      "skills": [
+        "skills/service-build/SKILL.md"
+      ]
+    },
+    "service_triage": {
+      "kind": "AGENT",
+      "role": "coordinator",
+      "schema": "schemas/analysis.json",
+      "scope": "READ_ONLY",
+      "gate": "REPORT",
+      "workspace": false,
+      "writablePaths": [],
+      "plan": null,
+      "next": "human",
+      "blocked": "human",
+      "routes": {
+        "service": "service",
+        "human": "human"
+      },
+      "requires": [
+        "intake"
+      ],
+      "maxVisits": 3,
+      "timeoutSeconds": 900,
+      "maxTurns": 40,
+      "instructions": "prompts/service-triage.md",
+      "skills": [
+        "skills/service-build/SKILL.md"
+      ]
     }
   }
 }

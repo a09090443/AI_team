@@ -78,6 +78,10 @@ public final class ServiceDelivery {
 
     static String notice(FlowRun flow, Node node) {
         if (flow.snapshot.definition().nodes().values().stream().noneMatch(n -> n.gate() == Gate.SERVICE)) return "";
+        // 範本內附 service 節點但預設不開；未設定目標時先講清楚，任務才不會走進 service 再被擋停。
+        if (flow.snapshot.definition().project().serviceTarget() == null && node.gate() != Gate.SERVICE)
+            return "\n【服務建置】本配置的 service 路線尚未由管理者設定部署目標（serviceTarget），目前無法啟動服務，不要選 service 路線。"
+                    + "使用者要求建立或部署服務時，如實說明需由管理者啟用服務目標；不要改成只交付設定檔或文件，也不要求使用者自行安裝主機軟體。";
         String text = "\n【服務建置與開發分流】建立／部署既有服務的目標是服務啟動並可用，走配置的 service 路線，"
                 + "由 Infrastructure 角色建置、檢查、修復與重驗，不要求先寫 QA 計畫或跑無關的完整前後端回歸。"
                 + "需要修改產品程式或新增功能則維持開發流程；不可把使用者要的啟動排除在 out_of_scope。"

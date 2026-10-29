@@ -105,6 +105,8 @@ done
 | `infrastructure.yaml`（配置有此角色時） | `SLACK_BOT_TOKEN_INFRASTRUCTURE` | `SLACK_APP_TOKEN_INFRASTRUCTURE` |
 | `code-review.yaml` | `SLACK_BOT_TOKEN_CODE_REVIEW` | `SLACK_APP_TOKEN_CODE_REVIEW` |
 
+2026-10-29 起三份內附範例都含 `infrastructure` 角色（服務建置路線，`serviceTarget` 未設定時不會被派工）。沒有建立它的 App 也能執行 service 節點，但由主 App 代發、無法直接 `@` Infrastructure。
+
 App ID 可直接開 `https://api.slack.com/apps/<App ID>`：Bot Token 在 **OAuth & Permissions**，App-Level Token 在
 **Basic Information → App-Level Tokens**（名稱 `socket`、scope `connections:write`）。
 

@@ -135,9 +135,9 @@ export const docs = [
     title: '服務建置與開發分流',
     category: 'workflow',
     status: 'current',
-    summary: 'Infrastructure 建置既有服務、啟動後檢查、自動修復與必要主機資訊；不先進 QA 計畫。',
+    summary: 'Infrastructure 建置既有服務、啟動後檢查、自動修復與必要主機資訊；共用沙箱 VM 的建立與登錄；不先進 QA 計畫。',
     readWhen: '建立測試環境、部署服務、設定 serviceTarget 或了解 SERVICE 完成條件。',
-    code: ['orchestrator/src/main/java/com/zipe/aiteam/flow/ConfiguredExecutor.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/FlowEngine.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/ServiceSupport.java', '.agents/skills/service-build/', 'orchestrator/teams/skills/service-build/', 'orchestrator/src/main/java/com/zipe/aiteam/flow/ServiceDelivery.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/ServiceDeploymentContext.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/ServiceArtifacts.java', 'orchestrator/src/main/java/com/zipe/aiteam/store/TaskStore.java', 'deploy/service-context/', 'orchestrator/teams/prompts/service.md', 'orchestrator/teams/prompts/service-triage.md', 'orchestrator/teams/schemas/service.json'],
+    code: ['orchestrator/src/main/java/com/zipe/aiteam/flow/ConfiguredExecutor.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/FlowEngine.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/ServiceSupport.java', '.agents/skills/service-build/', 'orchestrator/teams/skills/service-build/', 'orchestrator/src/main/java/com/zipe/aiteam/flow/ServiceDelivery.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/ServiceDeploymentContext.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/ServiceArtifacts.java', 'orchestrator/src/main/java/com/zipe/aiteam/store/TaskStore.java', 'deploy/service-context/', 'deploy/sandbox-vm/', 'deploy/bootstrap/sandbox-target.sh', 'orchestrator/teams/prompts/service.md', 'orchestrator/teams/prompts/service-triage.md', 'orchestrator/teams/schemas/service.json'],
   },
   {
     id: 'qa-scenario-workflow',

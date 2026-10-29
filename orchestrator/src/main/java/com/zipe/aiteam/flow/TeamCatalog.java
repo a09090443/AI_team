@@ -26,9 +26,12 @@ public class TeamCatalog {
 
     public static Snapshot load(Path file, Function<String,String> env) throws Exception {
         ObjectMapper mapper = new ObjectMapper().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
-        TeamDefinition definition = mapper.readValue(Files.readString(file), TeamDefinition.class);
-        validate(definition);
         Path root = file.toAbsolutePath().getParent().toRealPath();
+        JsonNode tree = mapper.readTree(Files.readString(file));
+        // 操作 argv 只接受簡單字元，Windows 開發機的反斜線改成斜線。
+        expandTeamsDir(tree, root.toString().replace('\\', '/'));
+        TeamDefinition definition = mapper.treeToValue(tree, TeamDefinition.class);
+        validate(definition);
         Map<String,String> assets = new TreeMap<>();
         for (Role role : definition.roles().values()) readAsset(root, role.prompt(), assets);
         if (definition.sharedInstructions() != null) readAsset(root, definition.sharedInstructions(), assets);
@@ -48,6 +51,20 @@ public class TeamCatalog {
         String frozen = mapper.writeValueAsString(definition) + "\n" + repo + "\n" + mapper.writeValueAsString(assets);
         String revision = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(frozen.getBytes(StandardCharsets.UTF_8)));
         return new Snapshot(revision, definition, repo.toString(), Map.copyOf(assets));
+    }
+    /**
+     * 範本以 {@value #TEAMS_DIR} 指向本配置所在的 teams 目錄（內附 skill 腳本的位置），實例安裝目錄不同也不必改配置。
+     * 只展開操作 argv 與角色工具；快照保存展開後的實際路徑，舊快照不受影響。
+     */
+    static final String TEAMS_DIR = "${teams}";
+    private static void expandTeamsDir(JsonNode tree, String root) {
+        tree.path("project").path("operations").forEach(operation -> expandIn(operation.path("argv"), root));
+        tree.path("roles").forEach(role -> expandIn(role.path("tools"), root));
+    }
+    private static void expandIn(JsonNode values, String root) {
+        if (!(values instanceof com.fasterxml.jackson.databind.node.ArrayNode items)) return;
+        for (int i = 0; i < items.size(); i++)
+            if (items.get(i).isTextual()) items.set(i, items.get(i).asText().replace(TEAMS_DIR, root));
     }
     private static void readAsset(Path root, String name, Map<String,String> assets) throws Exception {
         require(name != null && !name.isBlank() && !Path.of(name).isAbsolute(), "資產須為配置目錄內的相對路徑");
@@ -80,8 +97,10 @@ public class TeamCatalog {
                     + "請補上唯讀權限（例如 Bash(git log *)、Bash(git show *)），否則工具遭拒時結論會被作廢。");
         });
         // Claude Code 寫不了 .claude/ 等受保護路徑。沒設改派時，要改這些檔案的任務一定停給真人（#1002），建配置時就該知道。
+        // 服務建置節點只寫管理者列出的部署目錄，不會碰到受保護路徑，不提醒。
         d.nodes().forEach((id, node) -> {
-            if (node.kind() != Kind.AGENT || !node.workspace() || node.scope() == Scope.READ_ONLY || node.protectedPathFallback() != null) return;
+            if (node.kind() != Kind.AGENT || !node.workspace() || node.scope() == Scope.READ_ONLY || node.protectedPathFallback() != null
+                    || node.gate() == Gate.SERVICE) return;
             Role role = d.roles().get(node.role());
             if (role == null || !"claude-code".equals(role.runtime())) return;
             warnings.add("節點 " + id + " 由 Claude Code 角色 " + node.role() + " 寫入，但沒有設定 protectedPathFallback；"
