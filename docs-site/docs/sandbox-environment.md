@@ -116,5 +116,8 @@ exec 時 `DOCKER_HOST` 指向 rootless socket，腳本照常用 `docker`／`dock
 
 - **程式測試**：`test_sandbox.py`／`test_direct_ssh.py`（exec 來源縮小、rootless 準備順序與 `DOCKER_HOST`）、`test-sandbox-overlay.sh`（補區塊、冪等、保留既有路線）。
 - **腳本實跑**：建 VM、`--rebuild`（含主機金鑰重新產生）、三個實例 `sandbox-onboard.sh`（重跑時配置 UNCHANGED、入口 UPGRADE_PASS／UNCHANGED）已在一台 Windows／VirtualBox 7.2.16 主機實跑。
-  rootless 準備要等下一次部署的 prepare 才實際執行。
-- **Slack 端對端**：一個 Gradle＋npm 專案以 root Docker 部署成功；rootless 下的端對端尚未驗證。
+- **Slack 端對端**：同一個 Gradle＋npm 專案先以 root Docker 部署成功；重建後再以 rootless Docker 部署成功（2026-10-30）：
+  - prepare 收據 `docker=rootless`；root 的 `docker.service`／`docker.socket` 為 inactive；`dockerd` 與 rootlesskit 由 `aiteam-docker` 執行，`docker info` 有 `name=rootless`。
+  - 容器內程序在主機上是 subuid 對應的非特權 UID；前端、後端、資料庫三個容器由 compose 啟動，主機 HTTP 200。
+  - 從派工到 COMPLETED 約 14 分鐘，沿用上次保存的部署腳本，沒有停下來等真人。
+  - `source-paths` 自修尚未在真實任務出現（這次送出的來源在上限內）。
