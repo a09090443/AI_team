@@ -88,6 +88,14 @@ agent_team/
 │       │       ├── enroll.py         # 管理者固定來源雜湊
 │       │       ├── login.ps1         # Windows 遮蔽輸入與私人登入檔
 │       │       └── test_service_agent.py # 執行工具測試
+│       └── virtualbox-control/       # 本機 VirtualBox VM 建立與管理（上游原版）
+│           ├── SKILL.md              # 目標確認、電源／快照／資源操作與破壞性操作授權
+│           ├── agents/
+│           │   └── openai.yaml       # Codex 介面顯示名稱與預設提示
+│           └── references/
+│               ├── operations.md     # VBoxManage 操作範本與資料遺失操作
+│               ├── ssh.md            # 新 VM 的 SSH 金鑰登入佈建與驗證
+│               └── ubuntu-create.md  # 以 Vagrant 建立 Ubuntu 開發／測試 VM
 ├── .claude/
 │   └── skills/                       # 產生檔：.agents/skills 的鏡像（Claude Code 只讀這裡）
 │       ├── context-compression/      # 共用上下文整理 skill 的同步鏡像
@@ -128,6 +136,14 @@ agent_team/
 │       │       ├── enroll.py         # 管理者固定來源雜湊
 │       │       ├── login.ps1         # Windows 遮蔽輸入與私人登入檔
 │       │       └── test_service_agent.py # 執行工具測試
+│       └── virtualbox-control/       # VirtualBox 控制 skill 的同步鏡像
+│           ├── SKILL.md
+│           ├── agents/
+│           │   └── openai.yaml
+│           └── references/
+│               ├── operations.md
+│               ├── ssh.md
+│               └── ubuntu-create.md
 ├── .cursor/
 │   └── mcp.json                      # 產生檔：Cursor MCP
 ├── .gemini/

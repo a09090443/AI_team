@@ -1,0 +1,4 @@
+interface:
+  display_name: "VirtualBox 控制"
+  short_description: "建立 Ubuntu 與管理 VirtualBox VM，預設 SSH 金鑰登入並限制主機共享"
+  default_prompt: "請使用 $virtualbox-control 查詢本機 VirtualBox 虛擬機及目前執行狀態。"
