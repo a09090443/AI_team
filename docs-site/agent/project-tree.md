@@ -61,6 +61,8 @@ agent_team/
 │       │       └── test_compression_evaluator.py # 上游評估工具回歸測試
 │       └── docs-sync/
 │           └── SKILL.md              # 文件優先核對流程
+│       ├── sandbox-setup/            # 共用沙箱 VM 建立、專案接入、重建與排錯步驟
+│       │   └── SKILL.md
 │       ├── service-build/            # 可攜式服務建置 skill（來源／同步鏡像）
 │       │   ├── SKILL.md              # 環境檢查、建置、啟動與有界修復流程
 │       │   ├── references/
@@ -109,6 +111,8 @@ agent_team/
 │       │       └── test_compression_evaluator.py # 上游評估工具回歸測試
 │       └── docs-sync/
 │           └── SKILL.md
+│       ├── sandbox-setup/            # 沙箱建立與接入 skill 的同步鏡像
+│       │   └── SKILL.md
 │       ├── service-build/            # 可攜式服務建置 skill（來源／同步鏡像）
 │       │   ├── SKILL.md              # 環境檢查、建置、啟動與有界修復流程
 │       │   ├── references/
@@ -381,10 +385,13 @@ agent_team/
 │   │   ├── audit.sh                  # 唯讀 SQLite 稽核查詢
 │   │   ├── backup.sh                 # 停機備份（排除憑證與 session）
 │   │   ├── restore.sh                # 還原到新目錄
+│   │   ├── sandbox-onboard.sh        # 一個指令讓實例接上沙箱：快取目錄、overlay 沙箱區塊、大小檢查、登錄、重啟
+│   │   ├── sandbox-overlay.py        # 替團隊配置補上沙箱服務路線並設定 serviceTarget（可重複執行）
 │   │   ├── sandbox-target.sh         # Agent VM 端：產生沙箱金鑰、把共用沙箱 VM 登錄給實例並啟動部署執行器
 │   │   ├── stage-teams.sh            # 部署用 teams：來源配置疊上實例 team-overlay 並逐一靜態驗證
 │   │   ├── test-stage-teams.sh       # stage-teams 合併與擋停規則測試
 │   │   ├── workspace-check.sh        # 部署前後逐工作區比對（容許啟動清理刪除已結束任務）
+│   │   ├── test-sandbox-overlay.sh   # sandbox-overlay 補區塊、冪等與保留既有路線測試
 │   │   ├── test-workspace-check.sh   # workspace-check 比對規則測試
 │   │   ├── test-bootstrap.sh         # bootstrap fixture 測試
 │   │   └── test-linux-platform.sh    # 平台辨識 fixture 測試

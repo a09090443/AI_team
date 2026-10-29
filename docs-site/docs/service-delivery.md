@@ -94,42 +94,9 @@ operations 與角色工具白名單裡的 client 路徑是各實例的部署設�
 
 ### 共用沙箱 VM
 
-讓 agent 部署的應用程式跑在另一台可拋棄的 VM，而不是跑 agents 的 Agent VM。VM 由管理者以腳本建立，可隨時重建或多建幾台，之後 agent 從 Slack 自行安裝、部署與修復；
-agent 不負責建立或刪除 VM（Agent VM 碰不到 VirtualBox 主機，給它這個能力等於恢復已移除的主機端 broker）。
-
-```text
-Windows 主機（VirtualBox）
-├── Agent VM：orchestrator 實例 ×N ── 各自的 ai-team-<實例>-ssh-deploy.service
-│        │  SSH 公鑰（受限入口），經主機轉送到 host-only 位址
-│        ▼
-└── 沙箱 VM（mode sandbox，NAT＋host-only）：各專案的應用程式；使用者從主機開 http://<host-only IP>:<埠>
-```
-
-1. Agent VM：`deploy/bootstrap/sandbox-target.sh keygen` 產生專用 Ed25519 金鑰（已存在沿用），只印公鑰。
-2. VirtualBox 主機（Windows 用 Git Bash）：`deploy/sandbox-vm/create-sandbox-vm.sh <管理目錄> <公鑰檔> <target>`。
-   以 `deploy/sandbox-vm/Vagrantfile`（固定 `bento/ubuntu-24.04` 版本、停用共享資料夾／剪貼簿／拖放、SSH 只綁 localhost）建 VM，
-   guest 內建立鎖定帳號 `aiteam` 並以 `{"mode":"sandbox"}` 執行 `install-ssh-target.sh`；經 Vagrant 管理通道讀主機公鑰，產生 `agent-known_hosts` 並印出指紋。
-   CPU／記憶體／IP／host-only 介面可用 `AI_TEAM_SANDBOX_*` 環境變數調整（預設 4 CPU、4096 MB、192.168.56.20）。已有 VM 時沿用，不 destroy。
-3. Agent VM：把 known_hosts 傳過去，對每個實例執行 `sandbox-target.sh register <實例 home> <target> <IP> <known_hosts>`。
-   它寫入直連設定（`mode: sandbox`，`source_paths` 預設 `["."]`；第五個參數可給逗號分隔的路徑），先以固定協定 `status` 確認網路／金鑰／指紋／受限入口，
-   再安裝 `<實例目錄名>-ssh-deploy.service` 並等到 journal 出現 `ENTRY_UPGRADE: UPGRADE_UNCHANGED` 或 `UPGRADE_PASS`（目標確實是 sandbox）。
-4. 實例配置填 `project.serviceTarget`（見[內附範例](configurable-team.md#內附範例與實例-overlay)），部署後重啟。
-
-**重建與多台**：沙箱壞掉或要回到乾淨狀態時，確認沒有 agent 正在部署，執行
-`AI_TEAM_SANDBOX_REBUILD_CONFIRM=<VM 名稱> create-sandbox-vm.sh --rebuild <管理目錄> <公鑰檔> <target>`。
-它 `vagrant destroy` 後以本版 Vagrantfile 重建，清掉本機 Vagrant 的舊指紋並重新產生 `agent-known_hosts`；沒有確認變數就拒絕。
-主機公鑰換了，Agent VM 的執行器會因指紋不符拒絕連線（不會自動信任），須對每個實例重跑 `register`（可重複執行）。
-沙箱上的安裝與資料全部消失；agent 寫的部署腳本仍保存在各實例的 `service-context/<target>.files/`，下次部署自動還原再跑。
-要多台（例如每個專案一台），用不同管理目錄、`AI_TEAM_SANDBOX_NAME`、`AI_TEAM_SANDBOX_IP` 與 target 名稱各建一次，各實例 register 到自己的那台。
-Slack agent 不能建立、重建或刪除 VM。
-
-exec 每次送出的工作樹上限 128 MiB，超過回 `SOURCE_TOO_LARGE`（不會連 SSH，agent 無法自行修正）；repo 含大量文件或二進位檔時，register 要列出部署需要的路徑。
-
-多個實例共用同一個 target 名稱與 `AI_TEAM_SANDBOX_HOME`；skill 規定各專案狀態放在 `$AI_TEAM_SANDBOX_HOME/<repo 名稱>/`、
-綁埠前先確認未被佔用、不動其他專案的容器與檔案。這是規範不是隔離：共用 VM 的 root 彼此可見，要嚴格隔離就每個實例各建一台。
-Agent VM 只有 NAT 網卡時，靠 VirtualBox NAT 經主機轉送連到 host-only 位址（2026-10-29 在 VirtualBox 7.2.16／Windows 實測可通）；若不通，需替 Agent VM 加 host-only 網卡（要重啟 Agent VM）。
-實建紀錄：腳本與登錄流程已在一台主機實際跑通（建 VM、指紋、三個實例 register、入口升級 UNCHANGED）；agent 經 Slack 在沙箱部署服務的端對端尚未驗證。
-沒有登錄 `access_endpoints` 時，health 只有 agent 自寫腳本的自陳證據；應用的埠由 agent 決定，部署後可再把使用者入口登錄進 service-context。
+讓 agent 部署的應用程式跑在另一台可拋棄的沙箱 VM：管理者以 `deploy/sandbox-vm/create-sandbox-vm.sh` 建立（可重建、可多台），
+每個實例以 `deploy/bootstrap/sandbox-onboard.sh` 一次接上；容器跑在 rootless Docker，agent 能自行以 `source-paths` 縮小送出的來源。
+架構、步驟、首次導入的問題分析與維運注意事項見 [共用沙箱環境](sandbox-environment.md)。
 
 `service-build` 的唯一來源在 `.agents/skills/service-build/`，同步腳本產生 Claude 與 Slack runtime 套件。
 `nodes.service.skills` 與 `service_triage.skills` 指定 SKILL.md 及參考檔；載入時固定內容與版本，派工時注入模型提示。

@@ -7,6 +7,7 @@ python3 -m unittest discover -s orchestrator/teams/skills/service-build/scripts 
 bash deploy/bootstrap/test-linux-platform.sh
 bash deploy/bootstrap/test-stage-teams.sh
 bash deploy/bootstrap/test-workspace-check.sh
+bash deploy/bootstrap/test-sandbox-overlay.sh
 # 內附的通用範例配置；各專案實例自己的配置放在實例 team-overlay，不在 repo。
 for team in node-web maven-library gradle-fullstack; do test -s "orchestrator/teams/$team.json" || { echo "缺少範例配置 $team"; exit 1; }; done
 # 下列固定列表僅檢查 legacy 相容資產；動態 roles/nodes 由 TeamCatalog 載入驗證。

@@ -227,6 +227,26 @@ class AgentSideTests(unittest.TestCase):
             self.assertEqual(["run.sh", "source/app-service/a.txt", "source/deploy/sit/sandbox/start.sh"], names)
             guest.validate_exec_archive(first).close()
 
+    def test_source_paths_file_only_narrows_what_is_sent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = fx.workspace(tmp)
+            (root / "deploy/sit/sandbox").mkdir(parents=True)
+            (root / "deploy/sit/sandbox/start.sh").write_text("echo start")
+            script = "deploy/sit/sandbox/start.sh"
+            self.assertEqual(["."], direct.payload_paths(root, {"source_paths": ["."]}, script))
+            (root / "deploy/sit/sandbox/source-paths").write_text("# backend only\napp-service\n\n")
+            self.assertEqual(["app-service", "deploy/sit/sandbox"], direct.payload_paths(root, {"source_paths": ["."]}, script))
+            self.assertEqual(["app-service", "deploy/sit/sandbox"],
+                             direct.payload_paths(root, {"source_paths": ["app-service", "deploy/sit"]}, script))
+            with patch.object(direct.subprocess, "check_output", return_value=b"") as listing:
+                direct.exec_payload(root, {"source_paths": ["."]}, script)
+            self.assertEqual(["app-service", "deploy/sit/sandbox"], listing.call_args.args[0][-2:])
+            for bad, kind in (("docs\n", "SOURCE_PATHS_OUTSIDE"), ("../etc\n", "SOURCE_PATHS_INVALID"),
+                              (".git\n", "SOURCE_PATHS_INVALID"), ("\n", "SOURCE_PATHS_INVALID")):
+                (root / "deploy/sit/sandbox/source-paths").write_text(bad)
+                with self.subTest(bad=bad), self.assertRaisesRegex(direct.SourcePreflightError, kind):
+                    direct.payload_paths(root, {"source_paths": ["app-service", "deploy/sit"]}, script)
+
     def test_exec_script_path_is_validated(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = fx.workspace(tmp)

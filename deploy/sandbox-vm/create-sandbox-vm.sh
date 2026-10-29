@@ -55,7 +55,17 @@ if $rebuild && [[ -d .vagrant/machines/default/virtualbox ]] && [[ -s .vagrant/m
  [[ -z $port ]] || ssh-keygen -R "[127.0.0.1]:$port" >/dev/null 2>&1 || true
  write_settings accept_new
 fi
+new_vm=false
+[[ -s .vagrant/machines/default/virtualbox/id ]] || new_vm=true
 vagrant up --provider=virtualbox
+if $new_vm; then
+ # 新 VM 的轉送埠可能被已刪除的舊 VM 用過，留在 ~/.ssh/known_hosts 的舊指紋會讓 vagrant ssh 以 Host key verification failed 失敗。
+ port=$(vagrant port --guest 22 2>/dev/null | tr -dc 0-9 || true)
+ if [[ -n $port ]] && ssh-keygen -F "[127.0.0.1]:$port" >/dev/null 2>&1; then
+  ssh-keygen -R "[127.0.0.1]:$port" >/dev/null 2>&1
+  echo "已移除 ~/.ssh/known_hosts 中 [127.0.0.1]:$port 的過期指紋（原檔保存為 known_hosts.old）"
+ fi
+fi
 # 主機公鑰經 Vagrant 管理的 SSH 通道讀取（不使用 ssh-keyscan），之後 Vagrant 也改成嚴格核對。
 hostkey=$(vagrant ssh -c 'cat /etc/ssh/ssh_host_ed25519_key.pub' -- -q 2>/dev/null | tr -d '\r' | awk '/^ssh-ed25519 /{print $1" "$2; exit}')
 [[ -n $hostkey ]] || { echo "讀不到 guest 的 ed25519 主機公鑰"; exit 1; }

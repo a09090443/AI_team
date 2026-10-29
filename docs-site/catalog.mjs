@@ -131,6 +131,15 @@ export const docs = [
     code: ['orchestrator/src/main/java/com/zipe/aiteam/flow/ServiceSupport.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/OperationJobs.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/FlowEngine.java', 'orchestrator/src/main/java/com/zipe/aiteam/runtime/RuntimeTimedOut.java', 'orchestrator/src/main/java/com/zipe/aiteam/sandbox/SandboxUnitCleanup.java', '.agents/skills/service-build/', 'orchestrator/teams/skills/service-build/', 'orchestrator/teams/prompts/service.md', 'orchestrator/teams/prompts/service-triage.md'],
   },
   {
+    id: 'sandbox-environment',
+    title: '共用沙箱環境',
+    category: 'workflow',
+    status: 'current',
+    summary: '讓各專案的 Slack agent 在可拋棄的沙箱 VM 部署服務：建立、一個指令接入、rootless Docker、重建與首次導入的問題分析。',
+    readWhen: '建立或重建沙箱 VM、讓新專案接上沙箱、排查沙箱部署失敗。',
+    code: ['deploy/sandbox-vm/', 'deploy/bootstrap/sandbox-onboard.sh', 'deploy/bootstrap/sandbox-overlay.py', 'deploy/bootstrap/sandbox-target.sh', '.agents/skills/sandbox-setup/', '.agents/skills/service-build/scripts/guest.py', '.agents/skills/service-build/scripts/ssh_client.py'],
+  },
+  {
     id: 'service-delivery',
     title: '服務建置與開發分流',
     category: 'workflow',

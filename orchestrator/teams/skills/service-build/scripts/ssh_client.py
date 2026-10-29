@@ -87,11 +87,35 @@ def hidden(path):
     return any(part in {".git", ".ssh", ".secrets"} or part.startswith(".env") for part in path.split("/"))
 
 
+SOURCE_PATHS_FILE = "source-paths"
+
+
+def payload_paths(root, c, relative):
+    """Paths to send for an exec. A source-paths file next to the agent's script (one path per line) narrows the
+    administrator's source_paths, so the agent can fix an oversized payload itself; it can never widen them."""
+    allowed = c["source_paths"]
+    folder = Path(relative).parent.as_posix()
+    listing = root / folder / SOURCE_PATHS_FILE
+    if listing.is_symlink() or not listing.is_file():
+        return allowed
+    wanted = [line.strip() for line in listing.read_text(encoding="utf-8").splitlines()
+              if line.strip() and not line.strip().startswith("#")]
+    if not 1 <= len(wanted) <= 64:
+        raise SourcePreflightError("SOURCE_PATHS_INVALID: " + folder + "/" + SOURCE_PATHS_FILE + " must list 1-64 paths")
+    for path in wanted:
+        if client.relative_path(path) is None or "/." in "/" + path:
+            raise SourcePreflightError("SOURCE_PATHS_INVALID: not a plain repository path: " + path[:200])
+        if allowed != ["."] and not any(path == a or path.startswith(a.rstrip("/") + "/") for a in allowed):
+            raise SourcePreflightError("SOURCE_PATHS_OUTSIDE: " + path[:200] + " is outside the administrator's source_paths "
+                                       + ", ".join(allowed) + "; the list can only narrow them")
+    return sorted(set(wanted + ([folder] if folder != "." else [])))
+
+
 def exec_payload(root, c, script):
     """Sandbox targets get the working tree of source_paths (uncommitted edits included) plus the agent's script."""
     relative = client.sandbox_script(root, script)
     names = subprocess.check_output(["git", "-C", str(root), "ls-files", "-z", "-c", "-o", "--exclude-standard",
-                                     "--", *c["source_paths"]]).decode("utf-8").split("\0")
+                                     "--", *payload_paths(root, c, relative)]).decode("utf-8").split("\0")
     entries, total = [], 0
     for name in sorted(set(filter(None, names))):
         path = root / name
@@ -100,7 +124,8 @@ def exec_payload(root, c, script):
         content = path.read_bytes()
         total += len(content)
         if total > MAX_ARCHIVE:
-            raise SourcePreflightError("SOURCE_TOO_LARGE: sandbox payload exceeds approved size; SSH was not attempted")
+            raise SourcePreflightError("SOURCE_TOO_LARGE: sandbox payload exceeds 128 MiB; list only the paths this deployment needs, "
+                                       "one per line, in " + SOURCE_PATHS_FILE + " next to the script, then exec again; SSH was not attempted")
         entries.append(("source/" + name, content, bool(path.stat().st_mode & 0o111)))
     entries.append(("run.sh", (root / relative).read_bytes(), True))
     return pack(entries)

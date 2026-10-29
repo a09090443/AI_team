@@ -48,6 +48,8 @@ VirtualBox／宿主機工具只可用於管理者一次性的網路與 SSH 初�
 管理者把目標 VM 宣告為 sandbox（整台可拋棄）時，prepare 收據會顯示 `mode=sandbox`。此時不受內建建置配方限制：
 - 把安裝、建置、啟動、健康檢查寫成腳本放在本節點可寫路徑（例如部署目錄下的 `sandbox/`），用 `client.py exec <腳本路徑>` 在目標以 root 執行。
   腳本在 `source/`（`source_paths` 的工作樹內容，含未提交修改）下執行；`$AI_TEAM_SANDBOX_HOME` 跨次保留，放安裝狀態、資料與機密。
+- exec 收據回 `SOURCE_TOO_LARGE`（送出內容超過 128 MiB）時，在腳本同目錄寫 `source-paths`，一行一個部署需要的 repo 路徑（`#` 開頭為註解），
+  再重新 exec；它只能縮小管理者設定的範圍，超出會回 `SOURCE_PATHS_OUTSIDE`。腳本所在目錄一律會送。
 - 缺的套件、runtime、資料庫由腳本自己安裝設定，不交回使用者；腳本要可重複執行（已裝就跳過），失敗時依收據最後 30 行輸出修正再跑。
 - 機密在目標產生並存在 `$AI_TEAM_SANDBOX_HOME`，不要輸出到畫面或寫進 repo；腳本只操作這台目標，不連其他主機做部署。
 - health 腳本要實測服務入口（HTTP 狀態、必要容器或程序），不可只 `exit 0`；系統另有登錄入口的獨立探測。

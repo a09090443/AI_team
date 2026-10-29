@@ -38,7 +38,7 @@ repo 的 `orchestrator/teams/` 只放共用 prompts、schemas、skills 與三份
 
 三份範例都內附同一組**沙箱版服務建置路線**（2026-10-29）：`infrastructure` 角色、`service`／`service_triage` 節點、intake 的 `service` 路線，
 以及 `service-prepare`／`service-start`／`service-health`／`service-diagnose` 四個操作（後三者以 `client.py exec` 執行 agent 寫在 `ai-team-sandbox/` 的腳本）。
-範例的 `project.serviceTarget` 為 `null`，等於關閉：intake 會被告知不要選 service 路線。實例要啟用時，先依 [服務建置](service-delivery.md#共用沙箱-vm) 接好沙箱 VM，
+範例的 `project.serviceTarget` 為 `null`，等於關閉：intake 會被告知不要選 service 路線。實例要啟用時，先依 [共用沙箱環境](sandbox-environment.md) 接好沙箱 VM，
 再在實例配置填 `serviceTarget`（`name` 為沙箱 target 名稱，`checks` 為 `{"prepare":"service-prepare","start":"service-start","health":"service-health"}`）。
 node-web 的 infrastructure 用 claude-code（不新增 Codex 依賴），其他兩份用 codex。
 

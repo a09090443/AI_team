@@ -62,6 +62,7 @@ skill 是執行步驟，規則本文仍只寫在 `AGENTS.md`；兩者衝突時�
 | `service-build` | Slack agent 可重用的環境準備、建置、啟動、檢查與修復流程，主機連線獨立配置 |
 | `docs-sync` | 依「文件優先」規則開工前找文件、發現缺漏或落差時修正、功能異動後核對文件並驗證 |
 | `context-compression` | 長任務的結構化摘要與交接，保留目標、決策、檔案異動、風險及下一步；附評估參考與工具 |
+| `sandbox-setup` | 建立／重建共用沙箱 VM、以 `sandbox-onboard.sh` 讓專案接上沙箱、驗證與排錯（本專案自建，見 [共用沙箱環境](/docs/sandbox-environment)） |
 | `virtualbox-control` | 以 VBoxManage 管理本機 VirtualBox VM（電源、快照、資源、複製／匯入匯出），以 Vagrant 建立 Ubuntu 開發／測試 VM，新 VM 預設 SSH 金鑰登入 |
 
 2026-10-29 安裝 [a09090443/agent-skills](https://github.com/a09090443/agent-skills/tree/main/virtualbox-control) 的
