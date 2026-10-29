@@ -122,7 +122,8 @@ Slack agent 不能建立、重建或刪除 VM。
 
 多個實例共用同一個 target 名稱與 `AI_TEAM_SANDBOX_HOME`；skill 規定各專案狀態放在 `$AI_TEAM_SANDBOX_HOME/<repo 名稱>/`、
 綁埠前先確認未被佔用、不動其他專案的容器與檔案。這是規範不是隔離：共用 VM 的 root 彼此可見，要嚴格隔離就每個實例各建一台。
-Agent VM 只有 NAT 網卡時，靠 VirtualBox NAT 經主機轉送連到 host-only 位址；若不通，需替 Agent VM 加 host-only 網卡（要重啟 Agent VM）。
+Agent VM 只有 NAT 網卡時，靠 VirtualBox NAT 經主機轉送連到 host-only 位址（2026-10-29 在 VirtualBox 7.2.16／Windows 實測可通）；若不通，需替 Agent VM 加 host-only 網卡（要重啟 Agent VM）。
+實建紀錄：腳本與登錄流程已在一台主機實際跑通（建 VM、指紋、三個實例 register、入口升級 UNCHANGED）；agent 經 Slack 在沙箱部署服務的端對端尚未驗證。
 沒有登錄 `access_endpoints` 時，health 只有 agent 自寫腳本的自陳證據；應用的埠由 agent 決定，部署後可再把使用者入口登錄進 service-context。
 
 `service-build` 的唯一來源在 `.agents/skills/service-build/`，同步腳本產生 Claude 與 Slack runtime 套件。
