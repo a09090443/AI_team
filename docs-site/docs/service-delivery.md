@@ -108,7 +108,7 @@ Windows 主機（VirtualBox）
    guest 內建立鎖定帳號 `aiteam` 並以 `{"mode":"sandbox"}` 執行 `install-ssh-target.sh`；經 Vagrant 管理通道讀主機公鑰，產生 `agent-known_hosts` 並印出指紋。
    CPU／記憶體／IP／host-only 介面可用 `AI_TEAM_SANDBOX_*` 環境變數調整（預設 4 CPU、4096 MB、192.168.56.20）。已有 VM 時沿用，不 destroy。
 3. Agent VM：把 known_hosts 傳過去，對每個實例執行 `sandbox-target.sh register <實例 home> <target> <IP> <known_hosts>`。
-   它寫入直連設定（`mode: sandbox`、`source_paths: ["."]`），先以固定協定 `status` 確認網路／金鑰／指紋／受限入口，
+   它寫入直連設定（`mode: sandbox`，`source_paths` 預設 `["."]`；第五個參數可給逗號分隔的路徑），先以固定協定 `status` 確認網路／金鑰／指紋／受限入口，
    再安裝 `<實例目錄名>-ssh-deploy.service` 並等到 journal 出現 `ENTRY_UPGRADE: UPGRADE_UNCHANGED` 或 `UPGRADE_PASS`（目標確實是 sandbox）。
 4. 實例配置填 `project.serviceTarget`（見[內附範例](configurable-team.md#內附範例與實例-overlay)），部署後重啟。
 
@@ -119,6 +119,8 @@ Windows 主機（VirtualBox）
 沙箱上的安裝與資料全部消失；agent 寫的部署腳本仍保存在各實例的 `service-context/<target>.files/`，下次部署自動還原再跑。
 要多台（例如每個專案一台），用不同管理目錄、`AI_TEAM_SANDBOX_NAME`、`AI_TEAM_SANDBOX_IP` 與 target 名稱各建一次，各實例 register 到自己的那台。
 Slack agent 不能建立、重建或刪除 VM。
+
+exec 每次送出的工作樹上限 128 MiB，超過回 `SOURCE_TOO_LARGE`（不會連 SSH，agent 無法自行修正）；repo 含大量文件或二進位檔時，register 要列出部署需要的路徑。
 
 多個實例共用同一個 target 名稱與 `AI_TEAM_SANDBOX_HOME`；skill 規定各專案狀態放在 `$AI_TEAM_SANDBOX_HOME/<repo 名稱>/`、
 綁埠前先確認未被佔用、不動其他專案的容器與檔案。這是規範不是隔離：共用 VM 的 root 彼此可見，要嚴格隔離就每個實例各建一台。

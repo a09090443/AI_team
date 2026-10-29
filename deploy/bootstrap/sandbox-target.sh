@@ -3,9 +3,10 @@
 #
 #   sandbox-target.sh keygen
 #       產生 Agent VM 專用金鑰（已存在就沿用），只印出公鑰，交給建 VM 的腳本（deploy/sandbox-vm/create-sandbox-vm.sh）。
-#   sandbox-target.sh register <實例 home> <target> <沙箱 IP> <known_hosts 檔>
+#   sandbox-target.sh register <實例 home> <target> <沙箱 IP> <known_hosts 檔> [來源路徑,逗號分隔]
 #       寫直連設定、安裝並啟動該實例的部署執行器 unit，再以固定入口送唯讀 prepare 確認目標是 sandbox。
 #       多個實例共用同一台沙箱時，每個實例各跑一次（target 名稱相同）。
+#       來源路徑預設 "."（整個工作樹）；exec 送出的內容上限 128 MiB，repo 含大型文件或二進位檔時列出部署需要的路徑。
 #
 # known_hosts 檔由 create-sandbox-vm.sh 經 Vagrant 管理通道取得；不使用 ssh-keyscan、不停用指紋核對。
 # 不讀出私鑰、不需要 sudo；需要 linger=yes（沿用 INSTALL 的前置條件）。
@@ -25,6 +26,7 @@ case ${1:-} in
   home=${2:?用法：sandbox-target.sh register <實例 home> <target> <沙箱 IP> <known_hosts 檔>}
   target=${3:?缺少 target 名稱}; address=${4:?缺少沙箱 IP}; hosts=${5:?缺少 known_hosts 檔}
   [[ $target =~ ^[a-z0-9][a-z0-9-]{0,63}$ ]] || { echo "target 名稱只能是小寫英數與連字號：$target"; exit 1; }
+  paths=${6:-.}
   [[ $address =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || { echo "沙箱 IP 格式不對：$address"; exit 1; }
   home=$(realpath "$home")
   scripts=$home/teams/skills/service-build/scripts
@@ -36,12 +38,12 @@ case ${1:-} in
   known=$dir/$target.known_hosts
   install -m 600 "$hosts" "$known"
   config=$dir/$target-$instance.json
-  # source_paths ["."]：sandbox 目標收整個工作樹（exec 仍排除 .git、.ssh、.secrets、.env*）。
-  python3 - "$config" "$target" "$address" "$key" "$known" <<'PY'
+  # source_paths 預設 ["."]：sandbox 目標收整個工作樹（exec 仍排除 .git、.ssh、.secrets、.env*）。
+  python3 - "$config" "$target" "$address" "$key" "$known" "$paths" <<'PY'
 import json, sys
 from pathlib import Path
-path, target, address, key, known = sys.argv[1:]
-Path(path).write_text(json.dumps({"transport": "direct-ssh", "target": target, "mode": "sandbox", "source_paths": ["."],
+path, target, address, key, known, paths = sys.argv[1:]
+Path(path).write_text(json.dumps({"transport": "direct-ssh", "target": target, "mode": "sandbox", "source_paths": paths.split(","),
     "destination": "aiteam@" + address, "port": 22, "identity_file": key, "known_hosts_file": known}, indent=2) + "\n")
 PY
   chmod 600 "$config"
