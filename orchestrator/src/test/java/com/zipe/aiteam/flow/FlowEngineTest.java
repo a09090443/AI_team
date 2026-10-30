@@ -897,6 +897,23 @@ class FlowEngineTest {
         verify(workspace).commitPaths(eq("42"), eq(List.of(".claude/rules/api-endpoints.md")), contains("分段改派 builder_codex"));
     }
 
+    @Test void leftoverProtectedFileFromAnEarlierDelegatedPartIsStillCommittedByIt() throws Exception {
+        // #1002：上一次改派段改好 .claude/rules 卻沒提交；重跑時內容沒變，仍要由改派段提交，原角色寫不了 .claude/。
+        mode = "protectedRule";
+        enableProtectedPathFallback();
+        Map<String, String> states = Map.of(".claude/rules/api-endpoints.md", "h0", "backend/Dockerfile", "h1");
+        when(workspace.uncommittedStates("42")).thenReturn(states);
+        when(workspace.contentStates(eq("42"), anyCollection())).thenReturn(states);
+        when(workspace.uncommittedPaths("42")).thenReturn(List.of(".claude/rules/api-endpoints.md", "backend/Dockerfile"), List.of());
+        when(workspace.auditPaths(eq("42"), anyString()))
+                .thenReturn(List.of(".claude/rules/api-endpoints.md", "backend/Dockerfile"), List.of());
+
+        engine.run(task);
+
+        assertThat(calls).containsSubsequence("implementation:builder_codex", "implementation:builder");
+        verify(workspace).commitPaths(eq("42"), eq(List.of(".claude/rules/api-endpoints.md")), contains("分段改派 builder_codex"));
+    }
+
     @Test void delegatedPartEditingALeftoverFileOutsideTheAllowedPathsStillStops() throws Exception {
         mode = "protectedRule";
         enableProtectedPathFallback();

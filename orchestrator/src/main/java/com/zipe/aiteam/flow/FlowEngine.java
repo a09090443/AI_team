@@ -1220,22 +1220,25 @@ public class FlowEngine {
     }
     /**
      * 改派段的變更必須全部落在允許範圍；通過後由系統代為提交（Codex 沙箱不能寫 .git）。回傳改派段變更的檔案。
-     * 動手前就未提交、內容也沒變的檔案不算它的變更，也不代為提交，留給原角色。
+     * 動手前就未提交、內容也沒變的檔案不算它的變更：在允許範圍內的（例如上一次改派段改好未提交的）照樣代為提交，
+     * 範圍外的不提交，留給原角色。
      */
     private List<String> auditDelegatedPart(Task task, FlowRun flow, Node node, Node delegate, Map<String, String> leftover) throws Exception {
         if (flow.beforeHead == null) throw new SecurityException("缺少改派段的起始 commit，不能核實寫入範圍");
+        var fb = node.protectedPathFallback();
+        var planned = ProtectedPathFallback.plannedPaths(flow, node);
         List<String> all = implementationPaths(task, flow, node);
         Map<String, String> now = workspaces.contentStates(task.id(), all.stream().filter(leftover::containsKey).toList());
-        List<String> changed = all.stream().filter(p -> !leftover.containsKey(p) || !leftover.get(p).equals(now.get(p))).toList();
-        if (changed.size() < all.size())
-            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "分段改派核對略過動手前就未提交且內容未變的檔案："
-                    + all.stream().filter(p -> !changed.contains(p)).toList());
-        List<String> bad = ProtectedPathFallback.partViolations(changed, node.protectedPathFallback(),
-                ProtectedPathFallback.plannedPaths(flow, node));
+        List<String> untouched = all.stream().filter(p -> leftover.containsKey(p) && leftover.get(p).equals(now.get(p))).toList();
+        List<String> bad = ProtectedPathFallback.partViolations(all.stream().filter(p -> !untouched.contains(p)).toList(), fb, planned);
         if (!bad.isEmpty()) {
             audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_DENIED, "分段改派越權：" + bad);
             throw new SecurityException("改派段修改了允許範圍以外的路徑，禁止下游與發布：" + bad);
         }
+        List<String> others = untouched.stream().filter(p -> !ProtectedPathFallback.partViolations(List.of(p), fb, planned).isEmpty()).toList();
+        if (!others.isEmpty())
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "分段改派核對略過動手前就未提交且內容未變的檔案（留給原角色）：" + others);
+        List<String> changed = all.stream().filter(p -> !others.contains(p)).toList();
         List<String> dirty = workspaces.uncommittedPaths(task.id()).stream().filter(changed::contains).toList();
         if (!dirty.isEmpty()) {
             String head = workspaces.commitPaths(task.id(), dirty, "任務 #" + task.id() + " 受保護檔案（分段改派 " + delegate.role() + "，系統核對後代為提交）");

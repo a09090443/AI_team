@@ -94,7 +94,8 @@ stdout／stderr 保留，既有 sessionStarted callback 與 checkpoint 介面維
    系統以 `auditPaths` 核對，變更必須**全部**落在 `paths` 內且逐檔列於 `protected_path_changes`（`partViolations`，連 `.agents/`、一般檔案也不行），越界即 `SecurityException`；
    通過後系統代為提交，結果記在 `FlowRun.delegatedParts`（起始 commit、提交後 commit、檔案、摘要）。
    2026-10-30 起，改派段動手前先記下工作區未提交檔案的內容（`WorkspaceManager.uncommittedStates`）；核對時這些檔案若內容沒變，
-   就不算改派段的變更、也不代為提交，留給主實作段（內容有變仍照常核對）。之前上一輪留下未提交的修改（例如實作失敗後分流改派）
+   就不算改派段的變更（內容有變仍照常核對）：落在允許範圍內的（例如上一次改派段改好未提交的受保護檔案）照樣由改派段代為提交，
+   範圍外的不提交，留給主實作段。之前上一輪留下未提交的修改（例如實作失敗後分流改派）
    會被當成改派段改的而判越權，任務停在 AWAIT_HUMAN。
    改派段回報未完成（`status` 不是 SUCCESS／PARTIAL、有 `boundary_conflict` 或 `execution_status` 受阻）時，以它的報告當本節點結果，照一般受阻流程處理，不執行第二段。
    2026-10-22 起 `status=PARTIAL` 也算完成，前提是受保護檔案本輪有提交、或本任務先前已提交（`FlowEngine.delegatedFilesChanged`）：
