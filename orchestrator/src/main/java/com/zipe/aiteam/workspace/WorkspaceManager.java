@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
@@ -499,6 +500,28 @@ public class WorkspaceManager {
         return java.util.stream.Stream.of(dirty, untracked)
                 .flatMap(s -> java.util.Arrays.stream(s.split("\u0000")))
                 .filter(s -> !s.isEmpty()).distinct().sorted().toList();
+    }
+
+    /** 目前未提交檔案各自的內容狀態（見 {@link #contentStates}）；用來分辨之後的變更是不是新做的。 */
+    public Map<String, String> uncommittedStates(String taskId) throws WorkspaceException {
+        return contentStates(taskId, uncommittedPaths(taskId));
+    }
+
+    /** 指定路徑在工作樹的內容狀態：一般檔案是 blob 雜湊，symlink 記目標，不存在記 "-"。 */
+    public Map<String, String> contentStates(String taskId, java.util.Collection<String> paths) throws WorkspaceException {
+        Path ws = pathFor(taskId);
+        Map<String, String> states = new java.util.TreeMap<>();
+        for (String path : paths) {
+            Path file = ws.resolve(path);
+            try {
+                if (Files.isSymbolicLink(file)) states.put(path, "link:" + Files.readSymbolicLink(file));
+                else if (Files.isRegularFile(file)) states.put(path, gitOutput(ws, "hash-object", "--", path));
+                else states.put(path, Files.exists(file) ? "other" : "-");
+            } catch (IOException e) {
+                throw new WorkspaceException("無法讀取檔案狀態：" + path, e);
+            }
+        }
+        return states;
     }
 
     /**

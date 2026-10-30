@@ -1173,16 +1173,18 @@ public class FlowEngine {
         // checkpoint 以節點為單位；兩段的 runtime 不同，只把相符的那一段交給對應角色續跑。
         Checkpoint saved = task.continuation();
         task.continuation(sameRuntime(saved, alternate) ? saved : null);
+        // 上一輪留下未提交的修改不是改派段做的：記下動手前的內容，核對時只算改派段新改的檔案（dynamic-api #1002）。
+        Map<String, String> leftover = workspaces.uncommittedStates(task.id());
         AgentRuntime.RuntimeResult result;
         try (var progress = new StageProgress(slack, store, task, alternate.executionLabel() + "／" + flow.node, props.progressIntervalSeconds(), true)) {
             result = executor.execute(task, flow, delegate);
         } catch (Exception e) {
-            auditDelegatedPart(task, flow, node, delegate);
+            auditDelegatedPart(task, flow, node, delegate, leftover);
             throw e;
         } finally {
             task.continuation(sameRuntime(saved, primaryRole) ? saved : null);
         }
-        List<String> files = auditDelegatedPart(task, flow, node, delegate);
+        List<String> files = auditDelegatedPart(task, flow, node, delegate, leftover);
         audit.record(task.id(), fb.role(), AuditLog.ACTION_RUNTIME, "節點=" + flow.node + "（分段改派）；配置=" + flow.snapshot.revision(),
                 result.costEstimate(), result.sessionId());
         if (result.permissionDenials() != null && !result.permissionDenials().isEmpty())
@@ -1209,7 +1211,6 @@ public class FlowEngine {
         return checkpoint != null && checkpoint.runtime().equals(role.runtime())
                 && Objects.equals(checkpoint.model(), Objects.toString(role.model(), ""));
     }
-    /** 改派段的變更必須全部落在允許範圍；通過後由系統代為提交（Codex 沙箱不能寫 .git）。回傳改派段變更的檔案。 */
     /** 改派段要改的受保護檔案，這一輪有提交，或本任務先前就已提交過（重跑的改派段沒有新變更是正常的）。 */
     private boolean delegatedFilesChanged(Task task, FlowRun flow, List<String> delegated, List<String> committedNow) throws Exception {
         if (!committedNow.isEmpty()) return true;
@@ -1217,16 +1218,25 @@ public class FlowEngine {
         List<String> changed = workspaces.auditPaths(task.id(), flow.comparisonBase);
         return delegated.stream().anyMatch(changed::contains);
     }
-    private List<String> auditDelegatedPart(Task task, FlowRun flow, Node node, Node delegate) throws Exception {
+    /**
+     * 改派段的變更必須全部落在允許範圍；通過後由系統代為提交（Codex 沙箱不能寫 .git）。回傳改派段變更的檔案。
+     * 動手前就未提交、內容也沒變的檔案不算它的變更，也不代為提交，留給原角色。
+     */
+    private List<String> auditDelegatedPart(Task task, FlowRun flow, Node node, Node delegate, Map<String, String> leftover) throws Exception {
         if (flow.beforeHead == null) throw new SecurityException("缺少改派段的起始 commit，不能核實寫入範圍");
-        List<String> changed = implementationPaths(task, flow, node);
+        List<String> all = implementationPaths(task, flow, node);
+        Map<String, String> now = workspaces.contentStates(task.id(), all.stream().filter(leftover::containsKey).toList());
+        List<String> changed = all.stream().filter(p -> !leftover.containsKey(p) || !leftover.get(p).equals(now.get(p))).toList();
+        if (changed.size() < all.size())
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "分段改派核對略過動手前就未提交且內容未變的檔案："
+                    + all.stream().filter(p -> !changed.contains(p)).toList());
         List<String> bad = ProtectedPathFallback.partViolations(changed, node.protectedPathFallback(),
                 ProtectedPathFallback.plannedPaths(flow, node));
         if (!bad.isEmpty()) {
             audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_DENIED, "分段改派越權：" + bad);
             throw new SecurityException("改派段修改了允許範圍以外的路徑，禁止下游與發布：" + bad);
         }
-        List<String> dirty = workspaces.uncommittedPaths(task.id());
+        List<String> dirty = workspaces.uncommittedPaths(task.id()).stream().filter(changed::contains).toList();
         if (!dirty.isEmpty()) {
             String head = workspaces.commitPaths(task.id(), dirty, "任務 #" + task.id() + " 受保護檔案（分段改派 " + delegate.role() + "，系統核對後代為提交）");
             audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "分段改派核對通過，系統代為提交 "

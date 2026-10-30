@@ -527,6 +527,23 @@ class WorkspaceManagerTest {
                 .contains("M\tREADME.md").contains("D\told.txt").contains("A\tsrc/test/NewTest.java");
     }
 
+    @Test
+    void 未提交檔案的內容狀態_內容沒變就相同_改過或刪除就不同() throws Exception {
+        Path ws = manager.provision(task("5002"));
+        Files.writeString(ws.resolve("README.md"), "改過的內容\n", StandardCharsets.UTF_8);
+        Files.writeString(ws.resolve("new.txt"), "新檔\n", StandardCharsets.UTF_8);
+
+        var before = manager.uncommittedStates("5002");
+        assertThat(before).containsOnlyKeys("README.md", "new.txt");
+        assertThat(manager.contentStates("5002", before.keySet())).isEqualTo(before);
+
+        Files.writeString(ws.resolve("README.md"), "再改一次\n", StandardCharsets.UTF_8);
+        Files.delete(ws.resolve("new.txt"));
+        var after = manager.contentStates("5002", before.keySet());
+        assertThat(after.get("README.md")).isNotEqualTo(before.get("README.md"));
+        assertThat(after.get("new.txt")).isEqualTo("-");
+    }
+
     // ------------------------------------------------------------------ 輔助
 
     private static Task task(String id) {

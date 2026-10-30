@@ -880,6 +880,37 @@ class FlowEngineTest {
         verify(audit).record(eq("42"), any(), eq(AuditLog.ACTION_DENIED), contains(".agents/skills/x/SKILL.md"));
     }
 
+    @Test void leftoverChangesFromThePreviousRoundAreNotCountedAsTheDelegatedPart() throws Exception {
+        // dynamic-api #1002：上一輪實作留下未提交的 Dockerfile 等修改，改派段只改 .claude/rules，卻被判越權。
+        mode = "protectedRule";
+        enableProtectedPathFallback();
+        when(workspace.uncommittedStates("42")).thenReturn(Map.of("backend/Dockerfile", "h1", "README.md", "h2"));
+        when(workspace.contentStates(eq("42"), anyCollection())).thenReturn(Map.of("backend/Dockerfile", "h1", "README.md", "h2"));
+        when(workspace.uncommittedPaths("42")).thenReturn(List.of(".claude/rules/api-endpoints.md", "README.md", "backend/Dockerfile"), List.of());
+        when(workspace.auditPaths(eq("42"), anyString()))
+                .thenReturn(List.of(".claude/rules/api-endpoints.md", "README.md", "backend/Dockerfile"), List.of());
+
+        engine.run(task);
+
+        assertThat(calls).containsSubsequence("implementation:builder_codex", "implementation:builder");
+        assertThat(store.flow(task.id()).orElseThrow().delegatedParts.get("implementation").files()).containsExactly(".claude/rules/api-endpoints.md");
+        verify(workspace).commitPaths(eq("42"), eq(List.of(".claude/rules/api-endpoints.md")), contains("分段改派 builder_codex"));
+    }
+
+    @Test void delegatedPartEditingALeftoverFileOutsideTheAllowedPathsStillStops() throws Exception {
+        mode = "protectedRule";
+        enableProtectedPathFallback();
+        when(workspace.uncommittedStates("42")).thenReturn(Map.of("backend/Dockerfile", "h1"));
+        when(workspace.contentStates(eq("42"), anyCollection())).thenReturn(Map.of("backend/Dockerfile", "h9"));
+        when(workspace.auditPaths(eq("42"), anyString())).thenReturn(List.of(".claude/rules/api-endpoints.md", "backend/Dockerfile"));
+
+        engine.run(task);
+
+        assertThat(calls).contains("implementation:builder_codex").doesNotContain("implementation:builder");
+        verify(workspace, never()).commitPaths(eq("42"), anyList(), contains("改派"));
+        verify(audit).record(eq("42"), any(), eq(AuditLog.ACTION_DENIED), contains("backend/Dockerfile"));
+    }
+
     @Test void delegatedPartCannotEditAnotherFileInTheSameAllowedDirectory() throws Exception {
         mode = "protectedRule";
         enableProtectedPathFallback();
