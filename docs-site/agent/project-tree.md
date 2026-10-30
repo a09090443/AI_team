@@ -197,7 +197,7 @@ agent_team/
 │   │   │   ├── ServiceDelivery.java # 服務建置目標、可用性檢查與完成契約
 │   │   │   ├── ServiceArtifacts.java # 交付成功的部署檔保存到實例目錄、下次部署還原
 │   │   │   ├── ServiceDeploymentContext.java # 同目標部署歷史與非機密宿主恢復入口
-│   │   │   ├── ServiceSupport.java # 持久診斷等待、結案後證據與回覆檢查
+│   │   │   ├── ServiceSupport.java # 持久診斷等待、結案後證據與回覆檢查、沙箱交付網址實測
 │   │   │   ├── OperationContract.java # 專案操作契約（operations）
 │   │   │   ├── OperationPreflight.java # 各階段沙箱內的操作預檢
 │   │   │   ├── PathRules.java        # 專案相對路徑與 ** 比對

@@ -37,6 +37,11 @@ public final class ServiceDeploymentContext {
                         if (data.hasNonNull(key)) out.append("\n").append(key).append(": ").append(safe(data,key));
                     if(data.path("access_endpoints").isArray())
                         out.append("\n管理者登錄的使用者入口與內部探測對應（不代表本次已實測）：").append(data.path("access_endpoints"));
+                    String host=ServiceSupport.userHost(home,target);
+                    if(host!=null)
+                        out.append("\n使用者電腦連這台沙箱的位址：").append(host).append("（系統接沙箱時登錄，非推測）。")
+                                .append("交付摘要寫完整網址 http://").append(host).append(":<實際對外埠><應用路徑>，不要用 127.0.0.1 或容器內位址；")
+                                .append("系統結案前會從 Agent VM 實測摘要中這個主機的網址，2xx 才交付，所以不需要等人登錄入口。");
                     int count=0;
                     for (JsonNode h : data.path("history")) {
                         if (++count > 5) break;

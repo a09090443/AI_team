@@ -125,6 +125,7 @@ executor 的獨立 operation-executor-heartbeat 不依工作區佇列心跳判�
 - `ServiceSupport` 與固定 `support.py` 在工作區外保存 service-support 診斷紀錄，經同一 SSH 固定通道執行 health／diagnose／repair。
   repair 只以原 active 版本的 Compose 執行 `up --no-deps --no-build` 並重驗，不重新打包或建置、不操作資料庫／資料卷；
   只有登錄明確啟用自動修復（`auto_repair_existing_release=true`）才執行，不會因根路徑 404 重啟健康服務；單次追問最多兩次 repair。
+- 沙箱目標沒有 `access_endpoints` 時，`sandbox-target.sh register` 登錄的 `user_host` 讓 service 角色組出使用者網址，系統交付前只實測該主機的網址（見 [服務建置](service-delivery.md)）。
 - 任務結案後來源工作區可能已被清理；結案後的追問改用明示的證據資料夾對話，不以主 repo 冒充來源。
   正式的原問題恢復入口為一次性 `AI_TEAM_RESUME_DIALOGUE_TASK`，不修改 DB 或舊快照。
 - 回覆不得給出不可執行的指令（例如要求對已結案任務「執行」重派）；缺真實錯誤資訊時只詢問該資訊。

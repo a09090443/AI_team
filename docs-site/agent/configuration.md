@@ -216,6 +216,9 @@ AI_TEAM_RESUME_OPERATION_TASK 在一般 recoverOnStartup 之後讀取，只接�
 
 home/service-context/&lt;target&gt;.json可設定access_endpoints陣列（1～4筆），每筆audience、url、probe_url；url為使用者完整入口，probe_url為Agent VM受控實測位置。config_file沿用既有SSH設定引用；auto_repair_existing_release=true允許固定工具只修復已部署active應用，不build或動資料。沒有設定不自動推定URL或新增主機。HTTP探測不跟隨redirect，不接受憑證/query/fragment URL。
 
+例外是沙箱目標：`sandbox-target.sh register` 會在同一檔補上 `user_host`（使用者連沙箱的位址，即接沙箱時給的 IP）、`config_file`、`host`、`program`，保留既有欄位。
+沒有 access_endpoints 時，service 角色據 `user_host` 組交付網址，系統交付前只實測摘要中主機為 `user_host` 的網址（2xx 才通過，見 [服務建置](/docs/service-delivery)）；有 access_endpoints 時仍以登錄入口為準。
+
 AI_TEAM_RESUME_DIALOGUE_TASK只在一次啟動指定舊AWAIT_HUMAN、dialogue=true且有parent的單一對話ID；已COMPLETED服務對話僅在保存答案含不可執行的執行前綴建議時允許校正，走原中央佇列重新回答同一問題；不更換快照、不重開部署、用後移除。service-support/&lt;task&gt;保存current.json與health/diagnose/repair原job；dialogue-evidence/&lt;task&gt;是已清理來源之結案對話的證據資料夾，不是產品clone。
 
 

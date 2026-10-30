@@ -138,6 +138,11 @@ service 節點通過完成閘門時（`ServiceArtifacts`），系統把本任務
 - 每項列 `acceptance_ids`；全部檢查合計涵蓋需求基準的所有原子驗收項目。
 - `uncertainties` 為空；缺項、失敗或僅產出檔案均不能完成。僅將需求基準或配置檢查要求而仍未核實的事項放入此欄；未要求的登入、資料寫入或重啟測試在摘要說明驗證邊界，不自行新增阻擋項。原需求有要求時仍須完成。
 - 若 service-context 已登錄 access_endpoints，固定 support 工具的本次探測須 healthy，摘要須含使用者 url 完整路徑；不能以 Agent VM 內部根網址交付。端點診斷與既有版本自修規範見[直接追問](direct-agent-requests.md)。
+- 沒有 access_endpoints、但 service-context 有接沙箱時登錄的 `user_host`（2026-10-30）：service 角色的說明會帶這個位址，
+  摘要要寫 `http://<user_host>:<對外埠><應用路徑>`。系統（`ServiceSupport.derivedDelivery`）從摘要取出主機等於 `user_host` 的網址（最多 4 筆），
+  從 Agent VM 以 GET 實測（不走 proxy、不跟隨轉址、5 秒逾時），全部 2xx 才交付；摘要沒有這類網址、或任一筆非 2xx／連不上，
+  就退回同一節點修正，不停下來等人登錄入口。結果寫入稽核（「系統實測沙箱交付網址」），一樣不等於已從使用者電腦驗證。
+  其他主機的網址不探測。起因：未登錄入口時，有的任務以 agent 自填網址結案而無人實測，有的則停在 AWAIT_HUMAN 等人登錄。
 
 角色 checks 仍為報告與配置的機械核對；已登錄的入口另有固定工具實測，兩者不能互相冒充。系統 probe 由 Agent VM 進行，不等同已從使用者電腦驗證。
 不產生開發流程的 IndependentVerifier 收據、不開 PR；`COMPLETED` 只表示這次服務交付報告通過契約，

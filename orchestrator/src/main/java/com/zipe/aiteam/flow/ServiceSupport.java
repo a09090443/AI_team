@@ -130,6 +130,54 @@ public final class ServiceSupport {
                 .append("（Agent VM探測HTTP ").append(e.path("http_status").asText("未確認")).append("）");
         return text.append("\n檢查由Agent VM進行，未宣稱已從你的電腦驗證。這不是重新部署；原任務的版本與資料保留。" ).toString();
     }
+    /**
+     * 接沙箱時系統登錄的使用者位址（service-context 的 user_host）；管理者已登錄 access_endpoints 時以登錄入口為準，回 null。
+     * 位址來自系統設定而非模型，所以交付網址的主機可信，只剩埠與路徑要靠實測確認。
+     */
+    public static String userHost(Path home,String target) {
+        if(home==null||target==null||!target.matches("[a-z0-9][a-z0-9-]{0,63}"))return null;
+        Path file=home.resolve("service-context").resolve(target+".json");
+        try {
+            if(!Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS)||Files.size(file)>32768)return null;
+            JsonNode data=JSON.readTree(file.toFile());
+            String host=data.path("user_host").asText("");
+            if(!data.path("target").asText().equals(target)||!host.matches("[A-Za-z0-9.-]{1,253}"))return null;
+            return data.path("access_endpoints").isArray()&&!data.path("access_endpoints").isEmpty()?null:host;
+        }catch(Exception e){return null;}
+    }
+    public record Delivery(String block,String evidence) {}
+    private static final java.util.regex.Pattern URL=java.util.regex.Pattern.compile("https?://[A-Za-z0-9.\\-]+(?::[0-9]{1,5})?(?:/[A-Za-z0-9._~%!$&'*+,;=:@/\\-]*)?");
+    /** 未登錄入口的沙箱目標：從摘要取出主機是 user_host 的網址，由系統從 Agent VM 實測，2xx 才交付。只測該主機，不探測模型給的其他位址。 */
+    public static Delivery derivedDelivery(String host,JsonNode report,java.util.function.Function<String,Integer> status) {
+        if(!"RUNNING".equals(report.path("service_status").asText()))return new Delivery(null,"");
+        String hint="沙箱使用者位址是 "+host+"（系統接沙箱時登錄），交付摘要要寫完整網址 http://"+host+":<實際對外埠><應用路徑>，系統會從 Agent VM 實測";
+        Set<String> urls=new LinkedHashSet<>();
+        var matcher=URL.matcher(report.path("summary").asText());
+        while(matcher.find()&&urls.size()<4) {
+            String url=matcher.group();
+            if(java.net.URI.create(url).getHost().equalsIgnoreCase(host))urls.add(url);
+        }
+        if(urls.isEmpty())return new Delivery("服務摘要缺少使用者入口；"+hint,"");
+        StringBuilder evidence=new StringBuilder();
+        for(String url:urls) {
+            Integer code=status.apply(url);
+            evidence.append(url).append(" → ").append(code==null?"連不上":"HTTP "+code).append("；");
+            if(code==null||code<200||code>=300)
+                return new Delivery("系統從 Agent VM 實測交付網址未通過："+evidence+"先確認對外埠、應用路徑與容器埠對應後修正；"+hint,evidence.toString());
+        }
+        return new Delivery(null,evidence.toString());
+    }
+    /** 固定探測：不走 proxy、不跟隨轉址，5 秒逾時；連不上回 null。 */
+    public static Integer httpStatus(String url) {
+        try {
+            var client=java.net.http.HttpClient.newBuilder().proxy(java.net.http.HttpClient.Builder.NO_PROXY)
+                    .followRedirects(java.net.http.HttpClient.Redirect.NEVER).connectTimeout(java.time.Duration.ofSeconds(5)).build();
+            var request=java.net.http.HttpRequest.newBuilder(java.net.URI.create(url)).timeout(java.time.Duration.ofSeconds(5))
+                    .header("Range","bytes=0-0").GET().build();
+            return client.send(request,java.net.http.HttpResponse.BodyHandlers.discarding()).statusCode();
+        }catch(InterruptedException e){Thread.currentThread().interrupt();return null;}
+        catch(Exception e){return null;}
+    }
     public static String deliveryReason(Path home,String task,JsonNode report) {
         JsonNode evidence=current(home,task);
         if(!evidence.has("endpoints"))return "已登錄服務入口但缺少本次診斷證據，先修復工具或補驗證";

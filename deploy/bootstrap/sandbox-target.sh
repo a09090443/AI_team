@@ -100,6 +100,22 @@ UNIT
   echo "${upgrade:-未在 120 秒內看到 ENTRY_UPGRADE}"
   [[ $upgrade == *UPGRADE_UNCHANGED* || $upgrade == *UPGRADE_PASS* ]] \
    || { echo "目標沒有接受入口升級，可能不是 sandbox；請確認建 VM 時的服務配置"; exit 1; }
+  # 使用者連沙箱的位址寫進實例的 service-context：service 角色據此組交付網址，系統交付前以同一主機實測。
+  # 只補系統欄位，保留管理者手動登錄的 access_endpoints、notes、history 等。
+  mkdir -p "$home/service-context"
+  python3 - "$home/service-context/$target.json" "$target" "$address" "$scripts/ssh_executor.py" "$config" <<'PY'
+import json, sys
+from pathlib import Path
+path, target, address, program, config = sys.argv[1:]
+p = Path(path)
+data = json.loads(p.read_text()) if p.is_file() else {}
+if data.get("target", target) != target:
+    sys.exit(f"{path} 的 target 不是 {target}，未修改")
+data.update(target=target, user_host=address, config_file=config)
+data.setdefault("host", "Agent VM（部署連線由此機直接 SSH 至沙箱 " + address + "）")
+data.setdefault("program", program)
+p.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+PY
   echo "PASS：$instance 已登錄沙箱目標 $target（$address），執行器 $unit 運作中。"
   ;;
  *)

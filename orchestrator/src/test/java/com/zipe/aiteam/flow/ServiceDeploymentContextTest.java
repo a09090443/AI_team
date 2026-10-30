@@ -27,6 +27,12 @@ class ServiceDeploymentContextTest {
                 "C:/tools/broker.py","python broker.py host.json","receipt-1","不得用歷史結果填本次 checks")
                 .doesNotContain("DO_NOT_INCLUDE");
     }
+    @Test void sandboxUserHostTellsTheAgentWhichAddressTheSystemWillProbe() throws Exception {
+        Path dir=Files.createDirectories(tmp.resolve("service-context"));
+        Files.writeString(dir.resolve("sandbox.json"),"{\"target\":\"sandbox\",\"user_host\":\"192.0.2.20\"}");
+        assertThat(ServiceDeploymentContext.notice(tmp,"sandbox",List.of()))
+                .contains("使用者電腦連這台沙箱的位址：192.0.2.20","http://192.0.2.20:<實際對外埠><應用路徑>","不需要等人登錄入口");
+    }
     @Test void absentInvalidAndMismatchedContextNeverInventRecovery() throws Exception {
         assertThat(ServiceDeploymentContext.notice(tmp,"sit",List.of())).contains("不代表從未部署","尚無完整");
         Path dir=Files.createDirectories(tmp.resolve("service-context"));

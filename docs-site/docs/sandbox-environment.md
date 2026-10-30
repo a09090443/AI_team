@@ -48,7 +48,7 @@ deploy/bootstrap/sandbox-onboard.sh <實例 home> <target> <IP> <known_hosts 檔
 | 快取目錄 | 建立配置 `cachePaths` 宣告、但這台機器還沒有的目錄；是 symlink 就停止 | 缺了任務會停在派工前檢查（[跨專案執行](cross-project-execution.md#各階段預檢與證據)） |
 | 團隊配置 | `sandbox-overlay.py`：沒有服務路線就從內附範本補上沙箱區塊並設定 `serviceTarget`；已有就只改目標名稱，列出沙箱不支援的內建 start／health／diagnose | 每個專案手改六處 JSON 易錯；先以候選配置 `--validate-team` 通過才寫回 overlay 與 `teams/`（原檔備份） |
 | 工作樹大小 | 依 `--paths`（預設整個工作樹）量要送的大小，超過 128 MiB 列出最大的頂層路徑並警告 | exec 上限 128 MiB；不擋，因為 agent 能自行縮小（見下） |
-| 登錄 | `sandbox-target.sh register`：寫直連設定（`mode: sandbox`、`source_paths`）、以固定協定 `status` 確認網路／金鑰／指紋／受限入口，安裝並啟動部署執行器，等 journal 出現 `ENTRY_UPGRADE: UPGRADE_UNCHANGED` 或 `UPGRADE_PASS` | 確認目標確實是 sandbox |
+| 登錄 | `sandbox-target.sh register`：寫直連設定（`mode: sandbox`、`source_paths`）、以固定協定 `status` 確認網路／金鑰／指紋／受限入口，安裝並啟動部署執行器，等 journal 出現 `ENTRY_UPGRADE: UPGRADE_UNCHANGED` 或 `UPGRADE_PASS`；最後在實例的 `service-context/<target>.json` 補上 `user_host`（沙箱 IP）等系統欄位，保留手動登錄內容 | 確認目標確實是 sandbox；`user_host` 讓 agent 組出使用者網址、系統交付前實測，不必人工登錄入口 |
 | 重啟 | `--restart` 且沒有執行中的任務才重啟實例 | 新配置只對重啟後的新任務生效 |
 
 直連設定檔名為 `~/.config/ai-team/ssh-targets/<target>-<實例目錄名>.json`；執行器以設定檔路徑加鎖，所以同一台沙箱的每個實例各用一份。

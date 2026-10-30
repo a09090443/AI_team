@@ -660,6 +660,16 @@ public class FlowEngine {
                 String block = consultBlock != null ? consultBlock : issueBlock == null ? FlowGates.blockingReason(node, report, flow) : issueBlock;
                 if (block==null && node.gate()==Gate.SERVICE && ServiceSupport.configured(props.homePath(),flow.snapshot.definition().project().serviceTarget().name()))
                     block=ServiceSupport.deliveryReason(props.homePath(),task.id(),report);
+                else if (block==null && node.gate()==Gate.SERVICE) {
+                    // 沙箱目標未登錄入口時，以接沙箱時登錄的主機實測交付網址，不停下來等人登錄（#1003）。
+                    String host=ServiceSupport.userHost(props.homePath(),flow.snapshot.definition().project().serviceTarget().name());
+                    if (host!=null) {
+                        var delivery=ServiceSupport.derivedDelivery(host,report,ServiceSupport::httpStatus);
+                        block=delivery.block();
+                        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, block==null?AuditLog.ACTION_RECOVERY:AuditLog.ACTION_REJECTED,
+                                "系統實測沙箱交付網址（Agent VM，未從使用者電腦驗證）："+(block==null?delivery.evidence():block));
+                    }
+                }
                 // 自陳成功不夠：與 CLI 紀錄裡配置操作的實際結束碼對照，矛盾時不送去跑注定失敗的獨立驗證（#1001）。
                 if (block == null && node.gate() == Gate.IMPLEMENTATION) {
                     String contradiction = CommandEvidence.contradiction(
