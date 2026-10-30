@@ -591,11 +591,15 @@ public class ConfiguredExecutor {
         if (!cwd.toAbsolutePath().normalize().equals(repository)) return "";
         var freshness = workspaces.refreshOrigin(repository);
         if (freshness == null) return "";
+        // #1003：fetch 不動本機分支，agent 讀 HEAD 會把舊 commit 寫成「目前版本」，實際工作區卻建在 origin/<基準>。
+        String base = "origin/" + flow.snapshot.definition().project().baseBranch();
+        String head = "主 repo 的本機分支、工作樹與 HEAD 不會隨之更新，可能落後；任務工作區、建置與部署都以 " + base
+                + " 為基準，說明目前版本或指定 commit 時以 " + base + " 為準，不要用 HEAD。";
         if (freshness.ok())
-            return "\n主 repo 遠端記錄（origin/*）已於 " + com.zipe.aiteam.task.TaipeiTime.seconds(freshness.at()) + " 更新，可視為當時的 GitHub 狀態。";
+            return "\n主 repo 遠端記錄（origin/*）已於 " + com.zipe.aiteam.task.TaipeiTime.seconds(freshness.at()) + " 更新，可視為當時的 GitHub 狀態。" + head;
         return "\n主 repo 遠端記錄這次更新失敗，" + (freshness.at() == null ? "本次服務啟動後從未更新成功" : "沿用 "
                 + com.zipe.aiteam.task.TaipeiTime.seconds(freshness.at()) + " 的記錄")
-                + "：涉及遠端分支、已合併 PR 等判斷請標明「無法確認最新狀態」，不得當成事實。";
+                + "：涉及遠端分支、已合併 PR 等判斷請標明「無法確認最新狀態」，不得當成事實。" + head;
     }
     Path workingDirectory(Task task, FlowRun flow, Node node) throws Exception {
         if (flow.dialogue && flow.parentId != null) {

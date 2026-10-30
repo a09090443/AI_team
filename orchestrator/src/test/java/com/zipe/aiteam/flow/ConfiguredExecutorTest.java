@@ -269,7 +269,9 @@ class ConfiguredExecutorTest {
         when(workspace.refreshOrigin(repo.toAbsolutePath().normalize()))
                 .thenReturn(new WorkspaceManager.Freshness(true, java.time.Instant.parse("2026-10-23T14:06:00Z")));
         executor.execute(new Task("42", "c", "t", "u", "修正 PR 衝突"), flow, flow.snapshot.definition().nodes().get("intake"));
-        assertThat(captured.get().prompt()).contains("主 repo 遠端記錄（origin/*）已於 2026-10-23 22:06:00（台北時間） 更新");
+        assertThat(captured.get().prompt()).contains("主 repo 遠端記錄（origin/*）已於 2026-10-23 22:06:00（台北時間） 更新")
+                // #1003：本機 HEAD 落後時，agent 不得把它當成目前版本。
+                .contains("以 origin/" + flow.snapshot.definition().project().baseBranch() + " 為準，不要用 HEAD");
 
         when(workspace.refreshOrigin(any())).thenReturn(new WorkspaceManager.Freshness(false, null));
         executor.execute(new Task("42", "c", "t", "u", "修正 PR 衝突"), flow, flow.snapshot.definition().nodes().get("intake"));

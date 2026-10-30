@@ -528,6 +528,8 @@ Runnable 交給 TaskOrchestrator，由真正的執行中工作與 FIFO 排隊清
   - 執行 `git fetch --quiet --prune origin`，只更新 refs/remotes，不碰主 repo 的本機分支與工作樹；
   - 同一個 repo 一次只 fetch 一個，60 秒內成功過就沿用；
   - 提示會寫明「遠端記錄於 <台北時間> 更新」；fetch 失敗時不擋派工，但要求 agent 把涉及遠端的判斷標成「無法確認最新狀態」。
+  - 提示也說明主 repo 的本機分支與 HEAD 不會更新、可能落後，任務工作區、建置與部署都以 `origin/<基準分支>` 為準，
+    agent 描述目前版本或指定 commit 時不得用 HEAD（2026-10-30：曾把落後的 HEAD 寫進部署派工指令，實際部署的卻是較新的基準）。
 
   不設開關，所有團隊適用；工作區節點不受影響。
 - **實作節點動手前同步最新基準**（2026-10-24）：工作區只在建立時取一次基準，之後每一輪 `scope=WORKSPACE` 的 agent 節點開始前，
