@@ -224,8 +224,8 @@ def prepare_rootless():
     if subprocess.run(["systemctl", "is-active", "--quiet", "docker.service"]).returncode == 0:
         kept = len(subprocess.run(["docker", "--host", "unix:///var/run/docker.sock", "ps", "-aq"],
                                   capture_output=True, text=True).stdout.split())
-    # The setup tool refuses while a rootful daemon is reachable.
-    run(["systemctl", "disable", "--now", "docker.service", "docker.socket"])
+    # The setup tool refuses while a rootful daemon is reachable; rootless dockerd runs its own containerd.
+    run(["systemctl", "disable", "--now", "docker.service", "docker.socket", "containerd.service"])
     user = pwd.getpwnam(ROOTLESS_USER)
     run(["loginctl", "enable-linger", ROOTLESS_USER])
     runtime = Path("/run/user/%d" % user.pw_uid)

@@ -67,7 +67,7 @@ sandbox 目標的 prepare 會做下列事情（restricted 目標不變）：
 1. 建立鎖定帳號 `aiteam-docker`，安裝 `docker-ce-rootless-extras`、`uidmap`、`dbus-user-session`、`slirp4netns`。
 2. Ubuntu 24.04 起限制非特權 user namespace，所以補上 rootlesskit 的 AppArmor 設定檔。
 3. 設定 `net.ipv4.ip_unprivileged_port_start=0`，讓容器能發布 80 等低埠。
-4. 停用 root 的 `docker.service`／`docker.socket`。原本的 root 容器保留但不再執行，收據會註明數量。
+4. 停用 root 的 `docker.service`／`docker.socket`／`containerd.service`（rootless dockerd 自帶 containerd）。原本的 root 容器保留但不再執行，收據會註明數量。
 5. 啟動 `aiteam-docker` 的 rootless daemon，收據多一段 `docker=rootless`。
 
 exec 時 `DOCKER_HOST` 指向 rootless socket，腳本照常用 `docker`／`docker compose`。容器資料用 named volume；bind mount 的目錄要讓 `aiteam-docker` 讀得到。

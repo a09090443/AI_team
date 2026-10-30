@@ -104,7 +104,7 @@ class GuestExecTests(unittest.TestCase):
             self.assertIn("userns", (Path(tmp) / "apparmor/usr.bin.rootlesskit").read_text())
             self.assertIn("ip_unprivileged_port_start=0", (Path(tmp) / "rootless.conf").read_text())
         names = [" ".join(c) for c in calls]
-        disable = names.index("systemctl disable --now docker.service docker.socket")
+        disable = names.index("systemctl disable --now docker.service docker.socket containerd.service")
         setup = next(i for i, c in enumerate(names) if "dockerd-rootless-setuptool.sh" in c)
         self.assertLess(disable, setup)
         self.assertIn("useradd --create-home --shell /usr/sbin/nologin aiteam-docker", names)

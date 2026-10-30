@@ -87,7 +87,7 @@ operations 與角色工具白名單裡的 client 路徑是各實例的部署設�
   `…/health.sh` 等，腳本由 agent 撰寫與修復。health 由 agent 撰寫，屬自陳證據；sandbox 目標應同時登錄 `access_endpoints`，
   讓系統從 Agent VM 獨立探測。
 - 容器一律跑在 rootless Docker（2026-10-29）：sandbox 目標的 prepare 建立鎖定帳號 `aiteam-docker` 與它的 rootless daemon（裝 `docker-ce-rootless-extras`、`uidmap`，Ubuntu 24.04 起加 rootlesskit 的 AppArmor 設定檔，`ip_unprivileged_port_start=0` 讓容器可發布 80 等低埠），
-  再停用 root 的 `docker.service`／`docker.socket`；收據多一段 `docker=rootless`，原有 root 容器只保留不再執行。exec 時 `DOCKER_HOST` 指向 rootless socket。
+  再停用 root 的 `docker.service`／`docker.socket`／`containerd.service`；收據多一段 `docker=rootless`，原有 root 容器只保留不再執行。exec 時 `DOCKER_HOST` 指向 rootless socket。
   agent 腳本仍以 root 執行（要能自行安裝套件），所以這是「容器被攻破拿不到 root」，不是「整段部署都沒有 root」；不重新啟用 root daemon 靠 skill 規範約束。
 - 權限邊界：root 只到這台 VM。Slack token、Agent 私鑰與其他實例資料都不在目標上；目標沒有任何 Agent VM 的登入憑證。
 - sandbox 直連設定的 `source_paths` 可寫 `["."]`，exec 送整個工作樹（仍排除 `.git`、`.ssh`、`.secrets`、`.env*`）；restricted 目標不接受。
