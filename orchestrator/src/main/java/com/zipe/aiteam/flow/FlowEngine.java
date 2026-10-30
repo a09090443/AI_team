@@ -1551,6 +1551,33 @@ public class FlowEngine {
                 "已把 " + paths.size() + " 個未提交的檔案存成 commit " + head.substring(0, Math.min(7, head.length()))
                         + "，接著建立承接任務。");
     }
+    /**
+     * 承接任務建立後立刻併入最新基準：原任務分支可能落後基準好幾個 commit，
+     * 不在這裡合併的話，intake、設計、計畫都會在舊程式上判斷（只有實作節點動手前才會同步）。
+     * 失敗不擋承接，與建立工作區時 fetch 失敗相同；comparisonBase 維持原任務 commit。
+     */
+    private void syncSuccessorBase(String id, FlowRun child, String parentHead) {
+        String base = "基準分支";
+        try {
+            base = workspaces.baseBranch(id);
+            var merge = workspaces.syncSuccessorBase(id, Path.of(child.snapshot.repository()), parentHead);
+            if (merge.upToDate()) return;
+            if (merge.conflicts().isEmpty()) {
+                child.context = FlowContext.append(child.context, BaseSync.successorMerged(base, merge.baseSha(), parentHead));
+                audit.record(id, AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "承接時合併 " + base + "@" + merge.baseSha()
+                        + " 進原任務成果 " + parentHead + "，沒有衝突，系統已提交合併 commit");
+            } else {
+                child.context = FlowContext.append(child.context, BaseSync.successorDeferred(base, merge.baseSha(), merge.conflicts()));
+                audit.record(id, AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "承接時合併 " + base + "@" + merge.baseSha()
+                        + " 有衝突，衝突檔=" + merge.conflicts() + "，維持原任務 commit，留給實作節點動手前同步");
+            }
+        } catch (Exception e) {
+            String reason = "承接時同步最新的 " + base + " 失敗：" + Diagnostics.clip(Diagnostics.safe(Diagnostics.describe(e)), 300);
+            child.context = FlowContext.append(child.context, BaseSync.skipped(reason));
+            audit.record(id, AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_ERROR, reason);
+        }
+    }
+
     private void succeed(Task task, FlowRun flow, String user, Consumer<Runnable> enqueue) throws Exception {
         if (flow.dialogue) throw new IllegalArgumentException("角色對話不能承接");
         // 以前只有用完自動處理次數才能承接。但舊任務永遠用建立時的配置快照，改進後的規則（例如審查收斂）
@@ -1605,6 +1632,7 @@ public class FlowEngine {
             child.workspacePath = workspaces.pathFor(id).toAbsolutePath().normalize().toString();
             child.origin = workspaces.origin(id);
             child.branch = workspaces.currentBranch(id);
+            syncSuccessorBase(id, child, parentHead);
         }
         store.saveFlow(id, child);
         store.save(successor);

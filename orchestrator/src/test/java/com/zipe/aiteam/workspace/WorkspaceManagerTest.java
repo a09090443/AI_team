@@ -329,6 +329,49 @@ class WorkspaceManagerTest {
     }
 
     @Test
+    void 承接任務建立後併入最新基準_沒有前進時不做事_前進時與原任務成果一起合併() throws Exception {
+        Path parent = manager.provision(task("1111"));
+        Files.writeString(parent.resolve("Mail.java"), "原任務的修正\n");
+        run(parent, "git", "add", "Mail.java"); run(parent, "git", "commit", "-qm", "原任務修正");
+        String parentHead = manager.headSha("1111");
+        manager.provisionFrom(task("1112"), repo, null, "1111", "feature/ai-team-task-1111", parentHead);
+
+        assertThat(manager.syncSuccessorBase("1112", repo, parentHead).upToDate()).isTrue();
+        assertThat(manager.headSha("1112")).isEqualTo(parentHead);
+
+        String baseSha = advanceBase("skill.md", "新 skill\n");
+        var merge = manager.syncSuccessorBase("1112", repo, parentHead);
+
+        assertThat(merge.conflicts()).isEmpty();
+        Path ws = workspaces.resolve("task-1112");
+        assertThat(ws.resolve("skill.md")).exists();
+        assertThat(ws.resolve("Mail.java")).hasContent("原任務的修正\n");
+        assertThat(out(ws, "git", "rev-parse", "HEAD^1")).isEqualTo(parentHead);
+        assertThat(out(ws, "git", "rev-parse", "HEAD^2")).isEqualTo(baseSha);
+        assertThat(manager.baseSha("1112")).isEqualTo(baseSha);
+        assertThat(manager.clean("1112")).isTrue();
+    }
+
+    @Test
+    void 承接任務建立後併入最新基準_有衝突時維持原任務commit留給實作節點() throws Exception {
+        Path parent = manager.provision(task("1113"));
+        Files.writeString(parent.resolve("README.md"), "原任務的修改\n");
+        run(parent, "git", "add", "README.md"); run(parent, "git", "commit", "-qm", "原任務修正");
+        String parentHead = manager.headSha("1113");
+        manager.provisionFrom(task("1114"), repo, null, "1113", "feature/ai-team-task-1113", parentHead);
+        String forkPoint = manager.baseSha("1114");
+        advanceBase("README.md", "基準的修改\n");
+
+        var merge = manager.syncSuccessorBase("1114", repo, parentHead);
+
+        assertThat(merge.conflicts()).containsExactly("README.md");
+        assertThat(manager.headSha("1114")).isEqualTo(parentHead);
+        assertThat(manager.baseSha("1114")).isEqualTo(forkPoint);
+        assertThat(manager.clean("1114")).isTrue();
+        assertThat(workspaces.resolve("task-1114/.git/MERGE_HEAD")).doesNotExist();
+    }
+
+    @Test
     void 原任務HEAD已變動時拒絕承接() throws Exception {
         manager.provision(task("1103"));
         String stale = manager.headSha("1103");

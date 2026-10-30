@@ -298,6 +298,38 @@ class FlowEngineTest {
         assertThat(store.flow(task.id()).orElseThrow().successor).isEqualTo(parent.successor);
     }
 
+    @Test void successorMergesLatestBaseRightAfterProvisioning() throws Exception {
+        exhaustAtTriage();
+        when(slack.post(any(), eq("c"), isNull(), anyString())).thenReturn("new-thread");
+        when(workspace.provisionFrom(any(), any(), anyString(), anyString(), anyString(), anyString())).thenReturn(tmp);
+        when(workspace.pathFor(argThat((String id) -> !"42".equals(id)))).thenReturn(tmp.resolve("child"));
+        when(workspace.baseBranch(argThat((String id) -> !"42".equals(id)))).thenReturn("master");
+        when(workspace.syncSuccessorBase(argThat((String id) -> !"42".equals(id)), any(), eq("head1")))
+                .thenReturn(new WorkspaceManager.BaseMerge("base2", List.of(), false));
+
+        engine.resume(task, "承接成新任務", "u", r -> {});
+
+        var child = store.flow(store.flow(task.id()).orElseThrow().successor).orElseThrow();
+        assertThat(child.context).contains("承接時已同步最新基準").contains("base2");
+        assertThat(child.comparisonBase).isEqualTo("head1");
+    }
+
+    @Test void successorKeepsParentCommitWhenLatestBaseConflicts() throws Exception {
+        exhaustAtTriage();
+        when(slack.post(any(), eq("c"), isNull(), anyString())).thenReturn("new-thread");
+        when(workspace.provisionFrom(any(), any(), anyString(), anyString(), anyString(), anyString())).thenReturn(tmp);
+        when(workspace.pathFor(argThat((String id) -> !"42".equals(id)))).thenReturn(tmp.resolve("child"));
+        when(workspace.baseBranch(argThat((String id) -> !"42".equals(id)))).thenReturn("master");
+        when(workspace.syncSuccessorBase(argThat((String id) -> !"42".equals(id)), any(), eq("head1")))
+                .thenReturn(new WorkspaceManager.BaseMerge("base2", List.of("README.md"), false));
+
+        engine.resume(task, "承接成新任務", "u", r -> {});
+
+        var child = store.flow(store.flow(task.id()).orElseThrow().successor).orElseThrow();
+        assertThat(child.context).contains("承接時未併入最新基準").contains("README.md");
+        assertThat(child.baseSync).isNull();
+    }
+
     private void leaveUncommittedQaTests(List<String> paths) throws Exception {
         workspaceClean = false;
         when(workspace.uncommittedPaths("42")).thenReturn(paths);

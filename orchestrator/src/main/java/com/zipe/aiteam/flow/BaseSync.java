@@ -44,6 +44,20 @@ public final class BaseSync {
                 + "。工作區可能落後遠端；涉及他人近期修改的判斷請標明「無法確認最新狀態」。";
     }
 
+    /** 承接任務建立時已併入最新基準（2026-10-30）：前段唯讀節點也要以合併後的程式為準。 */
+    static String successorMerged(String baseBranch, String baseSha, String parentHead) {
+        return "【系統：承接時已同步最新基準】已把 " + baseBranch + " 的最新 commit " + baseSha
+                + " 合併進原任務成果 " + parentHead + "（沒有衝突，系統已提交合併 commit）。請以目前的程式為準。";
+    }
+
+    /** 承接時合併有衝突：唯讀節點解不了，維持原任務 commit，留給實作節點動手前的同步處理。 */
+    static String successorDeferred(String baseBranch, String baseSha, List<String> conflicts) {
+        return "【系統：承接時未併入最新基準】" + baseBranch + " 的最新 commit " + baseSha + " 與原任務成果有衝突（"
+                + String.join("、", conflicts.stream().limit(10).toList()) + (conflicts.size() > 10 ? " 等" : "")
+                + "），工作區仍是原任務的 commit；實作節點動手前系統會再合併並交由實作角色解衝突。"
+                + "在那之前，涉及這些檔案或基準近期修改的判斷請標明尚未包含基準的新版本。";
+    }
+
     /** 交給實作角色的固定事實與要求；只列系統查得的資料。 */
     static String instruction(Round round) {
         return "【系統：動手前同步最新基準，有衝突】\n"

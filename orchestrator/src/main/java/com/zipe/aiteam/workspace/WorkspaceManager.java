@@ -185,6 +185,30 @@ public class WorkspaceManager {
         return ws;
     }
 
+    /**
+     * 承接任務建立後立刻併入最新基準，讓唯讀的前段節點（intake、設計、計畫）也看得到基準的新程式。
+     * 沒有衝突時由系統提交合併 commit；有衝突時放棄合併、還原基準記錄並維持原任務 commit，
+     * 留給實作節點動手前的 BaseSync 交由角色解（唯讀節點解不了衝突）。
+     */
+    public BaseMerge syncSuccessorBase(String taskId, Path repository, String parentHead) throws WorkspaceException {
+        String previousBase = baseSha(taskId);
+        try {
+            BaseMerge merge = mergeBase(taskId, repository, baseBranch(taskId), parentHead);
+            if (!merge.conflicts().isEmpty()) restoreParent(taskId, previousBase, parentHead);
+            return merge;
+        } catch (WorkspaceException e) {
+            restoreParent(taskId, previousBase, parentHead);
+            throw e;
+        }
+    }
+
+    private void restoreParent(String taskId, String previousBase, String parentHead) throws WorkspaceException {
+        Path ws = pathFor(taskId);
+        abortMerge(taskId);
+        git(ws, "reset", "--hard", "--quiet", parentHead);
+        git(ws, "config", BASE_SHA_CONFIG_KEY, previousBase);
+    }
+
     public void discard(String taskId) throws WorkspaceException {
         Path ws = pathFor(taskId).toAbsolutePath().normalize();
         Path root = props.workspacesPath().toAbsolutePath().normalize();
