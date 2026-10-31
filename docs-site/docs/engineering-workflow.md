@@ -276,6 +276,10 @@ intake、設計、計畫都在舊程式上判斷（例：基準新增的 skill �
 沒有衝突就提交合併 commit、脈絡告知已同步；有衝突就放棄合併並還原基準記錄、維持原任務 commit，脈絡列出衝突檔，
 留到實作節點動手前照下表處理；fetch 失敗不擋承接。`comparisonBase` 仍是原任務 commit。
 
+**主 repo 的唯讀節點**（2026-10-31）：一般新任務的 intake、設計、計畫在主 repo 執行，沒有任務分支可合併；
+派工前系統 fetch 後，在主 repo 位於基準分支且沒有修改時快轉到 `origin/<基準分支>`，條件與提示見
+[配置式團隊](configurable-team.md) 的「主 repo 執行的節點先更新遠端記錄」。
+
 `LIMITED`（QA 補測試、服務建置）與唯讀節點不同步：它們只改限定路徑或不改，驗的是實作節點交出的版本。
 
 **做法**：與 PR 衝突同步共用 `WorkspaceManager.mergeBase`：fetch 主 repo 後以 `git merge --no-ff --no-commit` 併入最新基準，

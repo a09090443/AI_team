@@ -266,14 +266,22 @@ class ConfiguredExecutorTest {
         flow.node = "intake";
         AtomicReference<AgentRuntime.RuntimeRequest> captured = new AtomicReference<>();
         when(runtime.execute(any(), any())).thenAnswer(c -> { captured.set(c.getArgument(0)); return null; });
-        when(workspace.refreshOrigin(repo.toAbsolutePath().normalize()))
+        String base = flow.snapshot.definition().project().baseBranch();
+        when(workspace.refreshOrigin(repo.toAbsolutePath().normalize(), base))
                 .thenReturn(new WorkspaceManager.Freshness(true, java.time.Instant.parse("2026-10-23T14:06:00Z")));
         executor.execute(new Task("42", "c", "t", "u", "修正 PR 衝突"), flow, flow.snapshot.definition().nodes().get("intake"));
         assertThat(captured.get().prompt()).contains("主 repo 遠端記錄（origin/*）已於 2026-10-23 22:06:00（台北時間） 更新")
                 // #1003：本機 HEAD 落後時，agent 不得把它當成目前版本。
-                .contains("以 origin/" + flow.snapshot.definition().project().baseBranch() + " 為準，不要用 HEAD");
+                .contains("以 origin/" + base + " 為準，不要用 HEAD");
 
-        when(workspace.refreshOrigin(any())).thenReturn(new WorkspaceManager.Freshness(false, null));
+        // 主 repo 已快轉到基準：工作樹就是最新版本，可直接讀檔。
+        when(workspace.refreshOrigin(repo.toAbsolutePath().normalize(), base))
+                .thenReturn(new WorkspaceManager.Freshness(true, java.time.Instant.parse("2026-10-23T14:06:00Z"), "4e2d0764d1aa0000000000000000000000000000"));
+        executor.execute(new Task("42", "c", "t", "u", "做 API"), flow, flow.snapshot.definition().nodes().get("intake"));
+        assertThat(captured.get().prompt()).contains("主 repo 工作樹已同步到 origin/" + base + "（4e2d0764d1aa）")
+                .doesNotContain("不要用 HEAD");
+
+        when(workspace.refreshOrigin(any(), any())).thenReturn(new WorkspaceManager.Freshness(false, null));
         executor.execute(new Task("42", "c", "t", "u", "修正 PR 衝突"), flow, flow.snapshot.definition().nodes().get("intake"));
         assertThat(captured.get().prompt()).contains("更新失敗").contains("無法確認最新狀態");
     }
@@ -283,7 +291,7 @@ class ConfiguredExecutorTest {
         when(workspace.pathFor("42")).thenReturn(ws);
         when(runtime.execute(any(), any())).thenReturn(null);
         executor.execute(new Task("42", "c", "t", "u", "做登入"), flow, flow.snapshot.definition().nodes().get("implementation"));
-        verify(workspace, never()).refreshOrigin(any());
+        verify(workspace, never()).refreshOrigin(any(), any());
     }
     @Test void consultAnswersReadOnlyWithoutTouchingTheAskersCheckpoint() throws Exception {
         flow.snapshot = ConsultationTest.collaborative(flow.snapshot, 1, 4);

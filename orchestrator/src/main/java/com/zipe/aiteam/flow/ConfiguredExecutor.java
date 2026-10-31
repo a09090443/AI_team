@@ -589,11 +589,14 @@ public class ConfiguredExecutor {
     String remoteFreshness(FlowRun flow, Path cwd) {
         Path repository = Path.of(flow.snapshot.repository()).toAbsolutePath().normalize();
         if (!cwd.toAbsolutePath().normalize().equals(repository)) return "";
-        var freshness = workspaces.refreshOrigin(repository);
+        String baseBranch = flow.snapshot.definition().project().baseBranch();
+        var freshness = workspaces.refreshOrigin(repository, baseBranch);
         if (freshness == null) return "";
-        // #1003：fetch 不動本機分支，agent 讀 HEAD 會把舊 commit 寫成「目前版本」，實際工作區卻建在 origin/<基準>。
-        String base = "origin/" + flow.snapshot.definition().project().baseBranch();
-        String head = "主 repo 的本機分支、工作樹與 HEAD 不會隨之更新，可能落後；任務工作區、建置與部署都以 " + base
+        String base = "origin/" + baseBranch;
+        // #1003：沒快轉成功時 agent 讀 HEAD 會把舊 commit 寫成「目前版本」，實際工作區卻建在 origin/<基準>。
+        String head = freshness.syncedHead() != null
+                ? "主 repo 工作樹已同步到 " + base + "（" + freshness.syncedHead().substring(0, Math.min(12, freshness.syncedHead().length())) + "），可直接讀檔。"
+                : "主 repo 的本機分支、工作樹與 HEAD 這次沒有同步，可能落後；任務工作區、建置與部署都以 " + base
                 + " 為基準，說明目前版本或指定 commit 時以 " + base + " 為準，不要用 HEAD。";
         if (freshness.ok())
             return "\n主 repo 遠端記錄（origin/*）已於 " + com.zipe.aiteam.task.TaipeiTime.seconds(freshness.at()) + " 更新，可視為當時的 GitHub 狀態。" + head;

@@ -300,31 +300,60 @@ public class WorkspaceManager {
         return new BaseRef(base, sha);
     }
 
-    /** 主 repo 遠端記錄的新舊：ok=本次（或 60 秒內）fetch 成功；at=最後一次成功的時間，從未成功時為 null。 */
-    public record Freshness(boolean ok, java.time.Instant at) {}
+    /**
+     * 主 repo 遠端記錄的新舊：ok=本次（或 60 秒內）fetch 成功；at=最後一次成功的時間，從未成功時為 null；
+     * syncedHead=工作樹已等於 origin/&lt;基準&gt; 時的 commit，沒有同步（分支不同、有修改、不能快轉）時為 null。
+     */
+    public record Freshness(boolean ok, java.time.Instant at, String syncedHead) {
+        public Freshness(boolean ok, java.time.Instant at) { this(ok, at, null); }
+    }
 
     private final java.util.Map<Path, java.time.Instant> fetchedAt = new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
      * 唯讀節點直接在主 repo 執行，系統不 fetch 的話它們看到的是上一次建工作區時的遠端狀態。
      * #1056：GitHub 上已合併的 PR 看不到，agent 以舊的 origin/dev 推論而猜錯衝突檔。
-     * 只更新 refs/remotes（--prune 一併移除遠端已刪的分支），不碰本機分支與工作樹；
+     * fetch 更新 refs/remotes（--prune 一併移除遠端已刪的分支），之後在安全時把本機基準分支快轉（{@link #fastForwardBase}）；
      * 同一個 repo 一次只 fetch 一個，60 秒內成功過就沿用；失敗只警告，由呼叫端告知 agent 資料可能過時。
      */
-    public Freshness refreshOrigin(Path repository) {
+    public Freshness refreshOrigin(Path repository, String baseBranch) {
         Path key = repository.toAbsolutePath().normalize();
         synchronized (key.toString().intern()) {
             java.time.Instant last = fetchedAt.get(key);
             java.time.Instant now = java.time.Instant.now();
-            if (last != null && last.isAfter(now.minusSeconds(60))) return new Freshness(true, last);
-            try {
-                git(repository, "fetch", "--quiet", "--prune", "origin");
-                fetchedAt.put(key, now);
-                return new Freshness(true, now);
-            } catch (WorkspaceException e) {
-                log.warn("fetch 主 repo 失敗，唯讀節點將使用既有的遠端記錄：{}", e.getMessage());
-                return new Freshness(false, last);
+            boolean ok = true;
+            java.time.Instant at = last;
+            if (last == null || !last.isAfter(now.minusSeconds(60))) {
+                try {
+                    git(repository, "fetch", "--quiet", "--prune", "origin");
+                    fetchedAt.put(key, now);
+                    at = now;
+                } catch (WorkspaceException e) {
+                    log.warn("fetch 主 repo 失敗，唯讀節點將使用既有的遠端記錄：{}", e.getMessage());
+                    ok = false;
+                }
             }
+            return new Freshness(ok, at, fastForwardBase(repository, baseBranch));
+        }
+    }
+
+    /**
+     * 只 fetch 時工作樹停在舊 commit，唯讀節點讀不到基準新增的檔案（例如新加的 skill）。
+     * 只有目前在基準分支、追蹤檔沒有修改、且能 fast-forward 時才快轉；本機有 origin 沒有的 commit，
+     * 或未追蹤檔會被覆蓋時 git 會自己拒絕。不符條件就不動，回傳 null，由呼叫端提示 HEAD 可能落後。
+     */
+    private String fastForwardBase(Path repository, String base) {
+        if (base == null || base.isBlank()) return null;
+        try {
+            String target = gitOutput(repository, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/" + base + "^{commit}");
+            if (!base.equals(gitOutput(repository, "symbolic-ref", "--quiet", "--short", "HEAD"))) return null;
+            if (!gitOutput(repository, "status", "--porcelain", "--untracked-files=no").isEmpty()) return null;
+            if (!target.equals(gitOutput(repository, "rev-parse", "HEAD")))
+                git(repository, "merge", "--ff-only", "--quiet", target);
+            return target;
+        } catch (WorkspaceException e) {
+            log.warn("主 repo 未快轉到 origin/{}，唯讀節點沿用目前工作樹：{}", base, e.getMessage());
+            return null;
         }
     }
 

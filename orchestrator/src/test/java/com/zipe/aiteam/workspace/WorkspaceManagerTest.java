@@ -257,7 +257,7 @@ class WorkspaceManagerTest {
 
     @Test
     void 主repo遠端記錄_60秒內不重複fetch_失敗時回報過時() throws Exception {
-        var first = manager.refreshOrigin(repo);
+        var first = manager.refreshOrigin(repo, "master");
         assertThat(first.ok()).isTrue();
         Path other = tmp.resolve("other");
         run(tmp, "git", "clone", "--quiet", origin.toString(), other.toString());
@@ -267,15 +267,48 @@ class WorkspaceManagerTest {
         run(other, "git", "push", "--quiet", "origin", "master");
         String before = out(repo, "git", "rev-parse", "refs/remotes/origin/master");
 
-        assertThat(manager.refreshOrigin(repo).at()).isEqualTo(first.at());
+        assertThat(manager.refreshOrigin(repo, "master").at()).isEqualTo(first.at());
         assertThat(out(repo, "git", "rev-parse", "refs/remotes/origin/master")).isEqualTo(before);
 
         Path broken = tmp.resolve("broken");
         run(tmp, "git", "clone", "--quiet", origin.toString(), broken.toString());
         run(broken, "git", "remote", "set-url", "origin", tmp.resolve("missing.git").toString());
-        var failed = manager.refreshOrigin(broken);
+        var failed = manager.refreshOrigin(broken, "master");
         assertThat(failed.ok()).isFalse();
         assertThat(failed.at()).isNull();
+    }
+
+    @Test
+    void 主repo快轉到origin基準_有修改_在其他分支或有本機commit時不動() throws Exception {
+        String initial = out(repo, "git", "rev-parse", "HEAD");
+        Path clean = tmp.resolve("clean"), dirty = tmp.resolve("dirty"), feature = tmp.resolve("feature"), ahead = tmp.resolve("ahead");
+        for (Path p : List.of(clean, dirty, feature, ahead)) {
+            run(tmp, "git", "clone", "--quiet", origin.toString(), p.toString());
+            run(p, "git", "config", "user.email", "o@test"); run(p, "git", "config", "user.name", "o");
+        }
+        Files.writeString(dirty.resolve("README.md"), "本機修改\n", StandardCharsets.UTF_8);
+        run(feature, "git", "checkout", "--quiet", "-b", "work");
+        Files.writeString(ahead.resolve("local.txt"), "l\n");
+        run(ahead, "git", "add", "."); run(ahead, "git", "commit", "--quiet", "-m", "本機 commit");
+        String aheadHead = out(ahead, "git", "rev-parse", "HEAD");
+        String advanced = advanceBase("skill.md", "新 skill\n");
+
+        // 乾淨且在基準分支：快轉，唯讀節點讀得到基準新增的檔案。
+        assertThat(manager.refreshOrigin(clean, "master").syncedHead()).isEqualTo(advanced);
+        assertThat(out(clean, "git", "rev-parse", "HEAD")).isEqualTo(advanced).isNotEqualTo(initial);
+        assertThat(clean.resolve("skill.md")).exists();
+        assertThat(manager.refreshOrigin(clean, "master").syncedHead()).isEqualTo(advanced);
+
+        assertThat(manager.refreshOrigin(dirty, "master").syncedHead()).isNull();
+        assertThat(out(dirty, "git", "rev-parse", "HEAD")).isEqualTo(initial);
+        assertThat(Files.readString(dirty.resolve("README.md"))).isEqualTo("本機修改\n");
+
+        assertThat(manager.refreshOrigin(feature, "master").syncedHead()).isNull();
+        assertThat(out(feature, "git", "rev-parse", "HEAD")).isEqualTo(initial);
+
+        assertThat(manager.refreshOrigin(ahead, "master").syncedHead()).isNull();
+        assertThat(out(ahead, "git", "rev-parse", "HEAD")).isEqualTo(aheadHead);
+        assertThat(manager.refreshOrigin(ahead, "").syncedHead()).isNull();
     }
 
     @Test

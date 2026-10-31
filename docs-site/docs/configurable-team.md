@@ -527,11 +527,15 @@ Runnable 交給 TaskOrchestrator，由真正的執行中工作與 FIFO 排隊清
   回答的角色對話，在 `snapshot.repository()` 主 repo 執行。主 repo 原本只在建立工作區（`WorkspaceManager.provision`）或基準驗證（`baseRef`）時 fetch，
   agent 可能以過時的 `origin/<基準分支>` 推論（例如猜錯 PR 衝突檔）。
   現在 `ConfiguredExecutor.remoteFreshness` 會在派工前呼叫 `WorkspaceManager.refreshOrigin`：
-  - 執行 `git fetch --quiet --prune origin`，只更新 refs/remotes，不碰主 repo 的本機分支與工作樹；
-  - 同一個 repo 一次只 fetch 一個，60 秒內成功過就沿用；
+  - 執行 `git fetch --quiet --prune origin` 更新 refs/remotes；同一個 repo 一次只 fetch 一個，60 秒內成功過就沿用；
+  - **快轉本機基準分支**（2026-10-31，`WorkspaceManager.fastForwardBase`）：每次派工都檢查，主 repo 目前在
+    `project.baseBranch`、追蹤檔沒有修改時，執行 `git merge --ff-only origin/<基準分支>`。在其他分支、detached、
+    有修改、本機有 origin 沒有的 commit，或未追蹤檔會被覆蓋時都不動（git 會拒絕非快轉），只記警告、不擋派工。
+    之前只 fetch 時工作樹停在舊 commit，前段節點讀不到基準新增的檔案（例如新加的 skill），直到實作節點建工作區才看得到。
   - 提示會寫明「遠端記錄於 <台北時間> 更新」；fetch 失敗時不擋派工，但要求 agent 把涉及遠端的判斷標成「無法確認最新狀態」。
-  - 提示也說明主 repo 的本機分支與 HEAD 不會更新、可能落後，任務工作區、建置與部署都以 `origin/<基準分支>` 為準，
-    agent 描述目前版本或指定 commit 時不得用 HEAD（2026-10-30：曾把落後的 HEAD 寫進部署派工指令，實際部署的卻是較新的基準）。
+  - 已快轉（或本來就相同）時提示「主 repo 工作樹已同步到 origin/<基準分支>（<sha>）」；沒同步成時改提示本機分支與 HEAD
+    可能落後，任務工作區、建置與部署都以 `origin/<基準分支>` 為準，agent 描述目前版本或指定 commit 時不得用 HEAD
+    （2026-10-30：曾把落後的 HEAD 寫進部署派工指令，實際部署的卻是較新的基準）。
 
   不設開關，所有團隊適用；工作區節點不受影響。
 - **實作節點動手前同步最新基準**（2026-10-24）：工作區只在建立時取一次基準，之後每一輪 `scope=WORKSPACE` 的 agent 節點開始前，
