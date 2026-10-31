@@ -603,6 +603,35 @@ public class WorkspaceManager {
      * 以工作區設定的身分 commit 指定路徑（含刪除與新增），回傳新的 HEAD。
      * 停用 repository 自帶的 hooks：這是系統代使用者保存，不讓專案腳本在 orchestrator 身分下執行。
      */
+    /** 把指定的未提交路徑還原成 HEAD：HEAD 有的改回 HEAD 版本，沒有的刪除；不建立 commit。 */
+    public void revertPaths(String taskId, List<String> paths) throws WorkspaceException {
+        if (paths == null || paths.isEmpty()) return;
+        Path ws = pathFor(taskId).toAbsolutePath().normalize();
+        List<String> unstage = new ArrayList<>(List.of("rm", "--cached", "-r", "--quiet", "--ignore-unmatch", "--"));
+        unstage.addAll(paths);
+        git(ws, unstage.toArray(String[]::new));
+        List<String> list = new ArrayList<>(List.of("ls-tree", "-z", "--name-only", "-r", "HEAD", "--"));
+        list.addAll(paths);
+        java.util.Set<String> tracked = java.util.Arrays.stream(gitOutput(ws, list.toArray(String[]::new)).split("\u0000"))
+                .filter(s -> !s.isEmpty()).collect(java.util.stream.Collectors.toSet());
+        if (!tracked.isEmpty()) {
+            List<String> checkout = new ArrayList<>(List.of("checkout", "HEAD", "--"));
+            checkout.addAll(tracked);
+            git(ws, checkout.toArray(String[]::new));
+        }
+        try {
+            for (String p : paths) {
+                if (tracked.contains(p)) continue;
+                Path file = ws.resolve(p).normalize();
+                if (!file.startsWith(ws) || file.equals(ws) || file.startsWith(ws.resolve(".git")))
+                    throw new WorkspaceException("拒絕刪除工作區外的路徑：" + p);
+                Files.deleteIfExists(file);
+            }
+        } catch (IOException e) {
+            throw new WorkspaceException("還原未提交檔案失敗：" + e.getMessage(), e);
+        }
+    }
+
     public String commitPaths(String taskId, List<String> paths, String message) throws WorkspaceException {
         if (paths == null || paths.isEmpty()) throw new WorkspaceException("沒有要保存的檔案");
         Path ws = pathFor(taskId);

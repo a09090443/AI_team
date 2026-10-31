@@ -118,5 +118,7 @@ checkpoint 的原工作目錄與新目錄不一致時禁止 resume；已結束�
 
 SERVICE 路線使用 service_triage，既定主機、操作與寫入範圍內的錯誤交回 Infrastructure 修正、重驗，不先送 QA 計畫。
 真正缺少主機／憑證／權限或產品程式變更決策才停給人；[服務建置](service-delivery.md) 說明完整限制。
+開發流程的 triage 另有 `service` 路線（2026-10-31）：開發與驗證已完成、只剩使用者要求的部署時，交 `deploy` 節點部署後回審查，
+見 [開發後部署](service-delivery.md#開發後部署2026-10-31)。
 尚未建立需求基準、open_questions 為空且回報完成的需求草稿，若機械檢查發現 ID／欄位／原子驗收結構不合法，
 引擎會交回 intake 自行修正，沿用既有自動交接上限。已有基準或真正待釐清的問題不套用；語意矛盾仍由 agent 查核。

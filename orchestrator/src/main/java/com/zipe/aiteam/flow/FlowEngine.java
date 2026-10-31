@@ -732,11 +732,16 @@ public class FlowEngine {
                                 + sync.conflicts() + "；HEAD=" + workspaces.headSha(task.id()));
                     }
                 }
-                if (block == null && node.gate() == Gate.SERVICE) {
+                if (node.gate() == Gate.SERVICE && ServiceDelivery.postDevelopment(node)) {
+                    // 開發後部署：HEAD 必須維持在已驗證、已審查的版本，部署檔只保存不提交，結束後移出工作區。
+                    List<String> dirty = workspaces.uncommittedPaths(task.id());
+                    if (block == null) saveServiceArtifacts(task, flow, node, dirty);
+                    if (!dirty.isEmpty()) workspaces.revertPaths(task.id(), dirty);
+                } else if (block == null && node.gate() == Gate.SERVICE) {
                     // auditScope 已核對限寫路徑；不讓 runtime 自行提交或把未提交成果當成完成。
                     List<String> dirty = workspaces.uncommittedPaths(task.id());
                     if (!dirty.isEmpty()) workspaces.commitPaths(task.id(), dirty, "任務 #" + task.id() + " 服務建置設定");
-                    saveServiceArtifacts(task, flow, node);
+                    saveServiceArtifacts(task, flow, node, workspaces.changedPathsSinceBase(task.id()));
                 }
                 // 只有產出是「主張」的唯讀節點才需要這條規則；產物型節點的 commit 與測試結果
                 // 由下游獨立驗證再查一次。#1014 的 implementation 就是因為一個 for 迴圈被誤判。
@@ -2601,12 +2606,12 @@ public class FlowEngine {
         }
     }
     /** 交付成功的部署檔保存到實例目錄，下次同目標部署還原（ServiceArtifacts）；失敗只記稽核，不影響本次交付。 */
-    private void saveServiceArtifacts(Task task, FlowRun flow, Node node) {
+    private void saveServiceArtifacts(Task task, FlowRun flow, Node node, List<String> changed) {
         if (props.homePath() == null) return;
         try {
             var saved = ServiceArtifacts.save(props.homePath(), flow.snapshot.definition().project().serviceTarget().name(),
                     task.id(), workspaces.headSha(task.id()), workspaces.pathFor(task.id()),
-                    workspaces.changedPathsSinceBase(task.id()), node.writablePaths());
+                    changed, node.writablePaths());
             if (saved != null) audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY,
                     "已保存本次部署檔供下次部署沿用：" + String.join("、", saved.files()));
         } catch (Exception e) {
@@ -2621,8 +2626,10 @@ public class FlowEngine {
             var restored = ServiceArtifacts.restore(props.homePath(), flow.snapshot.definition().project().serviceTarget().name(),
                     workspaces.pathFor(task.id()));
             if (restored == null || restored.added().isEmpty()) return;
-            workspaces.commitPaths(task.id(), restored.added(),
-                    "任務 #" + task.id() + " 還原前次部署檔（來源任務 #" + restored.sourceTask() + "）");
+            // 開發後部署不提交：HEAD 要維持在已審查的版本，sandbox exec 本來就會帶上未提交檔。
+            if (!ServiceDelivery.postDevelopment(flow.snapshot.definition().nodes().get(flow.node)))
+                workspaces.commitPaths(task.id(), restored.added(),
+                        "任務 #" + task.id() + " 還原前次部署檔（來源任務 #" + restored.sourceTask() + "）");
             flow.context = FlowContext.append(flow.context, ServiceArtifacts.notice(restored));
             store.saveFlow(task.id(), flow);
             audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY,

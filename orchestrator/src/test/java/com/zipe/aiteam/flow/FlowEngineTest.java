@@ -1371,7 +1371,11 @@ class FlowEngineTest {
                 if (mode.equals("question")) outOfScope.add("修正文件計數：68 改為 69").add("補上 API 範例");
                 if (mode.equals("question")) ((ObjectNode)report).putArray("out_of_scope_titles").add("文件計數改 69").add("補 API 範例");
             }
-            if (flow.node.equals("triage")) ((ObjectNode)report).put("route", mode.equals("repair") ? "verification"
+            if (mode.equals("deployAfterReview") && node.gate() == TeamDefinition.Gate.REVIEW
+                    && calls.stream().filter(s -> s.startsWith("review:")).count() == 1)
+                ((ObjectNode) report).withArray("findings").addObject().put("severity", "HIGH").put("detail", "使用者要求的部署還沒執行");
+            if (flow.node.equals("triage")) ((ObjectNode)report).put("route", mode.equals("deployAfterReview") ? "service"
+                    : mode.equals("repair") ? "verification"
                     : mode.equals("dirtyVerification") ? "verification"
                     : mode.equals("automaticRepair") ? "implementation" : mode.equals("change") ? "requirements"
                     : mode.startsWith("replan") ? "plan" : "human");
@@ -1738,7 +1742,7 @@ class FlowEngineTest {
         if (target) {
             ((ObjectNode)d.path("project")).set("serviceTarget", mapper.readTree("{\"name\":\"test-host\",\"checks\":{\"start\":\"start\",\"health\":\"health\"}}"));
             for (String id : List.of("start", "health"))
-                ((ObjectNode)d.path("project").path("operations")).set(id, mapper.readTree("{\"nodes\":[\"service\"],\"directory\":\".\",\"argv\":[\"git\",\"status\"],\"writes\":[]}"));
+                ((ObjectNode)d.path("project").path("operations")).set(id, mapper.readTree("{\"nodes\":[\"service\",\"deploy\"],\"directory\":\".\",\"argv\":[\"git\",\"status\"],\"writes\":[]}"));
         }
         var definition = mapper.treeToValue(d, TeamDefinition.class); TeamCatalog.validate(definition);
         f.snapshot = new TeamDefinition.Snapshot("service-version", definition, f.snapshot.repository(), f.snapshot.assets());
@@ -1784,6 +1788,34 @@ class FlowEngineTest {
         assertThat(Files.readString(ws.resolve("deploy/start.sh"))).isEqualTo("echo saved");
         verify(workspace).commitPaths(eq("42"), eq(List.of("deploy/start.sh")), contains("還原前次部署檔（來源任務 #41）"));
         assertThat(store.flow(task.id()).orElseThrow().context).contains("前次成功部署的部署檔", "deploy/start.sh");
+    }
+    @Test void deploymentAfterDevelopmentKeepsTheReviewedHeadAndReturnsToReviewBeforeApproval() throws Exception {
+        // #1006：開發與驗證都完成，審查發現部署未做；分流只能派實作階段，部署工具不放行，任務停下等真人。
+        var f = store.flow(task.id()).orElseThrow();
+        ObjectNode d = mapper.valueToTree(f.snapshot.definition());
+        ((ObjectNode)d.path("project")).set("serviceTarget", mapper.readTree("{\"name\":\"test-host\",\"checks\":{\"start\":\"start\",\"health\":\"health\"}}"));
+        for (String id : List.of("start", "health"))
+            ((ObjectNode)d.path("project").path("operations")).set(id, mapper.readTree("{\"nodes\":[\"service\",\"deploy\"],\"directory\":\".\",\"argv\":[\"git\",\"status\"],\"writes\":[]}"));
+        var definition = mapper.treeToValue(d, TeamDefinition.class); TeamCatalog.validate(definition);
+        f.snapshot = new TeamDefinition.Snapshot("deploy-version", definition, f.snapshot.repository(), f.snapshot.assets());
+        store.saveFlow(task.id(), f);
+        boolean[] reverted = {false};
+        when(workspace.uncommittedPaths("42")).thenAnswer(c -> !reverted[0] && calls.getLast().startsWith("deploy:")
+                ? List.of("ai-team-sandbox/start.sh") : List.of());
+        doAnswer(c -> { reverted[0] = true; return null; }).when(workspace).revertPaths(eq("42"), anyList());
+        mode = "deployAfterReview";
+
+        engine.run(task);
+
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        int deploy = calls.indexOf("deploy:infrastructure");
+        assertThat(deploy).isPositive();
+        assertThat(calls.get(deploy - 1)).isEqualTo("triage:coordinator");
+        assertThat(calls.get(deploy + 1)).startsWith("review:");
+        // 部署檔不提交、不移動 HEAD：審查與獨立驗證收據仍對應同一個版本，PR 不帶部署腳本。
+        verify(workspace).revertPaths("42", List.of("ai-team-sandbox/start.sh"));
+        verify(workspace, never()).commitPaths(eq("42"), anyList(), contains("服務建置設定"));
+        assertThat(store.flow(task.id()).orElseThrow().independentEvidence).isNotNull();
     }
     @Test void serviceTypedTimeoutResumesSuccessfulJobWithoutAnotherVisit() throws Exception {
         enableService(true); mode="serviceOperationTimeout"; engine.run(task);

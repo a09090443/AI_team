@@ -49,6 +49,7 @@ FlowEngine 的新任務承接、續跑、發布及角色請求均保留這個身
 
 配置了 `service` 節點與 `serviceTarget` 的團隊另提供 `intake → service → end`：由 Infrastructure 建置既有服務並檢查啟動結果，
 失敗經 `service_triage` 派回修正。服務路線不進 QA 計畫、開發獨立驗證或 PR 發布；目標主機未配置則等待補齊。
+開發流程另有 `review 受阻 → triage → deploy → review → approval`（2026-10-31）：deploy 同為 SERVICE，但不提交、保留獨立驗證收據。
 詳見 [服務建置](/docs/service-delivery)。
 
 ## 任務生命週期（典型配置）
@@ -170,7 +171,7 @@ plan.protected_path_changes 由實作前置計畫提供，ProtectedPathFallback 
 
 ### 2026-10-19 部署脈絡（已部署）
 
-服務目標的歷史背景由 TaskStore.serviceHistory → ServiceDeploymentContext → ConfiguredExecutor 注入所有正式節點；管理者說明讀自實例 service-context/&lt;target&gt;.json，不自動執行管理命令。service 節點交付成功時 FlowEngine 以 ServiceArtifacts 把部署檔存到 service-context/&lt;target&gt;.files/，下次執行 service 節點前補回工作區並提交。
+服務目標的歷史背景由 TaskStore.serviceHistory → ServiceDeploymentContext → ConfiguredExecutor 注入所有正式節點；管理者說明讀自實例 service-context/&lt;target&gt;.json，不自動執行管理命令。service 節點交付成功時 FlowEngine 以 ServiceArtifacts 把部署檔存到 service-context/&lt;target&gt;.files/，下次執行 service 節點前補回工作區並提交（開發後部署的 deploy 節點只補不提交，結束後以 WorkspaceManager.revertPaths 移出）。
 
 
 ### SSH 直連規格

@@ -109,7 +109,7 @@ public final class ServiceArtifacts {
                 .append("（來源 ").append(restored.head().length() > 12 ? restored.head().substring(0, 12) : restored.head())
                 .append("）交付成功時保存的部署檔");
         if (!restored.added().isEmpty())
-            out.append("已由系統還原並提交到工作區：").append(String.join("、", restored.added())).append("。");
+            out.append("已由系統還原到工作區：").append(String.join("、", restored.added())).append("。");
         if (!restored.differing().isEmpty())
             out.append("下列檔案 repo 已有不同版本，以 repo 為準、未覆蓋：").append(String.join("、", restored.differing())).append("。");
         return out.append("先沿用這些檔案部署；失敗時依新的收據證據修正，不要無故重寫。").toString();

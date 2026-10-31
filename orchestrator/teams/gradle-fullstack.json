@@ -316,7 +316,8 @@
       },
       "service-prepare": {
         "nodes": [
-          "service"
+          "service",
+          "deploy"
         ],
         "directory": ".",
         "argv": [
@@ -330,7 +331,8 @@
       },
       "service-start": {
         "nodes": [
-          "service"
+          "service",
+          "deploy"
         ],
         "directory": ".",
         "argv": [
@@ -345,7 +347,8 @@
       },
       "service-health": {
         "nodes": [
-          "service"
+          "service",
+          "deploy"
         ],
         "directory": ".",
         "argv": [
@@ -360,7 +363,8 @@
       },
       "service-diagnose": {
         "nodes": [
-          "service"
+          "service",
+          "deploy"
         ],
         "directory": ".",
         "argv": [
@@ -947,7 +951,8 @@
         "human": "human",
         "requirements": "intake",
         "plan": "plan",
-        "design": "design"
+        "design": "design",
+        "service": "deploy"
       },
       "requires": [],
       "maxVisits": 3,
@@ -981,6 +986,33 @@
       "routes": {},
       "requires": [
         "intake"
+      ],
+      "maxVisits": 3,
+      "timeoutSeconds": 1800,
+      "maxTurns": 60,
+      "instructions": "prompts/service.md",
+      "skills": [
+        "skills/service-build/SKILL.md",
+        "skills/service-build/references/project-template.md"
+      ]
+    },
+    "deploy": {
+      "kind": "AGENT",
+      "role": "infrastructure",
+      "schema": "schemas/service.json",
+      "scope": "LIMITED",
+      "gate": "SERVICE",
+      "workspace": true,
+      "writablePaths": [
+        "ai-team-sandbox/**"
+      ],
+      "plan": null,
+      "next": "review",
+      "blocked": "triage",
+      "routes": {},
+      "requires": [
+        "intake",
+        "verification"
       ],
       "maxVisits": 3,
       "timeoutSeconds": 1800,

@@ -116,6 +116,30 @@ operations 與角色工具白名單裡的 client 路徑是各實例的部署設�
 客體單次操作上限 1200 秒、client 等待 1500 秒，整個 SERVICE 節點仍受該節點 `timeoutSeconds` 限制（節點上限 3600 秒）。
 長作業與模型回合分開保存，見 [SSH 直連部署](direct-ssh-deployment.md#持久長作業恢復)。
 
+### 開發後部署（2026-10-31）
+
+需求同時要「開發」與「部署到沙箱」時，intake 走開發流程；審查發現部署還沒做而受阻時，triage 可選 `service` 路線交給
+`deploy` 節點（三份內附範例都有），部署後回審查，再進 PR 核准：
+
+```text
+… → verification → review（部署未做，受阻）→ triage → deploy（建置、啟動、可用性檢查）→ review → approval
+```
+
+`deploy` 也是 `Gate.SERVICE`，完成條件同下方，差異只在三處。由配置判斷：SERVICE 節點的 `next` 不是 `end` 就屬這種模式（`ServiceDelivery.postDevelopment`）：
+
+- **不提交、不移動 HEAD**：部署腳本照常保存到 service-context 供下次沿用，但不 commit；節點結束（通過或受阻）後
+  writablePaths 內的未提交檔由系統移出工作區（`WorkspaceManager.revertPaths`）。PR 不帶部署腳本，
+  驗證與審查綁定的 HEAD 和獨立驗證收據仍然有效。前次部署檔只補進工作區、不提交。
+  因此開發後部署要用 sandbox 目標的 `client.py exec`（會帶未提交檔）；restricted 目標的 start 要求乾淨且已提交的來源，不適用。
+- **不清獨立驗證收據**：SERVICE 節點開始時保留 `independentEvidence`（`Traceability.invalidate`），
+  因為完成條件要求 `product_code_changed=false`，部署不改產品程式。
+- **驗收涵蓋**：checks 的 `acceptance_ids` 只需對應部署相關的項目，不必涵蓋全部；其他項目已由驗證節點涵蓋，
+  是否全部完成由隨後的審查判斷。引用未知項目仍會被擋。
+
+載入配置時，SERVICE 節點的 `next` 只能是 `end` 或一個 REVIEW 節點，部署後不能跳過審查直接進 PR 核准。
+triage 的派工說明會提示：開發與驗證已完成、只剩部署時選 service 路線；派到實作階段時，部署工具會回 `TASK_NOT_ACTIVE`。
+起因：開發流程原本沒有能進 SERVICE 的路線，「做一個 API 並部署」只能在審查後停下等真人改開部署任務。
+
 ### 部署檔保存與還原
 
 service 節點通過完成閘門時（`ServiceArtifacts`），系統把本任務相對基準有變更、位於該節點 `writablePaths` 內的檔案
@@ -125,6 +149,7 @@ service 節點通過完成閘門時（`ServiceArtifacts`），系統把本任務
 
 下次同目標的 service 節點執行前，系統把保存的檔案補進工作區——**只補工作區沒有的路徑**，repo 已有的版本優先、不覆蓋；
 補進的檔案由系統提交（「還原前次部署檔（來源任務 #M）」），所以 restricted 目標要求的乾淨工作區照常成立。
+開發後部署只補不提交（見上節）。
 同時在角色提示加一段說明，請它先沿用、失敗再依新證據修正。manifest 或檔案雜湊不符時整份不還原。
 起因：服務任務完成後工作區會被啟動清理刪除，部署檔若只在工作區，下次就得重寫。
 
@@ -135,7 +160,7 @@ service 節點通過完成閘門時（`ServiceArtifacts`），系統把本任務
 - `service_status=RUNNING`、`target` 與配置名稱完全一致，`product_code_changed=false`。
 - `checks` 完整涵蓋配置的檢查名稱與 operation_id，不重複、不捏造其他操作。
 - 每項 `status=PASS`、整數 `exit_code=0`、非空 `evidence`（本次 log 或工具呼叫 ID）。
-- 每項列 `acceptance_ids`；全部檢查合計涵蓋需求基準的所有原子驗收項目。
+- 每項列 `acceptance_ids`；全部檢查合計涵蓋需求基準的所有原子驗收項目（開發後部署只需對應部署相關項目，見上節）。
 - `uncertainties` 為空；缺項、失敗或僅產出檔案均不能完成。僅將需求基準或配置檢查要求而仍未核實的事項放入此欄；未要求的登入、資料寫入或重啟測試在摘要說明驗證邊界，不自行新增阻擋項。原需求有要求時仍須完成。
 - 若 service-context 已登錄 access_endpoints，固定 support 工具的本次探測須 healthy，摘要須含使用者 url 完整路徑；不能以 Agent VM 內部根網址交付。端點診斷與既有版本自修規範見[直接追問](direct-agent-requests.md)。
 - 沒有 access_endpoints、但 service-context 有接沙箱時登錄的 `user_host`（2026-10-30）：service 角色的說明會帶這個位址，
@@ -145,7 +170,7 @@ service 節點通過完成閘門時（`ServiceArtifacts`），系統把本任務
   其他主機的網址不探測。起因：未登錄入口時，有的任務以 agent 自填網址結案而無人實測，有的則停在 AWAIT_HUMAN 等人登錄。
 
 角色 checks 仍為報告與配置的機械核對；已登錄的入口另有固定工具實測，兩者不能互相冒充。系統 probe 由 Agent VM 進行，不等同已從使用者電腦驗證。
-不產生開發流程的 IndependentVerifier 收據、不開 PR；`COMPLETED` 只表示這次服務交付報告通過契約，
+只部署的 service 路線不產生開發流程的 IndependentVerifier 收據、不開 PR（開發後部署則回審查後照常進 PR 核准）；`COMPLETED` 只表示這次服務交付報告通過契約，
 不是日後持續健康保證。正式環境的監控、告警、回滾操作需另依目標主機設定。
 
 ## 自動修復與舊任務

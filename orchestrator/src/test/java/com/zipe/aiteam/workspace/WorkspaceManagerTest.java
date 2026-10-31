@@ -279,6 +279,27 @@ class WorkspaceManagerTest {
     }
 
     @Test
+    void 還原指定的未提交路徑_不建立commit_其他修改保留() throws Exception {
+        Path ws = manager.provision(task("1501"));
+        String head = manager.headSha("1501");
+        Files.writeString(ws.resolve("README.md"), "部署時改到\n", StandardCharsets.UTF_8);
+        Files.createDirectories(ws.resolve("ai-team-sandbox"));
+        Files.writeString(ws.resolve("ai-team-sandbox/start.sh"), "echo start\n");
+        Files.writeString(ws.resolve("ai-team-sandbox/staged.sh"), "echo staged\n");
+        run(ws, "git", "add", "ai-team-sandbox/staged.sh");
+        Files.writeString(ws.resolve("keep.txt"), "不在清單內\n");
+
+        manager.revertPaths("1501", List.of("README.md", "ai-team-sandbox/start.sh", "ai-team-sandbox/staged.sh"));
+
+        assertThat(manager.headSha("1501")).isEqualTo(head);
+        assertThat(Files.readString(ws.resolve("README.md"), StandardCharsets.UTF_8).replace("\r\n", "\n")).isEqualTo("初始內容\n");
+        assertThat(ws.resolve("ai-team-sandbox/start.sh")).doesNotExist();
+        assertThat(ws.resolve("ai-team-sandbox/staged.sh")).doesNotExist();
+        assertThat(manager.uncommittedPaths("1501")).containsExactly("keep.txt");
+        assertThatThrownBy(() -> manager.revertPaths("1501", List.of("../outside.txt"))).isInstanceOf(WorkspaceManager.WorkspaceException.class);
+    }
+
+    @Test
     void 主repo快轉到origin基準_有修改_在其他分支或有本機commit時不動() throws Exception {
         String initial = out(repo, "git", "rev-parse", "HEAD");
         Path clean = tmp.resolve("clean"), dirty = tmp.resolve("dirty"), feature = tmp.resolve("feature"), ahead = tmp.resolve("ahead");

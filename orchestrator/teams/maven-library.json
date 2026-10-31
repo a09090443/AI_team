@@ -26,10 +26,10 @@
       "qa-docs-compare-llms": {"nodes": ["verification"], "directory": ".", "argv": ["git", "diff", "--no-index", "--exit-code", "target/qa-docs/doc-site/build/llms.txt", "llms.txt"], "writes": []},
       "qa-docs-compare-llms-full": {"nodes": ["verification"], "directory": ".", "argv": ["git", "diff", "--no-index", "--exit-code", "target/qa-docs/doc-site/build/llms-full.txt", "llms-full.txt"], "writes": []},
       "docs-build": {"nodes": ["implementation"], "directory": "doc-site", "argv": ["npm", "run", "build"], "writes": ["doc-site/build", "doc-site/.docusaurus", "llms.txt", "llms-full.txt"]},
-      "service-prepare": {"nodes": ["service"], "directory": ".", "argv": ["python3", "${teams}/skills/service-build/scripts/client.py", "prepare"], "writes": ["ai-team-sandbox/.agent-service"]},
-      "service-start": {"nodes": ["service"], "directory": ".", "argv": ["python3", "${teams}/skills/service-build/scripts/client.py", "exec", "ai-team-sandbox/start.sh"], "writes": ["ai-team-sandbox/.agent-service"]},
-      "service-health": {"nodes": ["service"], "directory": ".", "argv": ["python3", "${teams}/skills/service-build/scripts/client.py", "exec", "ai-team-sandbox/health.sh"], "writes": ["ai-team-sandbox/.agent-service"]},
-      "service-diagnose": {"nodes": ["service"], "directory": ".", "argv": ["python3", "${teams}/skills/service-build/scripts/client.py", "exec", "ai-team-sandbox/diagnose.sh"], "writes": ["ai-team-sandbox/.agent-service"]}
+      "service-prepare": {"nodes": ["service", "deploy"], "directory": ".", "argv": ["python3", "${teams}/skills/service-build/scripts/client.py", "prepare"], "writes": ["ai-team-sandbox/.agent-service"]},
+      "service-start": {"nodes": ["service", "deploy"], "directory": ".", "argv": ["python3", "${teams}/skills/service-build/scripts/client.py", "exec", "ai-team-sandbox/start.sh"], "writes": ["ai-team-sandbox/.agent-service"]},
+      "service-health": {"nodes": ["service", "deploy"], "directory": ".", "argv": ["python3", "${teams}/skills/service-build/scripts/client.py", "exec", "ai-team-sandbox/health.sh"], "writes": ["ai-team-sandbox/.agent-service"]},
+      "service-diagnose": {"nodes": ["service", "deploy"], "directory": ".", "argv": ["python3", "${teams}/skills/service-build/scripts/client.py", "exec", "ai-team-sandbox/diagnose.sh"], "writes": ["ai-team-sandbox/.agent-service"]}
     },
     "requiredTools": [
       "python3",
@@ -391,7 +391,8 @@
         "human": "human",
         "requirements": "intake",
         "plan": "plan",
-        "design": "design"
+        "design": "design",
+        "service": "deploy"
       },
       "requires": [],
       "maxVisits": 3,
@@ -425,6 +426,32 @@
       "routes": {},
       "requires": [
         "intake"
+      ],
+      "maxVisits": 3,
+      "timeoutSeconds": 1800,
+      "maxTurns": 60,
+      "instructions": "prompts/service.md",
+      "skills": [
+        "skills/service-build/SKILL.md"
+      ]
+    },
+    "deploy": {
+      "kind": "AGENT",
+      "role": "infrastructure",
+      "schema": "schemas/service.json",
+      "scope": "LIMITED",
+      "gate": "SERVICE",
+      "workspace": true,
+      "writablePaths": [
+        "ai-team-sandbox/**"
+      ],
+      "plan": null,
+      "next": "review",
+      "blocked": "triage",
+      "routes": {},
+      "requires": [
+        "intake",
+        "verification"
       ],
       "maxVisits": 3,
       "timeoutSeconds": 1800,

@@ -165,7 +165,8 @@ public final class Traceability {
         for (String key : removed) { flow.receipts.remove(key); flow.heads.remove(key); }
         Node current = flow.snapshot.definition().nodes().get(id);
         // 審查只讀取驗收前已產生的系統收據；重做其他階段才使收據失效。
-        if (current == null || current.gate() != Gate.REVIEW) flow.independentEvidence = null;
+        // 服務部署不改產品程式（product_code_changed=false 才通過），開發後部署也不提交，收據仍對應同一個 HEAD。
+        if (current == null || (current.gate() != Gate.REVIEW && current.gate() != Gate.SERVICE)) flow.independentEvidence = null;
         flow.approvalHead = null;
     }
 }

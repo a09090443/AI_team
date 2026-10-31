@@ -13,8 +13,12 @@ public final class ServiceDelivery {
         for (var entry : nodes) {
             Node node = entry.getValue();
             TeamCatalog.require(definition.version() >= 2 && node.scope() == Scope.LIMITED && node.workspace()
-                    && node.plan() == null && "end".equals(node.next()) && (node.routes() == null || node.routes().isEmpty()),
-                    "服務建置須限寫工作區、無 QA 計畫且成功後直接結束：" + entry.getKey());
+                    && node.plan() == null && (node.routes() == null || node.routes().isEmpty()),
+                    "服務建置須限寫工作區、無 QA 計畫且不自行分流：" + entry.getKey());
+            // 開發後部署：部署完一定回審查確認證據，不能跳過審查直接進 PR 核准。
+            Node after = definition.nodes().get(node.next());
+            TeamCatalog.require("end".equals(node.next()) || (after != null && after.gate() == Gate.REVIEW),
+                    "服務建置成功後須直接結束，或回到審查節點：" + entry.getKey());
             TeamCatalog.require(node.requires() != null && node.requires().stream()
                     .anyMatch(id -> definition.nodes().get(id).gate() == Gate.REQUIREMENTS), "服務建置缺需求基準");
         }
@@ -71,7 +75,9 @@ public final class ServiceDelivery {
             }
         }
         if (!seen.equals(target.checks().keySet())) return "服務檢查未涵蓋全部核准項目";
-        if (!covered.equals(expected)) return "服務檢查未涵蓋全部需求驗收項目";
+        // 開發後部署只負責部署相關的驗收項目，其餘已由驗證節點涵蓋，全部是否完成由隨後的審查確認。
+        Node current = flow.snapshot.definition().nodes().get(flow.node);
+        if (!(current != null && postDevelopment(current)) && !covered.equals(expected)) return "服務檢查未涵蓋全部需求驗收項目";
         if (!report.path("uncertainties").isArray() || !report.path("uncertainties").isEmpty()) return "服務仍有未核實事項";
         return null;
     }
@@ -87,13 +93,29 @@ public final class ServiceDelivery {
                 + "需要修改產品程式或新增功能則維持開發流程；不可把使用者要的啟動排除在 out_of_scope。"
                 + "缺主機／權限時只詢問實際缺少的資訊，不自行改成交付文件。"
                 + "\n管理者配置的服務目標與檢查操作：" + flow.snapshot.definition().project().serviceTarget();
+        if (node.gate() != Gate.SERVICE && routesToPostDevelopment(flow, node))
+            text += "\n開發、驗證已完成，但使用者要求的部署還沒執行時，選 service 路線交部署階段；部署工具只在該階段可用，派到實作階段會被拒。";
         if (node.gate() == Gate.SERVICE) text += "\n依核准操作建置並啟動，再逐項執行檢查。失敗先在本階段修正後重驗；"
                 + "無法修正則 BLOCKED 交分流。checks 只填本次實際操作的結果與 log／呼叫 ID，不能引用舊任務成功報告。"
                 + "只產出設定檔不能填 RUNNING；不得修改產品程式、建立未核准外部資源、刪除既有資料或輸出憑證。"
-                + "允許路徑內的檔案由系統核對後代為提交，不需要自行 commit。";
+                + (postDevelopment(node)
+                    ? "\n【開發後部署】部署對象是任務工作區目前已驗證、已審查的版本；部署腳本放在允許路徑，系統保存供下次沿用，"
+                      + "但不提交、不進 PR，本階段結束後會從工作區移除。checks 的 acceptance_ids 只填部署相關的驗收項目；完成後回審查確認。"
+                    : "允許路徑內的檔案由系統核對後代為提交，不需要自行 commit。");
         if (node.gate() == Gate.SERVICE) text += "\nchecks.operation_id只填配置中的原操作ID，不要附加冒號、job或請求ID；工作編號與收據ID放在evidence。"
                 + "持久作業回OPERATION_PENDING時先交回本輪模型，系統會等待後接續；不要把等待填成PASS，也不要重送已成功start。";
         return text;
+    }
+
+    /** 開發後部署：SERVICE 節點成功後回審查、再進 PR 核准；只部署的 service 路線 next=end。 */
+    static boolean postDevelopment(Node node) {
+        return node.gate() == Gate.SERVICE && !"end".equals(node.next());
+    }
+
+    private static boolean routesToPostDevelopment(FlowRun flow, Node node) {
+        var nodes = flow.snapshot.definition().nodes();
+        return node.routes() != null && node.routes().values().stream()
+                .anyMatch(id -> nodes.containsKey(id) && postDevelopment(nodes.get(id)));
     }
 
     static boolean serviceStage(FlowRun flow, Node node) {

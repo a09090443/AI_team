@@ -38,6 +38,9 @@ repo 的 `orchestrator/teams/` 只放共用 prompts、schemas、skills 與三份
 
 三份範例都內附同一組**沙箱版服務建置路線**（2026-10-29）：`infrastructure` 角色、`service`／`service_triage` 節點、intake 的 `service` 路線，
 以及 `service-prepare`／`service-start`／`service-health`／`service-diagnose` 四個操作（後三者以 `client.py exec` 執行 agent 寫在 `ai-team-sandbox/` 的腳本）。
+2026-10-31 起另有開發後部署：`deploy` 節點（複製 service，`requires: [intake, verification]`、`next: review`、`blocked: triage`）、
+triage 的 `"service": "deploy"` 路線，四個操作的 `nodes` 為 `["service","deploy"]`；見 [開發後部署](service-delivery.md#開發後部署2026-10-31)。
+實例 overlay 是完整的專案配置，要用這條路線須在 overlay 加上同樣的節點、路線與操作 `nodes`。
 範例的 `project.serviceTarget` 為 `null`，等於關閉：intake 會被告知不要選 service 路線。實例要啟用時，先依 [共用沙箱環境](sandbox-environment.md) 接好沙箱 VM，
 再在實例配置填 `serviceTarget`（`name` 為沙箱 target 名稱，`checks` 為 `{"prepare":"service-prepare","start":"service-start","health":"service-health"}`）。
 node-web 的 infrastructure 用 claude-code（不新增 Codex 依賴），其他兩份用 codex。
@@ -549,6 +552,7 @@ Runnable 交給 TaskOrchestrator，由真正的執行中工作與 FIFO 排隊清
 
 配置 `service` 節點的團隊，intake 可選 service，由 Infrastructure 在 LIMITED 設定／手冊範圍建置並驗證服務，受阻交 service_triage。
 這是 Gate.SERVICE 契約，不更動產品開發的 IMPLEMENTATION 前置測試計畫，也不能用來直接發布 PR。
+SERVICE 節點的 `next` 只能是 `end`（只部署）或 REVIEW 節點（開發後部署：不提交、保留獨立驗證收據，回審查後才進 PR 核准，`ServiceDelivery.validate`）。
 未設定 serviceTarget 時明確停止等待主機與操作資訊，intake 的派工說明也會註明 service 路線未啟用、不要選；詳見 [服務建置](service-delivery.md)。
 服務建置節點只寫管理者列出的部署目錄，不會產生「Claude 寫檔節點沒設改派」的提醒。
 

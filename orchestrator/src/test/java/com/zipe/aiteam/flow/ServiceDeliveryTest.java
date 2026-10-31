@@ -16,7 +16,7 @@ class ServiceDeliveryTest {
                 """));
             var operations = (ObjectNode)d.path("project").path("operations");
             for (String id : new String[]{"service-start", "service-health"}) operations.set(id, mapper.readTree("""
-                {"nodes":["service"],"directory":".","argv":["git","status"],"writes":[]}
+                {"nodes":["service","deploy"],"directory":".","argv":["git","status"],"writes":[]}
                 """));
         } else ((ObjectNode)d.path("project")).putNull("serviceTarget");
         TeamDefinition definition = mapper.treeToValue(d, TeamDefinition.class);
@@ -77,6 +77,31 @@ class ServiceDeliveryTest {
         ((ObjectNode)f.receipts.get("intake").path("requirements").get(0)).withArray("acceptance_items")
                 .addObject().put("id", "A2");
         assertThat(ServiceDelivery.blockingReason(report(), f)).contains("全部需求");
+    }
+    @Test void deploymentAfterDevelopmentReturnsToReviewAndCoversOnlyDeploymentItems() throws Exception {
+        // #1006：開發完成後審查發現部署未做，分流沒有能進 SERVICE 的路線，任務只能停下等真人。
+        var f = flow(true);
+        var nodes = f.snapshot.definition().nodes();
+        assertThat(nodes.get("triage").routes()).containsEntry("service", "deploy");
+        assertThat(ServiceDelivery.postDevelopment(nodes.get("deploy"))).isTrue();
+        assertThat(ServiceDelivery.postDevelopment(nodes.get("service"))).isFalse();
+        assertThat(ServiceDelivery.notice(f, nodes.get("triage"))).contains("選 service 路線交部署階段");
+        assertThat(ServiceDelivery.notice(f, nodes.get("deploy"))).contains("開發後部署", "不提交");
+        assertThat(ServiceDelivery.notice(f, nodes.get("service"))).doesNotContain("開發後部署").contains("代為提交");
+        // 其他驗收項目已由驗證涵蓋，部署只需對應部署相關的項目；只部署的 service 仍要全部涵蓋。
+        ((ObjectNode)f.receipts.get("intake").path("requirements").get(0)).withArray("acceptance_items").addObject().put("id", "A2");
+        assertThat(ServiceDelivery.blockingReason(report(), f)).contains("全部需求");
+        f.node = "deploy";
+        assertThat(ServiceDelivery.blockingReason(report(), f)).isNull();
+        var unknown = report(); ((ObjectNode)unknown.path("checks").get(0)).putArray("acceptance_ids").add("A9");
+        assertThat(ServiceDelivery.blockingReason(unknown, f)).contains("未知驗收項目");
+    }
+    @Test void deploymentAfterDevelopmentMustReturnToReview() throws Exception {
+        ObjectNode d = (ObjectNode) mapper.readTree(Files.readString(Path.of("teams/gradle-fullstack.json")));
+        ((ObjectNode)d.path("nodes").path("deploy")).put("next", "approval");
+        assertThatThrownBy(() -> TeamCatalog.validate(mapper.treeToValue(d, TeamDefinition.class))).hasMessageContaining("回到審查節點");
+        ((ObjectNode)d.path("nodes").path("deploy")).put("next", "review").putObject("routes").put("human", "human");
+        assertThatThrownBy(() -> TeamCatalog.validate(mapper.treeToValue(d, TeamDefinition.class))).hasMessageContaining("不自行分流");
     }
     @Test void realSecretsCannotBeCommittedButTemplatesCan() {
         for (String p : java.util.List.of("docs/docker/sit/.env.sit", "docs/docker/sit/.secrets/db-password", "docs/server.key"))
