@@ -130,6 +130,18 @@ public final class ServiceDelivery {
         return node.gate() == Gate.SERVICE && !"end".equals(node.next());
     }
 
+    /** 路徑落在任一 SERVICE 節點的可寫範圍內。 */
+    static boolean deploymentPath(FlowRun flow, String path) {
+        return flow.snapshot.definition().nodes().values().stream()
+                .anyMatch(n -> n.gate() == Gate.SERVICE && PathRules.allows(n.writablePaths(), path));
+    }
+
+    /** 移出的部署檔仍在 git 歷史，部署階段可取回沿用。 */
+    static String retrieval(String commit) {
+        return commit == null || commit.isBlank() ? ""
+                : "內容仍在 commit " + commit + "，部署階段需要時可用 git show " + commit + ":<路徑> 取回沿用。";
+    }
+
     /** 節點路線中只部署（next=end）的 SERVICE 節點；沒有則 null。 */
     static String standaloneRoute(FlowRun flow, Node node) {
         var nodes = flow.snapshot.definition().nodes();

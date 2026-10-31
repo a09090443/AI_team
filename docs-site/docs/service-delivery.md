@@ -158,7 +158,13 @@ triage 的派工說明會提示：開發與驗證已完成、只剩部署時選 
    以 `WorkspaceManager.resetPathsToBase` 改回基準版本並提交「改走開發流程，移出部署檔」。
 
 只處理系統自己提交的路徑，承接來的開發 commit 不受影響。部署階段會從 service-context 的前次成功部署保存還原部署檔。
-限制：沒有部署成功的那一輪，agent 改過的部署腳本不會保存，避免覆蓋前次可用的版本。
+沒有部署成功的那一輪，agent 改過的部署腳本不寫入 service-context（避免覆蓋前次可用的版本），
+但內容留在 git 歷史：交接紀錄會附上移出前的 commit，部署階段可用 `git show <commit>:<路徑>` 取回沿用。
+
+**承接任務**：原任務停在部署階段（SERVICE 節點或 service_triage）時，按「保存未提交的修改並承接」保存的檔案中，
+落在任一 SERVICE 節點 `writablePaths` 的部分也記入 `serviceCommittedPaths`。建立承接任務時，原任務這份清單上的路徑
+會在新工作區改回基準版本並提交「承接時移出前任務部署檔」（`FlowEngine.dropInheritedDeploymentFiles`），
+交接紀錄列出移出的檔案與取回方式（原任務 commit）。停在開發節點時保存的修改視為一般成果，不移出；移出失敗不擋承接，交審查確認。
 起因：開發流程原本沒有能進 SERVICE 的路線，「做一個 API 並部署」只能在審查後停下等真人改開部署任務。
 
 ### 部署檔保存與還原

@@ -369,6 +369,31 @@ class FlowEngineTest {
         assertThat(store.flow(task.id()).orElseThrow().successor).isNotNull();
         assertThat(jobs).hasSize(1);
         verify(audit).record(eq("42"), eq("u"), eq(AuditLog.ACTION_RECOVERY), contains("承接前保存未提交修改 1 個檔案"));
+        // 停在開發流程的分流：保存的是一般成果，不當成部署檔移出。
+        verify(workspace, never()).resetPathsToBase(any(), any(), any());
+    }
+
+    @Test void deploymentFilesSavedFromTheServiceStageStayOutOfTheSuccessorPullRequest() throws Exception {
+        // #1008：承接 #1007 時保存的沙箱腳本被 commit 進分支，會隨開發成果進 PR。
+        exhaustAtTriage();
+        enableService(true);
+        var flow = store.flow(task.id()).orElseThrow();
+        flow.node = "service_triage"; flow.serviceCommittedPaths.add("ai-team-sandbox/start.sh");
+        store.saveFlow(task.id(), flow);
+        leaveUncommittedQaTests(List.of("ai-team-sandbox/diagnose.sh", "docs/sample.md"));
+        when(slack.post(any(), eq("c"), isNull(), anyString())).thenReturn("new-thread");
+        when(workspace.provisionFrom(any(), any(), anyString(), anyString(), anyString(), anyString())).thenReturn(tmp);
+        when(workspace.pathFor(argThat((String id) -> !"42".equals(id)))).thenReturn(tmp.resolve("child"));
+        when(workspace.resetPathsToBase(argThat((String id) -> !"42".equals(id)), anyList(), anyString())).thenReturn("child-head");
+
+        engine.resume(task, "承接成新任務 保存 fp-seen", "u", r -> {});
+
+        var parent = store.flow(task.id()).orElseThrow();
+        assertThat(parent.serviceCommittedPaths).containsExactly("ai-team-sandbox/start.sh", "ai-team-sandbox/diagnose.sh");
+        verify(workspace).resetPathsToBase(eq(parent.successor), eq(List.of("ai-team-sandbox/start.sh", "ai-team-sandbox/diagnose.sh")),
+                contains("承接時移出前任務部署檔"));
+        assertThat(store.flow(parent.successor).orElseThrow().context)
+                .contains("部署檔已移出本工作區", "git show head1:<路徑>").doesNotContain("docs/sample.md");
     }
 
     @Test void savingIsRefusedWhenTheChangesMovedAfterTheMessageOrTouchProtectedPaths() throws Exception {

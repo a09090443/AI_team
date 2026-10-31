@@ -1554,11 +1554,33 @@ public class FlowEngine {
                     + "。請管理者檢查這些修改是否應該保留。");
         String head = workspaces.commitPaths(task.id(), paths,
                 "保存任務 #" + task.id() + " 未提交的修改（" + user + " 於承接時核准）");
+        // #1008：停在部署階段時，可寫路徑內的修改是部署檔；標記後承接任務會移出，不進 PR。
+        Node stopped = flow.snapshot.definition().nodes().get(flow.node);
+        if (stopped != null && ServiceDelivery.serviceStage(flow, stopped))
+            rememberServiceCommit(flow, paths.stream().filter(path -> ServiceDelivery.deploymentPath(flow, path)).toList());
         audit.record(task.id(), user, AuditLog.ACTION_RECOVERY, "承接前保存未提交修改 " + paths.size() + " 個檔案："
                 + String.join(", ", paths) + "；commit=" + head + "；新任務將重新驗收與審查");
         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
                 "已把 " + paths.size() + " 個未提交的檔案存成 commit " + head.substring(0, Math.min(7, head.length()))
                         + "，接著建立承接任務。");
+    }
+    /**
+     * 原任務為部署提交的檔案（系統還原、服務建置設定、停在部署階段時保存的修改）不帶進承接任務的 PR。
+     * 內容仍在原任務 commit，交接紀錄寫明取回方式；移出失敗不擋承接，交審查判斷。
+     */
+    private void dropInheritedDeploymentFiles(String id, FlowRun parent, FlowRun child, String parentHead) {
+        if (parent.serviceCommittedPaths.isEmpty()) return;
+        List<String> paths = List.copyOf(parent.serviceCommittedPaths);
+        try {
+            if (workspaces.resetPathsToBase(id, paths, "任務 #" + id + " 承接時移出前任務部署檔") == null) return;
+            audit.record(id, AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "承接時移出前任務部署檔：" + String.join("、", paths));
+            child.context = FlowContext.append(child.context, "系統：原任務的部署檔已移出本工作區，不進 PR："
+                    + String.join("、", paths) + "。" + ServiceDelivery.retrieval(parentHead));
+        } catch (Exception e) {
+            audit.record(id, AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_ERROR, "承接時移出前任務部署檔失敗：" + e.getMessage());
+            child.context = FlowContext.append(child.context, "系統：原任務的部署檔這次沒能移出（" + String.join("、", paths)
+                    + "），審查時請確認它們不該進 PR。");
+        }
     }
     /**
      * 承接任務建立後立刻併入最新基準：原任務分支可能落後基準好幾個 commit，
@@ -1642,6 +1664,7 @@ public class FlowEngine {
             child.origin = workspaces.origin(id);
             child.branch = workspaces.currentBranch(id);
             syncSuccessorBase(id, child, parentHead);
+            dropInheritedDeploymentFiles(id, flow, child, parentHead);
         }
         store.saveFlow(id, child);
         store.save(successor);
@@ -2637,13 +2660,15 @@ public class FlowEngine {
         if (target == null || target.kind() != Kind.AGENT || target.gate() == Gate.SERVICE || !workspaces.exists(task.id())) return;
         List<String> dirty = workspaces.uncommittedPaths(task.id());
         if (!dirty.isEmpty()) workspaces.revertPaths(task.id(), dirty);
+        String before = workspaces.headSha(task.id());
         String head = workspaces.resetPathsToBase(task.id(), List.copyOf(flow.serviceCommittedPaths),
                 "任務 #" + task.id() + " 改走開發流程，移出部署檔");
         if (dirty.isEmpty() && head == null) { flow.serviceCommittedPaths.clear(); return; }
         audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "改走開發流程（" + next + "），移出部署檔："
                 + String.join("、", flow.serviceCommittedPaths) + (dirty.isEmpty() ? "" : "；捨棄未提交：" + String.join("、", dirty)));
         flow.context = FlowContext.append(flow.context, "系統：只部署階段的部署檔已移出工作區，不進 PR；"
-                + "開發完成後由部署階段從前次成功部署的保存還原。產品程式修改照一般開發流程進行。");
+                + "開發完成後由部署階段從前次成功部署的保存還原。產品程式修改照一般開發流程進行。"
+                + (head == null ? "" : ServiceDelivery.retrieval(before)));
         flow.serviceCommittedPaths.clear();
     }
 
