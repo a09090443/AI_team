@@ -161,6 +161,12 @@ public class FlowRun {
     /** 任務生命週期已使用的諮詢題數，不因續跑或格式重送退還。 */
     @JsonInclude(JsonInclude.Include.NON_DEFAULT)
     public int consultUsed;
+    /**
+     * 只部署的 service 由系統提交的部署檔路徑（還原前次部署檔、服務建置設定）。
+     * 分流改走開發流程時據此移出，部署檔不進 PR；不碰承接來的開發 commit。空值不寫入 JSON。
+     */
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public List<String> serviceCommittedPaths = new ArrayList<>();
     public FlowRun() {}
     public FlowRun(TeamDefinition.Snapshot snapshot) { this.snapshot = snapshot; this.node = snapshot.definition().entry(); }
 }

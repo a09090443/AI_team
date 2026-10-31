@@ -632,6 +632,33 @@ public class WorkspaceManager {
         }
     }
 
+    /** 把指定路徑改回建立工作區時的基準版本（基準沒有的就刪除）並提交；沒有差異時不建 commit，回傳 null。 */
+    public String resetPathsToBase(String taskId, List<String> paths, String message) throws WorkspaceException {
+        if (paths == null || paths.isEmpty()) return null;
+        Path ws = pathFor(taskId);
+        String baseSha = gitOutput(ws, "config", "--local", "--get", BASE_SHA_CONFIG_KEY);
+        if (baseSha.isBlank()) throw new WorkspaceException("工作區沒有記錄基準 commit，無法還原路徑");
+        List<String> list = new ArrayList<>(List.of("ls-tree", "-z", "--name-only", "-r", baseSha, "--"));
+        list.addAll(paths);
+        java.util.Set<String> inBase = java.util.Arrays.stream(gitOutput(ws, list.toArray(String[]::new)).split("\u0000"))
+                .filter(s -> !s.isEmpty()).collect(java.util.stream.Collectors.toSet());
+        List<String> remove = paths.stream().filter(p -> !inBase.contains(p)).toList();
+        if (!remove.isEmpty()) {
+            List<String> rm = new ArrayList<>(List.of("rm", "-r", "--quiet", "--ignore-unmatch", "--"));
+            rm.addAll(remove);
+            git(ws, rm.toArray(String[]::new));
+        }
+        if (!inBase.isEmpty()) {
+            List<String> checkout = new ArrayList<>(List.of("checkout", baseSha, "--"));
+            checkout.addAll(inBase);
+            git(ws, checkout.toArray(String[]::new));
+        }
+        // rm 與 checkout 都已寫入 index；不再 add，已刪除的路徑當 pathspec 會失敗。
+        if (gitOutput(ws, "diff", "--cached", "--name-only").isBlank()) return null;
+        git(ws, "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-m", message);
+        return headSha(taskId);
+    }
+
     public String commitPaths(String taskId, List<String> paths, String message) throws WorkspaceException {
         if (paths == null || paths.isEmpty()) throw new WorkspaceException("沒有要保存的檔案");
         Path ws = pathFor(taskId);

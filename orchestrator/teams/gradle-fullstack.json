@@ -1036,6 +1036,7 @@
       "blocked": "human",
       "routes": {
         "service": "service",
+        "implementation": "plan",
         "human": "human"
       },
       "requires": [

@@ -50,6 +50,8 @@ FlowEngine 的新任務承接、續跑、發布及角色請求均保留這個身
 配置了 `service` 節點與 `serviceTarget` 的團隊另提供 `intake → service → end`：由 Infrastructure 建置既有服務並檢查啟動結果，
 失敗經 `service_triage` 派回修正。服務路線不進 QA 計畫、開發獨立驗證或 PR 發布；目標主機未配置則等待補齊。
 開發流程另有 `review 受阻 → triage → deploy → review → approval`（2026-10-31）：deploy 同為 SERVICE，但不提交、保留獨立驗證收據。
+service_triage 可改派 `plan` 進開發流程（2026-10-31），FlowEngine.leaveStandaloneService 先移出系統提交的部署檔；
+intake 看得到工作區尚未交付的 commit（ConfiguredExecutor.pendingCommits），避免承接任務走不開 PR 的只部署路線。
 詳見 [服務建置](/docs/service-delivery)。
 
 ## 任務生命週期（典型配置）

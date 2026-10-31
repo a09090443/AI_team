@@ -96,6 +96,19 @@ class ServiceDeliveryTest {
         var unknown = report(); ((ObjectNode)unknown.path("checks").get(0)).putArray("acceptance_ids").add("A9");
         assertThat(ServiceDelivery.blockingReason(unknown, f)).contains("未知驗收項目");
     }
+    @Test void pendingCommitsAndProductDefectsLeadBackToDevelopment() throws Exception {
+        // #1007：承接任務帶著未交付的開發 commit，intake 選了只部署路線；部署查出產品 bug 後分流也回不了開發。
+        var f = flow(true);
+        var nodes = f.snapshot.definition().nodes();
+        assertThat(ServiceDelivery.standaloneRoute(f, nodes.get("intake"))).isEqualTo("service");
+        assertThat(ServiceDelivery.standaloneRoute(f, nodes.get("triage"))).isNull();
+        assertThat(ServiceDelivery.notice(f, nodes.get("intake"), java.util.List.of("9b3e4fe 新增範例", "eb97fef 受保護檔案")))
+                .contains("2 個尚未合併到基準的 commit", "9b3e4fe 新增範例", "不開 PR", "部署階段（deploy）");
+        assertThat(ServiceDelivery.notice(f, nodes.get("intake"))).doesNotContain("未交付的修改");
+        assertThat(nodes.get("service_triage").routes()).containsEntry("implementation", "plan");
+        assertThat(ServiceDelivery.notice(f, nodes.get("service_triage"))).contains("選 implementation 路線改走開發流程");
+        assertThat(ServiceDelivery.notice(f, nodes.get("intake"))).doesNotContain("選 implementation 路線改走開發流程");
+    }
     @Test void deploymentAfterDevelopmentMustReturnToReview() throws Exception {
         ObjectNode d = (ObjectNode) mapper.readTree(Files.readString(Path.of("teams/gradle-fullstack.json")));
         ((ObjectNode)d.path("nodes").path("deploy")).put("next", "approval");

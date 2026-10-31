@@ -740,7 +740,10 @@ public class FlowEngine {
                 } else if (block == null && node.gate() == Gate.SERVICE) {
                     // auditScope 已核對限寫路徑；不讓 runtime 自行提交或把未提交成果當成完成。
                     List<String> dirty = workspaces.uncommittedPaths(task.id());
-                    if (!dirty.isEmpty()) workspaces.commitPaths(task.id(), dirty, "任務 #" + task.id() + " 服務建置設定");
+                    if (!dirty.isEmpty()) {
+                        workspaces.commitPaths(task.id(), dirty, "任務 #" + task.id() + " 服務建置設定");
+                        rememberServiceCommit(flow, dirty);
+                    }
                     saveServiceArtifacts(task, flow, node, workspaces.changedPathsSinceBase(task.id()));
                 }
                 // 只有產出是「主張」的唯讀節點才需要這條規則；產物型節點的 commit 與測試結果
@@ -783,6 +786,7 @@ public class FlowEngine {
                     if (!route.isBlank()) {
                         if (node.routes() == null || !node.routes().containsKey(route)) throw new IllegalStateException("報告選擇未配置的 route，拒絕派工：" + route);
                         next = node.routes().get(route);
+                        leaveStandaloneService(task, flow, node, next);
                     } else next = node.next();
                 } else {
                     // 裁定後的前進額度只給一路通過的情況；任何受阻都照常停下。
@@ -2619,6 +2623,30 @@ public class FlowEngine {
         }
     }
 
+    private static void rememberServiceCommit(FlowRun flow, List<String> paths) {
+        for (String p : paths) if (!flow.serviceCommittedPaths.contains(p)) flow.serviceCommittedPaths.add(p);
+    }
+
+    /**
+     * 只部署的路線查出要改產品程式，分流改走開發流程：把系統為部署提交的檔案與未提交的部署修改移出工作區，
+     * 部署檔不進 PR；開發後部署階段會再從 service-context 還原。承接來的開發 commit 不動。
+     */
+    private void leaveStandaloneService(Task task, FlowRun flow, Node node, String next) throws Exception {
+        if (node.gate() != Gate.REPORT || ServiceDelivery.standaloneRoute(flow, node) == null) return;
+        Node target = flow.snapshot.definition().nodes().get(next);
+        if (target == null || target.kind() != Kind.AGENT || target.gate() == Gate.SERVICE || !workspaces.exists(task.id())) return;
+        List<String> dirty = workspaces.uncommittedPaths(task.id());
+        if (!dirty.isEmpty()) workspaces.revertPaths(task.id(), dirty);
+        String head = workspaces.resetPathsToBase(task.id(), List.copyOf(flow.serviceCommittedPaths),
+                "任務 #" + task.id() + " 改走開發流程，移出部署檔");
+        if (dirty.isEmpty() && head == null) { flow.serviceCommittedPaths.clear(); return; }
+        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "改走開發流程（" + next + "），移出部署檔："
+                + String.join("、", flow.serviceCommittedPaths) + (dirty.isEmpty() ? "" : "；捨棄未提交：" + String.join("、", dirty)));
+        flow.context = FlowContext.append(flow.context, "系統：只部署階段的部署檔已移出工作區，不進 PR；"
+                + "開發完成後由部署階段從前次成功部署的保存還原。產品程式修改照一般開發流程進行。");
+        flow.serviceCommittedPaths.clear();
+    }
+
     /** 前次成功部署的部署檔補進工作區並由系統提交，讓 restricted 目標的乾淨工作區要求照常成立。 */
     private void restoreServiceArtifacts(Task task, FlowRun flow) {
         if (props.homePath() == null) return;
@@ -2627,9 +2655,11 @@ public class FlowEngine {
                     workspaces.pathFor(task.id()));
             if (restored == null || restored.added().isEmpty()) return;
             // 開發後部署不提交：HEAD 要維持在已審查的版本，sandbox exec 本來就會帶上未提交檔。
-            if (!ServiceDelivery.postDevelopment(flow.snapshot.definition().nodes().get(flow.node)))
+            if (!ServiceDelivery.postDevelopment(flow.snapshot.definition().nodes().get(flow.node))) {
                 workspaces.commitPaths(task.id(), restored.added(),
                         "任務 #" + task.id() + " 還原前次部署檔（來源任務 #" + restored.sourceTask() + "）");
+                rememberServiceCommit(flow, restored.added());
+            }
             flow.context = FlowContext.append(flow.context, ServiceArtifacts.notice(restored));
             store.saveFlow(task.id(), flow);
             audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY,

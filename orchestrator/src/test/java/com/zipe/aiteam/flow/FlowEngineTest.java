@@ -1323,10 +1323,11 @@ class FlowEngineTest {
             if (mode.equals("draftRepair") && flow.node.equals("intake")
                     && calls.stream().filter(s -> s.startsWith("intake:")).count() == 1)
                 ((ObjectNode)report.path("requirements").get(0)).putArray("acceptance_items");
-            if (mode.equals("serviceRepair") && flow.node.equals("service")
+            if ((mode.equals("serviceRepair") || mode.equals("serviceToDevelopment")) && flow.node.equals("service")
                     && calls.stream().filter(s -> s.startsWith("service:")).count() == 1)
                 ((ObjectNode)report.path("checks").get(1)).put("exit_code", 1);
-            if (mode.startsWith("service") && flow.node.equals("service_triage")) ((ObjectNode)report).put("route", "service");
+            if (mode.startsWith("service") && flow.node.equals("service_triage"))
+                ((ObjectNode)report).put("route", mode.equals("serviceToDevelopment") ? "implementation" : "service");
             if (node.gate() == TeamDefinition.Gate.TEST_PLAN && mode.equals("inspect")) {
                 ((ObjectNode) report.path("scenarios").get(0)).putArray("operation_ids").add(OperationContract.INSPECT_CONTENT);
             } else if (node.gate() == TeamDefinition.Gate.TEST_PLAN
@@ -1835,6 +1836,34 @@ class FlowEngineTest {
         assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.COMPLETED);
         assertThat(calls).containsExactly("intake:coordinator", "service:builder", "service_triage:coordinator", "service:builder");
         verifyNoInteractions(verifier, publisher);
+    }
+    @Test void serviceFindingProductDefectRoutesToDevelopmentAndRemovesDeploymentFiles() throws Exception {
+        // #1007：只部署的路線查出產品程式問題，分流只能派 service 或真人，任務停下等人改程式。
+        enableService(true); serviceWrites("deploy/**"); mode = "serviceToDevelopment";
+        var f = store.flow(task.id()).orElseThrow();
+        ObjectNode d = mapper.valueToTree(f.snapshot.definition());
+        ((ObjectNode)d.path("nodes").path("service_triage").path("routes")).put("implementation", "plan");
+        f.snapshot = new TeamDefinition.Snapshot("dev-route", mapper.treeToValue(d, TeamDefinition.class), f.snapshot.repository(), f.snapshot.assets());
+        store.saveFlow(task.id(), f);
+        when(props.homePath()).thenReturn(tmp);
+        Path previous = tmp.resolve("previous"); Files.createDirectories(previous.resolve("deploy"));
+        Files.writeString(previous.resolve("deploy/start.sh"), "echo saved");
+        ServiceArtifacts.save(tmp, "test-host", "41", "abc", previous, List.of("deploy/start.sh"), List.of("deploy/**"));
+        Path ws = tmp.resolve("ws"); Files.createDirectories(ws);
+        when(workspace.pathFor("42")).thenReturn(ws);
+        when(workspace.resetPathsToBase(eq("42"), anyList(), anyString())).thenReturn("head-dev");
+
+        engine.run(task);
+
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        assertThat(calls).startsWith("intake:coordinator", "service:builder", "service_triage:coordinator", "plan:tester", "implementation:builder")
+                .doesNotContain("design:architect");
+        assertThat(calls.getLast()).startsWith("review:");
+        // 部署檔是系統為只部署路線提交的，改走開發時移出，不進 PR。
+        verify(workspace).resetPathsToBase(eq("42"), eq(List.of("deploy/start.sh")), contains("改走開發流程，移出部署檔"));
+        var after = store.flow(task.id()).orElseThrow();
+        assertThat(after.serviceCommittedPaths).isEmpty();
+        assertThat(after.context).contains("部署檔已移出工作區");
     }
     @Test void serviceWithoutTargetStopsBeforeExecution() throws Exception {
         enableService(false); mode = "serviceMissing"; engine.run(task);

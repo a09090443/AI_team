@@ -40,6 +40,8 @@ repo 的 `orchestrator/teams/` 只放共用 prompts、schemas、skills 與三份
 以及 `service-prepare`／`service-start`／`service-health`／`service-diagnose` 四個操作（後三者以 `client.py exec` 執行 agent 寫在 `ai-team-sandbox/` 的腳本）。
 2026-10-31 起另有開發後部署：`deploy` 節點（複製 service，`requires: [intake, verification]`、`next: review`、`blocked: triage`）、
 triage 的 `"service": "deploy"` 路線，四個操作的 `nodes` 為 `["service","deploy"]`；見 [開發後部署](service-delivery.md#開發後部署2026-10-31)。
+`service_triage` 另有 `"implementation": "plan"`：部署查出要改產品程式時改走開發流程，
+見 [部署查出產品問題](service-delivery.md#未交付的修改與部署查出產品問題2026-10-31)。
 實例 overlay 是完整的專案配置，要用這條路線須在 overlay 加上同樣的節點、路線與操作 `nodes`。
 範例的 `project.serviceTarget` 為 `null`，等於關閉：intake 會被告知不要選 service 路線。實例要啟用時，先依 [共用沙箱環境](sandbox-environment.md) 接好沙箱 VM，
 再在實例配置填 `serviceTarget`（`name` 為沙箱 target 名稱，`checks` 為 `{"prepare":"service-prepare","start":"service-start","health":"service-health"}`）。

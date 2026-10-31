@@ -300,6 +300,25 @@ class WorkspaceManagerTest {
     }
 
     @Test
+    void 指定路徑改回基準版本並提交_其他commit保留() throws Exception {
+        Path ws = manager.provision(task("1502"));
+        Files.writeString(ws.resolve("README.md"), "部署改到\n", StandardCharsets.UTF_8);
+        Files.createDirectories(ws.resolve("ai-team-sandbox"));
+        Files.writeString(ws.resolve("ai-team-sandbox/start.sh"), "echo start\n");
+        manager.commitPaths("1502", List.of("README.md", "ai-team-sandbox/start.sh"), "服務建置設定");
+        Files.writeString(ws.resolve("Product.java"), "class Product {}\n");
+        manager.commitPaths("1502", List.of("Product.java"), "開發成果");
+
+        assertThat(manager.resetPathsToBase("1502", List.of("README.md", "ai-team-sandbox/start.sh"), "移出部署檔")).isNotNull();
+
+        assertThat(Files.readString(ws.resolve("README.md"), StandardCharsets.UTF_8).replace("\r\n", "\n")).isEqualTo("初始內容\n");
+        assertThat(ws.resolve("ai-team-sandbox/start.sh")).doesNotExist();
+        assertThat(manager.changedPathsSinceBase("1502")).containsExactly("Product.java");
+        assertThat(manager.clean("1502")).isTrue();
+        assertThat(manager.resetPathsToBase("1502", List.of("README.md"), "沒有差異")).isNull();
+    }
+
+    @Test
     void 主repo快轉到origin基準_有修改_在其他分支或有本機commit時不動() throws Exception {
         String initial = out(repo, "git", "rev-parse", "HEAD");
         Path clean = tmp.resolve("clean"), dirty = tmp.resolve("dirty"), feature = tmp.resolve("feature"), ahead = tmp.resolve("ahead");

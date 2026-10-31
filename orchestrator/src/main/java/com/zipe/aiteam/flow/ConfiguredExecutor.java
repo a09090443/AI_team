@@ -130,7 +130,7 @@ public class ConfiguredExecutor {
         if (flow.dialogue) context.append(parentWorkspaceState(flow));
         if (!flow.dialogue) context.append("\n本階段可使用／規畫的操作契約：").append(availableOperations(flow, node));
         if (!flow.dialogue) context.append(inspectionNotice(flow, node));
-        if (!flow.dialogue) context.append(ServiceDelivery.notice(flow, node));
+        if (!flow.dialogue) context.append(ServiceDelivery.notice(flow, node, pendingCommits(task, flow, node)));
         if (!flow.dialogue) {
             context.append(OperationJobs.instruction());
             String operationHead = flow.workspaceReady ? workspaces.headSha(task.id()) : null;
@@ -540,6 +540,15 @@ public class ConfiguredExecutor {
                     ? "測試計畫可在 operation_ids 引用 " + id + "，steps 寫明要讀的檔案、位置與判定方式。"
                     : "驗收時 command 寫「" + id + "：<檔案>:<行或範圍>」，evidence 引用實際讀到的內容；"
                       + "必須讀工作區中已提交的版本，不得依自己或其他角色的修改紀錄推論。");
+    }
+    /** 能選只部署路線的節點才查：工作區相對基準尚未交付的 commit。查不到就不提示，不擋派工。 */
+    List<String> pendingCommits(Task task, FlowRun flow, Node node) {
+        if (ServiceDelivery.standaloneRoute(flow, node) == null || !flow.workspaceReady || !workspaces.exists(task.id())) return List.of();
+        try {
+            return workspaces.commitsSinceBase(task.id());
+        } catch (Exception e) {
+            return List.of();
+        }
     }
     /** 驗收對照用：系統查得的本次已提交變更，不是 agent 自陳。查不到時明說，不讓驗收者自行推斷。 */
     String changedFiles(Task task, FlowRun flow) {

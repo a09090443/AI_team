@@ -147,6 +147,19 @@ class ConfiguredExecutorTest {
         assertThat(executor.changedFiles(task, flow)).contains("查不到").doesNotContain("SKILL.md");
     }
 
+    @Test void nodesThatCanChooseDeploymentOnlySeeUndeliveredCommits() throws Exception {
+        // #1007：承接任務的 intake 不知道工作區帶著前任務的 commit，選了不開 PR 的只部署路線。
+        var task = new Task("42", "c", "t", "u", "部署範例 API");
+        var nodes = flow.snapshot.definition().nodes();
+        flow.workspaceReady = true;
+        when(workspace.exists("42")).thenReturn(true);
+        when(workspace.commitsSinceBase("42")).thenReturn(List.of("9b3e4fe 新增範例"));
+        assertThat(executor.pendingCommits(task, flow, nodes.get("intake"))).containsExactly("9b3e4fe 新增範例");
+        assertThat(executor.pendingCommits(task, flow, nodes.get("implementation"))).isEmpty();
+        when(workspace.commitsSinceBase("42")).thenThrow(new WorkspaceManager.WorkspaceException("no base"));
+        assertThat(executor.pendingCommits(task, flow, nodes.get("intake"))).isEmpty();
+    }
+
     @Test void intakeIsToldThatAllowedProtectedPathsAreDelegatedNotStopped() throws Exception {
         // #1014：需求整理一看到 .claude/ 就停下來問人；配置了改派時要說明那些路徑做得到。
         var definition = TeamCatalog.load(Path.of("teams/gradle-fullstack.json"), key -> repo.toString()).definition();

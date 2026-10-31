@@ -8,7 +8,7 @@
 ```text
 需求整理 → service（建置、啟動、可用性檢查）→ 完成
               ↓ 受阻
-          service_triage → service 修正並重驗／真人補必要資訊
+          service_triage → service 修正並重驗／plan 改走開發（需改產品程式）／真人補必要資訊
 ```
 
 這條路線適用部署既有程式、SIT 與測試環境；不先撰寫 QA 測試計畫，不無條件跑完整前後端回歸。
@@ -138,6 +138,27 @@ operations 與角色工具白名單裡的 client 路徑是各實例的部署設�
 
 載入配置時，SERVICE 節點的 `next` 只能是 `end` 或一個 REVIEW 節點，部署後不能跳過審查直接進 PR 核准。
 triage 的派工說明會提示：開發與驗證已完成、只剩部署時選 service 路線；派到實作階段時，部署工具會回 `TASK_NOT_ACTIVE`。
+
+### 未交付的修改與部署查出產品問題（2026-10-31）
+
+只部署的 service 路線結束後不開 PR。下面兩種情況會讓開發成果無法交付，系統各補一項處理：
+
+- **intake 看到工作區已有的 commit**：能選只部署路線的節點（例如 intake），如果任務工作區相對基準已有 commit
+  （常見於承接任務，帶著前任務的開發成果），派工說明會附上 commit 數、前五筆主旨，並說明「只部署路線結束後不開 PR，
+  這些修改不會交付；要交付時走開發流程，部署由開發後部署階段處理」（`ConfiguredExecutor.pendingCommits`、
+  `ServiceDelivery.notice`）。只提供事實，路線仍由 agent 判斷；全新任務沒有 commit，不附加。
+- **service_triage 可改派開發**：三份內附範例的 `service_triage.routes` 有 `"implementation": "plan"`。部署查出必須改產品程式
+  （例如服務啟動後讀不到打包在 JAR 內的資源）時，分流選 implementation，從 plan 進開發流程（未執行的 design 照 light 路線略過），
+  之後 `verification → review`；審查發現還沒部署時由 triage 交 `deploy`，再回審查、進 PR 核准。
+
+改派開發時，系統會把只部署階段留下的部署檔移出工作區，部署檔不進 PR（`FlowEngine.leaveStandaloneService`）：
+
+1. 工作區的未提交修改以 `WorkspaceManager.revertPaths` 捨棄；
+2. 系統為只部署路線提交的路徑（「還原前次部署檔」「服務建置設定」，記在 `FlowRun.serviceCommittedPaths`）
+   以 `WorkspaceManager.resetPathsToBase` 改回基準版本並提交「改走開發流程，移出部署檔」。
+
+只處理系統自己提交的路徑，承接來的開發 commit 不受影響。部署階段會從 service-context 的前次成功部署保存還原部署檔。
+限制：沒有部署成功的那一輪，agent 改過的部署腳本不會保存，避免覆蓋前次可用的版本。
 起因：開發流程原本沒有能進 SERVICE 的路線，「做一個 API 並部署」只能在審查後停下等真人改開部署任務。
 
 ### 部署檔保存與還原

@@ -224,6 +224,7 @@ v2 配置式流程的整份執行快照，對應 `com.zipe.aiteam.flow.FlowRun`�
 | `consultations` | 已完成的問答，型別是 `Consultation.Answer`，以 node、visit、round、index 定位 |
 | `pendingConsult` | 還沒答完的一輪，型別是 `Consultation.Pending` |
 | `consultUsed` | 整個任務已用掉的題數 |
+| `serviceCommittedPaths` | 只部署的 service 由系統提交的部署檔路徑（2026-10-31）；service_triage 改派開發時據此移出，空值不寫入 |
 | `snapshot.definition.collaboration`、`nodes.*.consultRoles` | 對應的配置欄位 |
 
 `snapshot.definition.sharedInstructions`（2026-10-23）與上述欄位一樣在 null 時不寫入；但四份內附配置都有設定，

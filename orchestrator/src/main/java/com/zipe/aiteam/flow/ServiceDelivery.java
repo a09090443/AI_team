@@ -83,6 +83,11 @@ public final class ServiceDelivery {
     }
 
     static String notice(FlowRun flow, Node node) {
+        return notice(flow, node, List.of());
+    }
+
+    /** pendingCommits：工作區相對基準尚未交付的 commit（承接任務帶著前任務的成果），只在節點能選只部署路線時提示。 */
+    static String notice(FlowRun flow, Node node, List<String> pendingCommits) {
         if (flow.snapshot.definition().nodes().values().stream().noneMatch(n -> n.gate() == Gate.SERVICE)) return "";
         // 範本內附 service 節點但預設不開；未設定目標時先講清楚，任務才不會走進 service 再被擋停。
         if (flow.snapshot.definition().project().serviceTarget() == null && node.gate() != Gate.SERVICE)
@@ -95,6 +100,19 @@ public final class ServiceDelivery {
                 + "\n管理者配置的服務目標與檢查操作：" + flow.snapshot.definition().project().serviceTarget();
         if (node.gate() != Gate.SERVICE && routesToPostDevelopment(flow, node))
             text += "\n開發、驗證已完成，但使用者要求的部署還沒執行時，選 service 路線交部署階段；部署工具只在該階段可用，派到實作階段會被拒。";
+        String standalone = node.gate() == Gate.SERVICE ? null : standaloneRoute(flow, node);
+        if (standalone != null && pendingCommits != null && !pendingCommits.isEmpty()) {
+            // #1007：intake 只看到「開發已做完」就選只部署路線，承接來的 commit 因此不會進 PR。
+            text += "\n【未交付的修改】任務工作區已有 " + pendingCommits.size() + " 個尚未合併到基準的 commit："
+                    + String.join("；", pendingCommits.subList(0, Math.min(5, pendingCommits.size())))
+                    + (pendingCommits.size() > 5 ? "…" : "")
+                    + "。只部署路線（" + standalone + "）結束後不開 PR，這些修改不會交付。";
+            String deploy = postDevelopmentNode(flow);
+            if (deploy != null) text += "需求要交付這些修改時走開發流程，部署由開發流程後段的部署階段（" + deploy + "）處理。";
+        }
+        if (standalone != null && node.gate() == Gate.REPORT && node.routes().containsKey("implementation"))
+            text += "\n部署查出必須修改產品程式才能解決時，選 implementation 路線改走開發流程；修好並通過驗證、審查後，"
+                    + "由部署階段重新部署並開 PR。不要交真人代改程式。";
         if (node.gate() == Gate.SERVICE) text += "\n依核准操作建置並啟動，再逐項執行檢查。失敗先在本階段修正後重驗；"
                 + "無法修正則 BLOCKED 交分流。checks 只填本次實際操作的結果與 log／呼叫 ID，不能引用舊任務成功報告。"
                 + "只產出設定檔不能填 RUNNING；不得修改產品程式、建立未核准外部資源、刪除既有資料或輸出憑證。"
@@ -110,6 +128,20 @@ public final class ServiceDelivery {
     /** 開發後部署：SERVICE 節點成功後回審查、再進 PR 核准；只部署的 service 路線 next=end。 */
     static boolean postDevelopment(Node node) {
         return node.gate() == Gate.SERVICE && !"end".equals(node.next());
+    }
+
+    /** 節點路線中只部署（next=end）的 SERVICE 節點；沒有則 null。 */
+    static String standaloneRoute(FlowRun flow, Node node) {
+        var nodes = flow.snapshot.definition().nodes();
+        if (node.routes() == null) return null;
+        return node.routes().values().stream()
+                .filter(id -> nodes.containsKey(id) && nodes.get(id).gate() == Gate.SERVICE && !postDevelopment(nodes.get(id)))
+                .findFirst().orElse(null);
+    }
+
+    private static String postDevelopmentNode(FlowRun flow) {
+        return flow.snapshot.definition().nodes().entrySet().stream()
+                .filter(e -> postDevelopment(e.getValue())).map(Map.Entry::getKey).findFirst().orElse(null);
     }
 
     private static boolean routesToPostDevelopment(FlowRun flow, Node node) {
