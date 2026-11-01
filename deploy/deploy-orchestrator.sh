@@ -107,6 +107,9 @@ for attempt in {1..60}; do
   if grep -q 'Started AiTeamApplication' "$root/orchestrator.log" \
       && grep -q '沙箱工具鏈自檢通過' "$root/orchestrator.log"; then
     sleep 15   # 各角色的 Socket Mode 連線在啟動後陸續建立
+    # 啟動清理可能要刪 GB 級工作區；刪到一半就拍快照會被判成「工作區被改動」而誤回復。
+    # 舊版 JAR 不印這行，等滿 300 秒照常比對（舊版只刪小工作區）。
+    for wait in {1..300}; do grep -q '啟動清理完成' "$root/orchestrator.log" && break; sleep 1; done
     snapshot > "$backup/tasks.after"
     workspace_snapshot > "$backup/workspaces.after"
     cmp "$backup/tasks.before" "$backup/tasks.after"

@@ -230,6 +230,7 @@ public class TaskOrchestrator {
         recoverTasks();
         purgeWorkspaces();
         purgeVerificationScenes();
+        log.info("啟動清理完成"); // deploy-orchestrator.sh 等這行才比對工作區
         scheduleBaselineOnStartup();
     }
 
