@@ -71,6 +71,18 @@ class IssueTrackerTest {
         assertThat(IssueTracker.formatCorrection(flow, IssueTracker.DESCRIPTION_CHANGED + "UNKNOWN")).isNull();
         assertThat(IssueTracker.formatCorrection(flow, null)).isNull();
     }
+    /** #1011：下游替既有問題多掛基準沒有的需求 ID，請同一個 agent 照原對應重送；需求階段仍可改對應。 */
+    @Test void changedRequirementMappingGetsCorrectionWithStoredIds() {
+        discover(1);
+        ObjectNode remapped = report(); remapped.withArray("issue_updates").add(issue("I1", "REPAIR"));
+        ((ArrayNode) remapped.withArray("issue_updates").get(0).get("requirement_ids")).add("REQ-FIX-1");
+        String reason = IssueTracker.ingest(flow, node(Gate.REPORT), remapped, "42");
+        assertThat(reason).isEqualTo(IssueTracker.MAPPING_CHANGED + "I1");
+        assertThat(flow.issueInventory.get("I1").path("requirement_ids").toString()).isEqualTo("[\"R1\"]");
+        assertThat(IssueTracker.formatCorrection(flow, reason)).contains("不計重跑次數").contains("維持為：[\"R1\"]").contains("不要新增需求 ID");
+        assertThat(IssueTracker.formatCorrection(flow, IssueTracker.MAPPING_CHANGED + "UNKNOWN")).isNull();
+        assertThat(IssueTracker.ingest(flow, node(Gate.REQUIREMENTS), remapped, "42")).isNull();
+    }
     @Test void noSilentDeletionOrScopeDowngradeOrIdReuse() {
         discover(2);
         assertThat(IssueTracker.ingest(flow,node(Gate.REQUIREMENTS),report(),"42")).isNull();

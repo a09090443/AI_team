@@ -88,13 +88,16 @@ public final class IssueTracker {
     static final String DESCRIPTION_CHANGED = "既有問題不可換 ID 語意或覆寫描述：";
     static final String STALE_REVISION = "問題完整性：回報使用過期問題清單版本";
     static final String MISSING_FIELDS = "問題完整性：缺少 issue_updates／issue_checks／issue_revision";
+    static final String MAPPING_CHANGED = "既有問題需求對應只能由需求階段確認：";
     /** systemRetries 的鍵尾碼：每個節點連續只自動修正一次格式。 */
     static final String FORMAT_RETRY = "#issue-format";
 
     /**
-     * 只是記帳格式寫錯（改寫既有描述、清單版本過期、缺欄位）時，回給同一個 agent 的修正說明；
-     * 原則類錯誤（降級未解問題、未經真人改待決項、改需求對應）回 null，照原本停下。
+     * 只是記帳格式寫錯（改寫既有描述、清單版本過期、缺欄位、改了既有需求對應）時，回給同一個 agent 的修正說明；
+     * 原則類錯誤（降級未解問題、未經真人改待決項）回 null，照原本停下。
      * #1040／#1042 都是 triage 把負責人決定寫進既有 description 而整份被退回、直接停給人。
+     * 需求對應：重送時必須還原原本的對應，不會因此取得改基準的權限；#1011 分流判斷要改走開發修產品，
+     * 卻替既有問題多掛一個基準沒有的需求 ID，整份被退回停給人。
      */
     static String formatCorrection(FlowRun flow, String reason) {
         if (reason == null) return null;
@@ -106,6 +109,15 @@ public final class IssueTracker {
             if (stored == null) return null;
             return "【系統格式修正，不計重跑次數】上一份回報改寫了既有問題 " + id + " 的 description，整份未被採用。"
                     + "請重送完整回報，" + id + " 的 description 必須逐字為：\n" + stored.path("description").asText() + rule;
+        }
+        if (reason.startsWith(MAPPING_CHANGED)) {
+            String id = reason.substring(MAPPING_CHANGED.length()).strip();
+            JsonNode stored = flow.issueInventory.get(id);
+            if (stored == null) return null;
+            return "【系統格式修正，不計重跑次數】上一份回報更動了既有問題 " + id + " 的 requirement_ids，整份未被採用。"
+                    + "既有問題的需求對應只有需求階段能改；請重送完整回報，" + id + " 的 requirement_ids 必須維持為：" + stored.path("requirement_ids")
+                    + "。為了達成這些既有需求而要做的修正（包括改產品程式）就對應既有需求，不要新增需求 ID；"
+                    + "若判斷真的超出既有需求範圍，寫在 reason，由後續流程依規則處理。" + rule;
         }
         if (reason.equals(STALE_REVISION) || reason.equals(MISSING_FIELDS))
             return "【系統格式修正，不計重跑次數】上一份回報的問題追蹤欄位不合格（" + reason + "），整份未被採用。"
@@ -145,7 +157,7 @@ public final class IssueTracker {
                 return "待決問題必須先收到真人回覆，再由需求階段確認：" + id;
             if (previous != null && node.gate() != Gate.REQUIREMENTS
                     && !previous.path("requirement_ids").equals(item.path("requirement_ids")))
-                return "既有問題需求對應只能由需求階段確認：" + id;
+                return MAPPING_CHANGED + id;
             ObjectNode stored = item.deepCopy();
             stored.put("source_task", previous == null ? taskId : previous.path("source_task").asText());
             stored.put("source_node", previous == null ? flow.node : previous.path("source_node").asText());
