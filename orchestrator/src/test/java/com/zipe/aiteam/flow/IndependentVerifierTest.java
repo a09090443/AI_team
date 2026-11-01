@@ -179,6 +179,23 @@ class IndependentVerifierTest {
         assertThat(flow.independentEvidence).isNull();
         assertThat(calls).hasSize(3);
     }
+    List<Path> scenes() throws Exception {
+        try (var dirs = Files.list(tmp.resolve("app/verification-runs/42"))) {
+            return dirs.filter(d -> d.getFileName().toString().startsWith("run-")).toList();
+        }
+    }
+    @Test void successfulRunKeepsLogsButNotTheCloneAndAFailureSceneLastsOnlyUntilTheNextRun() throws Exception {
+        fail = true;
+        assertThatThrownBy(this::verifyNow).hasMessageContaining("exit=1");
+        Path failed = scenes().getFirst();
+        assertThat(failed.resolve("work/repo")).isDirectory(); // 失敗現場留給人查
+
+        fail = false;
+        verifyNow();
+        assertThat(failed.resolve("work")).doesNotExist();
+        assertThat(scenes()).hasSize(2).allSatisfy(run -> assertThat(run.resolve("work")).doesNotExist());
+        assertThat(verifier.blockingReason(flow, head)).isNull(); // 收據只依 log 雜湊
+    }
     @Test void changedLogIsRejectedEvenIfAgentClaimsPass() throws Exception {
         verifyNow(); Files.writeString(Path.of(flow.independentEvidence.commands().getFirst().log()), "forged");
         assertThat(verifier.blockingReason(flow, head)).contains("雜湊不符");

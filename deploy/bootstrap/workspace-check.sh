@@ -2,7 +2,8 @@
 # 部署前後的任務工作區比對（deploy-orchestrator.sh 使用）。
 #   workspace-check.sh snapshot <實例 home>                 每個工作區一行：task-<id> <內容雜湊>
 #   workspace-check.sh compare <before> <after> <ai-team.db> 比對兩份快照
-# 規則：部署後仍在的工作區必須完全相同；消失的只接受已結束（COMPLETED／ABORTED）任務——新版啟動清理會刪它們；
+# 規則：部署後仍在的工作區必須完全相同；消失的只接受已結束（COMPLETED／ABORTED）任務，
+# 以及已被承接且承接鏈末端已進入終態的原任務——新版啟動清理會刪它們（TaskOrchestrator.retiredChainFinished）；
 # 其他狀態（等待中、PR_CREATED、FAILED）的工作區消失，或部署期間出現新工作區，都判失敗。
 # 保留規則的細節（例如負責人結案保留）不在這裡重寫：被保留的工作區會落在「仍在」那類，照樣要求完全相同。
 set -euo pipefail
@@ -20,6 +21,22 @@ snapshot() {
   done
 }
 
+# 原任務已被承接（flow_run.successor），且鏈末端任務已終止；沒有 flow_run 表或查不到時視為否。
+retired_finished() {
+  local db=$1 id=$2 next state hops=0
+  while [ "$hops" -lt 50 ]; do
+    next=$(sqlite3 -readonly "$db" "select json_extract(data,'$.successor') from flow_run where task_id='$id';" 2>/dev/null || true)
+    if [ -z "$next" ]; then
+      [ "$hops" -gt 0 ] || return 1
+      state=$(sqlite3 -readonly "$db" "select state from task where id='$id';")
+      case $state in COMPLETED|PR_CREATED|ABORTED|FAILED) return 0 ;; *) return 1 ;; esac
+    fi
+    [[ $next =~ ^[0-9]+$ ]] || return 1
+    id=$next; hops=$((hops + 1))
+  done
+  return 1
+}
+
 compare() {
   local before=$1 after=$2 db=$3 name hash now id state failed=0
   while read -r name hash; do
@@ -33,7 +50,8 @@ compare() {
     state=$(sqlite3 -readonly "$db" "select state from task where id='$id';")
     case $state in
       COMPLETED|ABORTED) echo "啟動清理刪除已結束任務的工作區：$name（$state）" ;;
-      *) echo "工作區在部署期間消失：$name（狀態 ${state:-不存在}）"; failed=1 ;;
+      *) if retired_finished "$db" "$id"; then echo "啟動清理刪除承接鏈已結束的原任務工作區：$name（$state）"; continue; fi
+         echo "工作區在部署期間消失：$name（狀態 ${state:-不存在}）"; failed=1 ;;
     esac
   done < "$before"
   while read -r name hash; do

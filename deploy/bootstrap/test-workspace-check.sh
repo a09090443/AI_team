@@ -17,8 +17,10 @@ workspace() {
 fresh() {
   rm -rf "$tmp/home"; mkdir -p "$tmp/home/workspaces"
   sqlite3 "$tmp/home/ai-team.db" "create table task(id text, state text);
-    insert into task values ('1','COMPLETED'),('2','AWAIT_HUMAN'),('3','PR_CREATED'),('4','ABORTED');"
-  for id in 1 2 3 4; do workspace "$id"; done
+    insert into task values ('1','COMPLETED'),('2','AWAIT_HUMAN'),('3','PR_CREATED'),('4','ABORTED'),('6','AWAIT_HUMAN'),('7','AWAIT_HUMAN');
+    create table flow_run(task_id text primary key, data text);
+    insert into flow_run values ('6','{\"successor\":\"7\"}'),('7','{}');"
+  for id in 1 2 3 4 6; do workspace "$id"; done
   bash "$script" snapshot "$tmp/home" > "$tmp/before"
 }
 check() { bash "$script" snapshot "$tmp/home" > "$tmp/after"; bash "$script" compare "$tmp/before" "$tmp/after" "$tmp/home/ai-team.db" >/dev/null; }
@@ -41,6 +43,17 @@ fresh
 rm -rf "$tmp/home/workspaces/task-3"
 check && fail 'PR_CREATED 工作區消失應判失敗'
 pass 'PR_CREATED 工作區消失判失敗'
+
+fresh
+rm -rf "$tmp/home/workspaces/task-6"
+check && fail '承接鏈仍在進行時原任務工作區消失應判失敗'
+pass '承接鏈仍在進行時原任務工作區消失判失敗'
+
+fresh
+sqlite3 "$tmp/home/ai-team.db" "update task set state='PR_CREATED' where id='7';"
+rm -rf "$tmp/home/workspaces/task-6"
+check || fail '承接鏈末端已終止時刪除原任務工作區應通過'
+pass '承接鏈末端已終止時刪除原任務工作區通過'
 
 fresh
 echo changed >> "$tmp/home/workspaces/task-2/file"

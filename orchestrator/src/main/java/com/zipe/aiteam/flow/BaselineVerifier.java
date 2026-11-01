@@ -157,6 +157,8 @@ public class BaselineVerifier {
         sandbox.requireReadyForCodeChanges();
         Path root = props.homePath().resolve("verification-runs").resolve(ID).toAbsolutePath().normalize();
         Files.createDirectories(root);
+        // 基準結果只作警告，log 已足夠；舊輪與本輪的 clone 都不保留（VerificationScenes）。
+        VerificationScenes.discardAllBut(root, null);
         Path run = Files.createTempDirectory(root, "baseline-");
         Path writable = Files.createDirectory(run.resolve("work"));
         Path home = Files.createDirectory(writable.resolve("home"));
@@ -173,6 +175,7 @@ public class BaselineVerifier {
             verifier.execute(ID, List.of("git", "-c", "core.hooksPath=/dev/null", "checkout", "--quiet", "--detach", base.sha()),
                     repo, home, setup, run.resolve("checkout.log"), deadline);
         } catch (Exception e) {
+            VerificationScenes.discard(run);
             return save(new Report(revision, base.branch(), base.sha(), started, Instant.now().toString(), List.of(),
                     "無法準備基準分支的全新 checkout：" + e.getMessage(), key));
         }
@@ -210,6 +213,7 @@ public class BaselineVerifier {
                 results.add(new Result(argv, Outcome.ERROR, null, log.toString(), e.getMessage()));
             }
         }
+        VerificationScenes.discard(run);
         return save(new Report(revision, base.branch(), base.sha(), started, Instant.now().toString(), List.copyOf(results), null, key));
     }
 

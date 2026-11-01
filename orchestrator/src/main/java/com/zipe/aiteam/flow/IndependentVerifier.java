@@ -163,6 +163,9 @@ public class IndependentVerifier {
         }
         Path root = props.homePath().resolve("verification-runs").resolve(task.id()).toAbsolutePath().normalize();
         Files.createDirectories(root);
+        // 只留最新一次失敗現場：開新一輪前先回收舊輪的 clone，再確認空間足夠。
+        VerificationScenes.discardAllBut(root, null);
+        VerificationScenes.requireSpace(root);
         Path run = Files.createTempDirectory(root, "run-");
         Path writable = Files.createDirectory(run.resolve("work"));
         Path home = Files.createDirectory(writable.resolve("home"));
@@ -199,6 +202,8 @@ public class IndependentVerifier {
             remember(flow, new VerificationPlan.HistoryEntry(decision.argv(), decision.fingerprint(), flow.snapshot.revision(), head, result.log(), result.sha256()));
         }
         if (!head.equals(workspaces.headSha(task.id())) || !workspaces.clean(task.id())) throw new IllegalStateException("驗證期間來源工作區變更，收據作廢");
+        // 收據只依 log 雜湊核對；成功後 clone 與建置產物沒有用途，失敗時才保留給人查。
+        VerificationScenes.discard(run);
         return new Receipt(head, flow.baselineRevision, flow.snapshot.revision(), started.toString(), Instant.now().toString(),
                 List.copyOf(results), null, fileEvidence, List.copyOf(decisions), changedFiles, task.id());
     }

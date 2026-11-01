@@ -49,4 +49,43 @@ class WorkspacePurgeTest {
             verify(workspace, never()).discard("1022");
         } finally { app.shutdown(); }
     }
+
+    /** 已被承接的原任務停在 AWAIT_HUMAN：承接鏈還在跑時保留現場，鏈末端進入終態後才刪除。 */
+    @Test void retiredTaskWorkspaceIsDiscardedOnlyAfterItsSuccessorChainFinishes() throws Exception {
+        var ds = new org.sqlite.SQLiteDataSource();
+        ds.setUrl("jdbc:sqlite:" + tmp.resolve("chain.db"));
+        new ResourceDatabasePopulator(new ClassPathResource("schema.sql")).execute(ds);
+        var jdbc = new JdbcTemplate(ds);
+        var store = new TaskStore(jdbc);
+        java.nio.file.Files.createDirectories(tmp.resolve("repo/.git"));
+        var snapshot = com.zipe.aiteam.flow.TeamCatalog.load(Path.of("teams/node-web.json"), key -> tmp.resolve("repo").toString());
+        String[][] chain = {{"1031", "1032"}, {"1032", "1033"}, {"1033", null}};
+        for (String[] link : chain) {
+            Task task = new Task(link[0], "c", "t-" + link[0], "u", "req");
+            task.state(Task.State.AWAIT_HUMAN);
+            store.save(task);
+            var flow = new com.zipe.aiteam.flow.FlowRun(snapshot);
+            flow.successor = link[1];
+            store.saveFlow(link[0], flow);
+        }
+        var props = mock(AiTeamProperties.class);
+        when(props.maxConcurrency()).thenReturn(1);
+        when(props.logsPath()).thenReturn(tmp);
+        var workspace = mock(WorkspaceManager.class);
+        when(workspace.listTaskIds()).thenReturn(List.of("1031", "1032", "1033"));
+        var app = new TaskOrchestrator(props, mock(StageRunner.class), mock(SlackNotifier.class), store, new AuditLog(jdbc),
+                mock(ExecutionSandbox.class), workspace, mock(PullRequestPublisher.class));
+        try {
+            ReflectionTestUtils.invokeMethod(app, "purgeWorkspaces");
+            verify(workspace, never()).discard(anyString());
+
+            Task end = store.find("1033").orElseThrow();
+            end.state(Task.State.PR_CREATED);
+            store.save(end);
+            ReflectionTestUtils.invokeMethod(app, "purgeWorkspaces");
+            verify(workspace).discard("1031");
+            verify(workspace).discard("1032");
+            verify(workspace, never()).discard("1033");
+        } finally { app.shutdown(); }
+    }
 }

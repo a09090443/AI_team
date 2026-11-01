@@ -229,6 +229,7 @@ public class TaskOrchestrator {
     public void recoverOnStartup() {
         recoverTasks();
         purgeWorkspaces();
+        purgeVerificationScenes();
         scheduleBaselineOnStartup();
     }
 
@@ -370,7 +371,8 @@ public class TaskOrchestrator {
                 kept++;
                 continue;
             }
-            boolean keep = t.map(x -> x.state().isWaiting()
+            // 已被承接的原任務不再接受操作，永遠停在等待；承接鏈走到終態後現場才沒有用途（commit 已 fetch 進承接任務）。
+            boolean keep = !retiredChainFinished(id) && t.map(x -> x.state().isWaiting()
                                    || x.state() == Task.State.PR_CREATED
                                    || x.state() == Task.State.FAILED
                                    || (x.state() == Task.State.ABORTED
@@ -391,6 +393,35 @@ public class TaskOrchestrator {
         }
         log.info("啟動清理：工作區共 {} 個，刪除 {} 個，保留 {} 個（等待中或失敗待查）",
                 ids.size(), removed, kept);
+    }
+
+    /** 原任務已被承接，且承接鏈最末端的任務已進入終態。查不到或鏈過長時寧可保留。 */
+    private boolean retiredChainFinished(String id) {
+        try {
+            String current = id;
+            for (int hops = 0; hops < 50; hops++) {
+                String next = store.flow(current).map(f -> f.successor).orElse(null);
+                if (next == null) return !current.equals(id) && store.find(current).map(x -> x.state().isTerminal()).orElse(false);
+                current = next;
+            }
+        } catch (Exception e) {
+            log.warn("查詢任務 {} 的承接鏈失敗，保留現場：{}", id, e.getMessage());
+        }
+        return false;
+    }
+
+    /** 等待中或失敗待查、且未被承接的任務才可能續跑或要人查，保留最新一份驗證現場；其餘只留 log（VerificationScenes）。 */
+    private boolean keepsVerificationScene(String id) {
+        Optional<Task> t = store.find(id);
+        if (t.isEmpty() || !(t.get().state().isWaiting() || t.get().state() == Task.State.FAILED)) return false;
+        try { return store.flow(id).map(f -> f.successor == null).orElse(true); }
+        catch (Exception e) { return true; }
+    }
+
+    private void purgeVerificationScenes() {
+        if (props.homePath() == null) return;
+        int removed = com.zipe.aiteam.flow.VerificationScenes.sweep(props.homePath().resolve("verification-runs"), this::keepsVerificationScene);
+        log.info("啟動清理：驗證現場刪除 {} 份 clone（log 與收據保留）", removed);
     }
 
     // ------------------------------------------------------------------ 入口

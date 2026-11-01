@@ -58,7 +58,8 @@ systemd unit 名稱是 `<字首>check-0-<uuid>`：任務從 1001 起，`0` 不�
 
 `<安裝目錄>/baseline-verification/<驗證鍵>-<基準 commit>.json`（取不到 commit 時為 `-none`；2026-10-23 前的檔案以配置版本命名），內容含驗證鍵、執行當下的配置版本、
 基準分支與 commit、起訖時間、逐條結果與紀錄路徑。紀錄檔在 `verification-runs/0/`。
-**不寫資料庫、不改 `FlowRun`**，所以 JAR 回滾不受影響；目前不自動清理，與任務驗證現場相同。
+**不寫資料庫、不改 `FlowRun`**，所以 JAR 回滾不受影響。結果只作警告、log 已足夠，所以每次驗證結束（含準備 checkout 失敗）
+都刪除該輪的 `work/`（clone 與建置產物），開新一輪前也清掉舊輪；log 與結果 JSON 保留（2026-11-01 起，見 [工程流程](engineering-workflow.md#系統獨立驗證)的驗證現場保留）。
 
 ## 不通過時會發生什麼
 
