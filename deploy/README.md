@@ -19,4 +19,9 @@
 
 ## 服務執行工具（2026-10-10）
 
-服務建置 skill 來源在 `.agents/skills/service-build/`。install-app 與 deploy-orchestrator 會安裝 Agent 端 client；主機 broker 必須另設一次性登入引用及來源 manifest 並持續執行，不能只部署 JAR 就視為可遠端建置。詳見 [服務建置](../docs-site/docs/service-delivery.md)。
+服務建置 skill 來源在 `.agents/skills/service-build/`。install-app 與 deploy-orchestrator 會安裝 Agent 端 client；日常部署使用 Agent VM 的 SSH 執行器，另需完成目標授權、連線設定與使用者服務安裝，不依賴 Windows broker 或逐版來源 manifest。詳見 [SSH 直連部署](../docs-site/docs/direct-ssh-deployment.md)與[服務建置](../docs-site/docs/service-delivery.md)。
+
+## 維運產物保留
+
+隔離來源與建置目錄目前由呼叫者選定；安裝器保留暫存建置，升級腳本保留實例內的 `orchestrator-backup.*`，尚無統一的自動輪替政策。
+清理限制見 [INSTALL](../docs-site/docs/INSTALL.md#維運產物的現行限制)。不要依名稱或日期直接刪除仍被服務、作業或回復流程引用的路徑。

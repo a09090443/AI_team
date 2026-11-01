@@ -38,7 +38,7 @@ ssh -o BatchMode=yes -p 2223 vboxuser@127.0.0.1 'id; uname -m'
 - 直接 `tar` 工作區的 `deploy/` 會把 gitignore 的本機舊快照（`deploy/*.tgz`）一起帶進去。
 
 ```powershell
-git -c core.autocrlf=false archive --format=tar -o ai-team-source.tar HEAD AGENTS.md CLAUDE.md README.md .ai deploy docs-site/docs docs-site/agent orchestrator/pom.xml orchestrator/src orchestrator/prompts orchestrator/schemas orchestrator/teams
+git -c core.autocrlf=false archive --format=tar -o ai-team-source.tar HEAD AGENTS.md CLAUDE.md README.md deploy docs-site/docs docs-site/agent orchestrator/pom.xml orchestrator/src orchestrator/prompts orchestrator/schemas orchestrator/teams
 $sourceSha = (Get-FileHash .\ai-team-source.tar -Algorithm SHA256).Hash.ToLower()
 $sourceSha
 scp -P 2223 ai-team-source.tar vboxuser@127.0.0.1:/home/vboxuser/
@@ -52,6 +52,7 @@ tar -xf ~/ai-team-source.tar -C ~/ai-team-source
 bash ~/ai-team-source/deploy/bootstrap/check-source.sh
 ```
 
+`.ai/` 是不進版控的本機交接紀錄，不列入 `git archive` 路徑；否則會因 HEAD 沒有該路徑而失敗。
 保留兩端 SHA256 與 check-source 輸出作為演練證據。打包清單的 `orchestrator/teams`
 不可省略；`check-source.sh` 與 `install-app.sh` 都會使用它。
 
@@ -197,6 +198,8 @@ git -C ~/ai-team/<repo 目錄> rev-parse origin/<基準分支>
 ```
 
 安裝器在獨立暫存目錄建置並跑完整測試，失敗不安裝；成功不啟動、不覆蓋已有目的地。
+目前 `install-app.sh` 成功與失敗都會保留 `mktemp` 建立的建置目錄；成功時另將建置日誌複製到安裝目錄。
+這些目錄目前沒有自動保留期限，不應把安裝成功解讀為暫存資料已清除。
 repo 不可 shallow；基準分支在 env.sh 指定。演練記錄基準 SHA。
 新 VM 自行下載 Maven 相依並執行 repo verify，記錄冷快取耗時，不複製舊 ~/.m2。
 
@@ -399,6 +402,15 @@ Reviewer 的 bwrap/.agents 問題已於 2026-09-09 修正（派工前自動建�
 不用刻意耗光訂閱驗證 quota；先用模擬錯誤測試狀態機，標明未做真實耗盡測試。
 
 ## 9. 備份／還原與憑證
+
+### 維運產物的現行限制
+
+既有升級腳本由呼叫者提供隔離來源目錄，未統一管理來源包、建置目錄與維護腳本的存放位置及生命週期。
+`deploy-orchestrator.sh` 與 `deploy-jar-safe.sh` 會在實例目錄建立 `orchestrator-backup.*`，目前沒有自動輪替；
+隔離建置目錄也不會因部署成功而自動刪除。長期維運需自行管理這些產物，現行工具尚未提供統一的保留政策。
+
+清理前須確認服務、執行中作業、待回復版本及交接紀錄的路徑引用；不得只按目錄名稱或修改日期刪除。
+服務工作區、部署收據、資料庫、實例配置、憑證與工具快取不能與可重建的維運暫存套用同一套刪除條件。
 
 停機後 `bash ~/ai-team/backup.sh ~/ai-team-backup-日期`；還原到不存在的新目錄：
 `bash ~/ai-team/restore.sh ~/ai-team-backup-日期 ~/ai-team-restored`。
