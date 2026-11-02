@@ -191,17 +191,25 @@ class IssueTrackerTest {
         assertThat(IssueTracker.ingest(flow, node(Gate.REVIEW), r, "42")).isNull();
         assertThat(IssueTracker.checksReason(verified, flow)).contains("變更");
     }
-    /** 只更新待決項目的說明不改變驗收對象，舊驗收仍有效；待修項目的證據一變就失效。 */
-    @Test void notesOnDecisionsKeepVerificationButRepairChangesDoNot() {
+    /** 只更新既有項目的說明不改變驗收對象，舊驗收仍有效（#1012 起含待修項目）；改範圍或新增項目就失效。 */
+    @Test void notesKeepVerificationButScopeChangesAndNewItemsDoNot() {
         ObjectNode r = report(); r.withArray("issue_updates").add(issue("I1", "REPAIR")).add(issue("I2", "DECISION"));
         assertThat(IssueTracker.ingest(flow, node(Gate.REQUIREMENTS), r, "42")).isNull();
         ObjectNode verified = checks(1);
         r = report(); r.withArray("issue_updates").add(issue("I2", "DECISION").put("evidence", "分流補充說明"));
         assertThat(IssueTracker.ingest(flow, node(Gate.REPORT), r, "42")).isNull();
         assertThat(IssueTracker.checkedRevisionStillValid(flow, verified.path("issue_revision").asText())).isTrue();
-        r = report(); r.withArray("issue_updates").add(issue("I1", "REPAIR").put("evidence", "又壞了"));
+        r = report(); r.withArray("issue_updates").add(issue("I1", "REPAIR").put("evidence", "start job 仍在執行"));
         assertThat(IssueTracker.ingest(flow, node(Gate.REPORT), r, "42")).isNull();
+        assertThat(IssueTracker.checkedRevisionStillValid(flow, verified.path("issue_revision").asText())).isTrue();
+        r = report(); r.withArray("issue_updates").add(issue("I2", "REPAIR"));
+        flow.supplements++;
+        assertThat(IssueTracker.ingest(flow, node(Gate.REQUIREMENTS), r, "42")).isNull();
         assertThat(IssueTracker.checkedRevisionStillValid(flow, verified.path("issue_revision").asText())).isFalse();
+        String recheck = IssueTracker.revision(flow);
+        r = report(); r.withArray("issue_updates").add(issue("I3", "REPAIR"));
+        assertThat(IssueTracker.ingest(flow, node(Gate.REPORT), r, "42")).isNull();
+        assertThat(IssueTracker.checkedRevisionStillValid(flow, recheck)).isFalse();
     }
     @Test void staleReportsAndMalformedBatchesDoNotPartiallyMutateInventory() {
         ObjectNode stale=report();discover(1);

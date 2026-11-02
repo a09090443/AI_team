@@ -33,6 +33,9 @@
   起因：QA 全部 PASS 後，審查把 LOW 提醒記成 OBSERVATION，發布閘門判定「問題清單仍有待處理／未驗證項目」，按續跑也一直擋。
   **待決說明更新（2026-10-23 起）**：清單變動只是既有 DECISION 項目更新 evidence／reason（仍是 DECISION、描述與需求對應不變）時，
   系統記錄版本別名 `FlowRun.issueRevisionAliases`，舊驗收仍有效；DECISION 本來就不能靠 PASS 放行，說明更新不改變已驗證的內容。
+  **說明更新擴及待修項目（2026-11-02 起，取代上段「只限待決項目」）**：既有項目的範圍、描述、需求對應都不變，只改 evidence／reason 時，
+  REPAIR 也記別名、舊驗收仍有效（`IssueTracker.notesOnly`）。改程式會換 HEAD 使收據失效、新問題要開新 ID，部署與審查仍逐項要求 PASS，
+  所以說明更新不會讓錯誤成果通過。起因：分流在服務問題補一句「start job 仍在執行」，驗收就失效，部署被退回重驗。
   **服務問題交部署確認（2026-11-02 起）**：服務建置節點（`Gate.SERVICE`）登記的 REPAIR 問題要實際部署後才能確認。
   流程有要求此驗收的開發後部署節點時，驗收可把這類問題填 OPEN，其餘條件通過就採用（`IssueTracker.deployAfter`），
   並直接交該部署節點（`IssueTracker.deferredDeploy`），部署完回審查。部署與審查仍要求全部 PASS，整體完成判斷不變；

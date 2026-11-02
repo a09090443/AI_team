@@ -1680,16 +1680,16 @@ class FlowEngineTest {
         assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
     }
 
-    @Test void changedRepairEvidenceAfterVerificationRerunsOnlyTheVerification() {
+    /** 2026-11-02 起（#1012）：待修項目只補說明也不使驗收失效，和待決項目的說明一樣沿用。 */
+    @Test void triageNotesOnARepairItemDoNotForceAnotherVerification() {
         var exclude = verificationBlockedOnlyByDecisionAtTheLimit("issueDecisionRepairNote");
-        assertThat(exclude.hint()).contains("只重跑「verification」");
+        assertThat(exclude.hint()).contains("沿用已通過的驗收");
         List<Runnable> jobs = new ArrayList<>();
 
         engine.resume(store.find("42").orElseThrow(), exclude.command(), "u", jobs::add);
         jobs.getFirst().run();
 
-        // 不回需求階段：同一個 commit 只重驗，再審查，停在 PR 核准；換手只多用裁定給的兩步。
-        assertThat(calls).containsExactly("verification:tester", "review:security_auditor");
+        assertThat(calls).containsExactly("review:security_auditor");
         assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
     }
 

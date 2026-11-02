@@ -264,7 +264,7 @@ v2 配置式流程的整份執行快照，對應 `com.zipe.aiteam.flow.FlowRun`�
 | `issueInventory` | Map&lt;問題 ID,JSON&gt; | 新 v2 共用契約的完整問題清單，含 description／evidence／scope／reason／requirement_ids、系統 source_task／source_node；DECISION 額外保存 decision_supplements，防止未收到新回覆就自行決定。空更新不清除，承接完整深拷貝 |
 | `issueEvidence` | Map&lt;問題 ID,JSON&gt; | 通過驗收／審查／服務階段的逐項 id／status／evidence／head／node；承接只作歷史證據，不能取代新任務驗收。2026-10-23 起另有 `owner-decision:<問題 ID>` 鍵：負責人裁定移出範圍的紀錄（`previous` 原項目、`user`、`at`） |
 | `priorReceipts` | Map&lt;節點,JSON&gt; | 2026-10-23 新增。被清掉的前次收據（`report`、`head`、`baseline`、`configuration`、`actionable_issues`、`inputs` 前置結果摘要），流程重走時符合條件就原樣沿用（`ReceiptReuse`），沿用後移除；只是候選、不是有效收據。舊 JSON 沒有此欄位時為空；新版存過的任務舊 JAR 讀不了 |
-| `issueRevisionAliases` | Map&lt;新版本,舊版本&gt; | 2026-10-23 新增。問題清單變動只是既有待決項目更新說明時記錄的版本別名，舊驗收沿用；最多 50 筆。舊 JSON 沒有此欄位時為空；新版存過的任務一律寫出此欄位，回滾到舊 JAR 會讀不了 |
+| `issueRevisionAliases` | Map&lt;新版本,舊版本&gt; | 2026-10-23 新增。問題清單變動只是既有項目更新說明時記錄的版本別名（2026-11-02 前只限待決項目，起含待修項目），舊驗收沿用；最多 50 筆。舊 JSON 沒有此欄位時為空；新版存過的任務一律寫出此欄位，回滾到舊 JAR 會讀不了 |
 | `issueContext` | String | 單項衍生任務的來源總數與局部範圍說明，承接保留 |
 | `issueScopeChangeAuthorized` | boolean | 由原需求負責人明確核准需求變更時給予的一輪排除變更權；建立新基準後清除，不由模型授予、不沿用到承接任務 |
 | `origin` / `branch` | String | 工作區的 origin 與分支 |

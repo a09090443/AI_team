@@ -169,10 +169,10 @@ public final class IssueTracker {
         }
         if (next.size() > 100 || JSON.valueToTree(next).toString().length() > 96000) return "問題清單超出保存上限，禁止遺漏項目";
         String before = revision(flow);
-        boolean decisionNotesOnly = decisionNotesOnly(flow.issueInventory, next);
+        boolean notesOnly = notesOnly(flow.issueInventory, next);
         flow.issueInventory.clear(); flow.issueInventory.putAll(next);
         String after = revision(flow);
-        if (decisionNotesOnly && !after.equals(before)) {
+        if (notesOnly && !after.equals(before)) {
             flow.issueRevisionAliases.put(after, before);
             while (flow.issueRevisionAliases.size() > 50) flow.issueRevisionAliases.remove(flow.issueRevisionAliases.keySet().iterator().next());
         }
@@ -262,7 +262,7 @@ public final class IssueTracker {
         return beforeDecisions != null && (validFor(beforeDecisions, checked)
                 || aliasedTo(flow, Traceability.digest(JSON.valueToTree(beforeDecisions)), checked));
     }
-    /** 沿著別名往回找：中間每一步都只是待決項目的說明更新。 */
+    /** 沿著別名往回找：中間每一步都只是既有項目的說明更新。 */
     private static boolean aliasedTo(FlowRun flow, String revision, String checked) {
         String current = revision;
         for (int step = 0; step < 50 && current != null; step++) {
@@ -271,13 +271,17 @@ public final class IssueTracker {
         }
         return false;
     }
-    /** 項目集合與順序不變，改動的只有既有待決項目（仍是待決、需求對應不變）的 evidence／reason 等說明。 */
-    private static boolean decisionNotesOnly(Map<String, JsonNode> before, Map<String, JsonNode> after) {
+    /**
+     * 項目集合與順序不變，改動的只有既有項目（範圍、描述、需求對應都不變）的 evidence／reason 等說明。
+     * 2026-11-02 起含待修項目：#1012 分流在服務問題補一句「start job 仍在跑」，驗收就失效、部署被退回重驗。
+     * 說明不改變驗收對象：改程式會換 HEAD 而使收據失效，新問題要開新 ID，部署與審查仍逐項要求 PASS。
+     */
+    private static boolean notesOnly(Map<String, JsonNode> before, Map<String, JsonNode> after) {
         if (!new ArrayList<>(before.keySet()).equals(new ArrayList<>(after.keySet()))) return false;
         for (var entry : after.entrySet()) {
             JsonNode previous = before.get(entry.getKey()), item = entry.getValue();
             if (previous.equals(item)) continue;
-            if (!"DECISION".equals(previous.path("scope").asText()) || !"DECISION".equals(item.path("scope").asText())
+            if (!previous.path("scope").equals(item.path("scope"))
                     || !previous.path("requirement_ids").equals(item.path("requirement_ids"))
                     || !previous.path("description").equals(item.path("description"))) return false;
         }
