@@ -788,6 +788,13 @@ public class FlowEngine {
                         next = node.routes().get(route);
                         leaveStandaloneService(task, flow, node, next);
                     } else next = node.next();
+                    // 驗收已過、只剩服務節點登記且須部署後才能確認的問題：直接交開發後部署，部署完再回審查。
+                    String deploy = IssueTracker.deferredDeploy(flow, node, report);
+                    if (deploy != null && route.isBlank()) {
+                        next = deploy;
+                        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE,
+                                "節點 " + flow.node + " 通過；服務問題待部署確認，交開發後部署 " + deploy + "，部署後回審查");
+                    }
                 } else {
                     // 裁定後的前進額度只給一路通過的情況；任何受阻都照常停下。
                     OwnerIssueDecision.clearForward(flow);

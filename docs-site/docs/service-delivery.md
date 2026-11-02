@@ -123,6 +123,7 @@ operations 與角色工具白名單裡的 client 路徑是各實例的部署設�
 
 ```text
 … → verification → review（部署未做，受阻）→ triage → deploy（建置、啟動、可用性檢查）→ review → approval
+… → verification（只剩服務節點登記的問題待部署確認）→ deploy → review → approval   （2026-11-02 起）
 ```
 
 `deploy` 也是 `Gate.SERVICE`，完成條件同下方，差異只在三處。由配置判斷：SERVICE 節點的 `next` 不是 `end` 就屬這種模式（`ServiceDelivery.postDevelopment`）：
@@ -150,6 +151,8 @@ triage 的派工說明會提示：開發與驗證已完成、只剩部署時選 
 - **service_triage 可改派開發**：三份內附範例的 `service_triage.routes` 有 `"implementation": "plan"`。部署查出必須改產品程式
   （例如服務啟動後讀不到打包在 JAR 內的資源）時，分流選 implementation，從 plan 進開發流程（未執行的 design 照 light 路線略過），
   之後 `verification → review`；審查發現還沒部署時由 triage 交 `deploy`，再回審查、進 PR 核准。
+  2026-11-02 起，服務節點登記的問題在驗收時可填 OPEN，驗收通過後系統直接交 `deploy`，不經審查與 triage：
+  `verification → deploy → review → approval`；見 [服務問題交部署確認](engineering-workflow.md)。
 
 改派開發時，系統會把只部署階段留下的部署檔移出工作區，部署檔不進 PR（`FlowEngine.leaveStandaloneService`）：
 

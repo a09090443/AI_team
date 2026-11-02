@@ -83,6 +83,26 @@ class IssueTrackerTest {
         assertThat(IssueTracker.formatCorrection(flow, IssueTracker.MAPPING_CHANGED + "UNKNOWN")).isNull();
         assertThat(IssueTracker.ingest(flow, node(Gate.REQUIREMENTS), remapped, "42")).isNull();
     }
+    /** #1012：服務節點登記的問題要部署後才能確認；驗收可留 OPEN 交開發後部署，其餘問題與審查照樣要求 PASS。 */
+    @Test void serviceIssueOpenAtVerificationIsDeferredToPostDevelopmentDeploy() {
+        flow.node = "service";
+        ObjectNode found = report(); found.withArray("issue_updates").add(issue("I1", "REPAIR"));
+        assertThat(IssueTracker.ingest(flow, node(Gate.SERVICE), found, "42")).isNull();
+        flow.node = "verification";
+        found = report(); found.withArray("issue_updates").add(issue("I2", "REPAIR"));
+        assertThat(IssueTracker.ingest(flow, node(Gate.VERIFICATION), found, "42")).isNull();
+
+        ObjectNode r = checks(2); ((ObjectNode) r.withArray("issue_checks").get(0)).put("status", "OPEN");
+        Node verification = flow.snapshot.definition().nodes().get("verification");
+        assertThat(IssueTracker.reportReason(verification, r, flow)).isNull();
+        assertThat(IssueTracker.deferredDeploy(flow, verification, r)).isEqualTo("deploy");
+        assertThat(IssueTracker.reportReason(node(Gate.REVIEW), r, flow)).contains("I1");
+        assertThat(IssueTracker.reportReason(flow.snapshot.definition().nodes().get("deploy"), r, flow)).contains("I1");
+
+        ObjectNode codeOpen = checks(2); ((ObjectNode) codeOpen.withArray("issue_checks").get(1)).put("status", "OPEN");
+        assertThat(IssueTracker.reportReason(verification, codeOpen, flow)).contains("I2");
+        assertThat(IssueTracker.deferredDeploy(flow, verification, checks(2))).isNull();
+    }
     @Test void noSilentDeletionOrScopeDowngradeOrIdReuse() {
         discover(2);
         assertThat(IssueTracker.ingest(flow,node(Gate.REQUIREMENTS),report(),"42")).isNull();
