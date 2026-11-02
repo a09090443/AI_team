@@ -82,7 +82,8 @@ VM 供授權查核。格式檢查保證欄位存在，不保證 agent 自陳內�
 模型逾時由 typed timeout 與長作業對帳處理，不以「模型未啟動」退還計數；以下啟動／串流系統錯誤重試不能取代部署結果對帳。
 
 **系統層失敗的自動重試**（`SystemFailure.transientFailure`）：錯誤訊息符合已知的暫時性特徵
-（例如 `Failed to start transient service`、串流中斷），或是任何提到 `systemd-run` 的 IOException，就判定為系統沒跑起來，
+（例如 `Failed to start transient service`、串流中斷、供應商暫時沒有容量 `model is at capacity`（2026-11-02 起）），
+或是任何提到 `systemd-run` 的 IOException，就判定為系統沒跑起來，
 還原本輪計數後自動重試，最多 `RETRY_LIMIT`（2）次，用完才停給人。
 **參數過長（`Argument list too long`，E2BIG）不重試**，因為它每次必定重現。runtime、操作預檢與系統獨立驗證都以
 `ArgumentListTooLong.start` 啟動子行程；遇到 E2BIG 時，錯誤紀錄會寫出參數個數與總大小、最大的參數是第幾個、多大、開頭內容，

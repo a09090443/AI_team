@@ -20,6 +20,8 @@ class SystemFailureTest {
         assertThat(SystemFailure.transientFailure(new com.zipe.aiteam.runtime.AgentRuntime.RuntimeExecutionException(
                 "Codex 結束碼 1（Reconnecting... 2/5 (stream disconnected before completion: "
                         + "websocket closed by server before response.completed)"))).isTrue();
+        assertThat(SystemFailure.transientFailure(new com.zipe.aiteam.runtime.AgentRuntime.RuntimeExecutionException(
+                "Codex 結束碼 1（Selected model is at capacity. Please try a different model.）"))).isTrue();
     }
 
     @Test void looksThroughTheCauseChain() {

@@ -30,7 +30,9 @@ final class SystemFailure {
             "Read timed out",
             // Codex 與服務端的串流被切斷（#1019 兩次停給人、使用者手動續跑都成功）；CLI 自己重連 5 次仍失敗才會結束。
             "stream disconnected before completion",
-            "websocket closed by server");
+            "websocket closed by server",
+            // 供應商暫時沒有容量（#1012 部署節點，Codex「Selected model is at capacity」）；不是工作問題，也不是額度用完。
+            "model is at capacity");
 
     /** 只認明確的系統層訊號；認不出來的一律當成工作問題，交給人。 */
     static boolean transientFailure(Throwable error) {
