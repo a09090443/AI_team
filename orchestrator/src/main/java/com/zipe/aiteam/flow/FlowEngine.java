@@ -668,6 +668,8 @@ public class FlowEngine {
                         block=delivery.block();
                         audit.record(task.id(), AuditLog.ACTOR_SYSTEM, block==null?AuditLog.ACTION_RECOVERY:AuditLog.ACTION_REJECTED,
                                 "系統實測沙箱交付網址（Agent VM，未從使用者電腦驗證）："+(block==null?delivery.evidence():block));
+                        // 收據也交給後續節點：#1012 審查在自己的沙箱連不出去，沒看到這份 206 實測就登記「交付網址未驗證」。
+                        if (block==null) flow.context=FlowContext.append(flow.context,ServiceSupport.deliveryReceipt(delivery.evidence()));
                     }
                 }
                 // 自陳成功不夠：與 CLI 紀錄裡配置操作的實際結束碼對照，矛盾時不送去跑注定失敗的獨立驗證（#1001）。

@@ -167,6 +167,12 @@ public final class ServiceSupport {
         }
         return new Delivery(null,evidence.toString());
     }
+    /** 交給後續節點的系統實測收據；agent 沙箱通常連不出去，只能引用這份，不能拿自己連不上當成網址失效。 */
+    public static String deliveryReceipt(String evidence) {
+        return "系統收據：系統已從 Agent VM 實測沙箱交付網址（未從使用者電腦驗證）："+evidence
+                +"審查與部署可直接引用此收據作為交付網址的驗證證據；你所在的 agent 沙箱可能無法連線到沙箱主機，"
+                +"在沙箱內連不上不代表網址失效，不要據此登記問題。";
+    }
     /** 固定探測：不走 proxy、不跟隨轉址，5 秒逾時；連不上回 null。 */
     public static Integer httpStatus(String url) {
         try {

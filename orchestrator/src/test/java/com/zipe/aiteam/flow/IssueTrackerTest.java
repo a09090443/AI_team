@@ -103,6 +103,17 @@ class IssueTrackerTest {
         assertThat(IssueTracker.reportReason(verification, codeOpen, flow)).contains("I2");
         assertThat(IssueTracker.deferredDeploy(flow, verification, checks(2))).isNull();
     }
+    @Test void reviewIssueOpenAtVerificationIsAlsoDeferredToDeploy() {
+        // #1012：審查登記「交付網址連線失敗」，驗收無從確認，又不能交部署，就在驗收與分流之間來回到上限。
+        flow.node = "review";
+        ObjectNode found = report(); found.withArray("issue_updates").add(issue("I1", "REPAIR"));
+        assertThat(IssueTracker.ingest(flow, node(Gate.REVIEW), found, "42")).isNull();
+        ObjectNode r = checks(1); ((ObjectNode) r.withArray("issue_checks").get(0)).put("status", "OPEN");
+        Node verification = flow.snapshot.definition().nodes().get("verification");
+        assertThat(IssueTracker.reportReason(verification, r, flow)).isNull();
+        assertThat(IssueTracker.deferredDeploy(flow, verification, r)).isEqualTo("deploy");
+        assertThat(IssueTracker.reportReason(node(Gate.REVIEW), r, flow)).contains("I1");
+    }
     @Test void noSilentDeletionOrScopeDowngradeOrIdReuse() {
         discover(2);
         assertThat(IssueTracker.ingest(flow,node(Gate.REQUIREMENTS),report(),"42")).isNull();

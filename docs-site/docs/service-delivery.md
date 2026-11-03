@@ -123,7 +123,7 @@ operations 與角色工具白名單裡的 client 路徑是各實例的部署設�
 
 ```text
 … → verification → review（部署未做，受阻）→ triage → deploy（建置、啟動、可用性檢查）→ review → approval
-… → verification（只剩服務節點登記的問題待部署確認）→ deploy → review → approval   （2026-11-02 起）
+… → verification（只剩服務或審查節點登記的問題待部署確認）→ deploy → review → approval   （2026-11-02 起，審查登記者 2026-11-03 起）
 ```
 
 `deploy` 也是 `Gate.SERVICE`，完成條件同下方，差異只在三處。由配置判斷：SERVICE 節點的 `next` 不是 `end` 就屬這種模式（`ServiceDelivery.postDevelopment`）：
@@ -151,7 +151,7 @@ triage 的派工說明會提示：開發與驗證已完成、只剩部署時選 
 - **service_triage 可改派開發**：三份內附範例的 `service_triage.routes` 有 `"implementation": "plan"`。部署查出必須改產品程式
   （例如服務啟動後讀不到打包在 JAR 內的資源）時，分流選 implementation，從 plan 進開發流程（未執行的 design 照 light 路線略過），
   之後 `verification → review`；審查發現還沒部署時由 triage 交 `deploy`，再回審查、進 PR 核准。
-  2026-11-02 起，服務節點登記的問題在驗收時可填 OPEN，驗收通過後系統直接交 `deploy`，不經審查與 triage：
+  2026-11-02 起，服務節點登記的問題在驗收時可填 OPEN（2026-11-03 起含審查登記的問題），驗收通過後系統直接交 `deploy`，不經審查與 triage：
   `verification → deploy → review → approval`；見 [服務問題交部署確認](engineering-workflow.md)。
 
 改派開發時，系統會把只部署階段留下的部署檔移出工作區，部署檔不進 PR（`FlowEngine.leaveStandaloneService`）：
@@ -197,6 +197,8 @@ service 節點通過完成閘門時（`ServiceArtifacts`），系統把本任務
   摘要要寫 `http://<user_host>:<對外埠><應用路徑>`。系統（`ServiceSupport.derivedDelivery`）從摘要取出主機等於 `user_host` 的網址（最多 4 筆），
   從 Agent VM 以 GET 實測（不走 proxy、不跟隨轉址、5 秒逾時），全部 2xx 才交付；摘要沒有這類網址、或任一筆非 2xx／連不上，
   就退回同一節點修正，不停下來等人登錄入口。結果寫入稽核（「系統實測沙箱交付網址」），一樣不等於已從使用者電腦驗證。
+  2026-11-03 起，通過的實測也以「系統收據」寫入交接紀錄（`ServiceSupport.deliveryReceipt`），審查與之後的部署可直接引用，
+  並提醒 agent 沙箱內連不上不代表網址失效；起因是審查在自己的沙箱連不出去、沒看到這份實測，登記「交付網址未驗證」。
   其他主機的網址不探測。起因：未登錄入口時，有的任務以 agent 自填網址結案而無人實測，有的則停在 AWAIT_HUMAN 等人登錄。
 
 角色 checks 仍為報告與配置的機械核對；已登錄的入口另有固定工具實測，兩者不能互相冒充。系統 probe 由 Agent VM 進行，不等同已從使用者電腦驗證。

@@ -69,6 +69,8 @@ class ServiceSupportTest {
   assertThat(pass.block()).isNull();
   assertThat(probed).containsExactly("http://192.0.2.20:18080/app/");
   assertThat(pass.evidence()).contains("HTTP 200");
+  // #1012：收據要交給審查引用，並提醒 agent 沙箱連不上不代表網址失效。
+  assertThat(ServiceSupport.deliveryReceipt(pass.evidence())).contains("http://192.0.2.20:18080/app/ → HTTP 200","不代表網址失效");
   assertThat(ServiceSupport.derivedDelivery("192.0.2.20",report,u->404).block()).contains("未通過","HTTP 404");
   assertThat(ServiceSupport.derivedDelivery("192.0.2.20",report,u->302).block()).contains("HTTP 302");
   assertThat(ServiceSupport.derivedDelivery("192.0.2.20",report,u->null).block()).contains("連不上");

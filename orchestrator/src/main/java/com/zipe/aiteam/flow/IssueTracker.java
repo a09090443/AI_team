@@ -30,7 +30,8 @@ public final class IssueTracker {
             issue_revision 原樣回傳系統提供的完整清單版本。implementation 不可自行宣稱問題已驗收。
             verification／review／service 的 issue_checks 必須逐項列出所有 REPAIR 與 DECISION：
             id、status（PASS 或 OPEN）、evidence（實際查核證據）。未解或未核實用 OPEN，不得杜撰 PASS。
-            服務建置階段登記、須實際部署才能確認的問題，驗收照實填 OPEN 並在 evidence 寫明待部署確認；
+            服務建置或審查階段登記、確實須實際部署才能確認的問題，驗收照實填 OPEN 並在 evidence 寫明待部署確認；
+            能在驗收當下核實的照常查核，不得藉此延後；
             流程配置了開發後部署時，系統會交給部署階段確認，不會因此退回。
             其他階段 issue_checks=[]。驗收新發現問題先回報，交回修正後再獨立驗證。
             一項或一個子任務完成不等於整體完成；summary 必須列出已驗證、待處理與明確排除的範圍。
@@ -226,10 +227,15 @@ public final class IssueTracker {
                         && e.getValue().requires() != null && e.getValue().requires().contains(verificationNode))
                 .map(Map.Entry::getKey).findFirst().orElse(null);
     }
-    /** 驗收可留給部署確認的項目：服務節點登記的待修問題（待決項仍須當下處理）。 */
+    /**
+     * 驗收可留給部署確認的項目：服務或審查節點登記的待修問題（待決項仍須當下處理）。
+     * 審查排在部署之後，它登記的問題常要看部署結果才能確認；#1012 審查登記「交付網址連線失敗」，
+     * 驗收無從確認只能填 OPEN，又不能交給部署，就在驗收與分流之間來回到換手上限。
+     * 是否真的要部署才能確認由驗收判斷；能當下核實的照樣要求 PASS。之後的部署與審查仍要求全部 PASS，不會因此放行。
+     */
     private static boolean deferrable(FlowRun flow, JsonNode item) {
         Node source = flow.snapshot.definition().nodes().get(item.path("source_node").asText());
-        return "REPAIR".equals(item.path("scope").asText()) && source != null && source.gate() == Gate.SERVICE;
+        return "REPAIR".equals(item.path("scope").asText()) && source != null && Set.of(Gate.SERVICE, Gate.REVIEW).contains(source.gate());
     }
     /** 已通過驗收、但有留給部署確認的 OPEN 項目：回傳要接手的部署節點，否則 null。 */
     public static String deferredDeploy(FlowRun flow, Node node, JsonNode report) {
@@ -333,7 +339,7 @@ public final class IssueTracker {
         flow.issueEvidence.put(OWNER_DECISION + id, record);
     }
     public static String checksReason(JsonNode report, FlowRun flow) { return checksReason(report, flow, null); }
-    /** deploy 非 null 時，服務節點登記的待修問題可留 OPEN，由該部署節點確認；部署與之後的審查仍要求全部 PASS。 */
+    /** deploy 非 null 時，服務或審查節點登記的待修問題可留 OPEN，由該部署節點確認；部署與之後的審查仍要求全部 PASS。 */
     static String checksReason(JsonNode report, FlowRun flow, String deploy) {
         if (!checkedRevisionStillValid(flow, report.path("issue_revision").asText())) return "問題清單已變更，須重新逐項驗證";
         Set<String> checked = new HashSet<>();
