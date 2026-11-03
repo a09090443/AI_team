@@ -113,6 +113,10 @@ class IssueTrackerTest {
         assertThat(IssueTracker.reportReason(verification, r, flow)).isNull();
         assertThat(IssueTracker.deferredDeploy(flow, verification, r)).isEqualTo("deploy");
         assertThat(IssueTracker.reportReason(node(Gate.REVIEW), r, flow)).contains("I1");
+        // 部署回 RUNNING 時同樣可留 OPEN 等系統交付實測；服務沒在跑就照舊擋下。
+        Node deploy = flow.snapshot.definition().nodes().get("deploy");
+        assertThat(IssueTracker.reportReason(deploy, r, flow)).contains("I1");
+        assertThat(IssueTracker.reportReason(deploy, r.deepCopy().put("service_status", "RUNNING"), flow)).isNull();
     }
     @Test void noSilentDeletionOrScopeDowngradeOrIdReuse() {
         discover(2);

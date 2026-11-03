@@ -212,6 +212,10 @@ public final class IssueTracker {
             }
         }
         if (node.gate() == Gate.VERIFICATION) return checksReason(report, flow, deployAfter(flow, nodeId(flow, node)));
+        // 開發後部署回報服務在跑時，等交付實測才能確認的問題可留 OPEN：系統實測在這份回報之後才跑，收據交給之後的審查。
+        // #1012 部署回 RUNNING、照實把等 Agent VM 實測的問題填 OPEN，就被擋下，實測永遠跑不到。審查仍要求全部 PASS。
+        if (ServiceDelivery.postDevelopment(node) && "RUNNING".equals(report.path("service_status").asText()))
+            return checksReason(report, flow, nodeId(flow, node));
         if (Set.of(Gate.REVIEW, Gate.SERVICE).contains(node.gate())) return checksReason(report, flow);
         return null;
     }
@@ -339,7 +343,7 @@ public final class IssueTracker {
         flow.issueEvidence.put(OWNER_DECISION + id, record);
     }
     public static String checksReason(JsonNode report, FlowRun flow) { return checksReason(report, flow, null); }
-    /** deploy 非 null 時，服務或審查節點登記的待修問題可留 OPEN，由該部署節點確認；部署與之後的審查仍要求全部 PASS。 */
+    /** deploy 非 null 時，服務或審查節點登記的待修問題可留 OPEN，由該部署節點確認；部署回報服務在跑時同樣可留，交審查確認，審查仍要求全部 PASS。 */
     static String checksReason(JsonNode report, FlowRun flow, String deploy) {
         if (!checkedRevisionStillValid(flow, report.path("issue_revision").asText())) return "問題清單已變更，須重新逐項驗證";
         Set<String> checked = new HashSet<>();
