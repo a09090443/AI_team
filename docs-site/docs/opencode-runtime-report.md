@@ -175,3 +175,19 @@ opencode 的狀態散在兩處，只給一處會讓認證或 resume 其中一項
 
 **仍然沒做的**：認證（`opencode providers` 須本人操作）、以及沙箱包裝下的實跑 ——
 提權釘選是否真的擋得住寫入 `~/.config/opencode` 仍未驗證。目前沒有任何角色設為 opencode。
+
+---
+
+## 八、VM 沙箱下的唯讀角色對話（2026-11-04 追加）
+
+在 Linux VM 以 `ExecutionSandbox` 包裝執行一個只做唯讀對話的配置角色（`runtime: "opencode"`，
+沒有流程節點），供應商為 OpenRouter，模型 `openrouter/deepseek/deepseek-v4.1-flash`：
+
+- 安裝：同第七節（`opencode-ai@1.18.19`，`OPENCODE_BIN` 寫入該實例 `env.sh`）；認證由使用者本人以 `opencode auth login` 完成。
+- 部署前先在暫存目錄以 `opencode run --format json -m <模型> -- "只回覆 OK"` 試呼叫，確認模型名與認證可用。
+- 真實 Slack：直接 @ 該角色詢問 API 呼叫方式，唯讀對話約 31 秒完成，稽核記到 opencode 回報的實際金額（US$0.0036），
+  回覆由該角色自己的 Slack App 發出，對話的 `answer` JSON 由降級解析（schema 寫進 prompt）正確取回。
+- 同一問題先前以 claude-code／sonnet 回答的金額約為 US$0.35（訂閱制的估算值，兩者計費方式不同，只能參考量級）。
+
+**仍未驗證**：寫入工作區的正式階段、較大的結構化 schema（需求、測試計畫、審查）、
+提權釘選是否擋得住寫入 `~/.config/opencode`、429 用量訊息的實際字樣。

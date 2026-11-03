@@ -112,7 +112,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 | 欄位 | 意義 |
 |---|---|
 | `name` | Slack 顯示名稱，例如 `QA Agent` |
-| `runtime` | `claude-code`、`codex` 或 `opencode`（opencode 在 VM 沙箱下尚未驗證） |
+| `runtime` | `claude-code`、`codex` 或 `opencode`（opencode 在 VM 沙箱下只驗證過唯讀角色對話，正式階段尚未驗證） |
 | `model` | 該 runtime 認得的模型名；三家格式不通用（opencode 為 `provider/model`） |
 | `reasoningEffort` | 選填，目前僅 Codex 支援 `low`／`medium`／`high`／`xhigh` |
 | `prompt` | 角色一般職責的提示檔 |
