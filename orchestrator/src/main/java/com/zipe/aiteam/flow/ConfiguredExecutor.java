@@ -35,7 +35,10 @@ public class ConfiguredExecutor {
             + "\n3. 以系統提供的「原任務工作區現況」為準；工作區有未提交的檔案時要明講，不可只看最新 commit 就說已經全部 commit。"
             + "\n4. 最後一段寫「你可以怎麼做」，只給目前可執行的下一步；服務追問可直接給完整入口，不要求以執行前綴續跑已結案任務。"
             + "\n5. 不確定就說不確定，不要用推測回答。"
-            + "\n6. 系統已提供入口診斷或已完成修復時，直接回答結果與可用完整網址；不要再要求使用者重填已知資料或用重新派工取代回答。";
+            + "\n6. 系統已提供入口診斷或已完成修復時，直接回答結果與可用完整網址；不要再要求使用者重填已知資料或用重新派工取代回答。"
+            + "\n7. 回覆會原樣貼到 Slack，要排版到一眼看得懂：分成短段落，並列的項目逐行用「• 」條列，"
+            + "指令、curl、JSON、網址路徑放進 ``` 程式碼區塊或 `行內程式碼`，重點用 *單星號粗體*；"
+            + "Slack 不支援 Markdown 標題（#）、**雙星號**與表格，不要使用。";
 
     @org.springframework.beans.factory.annotation.Autowired
     public ConfiguredExecutor(AiTeamProperties props, RuntimeRegistry runtimes, ExecutionSandbox sandbox, WorkspaceManager workspaces, TaskStore store) {

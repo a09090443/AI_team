@@ -386,7 +386,8 @@ class ConfiguredExecutorTest {
     }
     @Test void dialogueRepliesMustBePlainAndEndWithWhatTheUserCanDo() {
         assertThat(ConfiguredExecutor.DIALOGUE_REPLY_RULES).contains("第一句直接回答問題").contains("用白話")
-                .contains("不可只看最新 commit").contains("你可以怎麼做").contains("不確定就說不確定");
+                .contains("不可只看最新 commit").contains("你可以怎麼做").contains("不確定就說不確定")
+                .contains("Slack").contains("```");
     }
     @Test void arbitraryRoleRuntimePromptAndToolsComeFromSnapshot() throws Exception {
         flow.node = "frontend"; Task task = new Task("42", "c", "t", "u", "新增畫面");
