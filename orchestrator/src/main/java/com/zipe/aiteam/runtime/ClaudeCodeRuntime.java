@@ -80,7 +80,7 @@ public class ClaudeCodeRuntime implements AgentRuntime {
     }
 
     /**
-     * 官方 permission-modes 文件「Protected paths」（依 2.1.282 核對，換版要重新核對）：
+     * 官方 permission-modes 文件「Protected paths」（依 2.1.282 核對、2.1.317 重新核對，換版要重新核對）：
      * dontAsk 下寫入這些路徑一律拒絕，allow 規則在安全檢查之後才評估，所以 --allowedTools 開放不了。
      * 只有 bypassPermissions 放行，但那會讓 --allowedTools 失效，不採用。
      */

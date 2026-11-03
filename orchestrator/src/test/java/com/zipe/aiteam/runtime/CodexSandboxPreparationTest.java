@@ -12,6 +12,7 @@ class CodexSandboxPreparationTest {
         CodexSandboxPreparation.prepare(tmp);
         assertThat(tmp.resolve(".agents")).isEmptyDirectory();
         assertThat(tmp.resolve(".codex")).isEmptyDirectory();
+        assertThat(tmp.resolve(".aws")).isEmptyDirectory();
         Files.writeString(tmp.resolve(".agents/keep"), "unchanged");
         CodexSandboxPreparation.prepare(tmp);
         assertThat(Files.readString(tmp.resolve(".agents/keep"))).isEqualTo("unchanged");

@@ -66,10 +66,10 @@ VM 供授權查核。格式檢查保證欄位存在，不保證 agent 自陳內�
 使用者只看到含英文原文、結束碼與路徑的後備文字。處理方式：
 
 - `ClaudeCodeRuntime`、`CodexRuntime` 在額度判定後以 `ProviderAccessDenied.check` 檢查**供應商錯誤欄位**；工具輸出、agent 訊息與成功結果不採計。
-  - Claude Code（2.1.282 實查）：結果 JSON `is_error=true` 且 `api_error_code` 為 `oauth_not_allowed_for_organization`、`organization_disabled`、
+  - Claude Code（2.1.282 實查，2.1.317 重新核對；`does not have access to Claude` 一句 2.1.317 已移除，保留比對以相容舊版）：結果 JSON `is_error=true` 且 `api_error_code` 為 `oauth_not_allowed_for_organization`、`organization_disabled`、
     `organization_on_hold`、`claude_code_key_creator_not_member`、`ip_not_in_allowed_range`、`oauth_scope_insufficient` → 帳號／組織權限；
     `token_expired` 或 `api_error_status=401` → 登入；另比對 CLI 內建句（Not logged in、Please run /login、OAuth token revoked、Invalid API key 等）。
-  - Codex（0.156.1 實查）：refresh token 失效與要求重新 `codex login` 的錯誤句 → 登入。泛用的 `401 Unauthorized` 與沒有已知代碼的 403 不判定，照一般失敗處理。
+  - Codex（0.156.1 實查，0.166.0 重新核對）：refresh token 失效與要求重新 `codex login` 的錯誤句 → 登入。泛用的 `401 Unauthorized` 與沒有已知代碼的 403 不判定，照一般失敗處理。
   - opencode 尚未接上（它連額度判定都還沒有）。
 - 流程節點遇到時：還原本輪重跑次數、一次性受控恢復授權與自動處理額度，停在原節點等人；**不排自動續跑、不自動重試**（帳號何時恢復系統無從得知）。
 - `ErrorExplainer` 看到這類錯誤時不呼叫說明 agent，直接回固定中文說明：「AI 服務帳號無法使用」、發生位置、原因（組織停用或登入失效）、

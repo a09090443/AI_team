@@ -96,12 +96,12 @@ case ":$PATH:" in *":$HOME/.local/node/bin:"*) ;; *) export PATH="$HOME/.local/n
 
 ## 3. CLI 與登入
 
-目前實測版本是 Claude Code 2.1.282、Codex CLI 0.156.1（2026-09-25 由 2.1.252／0.153.4 升級並重驗契約）。先確認 registry 有該版本；若無，停止並重新驗證可用版本的契約，不靜默換 latest。
+目前實測版本是 Claude Code 2.1.317、Codex CLI 0.166.0（2026-11-04 由 2.1.282／0.156.1 升級並重驗契約；Codex 0.166.0 起內層沙箱多要 `.aws` 掛載點，需搭配同日之後的 orchestrator）。先確認 registry 有該版本；若無，停止並重新驗證可用版本的契約，不靜默換 latest。
 
 ```bash
 export MAKEFLAGS=-j1 JOBS=1
 unset npm_config_jobs
-npm install --global --prefix "$HOME/.local/node" @anthropic-ai/claude-code@2.1.282 @openai/codex@0.156.1
+npm install --global --prefix "$HOME/.local/node" @anthropic-ai/claude-code@2.1.317 @openai/codex@0.166.0
 claude --version
 codex --version
 ```
@@ -116,7 +116,7 @@ Codex 有四個實測過的前置條件會讓 QA 整段跑不起來，換 CLI �
 [local-test-capabilities.md](local-test-capabilities.md)、
 [codex-cli-argument-contract.md](codex-cli-argument-contract.md)）：
 
-- **內層 bwrap 掛載點**：工作區缺 `.agents`／`.codex` 時，內層沙箱會在執行任何指令前
+- **內層 bwrap 掛載點**：工作區缺 `.agents`／`.codex`（0.166.0 起還有 `.aws`）時，內層沙箱會在執行任何指令前
   以 `Can't mkdir …/.agents: Read-only file system` 失敗。程式已於派工前自動建立空目錄，
   不需手動處理；但若看到這個錯誤，代表跑的是舊版，不要改用放寬沙箱的方式繞過。
 - **`codex sandbox` 與 `codex exec` 參數不對稱**：`-P/--permission-profile` 是
@@ -137,7 +137,7 @@ Codex 有四個實測過的前置條件會讓 QA 整段跑不起來，換 CLI �
 **沒有任何角色指定 `opencode` 時，整段跳過。** 不裝不影響啟動，也不影響既有部署。
 
 ```bash
-npm install --global --prefix "$HOME/.local/node" opencode-ai@1.18.19
+npm install --global --prefix "$HOME/.local/node" opencode-ai@1.19.5
 opencode --version
 opencode providers        # 別名 auth；本人操作，不要輸出 auth.json
 ```
@@ -159,7 +159,7 @@ opencode providers        # 別名 auth；本人操作，不要輸出 auth.json
   prompt 一律放在 `--` 之後並另做用法錯誤判定；但升級 CLI 後旗標若有變動，
   失敗樣態會是「一份說明文字」而不是明確錯誤，請以 `opencode run --help` 重新核對契約。
 
-**目前的驗證狀態**：旗標、事件流及 Linux 狀態目錄位置已在 opencode 1.18.19 實測；
+**目前的驗證狀態**：旗標、事件流及 Linux 狀態目錄位置已在 opencode 1.18.19 實測，1.19.5 重新核對旗標與事件流結構一致；
 **沙箱包裝下的端對端執行仍未驗證**。在完成前，不要把正式角色切成 opencode。
 
 ## 4. 沙箱前置條件

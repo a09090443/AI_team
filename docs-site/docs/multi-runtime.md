@@ -54,7 +54,7 @@ stdout／stderr 保留，既有 sessionStarted callback 與 checkpoint 介面維
 沙箱與檔案權限都沒有問題（實測：實作節點改 `.claude/rules/project-overview.md` 被拒，
 同批其他檔案的 Edit 都成功）。
 
-- 受保護目錄（依 Claude Code 官方 permission-modes 文件，VM 上為 2.1.282）：`.git`、`.config/git`、`.vscode`、`.idea`、
+- 受保護目錄（依 Claude Code 官方 permission-modes 文件，2026-11-04 依 2.1.317 重新核對，工作區內清單不變）：`.git`、`.config/git`、`.vscode`、`.idea`、
   `.husky`、`.cargo`、`.devcontainer`、`.yarn`、`.mvn`、`.claude`（`.claude/worktrees` 除外）；
   另有 `.mcp.json`、`.claude.json`、`.npmrc`、`maven-wrapper.properties`、`gradle-wrapper.properties`、
   shell rc 檔、git hook 設定檔等受保護檔案。完整清單以官方文件為準。
@@ -118,7 +118,7 @@ Codex 可寫 `.claude/rules/`、`.claude/skills/`，`.git` 與 `.git/hooks` 不�
 
 | 位置 | 行為 |
 |---|---|
-| `AgentRuntime.protectedWritePaths()`／`isProtectedWrite()` | runtime 宣告自身一律拒寫的路徑；預設空清單。只有 `ClaudeCodeRuntime` 宣告（`PROTECTED_WRITE_PATHS`，依 2.1.282 官方清單，換 CLI 版本要重新核對）。 |
+| `AgentRuntime.protectedWritePaths()`／`isProtectedWrite()` | runtime 宣告自身一律拒寫的路徑；預設空清單。只有 `ClaudeCodeRuntime` 宣告（`PROTECTED_WRITE_PATHS`，依 2.1.282 官方清單、2.1.317 重新核對，換 CLI 版本要重新核對）。 |
 | `ConfiguredExecutor.protectedPathNotice()` | 派工時注入 context。寫檔節點（`workspace=true` 且 scope 不是 READ_ONLY）只看自己 runtime 的清單：不要嘗試、把需真人修改的檔案寫進 `human_decision`／`also_needed`、不是 `boundary_conflict`。唯讀節點（intake、design、plan、triage、review）看本流程所有寫檔節點的清單聯集：不要把改這些檔案列為實作的驗收、分流不得提出「開放權限後重派」。清單全空時不輸出。 |
 | `ClaudeCodeRuntime.annotateDenials()` | 解析輸出時，Edit／Write／MultiEdit／NotebookEdit 的 `file_path` 命中清單就補上 `reason`，`TOOL_DENIED` 稽核、`ToolTrust` 與失敗描述因此寫出真正原因，而不是「未提供具體拒絕理由」。Bash 被拒仍維持原文字。 |
 

@@ -14,8 +14,8 @@ import java.util.Set;
  * #1042（2026-10-14）就是說明 agent 跟著失敗，使用者只拿到英文原文。
  *
  * 只辨識供應商錯誤欄位，不掃描工具輸出、prompt 或 agent 訊息，判定條件來源：
- * - Claude Code 2.1.282：結果 JSON 的 api_error_status／api_error_code 與 CLI 內建的登入錯誤句（實查執行檔字串）
- * - Codex 0.156.1：refresh token 失效與要求重新 codex login 的錯誤句（實查執行檔字串）
+ * - Claude Code 2.1.282（2.1.317 重核）：結果 JSON 的 api_error_status／api_error_code 與 CLI 內建的登入錯誤句（實查執行檔字串）
+ * - Codex 0.156.1（0.166.0 重核）：refresh token 失效與要求重新 codex login 的錯誤句（實查執行檔字串）
  */
 public final class ProviderAccessDenied extends AgentRuntime.RuntimeExecutionException {
     public enum Kind { ORGANIZATION, LOGIN }

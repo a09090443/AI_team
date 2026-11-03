@@ -9,14 +9,15 @@ bwrap: Can't mkdir .../task-<id>/.agents: Read-only file system
 ```
 
 這不是測試失敗或 token 不足，而是沙箱初始化失敗。配置式 LIMITED 節點的外層 systemd 沙箱讓工作區根目錄唯讀，
-只開放測試與建置目錄；Codex `workspace-write` 的內層沙箱（bwrap）需要為 `.agents`、`.codex` 建立唯讀掛載點，
-而這兩個目錄原本不存在，內層又沒有權限建立。
+只開放測試與建置目錄；Codex `workspace-write` 的內層沙箱（bwrap）需要為 `.agents`、`.codex` 建立唯讀掛載點
+（0.166.0 起還有 `.aws`，錯誤訊息變成 `Can't mkdir …/.aws`），而這些目錄原本不存在，內層又沒有權限建立。
 
 ## 系統怎麼處理
 
 `CodexSandboxPreparation` 在呼叫模型前：
 
-1. 在工作區準備 `.agents`、`.codex` 兩個空目錄，既有內容不變。
+1. 在工作區準備 `.agents`、`.codex`、`.aws` 三個空目錄（`CodexSandboxPreparation.MOUNT_POINTS`），既有內容不變。
+   Git 不追蹤空目錄，所以不會被提交進目標專案。
    拒絕根目錄別名、metadata 是 symlink 或檔案、缺少 `.git` 的假工作區；不建立假的 `.git`、不安裝 skill、不改權限設定。
 2. 以相同外層 `SandboxPolicy` 執行 `codex sandbox -P :workspace -- /bin/pwd` 預檢。
    錯誤或 30 秒逾時會保留 `<角色>.codex.preflight.log` 並停止，**不呼叫模型、不退回無沙箱執行**。
@@ -30,7 +31,8 @@ bwrap: Can't mkdir .../task-<id>/.agents: Read-only file system
   本機 socket 與文件副本建置見 [本機測試能力](local-test-capabilities.md)。
 - 若在新機又看到上述 bwrap 錯誤，代表跑的是舊版或掛載條件不同，必須記錄為阻擋並查明，**不可用放寬沙箱的方式繞過**。
 - `codex sandbox` 與 `codex exec` 的參數不對稱，升級 Codex CLI 後要依 [Codex CLI 參數契約](codex-cli-argument-contract.md) 重驗。
-  此流程於 0.153.4 首次實測，0.156.1 升級時重驗。
+  此流程於 0.153.4 首次實測，0.156.1、0.166.0 升級時重驗。換版後若出現新的 `Can't mkdir …/<名稱>`，
+  確認是 Codex 新增的 metadata 掛載點後加進 `MOUNT_POINTS`，不要放寬外層沙箱。
 - 既有 Git worktree 的 `.git` 檔案可通過 metadata 檢查，但端對端只驗證過獨立 clone。
 
 官方背景：[沙箱](https://learn.chatgpt.com/docs/sandboxing)、[權限設定](https://learn.chatgpt.com/docs/permissions)。

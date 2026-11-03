@@ -189,5 +189,11 @@ opencode 的狀態散在兩處，只給一處會讓認證或 resume 其中一項
   回覆由該角色自己的 Slack App 發出，對話的 `answer` JSON 由降級解析（schema 寫進 prompt）正確取回。
 - 同一問題先前以 claude-code／sonnet 回答的金額約為 US$0.35（訂閱制的估算值，兩者計費方式不同，只能參考量級）。
 
+## 九、升級到 1.19.5（2026-11-04 追加）
+
+在同一 VM 以 `opencode run --help` 核對 `--format`、`--dir`、`--session`、`-m`、`--auto` 仍存在；
+以相同模型各跑一次「只回覆 OK」，1.18.19 與 1.19.5 的事件型別（`step_start`、`text`、`step_finish`）與欄位完全相同。
+未重跑第七節以外的情境。
+
 **仍未驗證**：寫入工作區的正式階段、較大的結構化 schema（需求、測試計畫、審查）、
 提權釘選是否擋得住寫入 `~/.config/opencode`、429 用量訊息的實際字樣。

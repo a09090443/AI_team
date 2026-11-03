@@ -36,7 +36,7 @@ Claude 預先產生 `--session-id` 並先存入資料庫；Codex 從 `thread.sta
 | Codex | 不同天：`You’ve hit your usage limit. … try again at Sep 15th, 2026 1:09 PM.`；同一天只有時刻：`… Try again at 1:09 PM.` | 訊息沒寫，但固定為 UTC | 該時刻加 2 分鐘 |
 
 Codex 的訊息不標時區，但 Codex CLI 是以**執行它的機器的本地時區**輸出（codex-rs `protocol/src/error.rs` 的
-`format_retry_timestamp` 用 chrono `Local`，2026-10-05 查 0.156.1 原始碼確認）。`CodexRuntime` 派工時以 `env TZ=UTC`
+`format_retry_timestamp` 用 chrono `Local`，2026-10-05 查 0.156.1 原始碼確認，0.166.0 執行檔仍含相同措辭）。`CodexRuntime` 派工時以 `env TZ=UTC`
 啟動 Codex（只影響 Codex 程序，不影響其他角色與專案測試），所以 `QuotaRetryTime` 一律以 UTC 解讀：
 有日期就照日期；只有時刻代表 Codex 的「今天」，以觀察時間（UTC）的日期為準，早於觀察時間一小時以上才算隔天。
 注意 0.156.1 用的是彎引號 `You’ve`，`QuotaExceeded.explicit` 會先統一成直引號再比對（2026-10-05 前只認直引號，

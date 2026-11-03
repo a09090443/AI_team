@@ -267,7 +267,7 @@ export const docs = [
     title: 'opencode Runtime 實測報告',
     category: 'runtime',
     status: 'record',
-    summary: 'opencode 1.18.19 旗標、事件流與能力宣告；VM 沙箱下端對端尚未驗證，不可標為已支援。',
+    summary: 'opencode 1.18.19（1.19.5 重核）旗標、事件流與能力宣告；VM 沙箱下端對端尚未驗證，不可標為已支援。',
     readWhen: '考慮使用第三個 runtime（opencode），或需要實際金額回報。',
     code: ['orchestrator/src/main/java/com/zipe/aiteam/runtime/OpenCodeRuntime.java'],
   },

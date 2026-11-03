@@ -21,7 +21,7 @@ import java.util.Set;
 /**
  * opencode CLI 的 AgentRuntime 實作。
  *
- * 以下用法皆已於 opencode 1.18.19 實測（見 docs-site/docs/opencode-runtime-report.md）：
+ * 以下用法皆已於 opencode 1.18.19 實測（1.19.5 重核旗標與事件流）（見 docs-site/docs/opencode-runtime-report.md）：
  *   opencode run             非互動入口
  *   --format json            JSONL 事件流；每個事件都帶 sessionID
  *   --dir DIR                指定工作目錄，與 --session 可並用（與 codex resume 不同）
