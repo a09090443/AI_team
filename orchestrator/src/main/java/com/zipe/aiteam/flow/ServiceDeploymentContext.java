@@ -41,7 +41,11 @@ public final class ServiceDeploymentContext {
                     if(host!=null)
                         out.append("\n使用者電腦連這台沙箱的位址：").append(host).append("（系統接沙箱時登錄，非推測）。")
                                 .append("交付摘要寫完整網址 http://").append(host).append(":<實際對外埠><應用路徑>，不要用 127.0.0.1 或容器內位址；")
-                                .append("系統結案前會從 Agent VM 實測摘要中這個主機的網址，2xx 才交付，所以不需要等人登錄入口。");
+                                .append("系統結案前會從 Agent VM 實測摘要中這個主機的網址，2xx 才交付，所以不需要等人登錄入口。")
+                                // #1012：部署角色在自己的沙箱 curl 連不出去，就回 NOT_RUNNING 停給人，要求另建 Agent VM 探測操作；系統其實會代測。
+                                .append("你所在的執行沙箱可能連不到這個網段，在沙箱內連不上不代表服務失敗，也不要因此回報 NOT_RUNNING 或要求另建探測操作：")
+                                .append("目標端檢查通過就回報 RUNNING，摘要列出應回 2xx 的 GET 網址（最多 4 個），系統實測的結果就是 Agent VM 的證據，")
+                                .append("並寫入交接紀錄供審查引用。系統只送 GET；POST 或預期非 2xx 的路由不要放進摘要網址，以目標端實測為證據並在報告說明。");
                     int count=0;
                     for (JsonNode h : data.path("history")) {
                         if (++count > 5) break;

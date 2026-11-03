@@ -31,7 +31,8 @@ class ServiceDeploymentContextTest {
         Path dir=Files.createDirectories(tmp.resolve("service-context"));
         Files.writeString(dir.resolve("sandbox.json"),"{\"target\":\"sandbox\",\"user_host\":\"192.0.2.20\"}");
         assertThat(ServiceDeploymentContext.notice(tmp,"sandbox",List.of()))
-                .contains("使用者電腦連這台沙箱的位址：192.0.2.20","http://192.0.2.20:<實際對外埠><應用路徑>","不需要等人登錄入口");
+                .contains("使用者電腦連這台沙箱的位址：192.0.2.20","http://192.0.2.20:<實際對外埠><應用路徑>","不需要等人登錄入口",
+                        "在沙箱內連不上不代表服務失敗","系統只送 GET");
     }
     @Test void absentInvalidAndMismatchedContextNeverInventRecovery() throws Exception {
         assertThat(ServiceDeploymentContext.notice(tmp,"sit",List.of())).contains("不代表從未部署","尚無完整");
