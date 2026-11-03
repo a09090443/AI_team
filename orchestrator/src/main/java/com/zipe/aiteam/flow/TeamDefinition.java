@@ -110,8 +110,11 @@ public record TeamDefinition(int version, String id, Project project, Map<String
     }
     public record Role(String name, String runtime, String model, String prompt,
                        String botTokenEnv, String appTokenEnv, List<String> tools, String reasoningEffort, String capabilities,
-                       /** 選填：角色對話前由系統以 GET 代查的固定網址（服務清單、OpenAPI 等），見 {@link DialogueReferences}。 */
-                       List<Reference> references) {
+                       /**
+                        * 選填：角色對話前由系統以 GET 代查的固定網址（服務清單、OpenAPI 等），見 {@link DialogueReferences}。
+                        * 序列化時省略 null，未設定的配置 revision 不變。
+                        */
+                       @JsonInclude(JsonInclude.Include.NON_NULL) List<Reference> references) {
         public Role(String name, String runtime, String model, String prompt,
                     String botTokenEnv, String appTokenEnv, List<String> tools, String reasoningEffort, String capabilities) {
             this(name, runtime, model, prompt, botTokenEnv, appTokenEnv, tools, reasoningEffort, capabilities, null);

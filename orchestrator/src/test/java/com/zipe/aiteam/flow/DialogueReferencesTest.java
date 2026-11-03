@@ -64,6 +64,10 @@ class DialogueReferencesTest {
         for (int i = 0; i < pairs.length; i += 2) references.addObject().put("label", pairs[i]).put("url", pairs[i + 1]);
         TeamCatalog.validate(mapper.treeToValue(config, TeamDefinition.class));
     }
+    @Test void rolesWithoutReferencesKeepTheirSerializedFormSoRevisionsDoNotChange() throws Exception {
+        var role = new TeamDefinition.Role("QA", "codex", "", "p.md", null, null, List.of("Read"));
+        assertThat(mapper.writeValueAsString(role)).doesNotContain("references");
+    }
     @Test void catalogAcceptsPlainHttpReferencesAndRejectsUnsafeOnes() throws Exception {
         validateWith("OpenAPI", "http://127.0.0.1:8080/v3/api-docs", "清單", "https://example.test/api/list");
         assertThatThrownBy(() -> validateWith("帳密", "http://user:pw@example.test/a")).hasMessageContaining("不含帳密");
