@@ -109,7 +109,13 @@ public record TeamDefinition(int version, String id, Project project, Map<String
         public Verification(List<List<String>> commands, int timeoutSeconds) { this(commands, timeoutSeconds, null); }
     }
     public record Role(String name, String runtime, String model, String prompt,
-                       String botTokenEnv, String appTokenEnv, List<String> tools, String reasoningEffort, String capabilities) {
+                       String botTokenEnv, String appTokenEnv, List<String> tools, String reasoningEffort, String capabilities,
+                       /** 選填：角色對話前由系統以 GET 代查的固定網址（服務清單、OpenAPI 等），見 {@link DialogueReferences}。 */
+                       List<Reference> references) {
+        public Role(String name, String runtime, String model, String prompt,
+                    String botTokenEnv, String appTokenEnv, List<String> tools, String reasoningEffort, String capabilities) {
+            this(name, runtime, model, prompt, botTokenEnv, appTokenEnv, tools, reasoningEffort, capabilities, null);
+        }
         public Role(String name, String runtime, String model, String prompt,
                     String botTokenEnv, String appTokenEnv, List<String> tools, String reasoningEffort) {
             this(name, runtime, model, prompt, botTokenEnv, appTokenEnv, tools, reasoningEffort, null);
@@ -124,6 +130,8 @@ public record TeamDefinition(int version, String id, Project project, Map<String
                     + "（要求值）";
         }
     }
+    /** 管理者固定的參考網址；模型不能提供或改寫。 */
+    public record Reference(String label, String url) {}
     public enum Scope { READ_ONLY, WORKSPACE, LIMITED }
     public enum Gate { REPORT, REQUIREMENTS, IMPLEMENTATION, TEST_PLAN, VERIFICATION, REVIEW, SERVICE }
     public enum Kind { AGENT, APPROVAL, END }

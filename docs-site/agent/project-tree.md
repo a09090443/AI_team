@@ -198,6 +198,7 @@ agent_team/
 │   │   │   ├── ServiceDelivery.java # 服務建置目標、可用性檢查與完成契約
 │   │   │   ├── ServiceArtifacts.java # 交付成功的部署檔保存到實例目錄、下次部署還原
 │   │   │   ├── ServiceDeploymentContext.java # 同目標部署歷史與非機密宿主恢復入口
+│   │   │   ├── DialogueReferences.java # 角色對話前代查配置的固定參考網址（服務清單、OpenAPI）
 │   │   │   ├── ServiceSupport.java # 持久診斷等待、結案後證據與回覆檢查、沙箱交付網址實測
 │   │   │   ├── OperationContract.java # 專案操作契約（operations）
 │   │   │   ├── OperationPreflight.java # 各階段沙箱內的操作預檢
@@ -331,6 +332,7 @@ agent_team/
 │   │   │   ├── verify.md             # 驗收（QA）
 │   │   │   ├── review.md             # 審查（Code Reviewer）
 │   │   │   ├── infrastructure.md     # Infrastructure Agent：環境設定與核准目標的服務建置
+│   │   │   ├── api-guide.md          # API Guide Agent：依實際部署說明 API 呼叫方式（唯讀對話）
 │   │   │   ├── service.md            # 服務建置、啟動後檢查與自修
 │   │   │   ├── service-triage.md     # 服務受阻分流
 │   │   │   └── triage.md             # 受阻分流（PM）
@@ -372,7 +374,8 @@ agent_team/
 │   │   ├── backend.yaml
 │   │   ├── qa.yaml
 │   │   ├── code-review.yaml
-│   │   └── infrastructure.yaml       # Infrastructure Agent：部署、健康檢查與清理身分
+│   │   ├── infrastructure.yaml       # Infrastructure Agent：部署、健康檢查與清理身分
+│   │   └── api-guide.yaml            # API Guide Agent：回答已部署服務的 API 呼叫方式
 │   ├── bootstrap/                    # 從零建置工具（新機只用這裡），安裝後位於 ~/ai-team/
 │   │   ├── provision.sh              # 以已核實 checksum 的官方封存檔安裝工具鏈
 │   │   ├── toolchain.tsv.example     # 工具鏈 URL／checksum 範本

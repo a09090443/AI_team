@@ -104,6 +104,9 @@ done
 | `qa.yaml` | `SLACK_BOT_TOKEN_QA` | `SLACK_APP_TOKEN_QA` |
 | `infrastructure.yaml`（配置有此角色時） | `SLACK_BOT_TOKEN_INFRASTRUCTURE` | `SLACK_APP_TOKEN_INFRASTRUCTURE` |
 | `code-review.yaml` | `SLACK_BOT_TOKEN_CODE_REVIEW` | `SLACK_APP_TOKEN_CODE_REVIEW` |
+| `api-guide.yaml`（配置有 `api_guide` 角色時） | `SLACK_BOT_TOKEN_API_GUIDE` | `SLACK_APP_TOKEN_API_GUIDE` |
+
+`gradle-fullstack.json` 另含 `api_guide`（API Guide Agent，只用於直接 @ 的唯讀對話，沒有節點）；要直接 @ 它就必須建立這個 App，否則它不會被派工也無從使用。
 
 2026-10-29 起三份內附範例都含 `infrastructure` 角色（服務建置路線，`serviceTarget` 未設定時不會被派工）。沒有建立它的 App 也能執行 service 節點，但由主 App 代發、無法直接 `@` Infrastructure。
 

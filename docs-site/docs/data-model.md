@@ -214,6 +214,7 @@ v2 配置式流程的整份執行快照，對應 `com.zipe.aiteam.flow.FlowRun`�
 **每次狀態變更整份覆寫**。這是四張表裡欄位最多、也最需要小心的一張。
 自主派工新增 assignments／assignmentHistory，以及 snapshot.definition 中的 candidateRoles／capabilities；
 新版寫入後舊 JAR 不能直接解析，回滾需配合升級前的資料庫與配置備份。
+2026-11-03 起 snapshot.definition 的角色可含 `references`（角色對話的固定參考網址）；含此欄位的快照同樣不能由舊 JAR 解析。
 
 角色諮詢與共享看板（2026-10-17）新增了以下欄位：
 

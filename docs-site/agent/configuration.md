@@ -105,6 +105,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 | `reasoningEffort` | 選填，目前僅 Codex 支援 `low`／`medium`／`high`／`xhigh` |
 | `prompt` | 角色一般職責的提示檔 |
 | `capabilities` | 自主派工候選角色必填的能力與限制描述，最多 2000 字；提供模型判斷，不會授予權限 |
+| `references` | 選填，最多 4 筆 `{ "label", "url" }`（不含帳密的 http/https）。直接 @ 該角色對話時，系統在模型前從服務主機以 GET 代查（不跟隨 redirect、逾時 10 秒、每筆 32 KB）並附進脈絡；模型不能提供或改網址。見 [直接對角色提出請求](/docs/direct-agent-requests#系統代查的固定參考網址2026-11-03) |
 | `botTokenEnv`、`appTokenEnv` | Slack token 的**環境變數名稱**（值不進 JSON、不進快照） |
 | `tools` | 工具白名單，例如 `Read`、`Bash(mvn *)`。要角色核實產物就必須給對應唯讀工具，否則被拒後報告作廢。Claude Code 以 `--permission-mode dontAsk` 執行，**沒列在這裡的工具一律拒絕**，包含 `WebSearch`、`WebFetch`：角色要查網路（例如查套件最新版）必須明列，可寫成 `WebFetch(domain:repo1.maven.org)` 限定網域。Codex runtime 目前未開啟網頁搜尋 |
 

@@ -45,6 +45,7 @@ triage 的 `"service": "deploy"` 路線，四個操作的 `nodes` 為 `["service
 實例 overlay 是完整的專案配置，要用這條路線須在 overlay 加上同樣的節點、路線與操作 `nodes`。
 範例的 `project.serviceTarget` 為 `null`，等於關閉：intake 會被告知不要選 service 路線。實例要啟用時，先依 [共用沙箱環境](sandbox-environment.md) 接好沙箱 VM，
 再在實例配置填 `serviceTarget`（`name` 為沙箱 target 名稱，`checks` 為 `{"prepare":"service-prepare","start":"service-start","health":"service-health"}`）。
+`gradle-fullstack.json` 另有只供直接 @ 對話的 `api_guide` 角色（共用 prompt `prompts/api-guide.md`，`references` 指向 OpenAPI 範例網址），沒有任何節點引用；其他兩份不含。
 node-web 的 infrastructure 用 claude-code（不新增 Codex 依賴），其他兩份用 codex。
 
 操作 argv 與角色工具可寫 `${teams}`，載入時展開成該配置所在的 teams 目錄（例如 `${teams}/skills/service-build/scripts/client.py`），
@@ -156,6 +157,7 @@ App-Level Token 留空**：發言與交接 tag 使用同一個角色身分，不
 | 依變更範圍驗證 | `commandScopes` |
 | 文件略過產品建置 | `docOnlyPaths` |
 | 計畫自動核准 | `autoApprovePlanWhenValid` |
+| 角色對話前代查固定參考網址（例如 API 呼叫說明角色） | 角色 `references`，見[直接對角色提出請求](direct-agent-requests.md#系統代查的固定參考網址2026-11-03) |
 
 內附範例的啟用情形見[內附範例與實例 overlay](#內附範例與實例-overlay)。
 各部署實例實際啟用哪些功能、為何這樣設定，屬於該實例的維運紀錄，由維運者自行保存在本機（例如 `.ai/records/`），不寫在本文件。

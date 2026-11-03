@@ -128,6 +128,8 @@ public class ConfiguredExecutor {
         if (!flow.dialogue) context.append(AutonomousRecovery.timeBudgetNotice(flow, timeoutSeconds));
         if (evidence != null) context.append("\n系統派工前證據（不是建置成功或真人核准）：").append(evidence);
         if (flow.dialogue) context.append(parentWorkspaceState(flow));
+        // 每次組提示都重新查，改寫回覆時拿到的也是當下現況；不存進 flow.context，避免單筆上限截掉清單。
+        if (flow.dialogue) context.append(DialogueReferences.collect(role.references()));
         if (!flow.dialogue) context.append("\n本階段可使用／規畫的操作契約：").append(availableOperations(flow, node));
         if (!flow.dialogue) context.append(inspectionNotice(flow, node));
         if (!flow.dialogue) context.append(ServiceDelivery.notice(flow, node, pendingCommits(task, flow, node)));

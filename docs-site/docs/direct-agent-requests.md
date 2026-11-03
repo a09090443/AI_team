@@ -67,6 +67,31 @@ Socket handler 僅放入 ingress 佇列並 ack，模型與 Slack 回覆不在 ha
 - 舊AWAIT_HUMAN對話可由一次性AI_TEAM_RESUME_DIALOGUE_TASK=&lt;id&gt;恢復原問題；只准原對話且有parent；已COMPLETED的服務對話僅在保存答案仍含不可執行的執行前綴建議時可校正，走中央佇列，不改原任務快照/驗收、不重新部署。未完成對話的原有去重規則保留。
 - 證據等級：已有真實任務實測「來源清理後的自動網址診斷與回覆」（服務健康、未觸發 repair）；修復失敗、重試與資料保留以回歸測試驗證，不宣稱所有故障組合已實測。
 
+## 系統代查的固定參考網址（2026-11-03）
+
+對話模型不能上網，agent 沙箱也可能連不到服務所在網段（例如共用沙箱 VM 的 host-only 網段），但服務程序所在的主機連得到。
+要讓角色依「實際已部署」的內容回答時，在角色配置加 `references`（最多 4 筆 `{ "label", "url" }`）：
+
+```json
+"api_guide": {
+  "name": "API Guide Agent", "runtime": "claude-code", "model": "sonnet",
+  "prompt": "prompts/api-guide.md", "tools": ["Read", "Grep", "Glob"],
+  "botTokenEnv": "SLACK_BOT_TOKEN_API_GUIDE", "appTokenEnv": "SLACK_APP_TOKEN_API_GUIDE",
+  "references": [{ "label": "OpenAPI 文件", "url": "http://<服務主機>:<埠>/v3/api-docs" }]
+}
+```
+
+- 每次直接 @ 該角色（有無原任務都適用），`ConfiguredExecutor` 組提示時由 `DialogueReferences` 逐筆 GET，結果以「系統查得的服務現況」附進脈絡，含 HTTP 狀態與台北查詢時間。
+  回覆被要求改寫時會重新查一次；不寫進 `flow.context`（單筆上限會截掉清單）。
+- 邊界：網址由管理者寫在配置，模型不能提供或改寫；只用 GET、不跟隨 redirect、不帶憑證、逾時 10 秒、每筆最多 32 KB 並經去敏。
+  `TeamCatalog` 拒絕含帳密、非 http/https、label 重複或超過 4 筆的設定。查詢失敗只標「現況未知」，對話照常進行。
+- 只影響直接 @ 的對話，不影響流程節點；模型仍只有 Read/Grep/Glob，在主 repository（或原任務工作區）讀原始碼與文件補足路由細節。
+- 共用 prompt `prompts/api-guide.md`（API Guide Agent）：以查得的清單判斷是否已部署、以原始碼與文件確認方法與參數，
+  回覆完整網址、HTTP 方法、標頭、請求與回應範例及 curl；清單沒有就說未部署，未實際呼叫的範例要標明。
+  Slack App 用 `deploy/agent-manifests/api-guide.yaml`，步驟見[新增配置式角色](slack-agent-apps.md#新增配置式角色)。
+- 適用任何有「服務清單」或 OpenAPI 端點的專案：例如 Spring Boot 的 `/v3/api-docs`，或動態發布平台的服務清單查詢 API。
+- 證據等級：程式測試（本機 HTTP 伺服器：200、500、302 不跟隨、截斷、連線失敗；配置驗證）。真實 Slack 端對端尚未驗證。
+
 ## 真實驗收清單（尚未執行）
 
 - 白名單使用者分別 @五個角色，各由正確角色回覆。

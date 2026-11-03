@@ -1,0 +1,29 @@
+display_information:
+  name: API Guide Agent
+  description: 說明已部署服務的 API 呼叫方式
+  background_color: "#2e7d6b"
+  long_description: >-
+    這是目標專案 AI 軟體團隊中的「API Guide Agent」角色，
+    以 workspace 內獨立使用者的身分存在，讓使用者可以直接 @本角色詢問已部署服務的 API 要怎麼呼叫。
+    它回答完整網址、HTTP 方法、標頭、請求與回應範例及 curl；依據是系統對話前以管理者固定網址實測的服務清單，
+    以及專案 repository 的原始碼與文件，不以推測補上未部署的服務。
+    直接 @本角色只進行唯讀對話，不會部署、修改程式或代替使用者呼叫服務。
+    Agent 彼此的交接訊息不會觸發工作。請將本 App 邀請進該實例的頻道，並設定它自己的 Socket Mode Token。
+features:
+  bot_user:
+    display_name: API Guide Agent
+    always_online: false
+oauth_config:
+  scopes:
+    bot:
+      - chat:write
+      - app_mentions:read
+settings:
+  event_subscriptions:
+    bot_events:
+      - app_mention
+  interactivity:
+    is_enabled: false
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false

@@ -132,6 +132,7 @@ public class TeamCatalog {
                 if (ref.isBlank()) continue;
                 require(ref.matches("[A-Z][A-Z0-9_]*") && tokenRefs.add(ref), "token 只允許互不重複的環境變數引用");
             }
+            if (r.references() != null) DialogueReferences.validate(id, r.references());
         });
         d.nodes().forEach((id, n) -> {
             require(id.matches("[a-z][a-z0-9_]*") && !Set.of("human", "end").contains(id), "無效節點 ID：" + id);

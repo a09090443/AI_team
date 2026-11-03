@@ -705,6 +705,25 @@
       ],
       "capabilities": "測試環境部署、啟動與健康檢查；由 Agent VM 經已登錄 SSH 公鑰直接連到目標 VM。不得要求啟動 Windows broker；網路、公鑰或主機指紋尚未登錄時明列缺口。restricted 目標只執行核准固定操作，不取得任意 root shell；目標為 sandbox（prepare 收據 mode=sandbox）時，依 service-build skill 自行撰寫並以 client.py exec 執行安裝、啟動與修復腳本。"
     },
+    "api_guide": {
+      "name": "API Guide Agent",
+      "runtime": "claude-code",
+      "model": "sonnet",
+      "prompt": "prompts/api-guide.md",
+      "botTokenEnv": "SLACK_BOT_TOKEN_API_GUIDE",
+      "appTokenEnv": "SLACK_APP_TOKEN_API_GUIDE",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob"
+      ],
+      "references": [
+        {
+          "label": "OpenAPI 文件",
+          "url": "http://127.0.0.1:8080/v3/api-docs"
+        }
+      ]
+    },
     "inspector": {
       "name": "Code Reviewer",
       "runtime": "codex",
