@@ -63,6 +63,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
   "maxTransitions": 24,
   "sharedInstructions": "prompts/shared.md",
   "collaboration": { "consultPerVisit": 2, "consultPerTask": 12, "questionsPerRound": 2, "boardMaxEntries": 100 },
+  "attachments": { "maxFiles": 5, "maxBytes": 10485760, "allow": ["reports/**"] },
   "nodes": { "<節點 ID>": { "...": "節點設定" } }
 }
 ```
@@ -81,6 +82,17 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 | `boardMaxEntries` | 1～200 | 看板最多幾筆 |
 
 沒設定時，整個功能關閉，舊配置的 revision 也不會變動。行為說明見[角色諮詢與共享看板](/docs/configurable-team#角色諮詢與共享看板2026-10-17)。
+
+`attachments` 是選填欄位，讓 agent 在報告宣告的檔案經系統驗證後上傳到討論串（2026-11-03 起）：
+
+| 欄位 | 範圍 | 說明 |
+|---|---|---|
+| `maxFiles` | 1～10 | 每份報告最多上傳幾個檔案 |
+| `maxBytes` | 1～52428800 | 單檔大小上限（位元組） |
+| `allow` | 選填，最多 20 條 | 相對工作目錄的 glob；有設定時只上傳符合的檔案 |
+| `deny` | 選填，最多 20 條 | 額外禁止的 glob；系統內建的機密檔清單不能由配置放寬 |
+
+沒設定時整個功能關閉，revision 不變。Slack App 需要 `files:write`。行為與檢查規則見[附件上傳到討論串](/docs/configurable-team#附件上傳到討論串2026-11-03)。
 
 ### `project`
 

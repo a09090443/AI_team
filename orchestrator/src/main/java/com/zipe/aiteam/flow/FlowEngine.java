@@ -772,6 +772,7 @@ public class FlowEngine {
                         "任務 #" + task.id() + "｜" + flow.snapshot.definition().roles().get(node.role()).name()
                       + "（" + flow.node + "）\n" + describe(report, flow, node)
                       + fullReportHint(task, flow.node));
+                attach(task, flow, node, flow.snapshot.definition().roles().get(node.role()), report);
                 String next;
                 boolean resend = false;
                 if (block == null) {
@@ -2768,7 +2769,29 @@ public class FlowEngine {
             store.saveStage(task.id(),new StageOutcome(flow.node,result.sessionId(),delivered,result.costEstimate(),0));
         }
         slack.postConfigured(role, task.slackChannel(), task.slackThreadTs(), answer + "\n（原任務驗收與發布未改動；系統診斷或修復結果如上。）");
+        attach(task, flow, node, role, result.structuredOutput());
         state(task, Task.State.COMPLETED, "角色對話已完成");
+    }
+    /** 報告宣告的附件：系統驗證後上傳到討論串。任何失敗只留說明與稽核，不改變階段結果。 */
+    private void attach(Task task, FlowRun flow, Node node, Role role, JsonNode report) {
+        if (!Attachments.enabled(flow) || !report.path("attachments").isArray() || report.path("attachments").isEmpty()) return;
+        try {
+            var selection = Attachments.select(report, executor.workingDirectory(task, flow, node), flow.snapshot.definition().attachments());
+            String error = selection.accepted().isEmpty() ? null
+                    : slack.uploadConfigured(role, task.slackChannel(), task.slackThreadTs(), selection.accepted());
+            String names = String.join("、", selection.accepted().stream().map(Attachments.Candidate::name).toList());
+            if (!selection.accepted().isEmpty())
+                audit.record(task.id(), AuditLog.ACTOR_SYSTEM, error == null ? AuditLog.ACTION_STATE : AuditLog.ACTION_ERROR,
+                        "節點 " + flow.node + " 附件" + (error == null ? "已上傳：" : "上傳失敗（" + error + "）：") + names);
+            if (!selection.rejected().isEmpty())
+                audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_REJECTED,
+                        "節點 " + flow.node + " 附件未通過檢查：" + String.join("；", selection.rejected()));
+            String note = Attachments.note(selection, error);
+            if (!note.isEmpty()) slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), note);
+        } catch (Exception e) {
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_ERROR, "附件處理失敗：" + Diagnostics.describe(e));
+            slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "附件處理失敗，未上傳任何檔案；階段結果不受影響。");
+        }
     }
     public void requestRole(Identity identity, String channel, String thread, String user, String text, Consumer<Runnable> enqueue) {
         if (!props.allowedUsers().contains(user) || slack.isAgentUser(user)) return;

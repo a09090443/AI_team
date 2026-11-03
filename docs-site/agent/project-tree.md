@@ -172,6 +172,7 @@ agent_team/
 │   │   │   ├── AgentDispatch.java    # Agent 選擇角色、派工契約驗證與歷史保存
 │   │   │   ├── Consultation.java     # 角色互相諮詢：暫停提問、唯讀回答、原 session 接續與額度
 │   │   │   ├── TeamBoard.java        # 團隊共享看板：決策／假設／問題／風險，承接時帶走
+│   │   │   ├── Attachments.java      # 報告宣告的附件：schema 注入、路徑與機密檔檢查，供上傳到討論串
 │   │   │   ├── TeamRoster.java       # 給需求／分流節點的全隊名單：能力、runtime、負責階段與寫檔權限
 │   │   │   ├── FlowLimits.java       # 防循環上限的唯一判斷（引擎與按鈕共用）
 │   │   │   ├── FlowGates.java        # 依工作契約（gate）驗證節點報告
@@ -278,6 +279,7 @@ agent_team/
 │   │   ├── SpringWiringTest.java
 │   │   ├── agent/
 │   │   ├── flow/
+│   │   │   ├── AttachmentsTest.java  # 附件路徑逃逸、機密檔、上限與舊快照不變
 │   │   │   ├── OperationJobsTest.java # 跨專案作業日誌、來源綁定及取消
 │   │   │   ├── ServiceArtifactsTest.java # 部署檔保存排除機密、只補缺檔、竄改與超量
 │   │   │   └── ServiceSupportTest.java # 入口對應、對話回覆與交付閘門測試
@@ -288,6 +290,7 @@ agent_team/
 │   │   │   ├── SandboxUnitCleanupTest.java # 精確unit清理與失敗狀態
 │   │   │   └── SandboxUnitCleanupLinuxTest.java # Linux cgroup實測、不影響其他unit
 │   │   ├── slack/
+│   │   │   └── AttachmentUploadTest.java # 附件上傳帶討論串、不需 files:read、錯誤不拋出
 │   │   ├── store/
 │   │   ├── task/
 │   │   └── workspace/

@@ -152,6 +152,8 @@ PR 核准與結束訊息中的「團隊看板」段落，列出角色記錄、�
 - 在沒有工作任務的新討論串派工，會交給原本的 PM 管線；在既有任務討論串派工，交給該任務的分流，不另建平行實作。
 - 對話是獨立唯讀子請求：只准 Read／Grep／Glob，不能 commit、派工、核准或取代 QA／Review 證據。
 - 前提是角色 App 已設定 Socket Mode 與 App-Level Token，見 [direct-agent-requests](/docs/direct-agent-requests)。
+- 團隊配置啟用 `attachments` 時，可請角色「把報表附上來」：角色宣告檔案，系統驗證後上傳到討論串；被拒的檔案會列出原因。
+  App 需要 `files:write`，見 [既有 App 補權限](/docs/slack-agent-apps#既有-app-補上傳檔案權限)。
 
 ## 基準驗證（2026-10-18 起）
 

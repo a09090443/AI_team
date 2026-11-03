@@ -175,6 +175,32 @@ public class SlackNotifier {
     }
 
     /**
+     * 以任務快照的角色 token 上傳系統已驗證的附件；角色沒有 token 時由主 App 代傳。
+     * @return null＝成功；否則是 Slack 的錯誤碼或例外摘要，由呼叫端轉成討論串說明，不中斷流程。
+     */
+    public String uploadConfigured(com.zipe.aiteam.flow.TeamDefinition.Role role, String channel, String thread,
+                                   List<com.zipe.aiteam.flow.Attachments.Candidate> files) {
+        String token = props.secretReference(role.botTokenEnv());
+        return upload(token.isBlank() ? clients.get(Identity.SYSTEM) : slack.methods(token), channel, thread, files);
+    }
+
+    static String upload(MethodsClient client, String channel, String thread, List<com.zipe.aiteam.flow.Attachments.Candidate> files) {
+        try {
+            // requestFileInfo 會多呼叫 files.info（需要 files:read）；只要 files:write 就能完成上傳。
+            var response = client.filesUploadV2(r -> r.channel(channel).threadTs(thread).requestFileInfo(false)
+                    .uploadFiles(files.stream().map(f -> com.slack.api.methods.request.files.FilesUploadV2Request.UploadFile.builder()
+                            .file(f.file().toFile()).filename(f.name()).title(f.title()).build()).toList()));
+            if (response.isOk()) return null;
+            log.error("附件上傳失敗：{}", response.getError());
+            return response.getError() == null ? "Slack 未回報原因" : response.getError();
+        } catch (Exception e) {
+            log.error("附件上傳失敗：{}", com.zipe.aiteam.runtime.Diagnostics.describe(e));
+            return e instanceof SlackApiException api && api.getError() != null ? api.getError().getError()
+                    : com.zipe.aiteam.runtime.Diagnostics.clip(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage(), 300);
+        }
+    }
+
+    /**
      * 只有「沒有專屬 token、借用主 App 發言的角色」才覆寫名稱與圖示。系統身分本來就是主 App，
      * 覆寫會把每個實例的主 App 都改成同一個寫死的名字：第二個實例的系統訊息曾因此顯示成第一個實例的 App 名稱。
      */

@@ -12,7 +12,9 @@ public record TeamDefinition(int version, String id, Project project, Map<String
                               * 選填：所有角色共用的工作規則檔（配置目錄內相對路徑），附在每個正式階段的角色提示之後。
                               * 序列化時省略 null，未設定的配置 revision 不變。
                               */
-                             @JsonInclude(JsonInclude.Include.NON_NULL) String sharedInstructions) {
+                             @JsonInclude(JsonInclude.Include.NON_NULL) String sharedInstructions,
+                             /** 選填：agent 宣告、系統驗證後上傳到討論串的檔案。未設定＝停用（舊快照一律如此），見 {@link Attachments}。 */
+                             @JsonInclude(JsonInclude.Include.NON_NULL) AttachmentPolicy attachments) {
     public TeamDefinition(int version, String id, Project project, Map<String, Role> roles,
                           String entry, int maxTransitions, Map<String, Node> nodes) {
         this(version, id, project, roles, entry, maxTransitions, nodes, null, null);
@@ -21,6 +23,18 @@ public record TeamDefinition(int version, String id, Project project, Map<String
                           String entry, int maxTransitions, Map<String, Node> nodes, Collaboration collaboration) {
         this(version, id, project, roles, entry, maxTransitions, nodes, collaboration, null);
     }
+    public TeamDefinition(int version, String id, Project project, Map<String, Role> roles,
+                          String entry, int maxTransitions, Map<String, Node> nodes, Collaboration collaboration,
+                          String sharedInstructions) {
+        this(version, id, project, roles, entry, maxTransitions, nodes, collaboration, sharedInstructions, null);
+    }
+    /**
+     * @param maxFiles 每份報告最多上傳幾個檔案（1..10）
+     * @param maxBytes 單檔上限（1..50MB）
+     * @param allow    選填，相對工作區的 glob；有設定時只上傳符合的檔案
+     * @param deny     選填，額外禁止的 glob；系統內建的機密檔清單不能由配置放寬
+     */
+    public record AttachmentPolicy(int maxFiles, long maxBytes, List<String> allow, List<String> deny) {}
     /**
      * 角色諮詢與共享看板的上限；未設定代表整個功能關閉（舊快照一律如此）。
      * 序列化時省略 null，未啟用的配置 revision 與舊版逐字相同。見 {@link Consultation}、{@link TeamBoard}。

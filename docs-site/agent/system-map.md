@@ -30,6 +30,9 @@ FlowEngine 的新任務承接、續跑、發布及角色請求均保留這個身
 
 兩者都不會新增人工停止點，也不能擴權。詳見[角色諮詢與共享看板](/docs/configurable-team#角色諮詢與共享看板2026-10-17)。
 
+設定了 `attachments` 的團隊，agent 可在報告宣告要給使用者下載的檔案；`Attachments` 驗證路徑、機密檔與大小後，
+由 `SlackNotifier.uploadConfigured` 以角色身分上傳到討論串，失敗不影響流程。詳見[附件上傳到討論串](/docs/configurable-team#附件上傳到討論串2026-11-03)。
+
 ## 兩種執行模式
 
 新 v2 快照共用 `IssueTracker`：各階段登錄問題，`FlowRun.issueInventory` 完整保存、承接不遺漏；

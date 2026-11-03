@@ -225,6 +225,9 @@ public class ConfiguredExecutor {
         context.append(TeamRoster.notice(flow));
         context.append(Consultation.notice(flow, node));
         context.append(Consultation.answers(flow));
+        // 對話也適用：上傳由系統讀檔，不需要 agent 的寫入權。
+        schema = Attachments.schema(schema, flow);
+        context.append(Attachments.notice(flow));
         if (!flow.dialogue && AgentDispatch.enabled(node) && node.scope() == Scope.WORKSPACE && "codex".equals(role.runtime()))
             context.append("\n本次由系統核對變更後代為 commit；完成修改與品質檢查即可，不要因無法 commit 回報受阻。")
                     .append("禁止修改 .git、角色權限與工具行為設定；summary 列出實際變更與檢查證據。");

@@ -193,6 +193,7 @@ public class TeamCatalog {
         ServiceDelivery.validate(d);
         AgentDispatch.validate(d);
         Consultation.validate(d);
+        Attachments.validate(d);
         for (String id : d.nodes().keySet()) dependencies(d, id, new HashSet<>());
         if (d.version() >= 2) {
             require(d.nodes().values().stream().filter(n -> n.gate() == Gate.REQUIREMENTS).count() == 1,

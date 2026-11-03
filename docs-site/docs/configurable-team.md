@@ -158,6 +158,7 @@ App-Level Token 留空**：發言與交接 tag 使用同一個角色身分，不
 | 文件略過產品建置 | `docOnlyPaths` |
 | 計畫自動核准 | `autoApprovePlanWhenValid` |
 | 角色對話前代查固定參考網址（例如 API 呼叫說明角色） | 角色 `references`，見[直接對角色提出請求](direct-agent-requests.md#系統代查的固定參考網址2026-11-03) |
+| 附件上傳到討論串 | `attachments` |
 
 內附範例的啟用情形見[內附範例與實例 overlay](#內附範例與實例-overlay)。
 各部署實例實際啟用哪些功能、為何這樣設定，屬於該實例的維運紀錄，由維運者自行保存在本機（例如 `.ai/records/`），不寫在本文件。
@@ -190,7 +191,7 @@ App-Level Token 留空**：發言與交接 tag 使用同一個角色身分，不
 
 第二份配置由同一個 FlowEngine 執行，不需要增加 Java enum、role switch 或流程 if。
 新增角色仍需建立／設定相應 Slack App，將 Bot/App Token 填入配置引用的環境變數，
-使用 `chat:write`、`app_mentions:read`、`app_mention` 與 Socket Mode。角色不必有 Slack 帳號才能執行：
+使用 `chat:write`、`files:write`（附件上傳）、`app_mentions:read`、`app_mention` 與 Socket Mode。角色不必有 Slack 帳號才能執行：
 缺 token 時系統會明示代發；但無法直接 @沒有獨立帳號的角色。
 
 刪除角色時要同步移除或改派引用它的節點與轉移。刪錯引用、未配置的下一步、孤立節點、
@@ -446,6 +447,23 @@ plan schema 要求 `protected_path_changes` 明列需跨 runtime 改派的檔案
 
 node-web 範例配置維持未啟用，也作為測試的對照組。被諮詢的角色必須有 `capabilities`。
 **目前證據等級：程式測試通過，尚未做真實 Slack／CLI 端對端驗證。**
+
+## 附件上傳到討論串（2026-11-03）
+
+設定頂層 `attachments` 後，agent 可在報告的 `attachments` 欄位列出要給使用者下載的檔案（`path` 相對於工作目錄、`title` 為說明），
+系統驗證後以該角色的 Slack App 上傳到原任務討論串；角色沒有自己的 token 時由主 App 代傳。正式階段與唯讀對話都適用。
+
+- agent 不持有 token、不直接呼叫 Slack：欄位由 `Attachments.schema()` 在執行時注入，上傳由 `FlowEngine` 在貼出階段報告／對話回覆後進行。
+- 系統寫死的檢查（配置只能再收緊）：路徑必須在工作目錄內，不接受絕對路徑、`..` 與任何一層符號連結；
+  `.git`、`.ssh`、`.env*`、`env.sh`、`*.pem`、`*.key`、`id_rsa*`、`credentials*` 等機密檔一律拒絕；
+  空檔、超過 `maxBytes`、超過 `maxFiles` 都拒絕；文字檔若含對外訊息會遮蔽的憑證樣式也拒絕，超過 2 MB 的文字檔因無法檢查直接拒絕。
+- 被拒或上傳失敗只在討論串留一行說明並寫入稽核（`REJECTED`／`ERROR`），不改變階段結果，流程照常前進。
+  Slack 回 `missing_scope` 時說明會提示管理者補 `files:write` 並重新安裝 App。
+- 同一份報告只在貼出時上傳一次；用量續跑後重新產生的報告會再依當次內容上傳。
+- 每個會上傳的 Slack App 都需要 `files:write`（manifest 已內含）；既有 App 要補權限並重新安裝，見[建立 Slack App](slack-agent-apps.md#既有-app-補上傳檔案權限)。
+
+相容：未設定時不序列化，配置 revision、提示與 schema 都與修改前相同；舊任務快照沒有這個欄位，一律不啟用。
+內附範例都未啟用。**目前證據等級：程式測試通過，尚未做真實 Slack 上傳的端對端驗證。**
 
 ## 快照與相容策略
 

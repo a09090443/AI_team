@@ -193,7 +193,7 @@ export const docs = [
     status: 'current',
     summary: '以 manifest 建立主 App 與角色 App、兩種 token 對應的環境變數、邀請進頻道、驗證，以及新增配置式角色的完整步驟。',
     readWhen: '新機設定 Slack、新增角色 App、設定角色獨立身分或 App-Level Token，或 Slack 沒反應時排查。',
-    code: ['deploy/slack-app-manifest.yaml', 'deploy/agent-manifests/'],
+    code: ['deploy/slack-app-manifest.yaml', 'deploy/agent-manifests/', 'orchestrator/src/main/java/com/zipe/aiteam/slack/SlackNotifier.java'],
   },
   {
     id: 'slack-progress',
