@@ -168,7 +168,7 @@ public class SlackNotifier {
         String token = props.secretReference(role.botTokenEnv());
         if (token.isBlank()) return post(Identity.SYSTEM, channel, thread, "[" + role.name() + "；角色 token 未設定，系統代發]\n" + text);
         try {
-            var response = slack.methods(token).chatPostMessage(r -> r.channel(channel).threadTs(thread).text(com.zipe.aiteam.runtime.Diagnostics.safe(text)));
+            var response = slack.methods(token).chatPostMessage(r -> r.channel(channel).threadTs(thread).text(SlackLinks.wrap(com.zipe.aiteam.runtime.Diagnostics.safe(text))));
             if (!response.isOk()) { log.error("角色 {} 發言失敗：{}", role.name(), response.getError()); return null; }
             return response.getTs();
         } catch (Exception e) { log.error("角色 {} 發言失敗：{}", role.name(), com.zipe.aiteam.runtime.Diagnostics.describe(e)); return null; }
@@ -215,11 +215,11 @@ public class SlackNotifier {
 
     public String post(Identity who, String channel, String threadTs,
                        String text, List<LayoutBlock> blocks) {
-        String safeText = com.zipe.aiteam.runtime.Diagnostics.safe(text);
+        String safeText = SlackLinks.wrap(com.zipe.aiteam.runtime.Diagnostics.safe(text));
         boolean hasOwn = Boolean.TRUE.equals(ownAccount.get(who));
         try {
             var resp = clients.getOrDefault(who, clients.get(Identity.SYSTEM)).chatPostMessage(r -> {
-                r.channel(channel).threadTs(threadTs).text(safeText).blocks(blocks);
+                r.channel(channel).threadTs(threadTs).text(safeText).blocks(SlackLinks.wrapBlocks(blocks));
                 // 有自己的帳號就不要覆寫顯示名稱，否則真實身分反而被蓋掉
                 if (overridesName(who, hasOwn)) r.username(who.username).iconEmoji(who.icon);
                 return r;
@@ -243,13 +243,13 @@ public class SlackNotifier {
     public void update(Identity who, String channel, String ts,
                        String text, List<LayoutBlock> blocks) {
         if (ts == null) return;
-        String safeText = com.zipe.aiteam.runtime.Diagnostics.safe(text);
+        String safeText = SlackLinks.wrap(com.zipe.aiteam.runtime.Diagnostics.safe(text));
         try {
             var resp = clients.getOrDefault(who, clients.get(Identity.SYSTEM)).chatUpdate(r -> r
                     .channel(channel)
                     .ts(ts)
                     .text(safeText)
-                    .blocks(blocks));
+                    .blocks(SlackLinks.wrapBlocks(blocks)));
             if (!resp.isOk()) {
                 log.error("chatUpdate 失敗（身分 {}）：{}", who, resp.getError());
             }

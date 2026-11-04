@@ -244,6 +244,7 @@ agent_team/
 │   │   ├── slack/                    # Slack 進入點、發言與版面
 │   │   │   ├── SlackListener.java    # 事件入口：白名單、去重、指令解析、按鈕處理
 │   │   │   ├── SlackNotifier.java    # 所有對 Slack 的發言（主 App 或角色身分）
+│   │   │   ├── SlackLinks.java       # 發言前把裸網址包成 <url>，避免全形標點被連進網址
 │   │   │   ├── SlackBlocks.java      # 訊息版面與按鈕 action_id
 │   │   │   ├── SlackReport.java      # 階段報告的 Slack 呈現
 │   │   │   ├── HumanGate.java        # 停下等人時的白話說明與選項按鈕
