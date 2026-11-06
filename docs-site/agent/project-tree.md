@@ -272,7 +272,8 @@ agent_team/
 │   │   │   ├── QuotaRetryTime.java   # 解析供應商解禁時間
 │   │   │   └── TaipeiTime.java       # 給人看的時間換算為台北時間
 │   │   └── workspace/
-│   │       └── WorkspaceManager.java # 每任務獨立 clone 工作區
+│   │       ├── WorkspaceManager.java # 每任務獨立 clone 工作區
+│   │       └── WorkspaceReclaimer.java # 磁碟不足／閒置時回收工作區建置產物
 │   ├── src/main/resources/
 │   │   ├── application.yml           # Spring 設定：SQLite 路徑、無 HTTP server
 │   │   └── schema.sql                # 資料表 DDL 唯一來源（啟動時執行，無遷移機制）
@@ -401,14 +402,15 @@ agent_team/
 │   │   ├── workspace-check.sh        # 部署前後逐工作區比對（容許啟動清理刪除已結束任務）
 │   │   ├── test-sandbox-overlay.sh   # sandbox-overlay 補區塊、冪等與保留既有路線測試
 │   │   ├── test-workspace-check.sh   # workspace-check 比對規則測試
+│   │   ├── test-backup-rotation.sh   # 部署腳本 orchestrator-backup 輪替測試
 │   │   ├── test-bootstrap.sh         # bootstrap fixture 測試
 │   │   └── test-linux-platform.sh    # 平台辨識 fixture 測試
 │   ├── sandbox-vm/                   # 在 VirtualBox 主機建立或重建共用沙箱 VM（agent 部署的應用程式跑在這裡）
 │   │   ├── .gitignore                # 排除 Vagrant 狀態、安裝暫存、VM 磁碟與 known_hosts
 │   │   ├── Vagrantfile               # 沙箱 VM 定義：固定 box 版本、NAT＋host-only、停用主機共享、磁碟放管理目錄
 │   │   └── create-sandbox-vm.sh      # 建立／重建（--rebuild）VM、安裝 mode sandbox 受限入口並產生 known_hosts
-│   ├── deploy-orchestrator.sh        # 通用受控部署與六表逐列快照（隔離 JAR、src/main、teams＋實例 overlay）
-│   ├── deploy-jar-safe.sh            # 只換 JAR 的受控部署，失敗自動回復
+│   ├── deploy-orchestrator.sh        # 通用受控部署與六表逐列快照（隔離 JAR、src/main、teams＋實例 overlay），成功後輪替備份
+│   ├── deploy-jar-safe.sh            # 只換 JAR 的受控部署，失敗自動回復，成功後輪替備份
 │   └── test-maven-settings.xml       # 測試用空白 Maven settings
 └── docs-site/                        # 文件網站（Docusaurus），主要讀者為 AI agent
     ├── README.md                     # 網站結構與維護方式

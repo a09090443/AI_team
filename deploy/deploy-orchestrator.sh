@@ -82,6 +82,19 @@ workspace_snapshot > "$backup/workspaces.before"
 sqlite3 -readonly "$root/ai-team.db" \
   "select id||' '||state from task where state not in ('COMPLETED','ABORTED','PR_CREATED') order by id;" > "$backup/open-tasks.before"
 
+# 部署成功後輪替 orchestrator-backup.*：本次備份（回復點）一律保留，再保留最近的 N-1 份（依修改時間）。
+# N 取 AI_TEAM_BACKUP_KEEP（env.sh／team.env 或呼叫端環境），預設 5；0 或非數字＝不輪替。失敗的部署不輪替，留作證據。
+prune_backups() {
+  local keep dir n=0
+  keep=${AI_TEAM_BACKUP_KEEP:-$(instance_env AI_TEAM_BACKUP_KEEP)}; keep=${keep:-5}
+  [[ $keep =~ ^[0-9]+$ ]] && (( keep > 0 )) || { echo "備份輪替：AI_TEAM_BACKUP_KEEP=$keep，不輪替"; return 0; }
+  while IFS= read -r dir; do
+    [[ -d $dir && $dir != "$backup" ]] || continue
+    n=$((n + 1)); (( n < keep )) && continue
+    rm -rf -- "$dir" && echo "備份輪替：刪除 $dir"
+  done < <(ls -1dt "$root"/orchestrator-backup.* 2>/dev/null)
+}
+
 rollback() {
   echo "部署檢查未通過；已啟動回復。備份：$backup"
   bash "$root/service.sh" stop || true
@@ -123,6 +136,7 @@ for attempt in {1..60}; do
     sha256sum "$root/orchestrator/target/$jar"
     bash "$root/service.sh" status
     trap - ERR
+    prune_backups || echo "備份輪替失敗，不影響本次部署"
     exit 0
   fi
   sleep 1

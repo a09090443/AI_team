@@ -42,6 +42,9 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 | `AI_TEAM_PROGRESS_INTERVAL_SECONDS` | 進度卡更新秒數，預設 300、最小 30；**不能設成空字串** |
 | `AI_TEAM_REPORT_DETAIL` | `brief`（預設）或 `full`；完整報告可用 `補充 #<id> 檢視完整報告 [節點]` 叫出 |
 | `AI_TEAM_BASELINE_VERIFY` | `on`（預設）或 `off`。on 時服務啟動會在「目前驗證指令／工具鏈＋基準分支最新 commit」還沒有結果時自動跑一次（只改提示詞、角色或流程不會觸發）[基準驗證](/docs/baseline-verification)；off 只關掉自動觸發，Slack「基準驗證」指令照樣可用 |
+| `AI_TEAM_WORKSPACE_RECLAIM`、`AI_TEAM_WORKSPACE_RECLAIM_IDLE_HOURS` | 工作區佔用控制（2026-11-05 起）。`on`（預設）時可用空間低於 1 GiB 先自動回收已結束任務的工作區與閒置任務的建置產物，回到 2 GiB 才停；`off` 維持舊行為（空間不足直接停等真人）。IDLE_HOURS 預設 24：保留中的閒置任務超過這個時數沒有狀態變更就刪建置產物，`0` 表示只在空間不足時回收。只刪被 `.gitignore` 忽略的整個目錄，git 工作樹、commit 與未提交修改不動，見 [工作區佔用控制](/docs/engineering-workflow#工作區佔用控制2026-11-05) |
+| `AI_TEAM_PR_TRACKING` | 已開 PR 的合併／關閉追蹤（2026-11-06 起）。`on`（預設）時每 10 分鐘查 `PR_CREATED` 任務的 PR：已合併就轉 `COMPLETED` 並刪除工作區，關閉未合併只停止追蹤、保留工作區；與衝突同步 `project.autonomy.pullRequestSyncRounds` 分開。`off` 回到舊行為（只有開衝突同步才查）。見 [PR 合併後結案](/docs/engineering-workflow#pr-合併後結案2026-11-06) |
+| `AI_TEAM_BACKUP_KEEP` | 部署腳本（`deploy-orchestrator.sh`、`deploy-jar-safe.sh`）成功後保留的 `orchestrator-backup.*` 份數，含本次備份，預設 5；本次備份（回復點）一律保留，`0` 或非數字＝不輪替。部署失敗時不輪替。服務本身不讀 |
 | `AI_TEAM_EXPLAINER_MODEL`、`AI_TEAM_EXPLAINER_ENABLED` | 系統錯誤白話說明所用模型（預設 haiku）與開關；布林值不能設成空字串 |
 | `AI_TEAM_MODEL_<角色>`、`AI_TEAM_RUNTIME_<角色>`、`AI_TEAM_CODE_REVIEW` | **僅 legacy 模式**；配置式模式改在 JSON 的 `roles` 設定 |
 

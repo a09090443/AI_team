@@ -2605,9 +2605,14 @@ class FlowEngineTest {
         engine.checkPullRequest(task, null, jobs::add);
         verify(publisher, times(1)).status(PR_URL);
         assertThat(store.flow("42").orElseThrow().pullRequestClosed).isTrue();
+        // 已合併：任務結案並刪除工作區，之後不再查。
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.COMPLETED);
+        verify(workspace).discard("42");
+        verify(slack).post(any(), eq("c"), eq("t"), contains("PR 已合併，任務結案"));
 
-        // 手動指令只限需求負責人；未開啟同步的配置不查 GitHub。
+        // 手動指令只限需求負責人；未開啟同步、也未開啟追蹤的配置不查 GitHub。
         engine.checkPullRequest(task, "stranger", jobs::add);
+        task.state(Task.State.PR_CREATED); store.save(task);
         FlowRun reopened = store.flow("42").orElseThrow(); reopened.pullRequestClosed = false; store.saveFlow("42", reopened);
         var current = catalog.snapshot();
         ObjectNode definition = mapper.valueToTree(current.definition());
@@ -2618,6 +2623,57 @@ class FlowEngineTest {
         verify(publisher, times(1)).status(PR_URL);
         verify(slack).post(any(), eq("c"), eq("t"), contains("未開啟 PR 衝突同步"));
         assertThat(jobs).isEmpty();
+    }
+
+    /** 只開 AI_TEAM_PR_TRACKING、未開衝突同步（dynamic-api 的情況）：合併仍要結案；關閉未合併保留工作區。 */
+    private void publishedWithTrackingOnly() throws Exception {
+        engine.run(task);
+        when(publisher.publish(eq("42"), any(), any(), eq("feature/task42"))).thenReturn(new PullRequestPublisher.Result("feature/task42", PR_URL, 1));
+        List<Runnable> jobs = new ArrayList<>(); engine.approve(task, "u", jobs::add); jobs.getFirst().run();
+        assertThat(task.state()).isEqualTo(Task.State.PR_CREATED);
+        when(props.pullRequestTracking()).thenReturn(true);
+        clearInvocations(workspace);
+    }
+
+    @Test void trackingWithoutConflictSyncCompletesMergedPullRequestAndDeletesWorkspace() throws Exception {
+        publishedWithTrackingOnly();
+        List<Runnable> jobs = new ArrayList<>();
+        when(publisher.status(PR_URL)).thenReturn(new PullRequestPublisher.PullRequestState(1, "open", false, false, "dirty", "feature/task42", "head1", "main"));
+        engine.checkPullRequest(task, null, jobs::add);
+        // 開著但衝突：沒開衝突同步就不處理、不發言。
+        assertThat(jobs).isEmpty();
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.PR_CREATED);
+        verify(workspace, never()).mergeBase(any(), any(), any(), any());
+
+        when(publisher.status(PR_URL)).thenReturn(new PullRequestPublisher.PullRequestState(1, "closed", true, null, "", "feature/task42", "head1", "main"));
+        engine.checkPullRequest(task, null, jobs::add);
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.COMPLETED);
+        verify(workspace).discard("42");
+        assertThat(store.flow("42").orElseThrow().pullRequestClosed).isTrue();
+    }
+
+    @Test void closedUnmergedPullRequestStopsTrackingButKeepsWorkspace() throws Exception {
+        publishedWithTrackingOnly();
+        when(publisher.status(PR_URL)).thenReturn(new PullRequestPublisher.PullRequestState(1, "closed", false, null, "", "feature/task42", "head1", "main"));
+        List<Runnable> jobs = new ArrayList<>();
+        engine.checkPullRequest(task, null, jobs::add);
+        engine.checkPullRequest(store.find("42").orElseThrow(), null, jobs::add);
+        engine.checkPullRequest(store.find("42").orElseThrow(), null, jobs::add);
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.PR_CREATED);
+        assertThat(store.flow("42").orElseThrow().pullRequestClosed).isTrue();
+        verify(workspace, never()).discard(any());
+        // 第一次查到關閉，第二次是本程序內唯一一次補查，第三次不再呼叫 GitHub。
+        verify(publisher, times(2)).status(PR_URL);
+    }
+
+    @Test void previouslyMarkedClosedButMergedPullRequestIsCompletedOnRecheck() throws Exception {
+        // 舊版偵測到合併只設 pullRequestClosed，任務停在 PR_CREATED（2026-11-06 dynamic-api 六個任務）。
+        publishedWithTrackingOnly();
+        FlowRun flow = store.flow("42").orElseThrow(); flow.pullRequestClosed = true; store.saveFlow("42", flow);
+        when(publisher.status(PR_URL)).thenReturn(new PullRequestPublisher.PullRequestState(1, "closed", true, null, "", "feature/task42", "head1", "main"));
+        engine.checkPullRequest(task, null, new ArrayList<>()::add);
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.COMPLETED);
+        verify(workspace).discard("42");
     }
 
     @Test void changedHeadAfterApprovalNeverPublishes() throws Exception {

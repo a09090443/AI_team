@@ -73,6 +73,7 @@ Slack @主機器人 需求
   → review        Code Reviewer（inspector）獨立審查
   → approval      [真人核准 PR] → 推分支、開 PR → 狀態 PR_CREATED
   （選用）PR 與基準衝突 → 回原任務 implementation 解衝突 → 驗證／驗收／審查 → 推回同一個 PR（PullRequestSync）
+  PR 已合併 → COMPLETED 並刪除工作區（PullRequestMonitor → FlowEngine.checkPullRequest，AI_TEAM_PR_TRACKING，2026-11-06）
 ```
 
 典型配置中，design、plan、implementation、verification、review 節點受阻（`blocked`）時交給 **triage**（PM 分流）；
@@ -103,7 +104,7 @@ agent 不能自行指定角色或跳到任意節點。
 - 需求變更核准
 - PR 核准。**計畫核准不等於 PR 核准**；核准收據綁定配置、需求基準與計畫版本。
   例外：已核准開出的 PR 衝突同步後，若配置開啟 `pullRequestSyncAutoPush` 且證據全部通過，就直接推回同一個 PR（使用者 2026-10-23 同意）
-- `PR_CREATED` 只表示自動開發管線結束，**不代表已合併、發布或產品驗收**
+- `PR_CREATED` 只表示自動開發管線結束，**不代表已合併、發布或產品驗收**；系統查到 PR 已合併時才轉 `COMPLETED`
 
 只有任務提出者（`requester_user_id`，即驗收負責人）能核准計畫、需求變更與 PR。
 
@@ -132,7 +133,7 @@ agent 不能自行指定角色或跳到任意節點。
 | `sandbox/` | systemd 執行沙箱與政策 | `ExecutionSandbox`、`SandboxPolicy`、`SandboxUnitCleanup`、`TaskUnits` |
 | `slack/` | Slack 進入點、發言身分、按鈕、進度卡 | `SlackListener`、`SlackNotifier`、`SlackLinks`、`HumanGate`、`HumanInput`、`PlanReview`、`SpinoffButtons`、`StageProgress` |
 | `store/` | SQLite 存取與稽核 | `TaskStore`、`AuditLog` |
-| `workspace/` | 每任務獨立 clone | `WorkspaceManager` |
+| `workspace/` | 每任務獨立 clone；磁碟不足或閒置時回收建置產物 | `WorkspaceManager`、`WorkspaceReclaimer` |
 | `publish/` | 推分支與開 PR | `PullRequestPublisher` |
 | `agent/` | legacy 階段定義與執行 | `StageSpec`、`StageRunner` |
 | `config/` | 啟動設定驗證 | `AiTeamProperties` |

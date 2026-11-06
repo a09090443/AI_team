@@ -230,6 +230,76 @@ public class WorkspaceManager {
         }
     }
 
+    /**
+     * 只刪工作區裡可重建的建置產物（node_modules、build、.next、.gradle…），git 工作樹、.git、未提交修改都保留，
+     * HEAD 與 git status 不變。回傳刪掉的相對目錄。
+     *
+     * 判斷只用 repo 內的 .gitignore（{@code --exclude-per-directory}），不讀 .git/info/exclude 與使用者全域 excludesFile：
+     * info/exclude 是系統寫操作輸出目錄（服務部署請求與收據）的地方，那些目錄另外列為保護；只刪整個被忽略的目錄，
+     * 不碰零散的被忽略檔（多半是本機設定）；頂層隱藏目錄（.claude、.codex、.venv…）一律跳過。
+     * .gitignore 本身有未提交修改時不動：那代表忽略規則可能被改過，不能據以刪除。
+     * 2026-11-05 實測：PR_CREATED 工作區 1.9G 中約 1.8G 是這類產物，.git 只有 59M。
+     */
+    public List<String> removeBuildOutputs(String taskId) throws WorkspaceException {
+        if (!taskId.matches("[0-9]+")) throw new WorkspaceException("無效的任務 ID，拒絕清理工作區");
+        Path ws = pathFor(taskId).toAbsolutePath().normalize();
+        if (!Files.isDirectory(ws.resolve(".git"), java.nio.file.LinkOption.NOFOLLOW_LINKS)) return List.of();
+        for (String entry : gitOutput(ws, "status", "--porcelain", "-z", "--untracked-files=all").split("\0"))
+            if (entry.length() > 3 && (entry.substring(3).equals(".gitignore") || entry.substring(3).endsWith("/.gitignore"))) {
+                log.info("工作區 task-{} 的 .gitignore 有未提交修改，不清理建置產物", taskId);
+                return List.of();
+            }
+        List<String> protectedDirs = managedExcludes(ws);
+        List<String> removed = new ArrayList<>();
+        for (String entry : gitOutput(ws, "ls-files", "-z", "--others", "--ignored", "--directory",
+                "--exclude-per-directory=.gitignore").split("\0")) {
+            if (!entry.endsWith("/")) continue;
+            String dir = entry.substring(0, entry.length() - 1);
+            if (dir.isEmpty() || dir.startsWith(".") || java.util.Arrays.stream(dir.split("/")).anyMatch(s -> s.isEmpty() || s.equals("..") || s.equals(".git")))
+                continue;
+            if (protectedDirs.stream().anyMatch(p -> dir.equals(p) || dir.startsWith(p + "/") || p.startsWith(dir + "/"))) continue;
+            Path target = ws.resolve(dir).normalize();
+            if (!target.startsWith(ws) || target.equals(ws) || Files.isSymbolicLink(target)
+                    || !Files.isDirectory(target, java.nio.file.LinkOption.NOFOLLOW_LINKS)) continue;
+            try {
+                deleteTreeNoFollow(target);
+                removed.add(dir);
+            } catch (IOException | java.io.UncheckedIOException e) {
+                log.warn("刪除工作區 task-{} 的建置產物 {} 失敗：{}", taskId, dir, e.toString());
+            }
+        }
+        if (!removed.isEmpty()) log.info("已刪除工作區 task-{} 的建置產物：{}", taskId, removed);
+        return List.copyOf(removed);
+    }
+
+    /** .git/info/exclude 中系統管理區塊列的操作輸出目錄（相對路徑，不含前後斜線）。 */
+    private static List<String> managedExcludes(Path ws) {
+        Path file = ws.resolve(".git/info/exclude");
+        if (!Files.isRegularFile(file)) return List.of();
+        List<String> dirs = new ArrayList<>();
+        boolean inside = false;
+        try {
+            for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                if (line.equals(EXCLUDE_BEGIN)) inside = true;
+                else if (line.equals(EXCLUDE_END)) inside = false;
+                else if (inside && !line.isBlank()) dirs.add(line.replaceAll("^/+|/+$", ""));
+            }
+        } catch (IOException e) {
+            log.warn("讀取 {} 失敗：{}", file, e.toString());
+        }
+        return dirs;
+    }
+
+    /** 不跟隨 symlink：node_modules 常有指到外部的連結，對連結 setWritable 會改到目標。 */
+    private static void deleteTreeNoFollow(Path dir) throws IOException {
+        try (Stream<Path> walk = Files.walk(dir)) {
+            for (Path p : walk.sorted(Comparator.reverseOrder()).toList()) {
+                if (!Files.isSymbolicLink(p)) p.toFile().setWritable(true);
+                Files.deleteIfExists(p);
+            }
+        }
+    }
+
     /** 目前磁碟上存在的工作區對應的任務編號。啟動清理用。 */
     public List<String> listTaskIds() {
         Path root = props.workspacesPath();

@@ -146,6 +146,32 @@ public class AiTeamProperties {
         return baselineVerify == null || !"off".equalsIgnoreCase(baselineVerify.trim());
     }
 
+    /**
+     * 工作區回收（WorkspaceReclaimer）：磁碟低於門檻時先回收已結束任務的工作區與閒置任務的建置產物，再決定是否停下。
+     * 預設 on；off 時維持舊行為（只有服務啟動清理已結束任務，空間不足直接停等真人）。
+     */
+    @Value("${AI_TEAM_WORKSPACE_RECLAIM:on}")
+    private String workspaceReclaim = "on";
+    /** 閒置超過幾小時的保留工作區（PR_CREATED、等待真人…）主動刪建置產物；0 表示只在磁碟不足時才回收。 */
+    @Value("${AI_TEAM_WORKSPACE_RECLAIM_IDLE_HOURS:24}")
+    private long workspaceReclaimIdleHours = 24;
+
+    public boolean workspaceReclaim() {
+        return workspaceReclaim == null || !"off".equalsIgnoreCase(workspaceReclaim.trim());
+    }
+    public long workspaceReclaimIdleHours() { return Math.max(0, workspaceReclaimIdleHours); }
+
+    /**
+     * 已開 PR 的合併／關閉追蹤（PullRequestMonitor 每 10 分鐘）。預設 on：PR 已合併的任務轉 COMPLETED 並刪除工作區。
+     * 與衝突同步（project.autonomy.pullRequestSyncRounds）分開；off 時只有開了衝突同步的配置才查 GitHub（舊行為）。
+     */
+    @Value("${AI_TEAM_PR_TRACKING:on}")
+    private String pullRequestTracking = "on";
+
+    public boolean pullRequestTracking() {
+        return pullRequestTracking == null || !"off".equalsIgnoreCase(pullRequestTracking.trim());
+    }
+
     /** Code Review 階段的開關。預設開啟；設成 off 可整個略過。 */
     @Value("${AI_TEAM_CODE_REVIEW:on}")
     private String codeReview;

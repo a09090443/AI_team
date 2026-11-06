@@ -35,6 +35,8 @@ public class FlowEngine {
         this.workspaces = workspaces; this.slack = slack; this.audit = audit; this.publisher = publisher;
         this.verifier = verifier; this.explainer = explainer;
     }
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    com.zipe.aiteam.workspace.WorkspaceReclaimer reclaimer;
     public boolean enabled() { return catalog.enabled(); }
     public boolean owns(String id) { return store.flow(id).isPresent(); }
     /** 目前載入的配置是否開放「頻道頂層 #編號 指令」導回原任務（project.autonomy.channelCommandRouting）。 */
@@ -478,6 +480,8 @@ public class FlowEngine {
                                         + "；累計次數=" + flow.visits.get(flow.node) + "，歷史計數與總上限未重設");
                     }
                     if (node.workspace()) {
+                        // 新節點要寫工作區：先讓閒置／已結束任務讓出可重建的空間（AI_TEAM_WORKSPACE_RECLAIM）。
+                        if (reclaimer != null) reclaimer.maintain(task.id());
                         boolean provisioned = false;
                         if (!flow.workspaceReady) {
                             if (workspaces.exists(task.id())) throw new IllegalStateException("工作區已存在但快照未完成 provision，保留現場並停止");
@@ -2246,7 +2250,22 @@ public class FlowEngine {
         if (flow == null || flow.dialogue || flow.prUrl == null) { reply.accept("沒有系統開出的 PR，無法同步。"); return; }
         if (byUser != null && !byUser.equals(flow.acceptanceOwner)) { reply.accept("只有需求負責人可以要求同步 PR。"); return; }
         if (task.state() != Task.State.PR_CREATED) { reply.accept("目前為 " + task.state() + "，只有已開 PR 且沒有在處理中的任務可以同步。"); return; }
-        if (flow.pullRequestClosed) { reply.accept("PR 已合併或關閉，不再同步。"); return; }
+        boolean tracking = props.pullRequestTracking();
+        if (flow.pullRequestClosed) {
+            // 舊版偵測到合併只標記 pullRequestClosed、任務停在 PR_CREATED，工作區永遠不清；補查一次，已合併的照新規則結案。
+            // 已關閉未合併的不會變，每個服務程序對每個任務只補查一次，不每 10 分鐘呼叫 GitHub。
+            if (byUser == null && tracking && closedRechecked.add(task.id())) {
+                try {
+                    var pr = publisher.status(flow.prUrl);
+                    if (pr.merged()) pullRequestFinished(task, flow, pr, reply);
+                } catch (PullRequestPublisher.PublishException e) {
+                    closedRechecked.remove(task.id());
+                    org.slf4j.LoggerFactory.getLogger(getClass()).warn("任務 {} 查詢 PR 失敗：{}", task.id(), Diagnostics.safe(e.getMessage()));
+                }
+                return;
+            }
+            reply.accept("PR 已合併或關閉，不再同步。"); return;
+        }
         int max; boolean autoPush;
         try {
             var current = catalog.snapshot();
@@ -2254,20 +2273,20 @@ public class FlowEngine {
             max = PullRequestSync.maxRounds(current.definition());
             autoPush = PullRequestSync.autoPush(current.definition());
         } catch (Exception e) { reply.accept("讀不到目前的團隊配置，未同步。"); return; }
-        if (max == 0) { reply.accept("目前配置未開啟 PR 衝突同步（project.autonomy.pullRequestSyncRounds）。"); return; }
+        String syncOff = "目前配置未開啟 PR 衝突同步（project.autonomy.pullRequestSyncRounds）。";
+        // 合併／關閉追蹤（AI_TEAM_PR_TRACKING）與衝突同步分開：只開追蹤也要查 GitHub，才能在合併後結案、回收工作區。
+        if (max == 0 && !tracking) { reply.accept(syncOff); return; }
         PullRequestPublisher.PullRequestState pr;
         try { pr = publisher.status(flow.prUrl); }
         catch (PullRequestPublisher.PublishException e) {
             org.slf4j.LoggerFactory.getLogger(getClass()).warn("任務 {} 查詢 PR 失敗：{}", task.id(), Diagnostics.safe(e.getMessage()));
             reply.accept("查詢 PR 狀態失敗：" + Diagnostics.clip(Diagnostics.safe(e.getMessage()), 600)); return;
         }
+        if (!pr.open()) { pullRequestFinished(task, flow, pr, reply); return; }
+        if (max == 0) { reply.accept(syncOff); return; }
         switch (PullRequestSync.assess(flow, pr, max)) {
             case NONE -> reply.accept(pr.mergeable() == null ? "GitHub 還在計算 PR 能否合併，請稍後再試。" : "PR 目前沒有衝突，不需要同步。");
-            case CLOSED -> {
-                flow.pullRequestClosed = true; store.saveFlow(task.id(), flow);
-                audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "PR 已" + (pr.merged() ? "合併" : "關閉") + "，停止追蹤衝突：" + flow.prUrl);
-                reply.accept("PR 已" + (pr.merged() ? "合併" : "關閉") + "，不再同步。");
-            }
+            case CLOSED -> pullRequestFinished(task, flow, pr, reply);
             case CONFIRMED -> {
                 flow.pullRequestNotice = PullRequestSync.confirmedNotice(flow.publishedHead); store.saveFlow(task.id(), flow);
                 audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "GitHub 確認同步後的 PR 可合併（mergeable=true）；commit=" + pr.headSha());
@@ -2284,6 +2303,35 @@ public class FlowEngine {
             case SYNC -> startPullRequestSync(task, flow, pr, byUser == null ? "排程偵測" : byUser, autoPush, max, enqueue);
         }
     }
+    /** 已補查過的「舊版標記關閉」任務；只放記憶體，重啟後再補查一次。 */
+    private final java.util.Set<String> closedRechecked = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /**
+     * PR 已合併或關閉：停止追蹤。已合併的任務轉 COMPLETED 並刪除工作區——成果已在基準分支，工作區沒有用途。
+     * 不新增狀態值：沒有 DB 遷移，回退到舊 JAR 時讀到不認得的列舉會直接拋錯。
+     * 關閉未合併的維持 PR_CREATED、保留 git 工作樹：關 PR 時遠端分支可能一併刪掉，工作區可能是 commit 唯一的副本；
+     * 建置產物仍由 WorkspaceReclaimer 回收。決策見 .ai/decisions.md 與 engineering-workflow「PR 合併後結案」。
+     */
+    private void pullRequestFinished(Task task, FlowRun flow, PullRequestPublisher.PullRequestState pr, java.util.function.Consumer<String> reply) {
+        flow.pullRequestClosed = true; store.saveFlow(task.id(), flow);
+        if (!pr.merged()) {
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "PR 已關閉（未合併），停止追蹤；保留工作區：" + flow.prUrl);
+            reply.accept("PR 已關閉（未合併），不再同步；工作區保留。");
+            return;
+        }
+        if (!store.claimState(task.id(), Task.State.PR_CREATED, Task.State.COMPLETED)) return;
+        task.state(Task.State.COMPLETED);
+        audit.stateChange(task, Task.State.PR_CREATED, Task.State.COMPLETED, AuditLog.ACTOR_SYSTEM);
+        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "PR 已合併，任務結案並刪除工作區：" + flow.prUrl);
+        boolean removed = false;
+        try { workspaces.discard(task.id()); removed = true; }
+        catch (Exception e) {
+            org.slf4j.LoggerFactory.getLogger(getClass()).warn("任務 {} PR 已合併但刪除工作區失敗，留給下次清理：{}", task.id(), e.getMessage());
+        }
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id() + " 的 PR 已合併，任務結案"
+                + (removed ? "，工作區已刪除。" : "；工作區下次清理時刪除。") + "\n" + flow.prUrl);
+    }
+
     /** 系統不自動處理的 PR 狀態：同一狀態只說一次；手動要求時一律回覆。 */
     private void notifyOnce(Task task, FlowRun flow, String key, String byUser, String text) {
         if (byUser == null && key.equals(flow.pullRequestNotice)) return;

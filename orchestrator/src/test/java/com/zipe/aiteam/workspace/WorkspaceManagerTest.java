@@ -142,6 +142,46 @@ class WorkspaceManagerTest {
         assertThat(manager.uncommittedPaths("1301")).contains("target/qa-docs/docs-site/package-lock.json");
     }
 
+    @Test void removeBuildOutputsKeepsGitTreeUncommittedWorkAndOperationOutputs() throws Exception {
+        Path ws = manager.provision(task("1401"));
+        Files.writeString(ws.resolve(".gitignore"), "node_modules/\nbuild/\n.venv/\n*.log\nsvc/\n");
+        Files.createDirectories(ws.resolve("web/src"));
+        Files.writeString(ws.resolve("web/src/app.js"), "x\n");
+        Files.writeString(ws.resolve("web/.gitignore"), ".next/\n");
+        run(ws, "git", "add", "."); run(ws, "git", "commit", "--quiet", "-m", "ignore rules");
+        String head = manager.headSha("1401");
+        for (String dir : List.of("web/node_modules/pkg", "web/.next/cache", "build/classes", ".venv/lib", "svc/requests", "local-only"))
+            Files.createDirectories(ws.resolve(dir));
+        Files.writeString(ws.resolve("web/node_modules/pkg/index.js"), "x\n");
+        Files.writeString(ws.resolve("build/classes/A.class"), "x\n");
+        Files.writeString(ws.resolve("app.log"), "keep loose ignored files\n");
+        Files.writeString(ws.resolve("local-only/notes.txt"), "untracked, not ignored\n");
+        Files.writeString(ws.resolve("README.md"), "uncommitted edit\n");
+        // 系統寫進 info/exclude 的操作輸出目錄（服務部署請求）即使也被 .gitignore 忽略，仍要保留。
+        manager.excludeOutputDirs("1401", List.of("svc/requests"));
+        String status = out(ws, "git", "status", "--porcelain");
+
+        assertThat(manager.removeBuildOutputs("1401")).containsExactlyInAnyOrder("web/node_modules", "web/.next", "build");
+        assertThat(ws.resolve("web/node_modules")).doesNotExist();
+        assertThat(ws.resolve("build")).doesNotExist();
+        assertThat(ws.resolve(".venv/lib")).isDirectory();
+        assertThat(ws.resolve("svc/requests")).isDirectory();
+        assertThat(ws.resolve("app.log")).exists();
+        assertThat(ws.resolve("local-only/notes.txt")).exists();
+        assertThat(ws.resolve("web/src/app.js")).exists();
+        assertThat(manager.headSha("1401")).isEqualTo(head);
+        assertThat(out(ws, "git", "status", "--porcelain")).isEqualTo(status);
+        assertThat(manager.removeBuildOutputs("1401")).isEmpty();
+
+        // .gitignore 有未提交修改時不據以刪除。
+        Files.createDirectories(ws.resolve("build/x"));
+        Files.writeString(ws.resolve(".gitignore"), "node_modules/\nbuild/\nsrc/\n");
+        assertThat(manager.removeBuildOutputs("1401")).isEmpty();
+        assertThat(ws.resolve("build/x")).isDirectory();
+        assertThat(manager.removeBuildOutputs("9999")).isEmpty();
+        assertThatThrownBy(() -> manager.removeBuildOutputs("../x")).hasMessageContaining("無效");
+    }
+
     /** 在主 repo 提交並推到 origin，模擬 GitHub 上的基準分支前進（例如另一個 PR 被合併）。 */
     private String advanceBase(String file, String content) throws Exception {
         run(repo, "git", "config", "user.email", "base@test");

@@ -87,8 +87,8 @@ task (1) ──┬── (0..1) task_checkpoint     中斷現場
 | 等待 | `AWAIT_HUMAN` | PM 把握度低、判定為純詢問，或流程受阻，停下等人決定 |
 | 執行中 | `PM_TRIAGE_RUNNING`、`DIRECT_RUNNING`、`STAGE_RUNNING`、`PUBLISH_RUNNING` | v2 配置式流程使用 |
 | 執行中 | `PM_RUNNING`、`ARCH_RUNNING`、`QA_PLAN_RUNNING`、`IMPL_RUNNING`、`QA_RUNNING`、`REVIEW_RUNNING` | legacy 固定管線使用 |
-| 終止 | `COMPLETED` | 完成 |
-| 終止 | `PR_CREATED` | 自動開發管線結束。**不代表已合併、發布或產品驗收** |
+| 終止 | `COMPLETED` | 完成。2026-11-06 起，系統開的 PR 在 GitHub 已合併時也由 `PR_CREATED` 轉成這個狀態（`AI_TEAM_PR_TRACKING`，不新增狀態值以免舊 JAR 讀不到；audit 記「PR 已合併，任務結案」） |
+| 終止 | `PR_CREATED` | 自動開發管線結束。**不代表已合併、發布或產品驗收**；PR 已關閉未合併時仍停在這裡（`pullRequestClosed=true`），保留工作區 |
 | 終止 | `ABORTED` | 中止。注意：下次服務重啟的 `purgeWorkspaces()` 會刪掉這類任務的工作區；例外是 audit 有 `OWNER_CLOSE`（負責人結案）或舊管線審查未通過的任務。已被承接（`flow_run.successor`）的原任務雖停在 `AWAIT_HUMAN`，承接鏈末端終止後同樣會被刪（2026-11-01 起） |
 | 終止 | `FAILED` | 失敗，原因在 `failure_reason` |
 
@@ -295,7 +295,7 @@ v2 配置式流程的整份執行快照，對應 `com.zipe.aiteam.flow.FlowRun`�
 | `pullRequestSync` | `PullRequestSync.Round` | 2026-10-23 新增，空值不寫入 JSON。進行中的 PR 衝突同步輪：`round`、`prNumber`、`baseBranch`、`baseSha`、`parentHead`（上次推上 PR 的 commit）、`conflicts`、`trigger`、`autoPush`、`transitionsAtStart`、`startedAt`；推回後清除 |
 | `baseSync` | `BaseSync.Round` | 2026-10-24 新增，空值不寫入 JSON。實作節點動手前同步最新基準時有衝突、尚待該節點解完的合併：`node`、`baseBranch`、`baseSha`、`parentHead`（合併前的 commit）、`conflicts`、`startedAt`；系統核對通過後清除，重新建立工作區時清除。新版存過有值的任務回滾到舊 JAR 會讀不了 |
 | `pullRequestSyncRounds` | int | 2026-10-23 新增，0 不寫入。已開始過的同步輪數（合併前失敗也算），上限為目前配置的 `pullRequestSyncRounds` |
-| `pullRequestClosed` | boolean | 2026-10-23 新增，false 不寫入。GitHub 回報 PR 已合併或關閉，之後不再查詢 |
+| `pullRequestClosed` | boolean | 2026-10-23 新增，false 不寫入。GitHub 回報 PR 已合併或關閉，之後不再查詢。2026-11-06 起已合併的任務同時轉 `COMPLETED`；舊版只設此旗標而停在 `PR_CREATED` 的任務，新版每個服務程序補查一次 |
 | `pullRequestNotice` | String | 2026-10-23 新增，空值不寫入。已說明過的 PR 狀態（`pushed:`／`confirmed:`／`mismatch:`／`exhausted:`／`failed:` 開頭），同一狀態只發言一次 |
 
 2026-10-17 `IndependentVerifier.Receipt` 新增可為 null 的 `decisions`、`changedFiles`、`taskId`（見 [engineering-workflow](engineering-workflow.md)「依變更檔案只跑相關指令」）：

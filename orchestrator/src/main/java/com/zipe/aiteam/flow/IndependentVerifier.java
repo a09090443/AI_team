@@ -111,6 +111,8 @@ public class IndependentVerifier {
     private final AiTeamProperties props;
     private final ExecutionSandbox sandbox;
     private final WorkspaceManager workspaces;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    com.zipe.aiteam.workspace.WorkspaceReclaimer reclaimer;
     public IndependentVerifier(AiTeamProperties props, ExecutionSandbox sandbox, WorkspaceManager workspaces) {
         this.props = props; this.sandbox = sandbox; this.workspaces = workspaces;
     }
@@ -165,6 +167,8 @@ public class IndependentVerifier {
         Files.createDirectories(root);
         // 只留最新一次失敗現場：開新一輪前先回收舊輪的 clone，再確認空間足夠。
         VerificationScenes.discardAllBut(root, null);
+        // 空間不足時先自動回收已結束任務工作區與閒置任務的建置產物，仍不足才停下（WorkspaceReclaimer）。
+        if (reclaimer != null) reclaimer.ensureSpace(root, task.id());
         VerificationScenes.requireSpace(root);
         Path run = Files.createTempDirectory(root, "run-");
         Path writable = Files.createDirectory(run.resolve("work"));

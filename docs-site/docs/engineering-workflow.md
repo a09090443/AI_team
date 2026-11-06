@@ -261,11 +261,42 @@ Slack 會說明「只改了文件，依專案設定略過建置與測試」，QA
 
 - 驗證成功：立即刪除該輪 `work/`，log 保留。
 - 驗證失敗：保留 `work/` 作為失敗現場；同一任務開新一輪驗證前刪除舊輪的 `work/`，只留最新一次失敗現場。
-- 開新一輪前檢查可用空間，低於 1 GiB 就不開 clone，任務以「磁碟空間不足」停下等人，不再寫到磁碟滿、資料庫也寫壞而卡在執行中。
+- 開新一輪前檢查可用空間，低於 1 GiB 時先依[工作區佔用控制](#工作區佔用控制2026-11-05)自動回收；回收後仍不足才不開 clone，任務以「磁碟空間不足」停下等人，不再寫到磁碟滿、資料庫也寫壞而卡在執行中。
 - 服務啟動時整理一次：仍在等待或 FAILED、且未被承接的任務保留最新一份現場；其餘（結案、PR_CREATED、已被承接、查無任務）與基準驗證全部只留 log。
 
 起因：2026-11-01 VM 根分割區被歷次驗證現場佔滿，任務驗收時 git checkout 失敗並撞上 SQLITE_FULL。
 收據含絕對路徑，搬到不同安裝位置後需要重新驗證，不手動竄改資料庫讓舊證據過關。
+
+## 工作區佔用控制（2026-11-05）
+
+任務工作區（`workspaces/task-<id>`）的整個目錄只在服務啟動清理時刪除，而且只刪已結束且不必保留的任務；
+PR_CREATED、等待真人、FAILED、負責人結案等保留中的工作區會一直留著。實測一個 Next.js＋Gradle 專案的保留工作區約 1.9 GB，
+其中 `.git` 約 60 MB、版控檔約 100 MB，其餘約 1.8 GB 是 `node_modules`、`.next`、`build`、`.gradle` 等可重建產物；
+一個實例累積 12 GB 後根分割區只剩 410 MB，任務在獨立驗證前以「磁碟空間不足」停下等真人。
+
+`WorkspaceReclaimer` 以兩條路徑讓系統自己收斂，不新增真人停止點：
+
+| 時機 | 做什麼 |
+|---|---|
+| 可用空間低於 1 GiB（每個工作區節點開始前、獨立驗證開新 clone 前） | ① 以啟動清理同一套保留規則刪除已結束任務的整個工作區 ② 仍不到 2 GiB 時，從最久沒有狀態變更的閒置任務開始刪建置產物，回到 2 GiB 就停。獨立驗證回收後仍不足 1 GiB 才停下等人 |
+| 服務啟動清理後、工作區節點開始前（每小時至多一次） | 保留中的閒置任務超過 `AI_TEAM_WORKSPACE_RECLAIM_IDLE_HOURS`（預設 24）小時沒有狀態變更，刪建置產物 |
+
+**刪什麼**（`WorkspaceManager.removeBuildOutputs`）：只刪 repo 內 `.gitignore` 判定為忽略的**整個目錄**
+（`git ls-files --others --ignored --directory --exclude-per-directory=.gitignore`）。以下不刪：
+
+- git 工作樹、`.git`、commit、未提交與未追蹤（未被忽略）的檔案；HEAD 與 `git status` 不變，所以部署前後的工作區比對
+  （`deploy/bootstrap/workspace-check.sh`）、發布前的乾淨工作區檢查都不受影響；
+- 零散的被忽略檔案（多半是本機設定）與頂層隱藏目錄（`.claude`、`.codex`、`.venv`…）；
+- 系統寫進 `.git/info/exclude` 的操作輸出目錄（服務部署請求與收據），即使 `.gitignore` 也忽略它；
+- `.gitignore` 本身有未提交修改的工作區整個跳過，不依可能被改過的規則刪除。
+
+**不碰的任務**：執行中、排隊中（QUEUED／RESUME_QUEUED／TRIAGE_QUEUED）、正在執行該節點的任務自己、
+被執行中角色對話讀取的原任務，以及新配置下的歷史模式任務。刪除前會再讀一次狀態，剛被續跑的任務不刪。
+只處理本實例的 `workspaces/`；同一台主機的其他實例各自回收自己的。
+
+**代價**：被回收過的任務續跑時要重建依賴（例如 agent 或獨立驗證重跑 `npm ci`、Gradle 重新編譯），換來不必停下等人清磁碟。
+`AI_TEAM_WORKSPACE_RECLAIM=off` 可整個關閉，回到舊行為；設定見 [設定參考](/agent/configuration)。
+回收結果寫在 `orchestrator.log`（「磁碟可用空間 … 已自動回收」「工作區閒置回收」），不發 Slack 訊息。
 
 ## 服務長作業與模型回合
 
@@ -341,11 +372,13 @@ PR 是系統自己開的，分支與工作區都還在，因此改由原任務�
 
 **偵測**：
 - `PullRequestMonitor` 每 10 分鐘（服務啟動 10 分鐘後第一次，避開部署的前後一致比對）以 `AI_TEAM_GITHUB_TOKEN` 查一次 `PR_CREATED` 任務的 PR（`PullRequestPublisher.status`，GitHub `GET /pulls/{n}`）；
+  衝突同步或[合併追蹤](#pr-合併後結案2026-11-06)任一開啟就查，兩者都沒開時不呼叫 GitHub；
 - 需求負責人也可以送「同步 PR #編號」立即觸發，兩者走同一套判斷（`PullRequestSync.assess`）。
 
 | GitHub 狀態 | 處理 |
 |---|---|
-| 已合併或已關閉 | 記 `pullRequestClosed`，之後不再查 |
+| 已合併 | 記 `pullRequestClosed`；任務轉 `COMPLETED` 並刪除工作區（見 [PR 合併後結案](#pr-合併後結案2026-11-06)） |
+| 已關閉（未合併） | 記 `pullRequestClosed`，之後不再查；任務維持 `PR_CREATED`、保留工作區 |
 | mergeable 為 null（GitHub 還在計算） | 下次再查 |
 | 可合併 | 不處理；上一輪推回後第一次確認可合併時，通知一次「不再衝突」 |
 | 衝突（mergeable=false、dirty），且來源分支、head 與基準都和系統紀錄相同 | 開始同步，見下方 |
@@ -384,6 +417,34 @@ PR 是系統自己開的，分支與工作區都還在，因此改由原任務�
 - 衝突檔位在受保護路徑時，實作角色改不了，會照一般受阻路由停下。
 - 已開過 PR 的任務一律推回同一個 PR，不會再開新 PR。
 - 只處理系統開出的 PR（`flow.prUrl`），不處理真人開的 PR。
+
+## PR 合併後結案（2026-11-06）
+
+起因：一個只開了 PR、沒開衝突同步的實例，六個 PR 都已在 GitHub 合併，任務卻全部停在 `PR_CREATED`：
+排程只在開了 `pullRequestSyncRounds` 的實例查 PR，查到合併也只記 `pullRequestClosed`，不改狀態；
+啟動清理保留 `PR_CREATED` 的工作區，累積到 13 GB。
+
+**開關**：`AI_TEAM_PR_TRACKING`（env.sh／team.env，預設 `on`，所有實例與團隊配置通用），與衝突同步分開。
+`off` 回到舊行為：只有開了衝突同步的配置才查 GitHub，合併後不結案。
+
+**處理**（`FlowEngine.checkPullRequest` → `pullRequestFinished`）：
+
+| GitHub 狀態 | 處理 |
+|---|---|
+| 已合併 | `PR_CREATED → COMPLETED`（以 `claimState` 原子轉換），audit 記狀態變更與「PR 已合併，任務結案」，立即刪除工作區並在原討論串通知一次；刪除失敗留給下次清理（`COMPLETED` 本來就會被啟動清理與[工作區佔用控制](#工作區佔用控制2026-11-05)刪除） |
+| 已關閉未合併 | 只記 `pullRequestClosed`，任務維持 `PR_CREATED`，保留 git 工作樹；建置產物照工作區佔用控制回收 |
+| 開啟中 | 沒開衝突同步時不處理、不發言；有開時照上一節 |
+
+**舊版已標記關閉的任務**：舊 JAR 偵測到合併只記 `pullRequestClosed`。新版排程對這類任務每個服務程序補查一次 GitHub，
+已合併就照上表結案；關閉未合併的不再重複查詢（重啟後才會再補查一次）。
+
+**設計取捨**（決策紀錄見本機 `.ai/decisions.md`）：
+- 合併沿用 `COMPLETED`，不新增狀態值：DB 沒有遷移機制，部署後回退舊 JAR 讀到不認得的列舉會直接拋錯；
+  是否「因合併而結案」看 audit 與 `pullRequestClosed`。
+- 已合併的 commit 都在基準分支，工作區沒有用途，直接刪除；關閉未合併時 GitHub 可能一併刪掉遠端分支，
+  工作區可能是那些 commit 唯一的副本，所以保留 git 工作樹，不轉 `ABORTED`（`ABORTED` 會在下次啟動被刪）。
+  要放棄這類任務由負責人另行中止；重新開啟的 PR 不會再被追蹤。
+- 排程第一次查詢在啟動 10 分鐘後，不會在部署的前後一致比對期間改動任務。
 
 ## 尚待真實端對端驗收
 

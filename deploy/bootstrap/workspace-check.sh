@@ -6,6 +6,7 @@
 # 以及已被承接且承接鏈末端已進入終態的原任務——新版啟動清理會刪它們（TaskOrchestrator.retiredChainFinished）；
 # 其他狀態（等待中、PR_CREATED、FAILED）的工作區消失，或部署期間出現新工作區，都判失敗。
 # 保留規則的細節（例如負責人結案保留）不在這裡重寫：被保留的工作區會落在「仍在」那類，照樣要求完全相同。
+# 雜湊只含 HEAD、status 與 diff，不含被忽略的檔案：啟動時 WorkspaceReclaimer 刪除閒置工作區的建置產物不算改動。
 set -euo pipefail
 
 snapshot() {

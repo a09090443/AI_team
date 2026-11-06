@@ -56,6 +56,8 @@ public class TaskOrchestrator {
     private com.zipe.aiteam.flow.ErrorExplainer explainer;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.zipe.aiteam.flow.BaselineVerifier baseline;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.zipe.aiteam.workspace.WorkspaceReclaimer reclaimer;
 
     private final LinkedBlockingQueue<Runnable> work = new LinkedBlockingQueue<>();
     private final Object queueLock = new Object();
@@ -227,9 +229,12 @@ public class TaskOrchestrator {
     // ------------------------------------------------------------------ 啟動恢復
 
     public void recoverOnStartup() {
+        if (reclaimer != null) reclaimer.register(skip -> purgeWorkspaces(skip, "磁碟不足自動回收"), this::reclaimable);
         recoverTasks();
         purgeWorkspaces();
         purgeVerificationScenes();
+        // 只刪被 .gitignore 忽略的建置產物，HEAD 與 git status 不變，部署前後的工作區比對（workspace-check.sh）照樣相同。
+        if (reclaimer != null) reclaimer.maintain(null);
         log.info("啟動清理完成"); // deploy-orchestrator.sh 等這行才比對工作區
         scheduleBaselineOnStartup();
     }
@@ -344,7 +349,8 @@ public class TaskOrchestrator {
     }
 
     /**
-     * 清掉不再需要的工作區。每個約 9 MB，不清會無限累積。
+     * 清掉不再需要的工作區。含建置產物時每個可達數 GB，不清會無限累積；
+     * 保留中的工作區另由 WorkspaceReclaimer 只刪可重建的建置產物。
      *
      * 保留的兩種：等待中的任務（可能還要推 PR）、以及 FAILED 的任務
      * —— 失敗現場是診斷用的，砍掉就查不出當時發生什麼事。
@@ -360,12 +366,16 @@ public class TaskOrchestrator {
         }
     }
 
-    private void purgeWorkspaces() {
+    private void purgeWorkspaces() { purgeWorkspaces(java.util.Set.of(), "啟動清理"); }
+
+    /** 啟動清理與磁碟不足時的自動回收（WorkspaceReclaimer）共用；skip 是當下不可刪的任務（呼叫者自己、角色對話正讀取的原任務）。 */
+    private int purgeWorkspaces(java.util.Set<String> skip, String label) {
         List<String> ids = workspaces.listTaskIds();
-        if (ids.isEmpty()) return;
+        if (ids.isEmpty()) return 0;
 
         int removed = 0, kept = 0;
         for (String id : ids) {
+            if (skip.contains(id)) { kept++; continue; }
             Optional<Task> t = store.find(id);
             // 啟用新配置不能順便清除舊模式現場；歷史任務要由明確清理操作處理。
             if (t.isPresent() && flowEngine != null && flowEngine.enabled() && !flowEngine.owns(id)) {
@@ -392,8 +402,14 @@ public class TaskOrchestrator {
                 log.warn("清除工作區 task-{} 失敗：{}", id, e.getMessage());
             }
         }
-        log.info("啟動清理：工作區共 {} 個，刪除 {} 個，保留 {} 個（等待中或失敗待查）",
-                ids.size(), removed, kept);
+        log.info("{}：工作區共 {} 個，刪除 {} 個，保留 {} 個（等待中或失敗待查）",
+                label, ids.size(), removed, kept);
+        return removed;
+    }
+
+    /** 歷史模式任務（沒有配置快照）在新配置下不清理，與 purgeWorkspaces 相同。 */
+    private boolean reclaimable(String id) {
+        return flowEngine == null || !flowEngine.enabled() || flowEngine.owns(id) || store.find(id).isEmpty();
     }
 
     /** 原任務已被承接，且承接鏈最末端的任務已進入終態。查不到或鏈過長時寧可保留。 */

@@ -11,6 +11,18 @@ cd "$root" || exit 1
 [[ $(sha256sum "$build" | cut -d' ' -f1) == "$expected" ]] || { echo '候選 JAR 雜湊不符，停止'; exit 1; }
 # 只看本實例的 unit：同一台 VM 另一個實例有工作時，不該擋住這裡的部署。
 instance=$(set +u; { source ./env.sh; [[ ! -f team.env ]] || source ./team.env; } >/dev/null 2>&1; printf %s "${AI_TEAM_INSTANCE:-}")
+# 成功後輪替 orchestrator-backup.*：本次備份一律保留，再留最近 N-1 份；N 取 AI_TEAM_BACKUP_KEEP（預設 5，0＝不輪替）。
+keep=${AI_TEAM_BACKUP_KEEP:-$(set +u; { source ./env.sh; [[ ! -f team.env ]] || source ./team.env; } >/dev/null 2>&1; printf %s "${AI_TEAM_BACKUP_KEEP:-}")}
+keep=${keep:-5}
+prune_backups() {
+  local dir n=0
+  [[ $keep =~ ^[0-9]+$ ]] && (( keep > 0 )) || { echo "備份輪替：AI_TEAM_BACKUP_KEEP=$keep，不輪替"; return 0; }
+  while IFS= read -r dir; do
+    [[ -d $dir && $dir != "$backup" ]] || continue
+    n=$((n + 1)); (( n < keep )) && continue
+    rm -rf -- "$dir" && echo "備份輪替：刪除 $dir"
+  done < <(ls -1dt "$root"/orchestrator-backup.* 2>/dev/null)
+}
 if [[ -n $instance ]]; then patterns=("ai-team-$instance-*")
 else patterns=('ai-team-[0-9]*' 'ai-team-check-*' 'ai-team-selftest-*' 'ai-team-preflight-*' 'ai-team-codex-preflight-*'); fi
 if [[ -n $(systemctl --user list-units "${patterns[@]}" --no-legend) ]]; then echo "仍有本實例的 unit 在跑（${patterns[*]}），停止"; exit 1; fi
@@ -37,6 +49,7 @@ cp "$build" "$jar"
 if start_and_check && bash service.sh status >/dev/null 2>&1; then
   echo "部署成功 $(sha256sum "$jar" | cut -c1-16)"
   result=0
+  prune_backups || echo '備份輪替失敗，不影響本次部署'
 else
   echo '啟動失敗，保留失敗 log 並自動回復備份'
   cp orchestrator.log "$backup/failed-start.log"

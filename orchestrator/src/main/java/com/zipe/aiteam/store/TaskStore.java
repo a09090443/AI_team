@@ -197,6 +197,14 @@ public class TaskStore {
         return Optional.of(t);
     }
 
+    /** 任務最後一次狀態變更的時間；查無或格式不符時 empty。工作區回收判斷閒置用。 */
+    public Optional<Instant> updatedAt(String taskId) {
+        List<String> rows = jdbc.queryForList("SELECT updated_at FROM task WHERE id = ?", String.class, taskId);
+        if (rows.isEmpty() || rows.get(0) == null) return Optional.empty();
+        try { return Optional.of(Instant.parse(rows.get(0))); }
+        catch (java.time.format.DateTimeParseException e) { return Optional.empty(); }
+    }
+
     /** 重啟時用來恢復尚未結束的任務。 */
     public List<Task> findUnfinished() {
         List<Task> rows = jdbc.query("""

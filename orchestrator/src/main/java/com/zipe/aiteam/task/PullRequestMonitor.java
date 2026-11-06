@@ -11,8 +11,9 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 定期檢查系統開出的 PR 是否與基準衝突（#1056）；發現衝突時由流程引擎回原任務同步。
- * 只查 PR_CREATED 任務，每 10 分鐘一次；配置未開啟 project.autonomy.pullRequestSyncRounds 時不呼叫 GitHub。
+ * 定期檢查系統開出的 PR：已合併就結案並刪除工作區（AI_TEAM_PR_TRACKING，預設 on）；
+ * 與基準衝突時由流程引擎回原任務同步（#1056，project.autonomy.pullRequestSyncRounds）。
+ * 只查 PR_CREATED 任務，每 10 分鐘一次；兩者都沒開時不呼叫 GitHub。
  * 實際工作排進原中央佇列，這裡不執行 agent。
  */
 @Component
