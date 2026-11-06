@@ -254,14 +254,40 @@ public class SlackListener {
                 notifier.post(SlackNotifier.Identity.SYSTEM, e.getChannel(), threadTs, "補充指令需要實際答案，未新增派工。");
                 return;
             }
-            orchestrator.requestTriage(existing, triage.group(3) == null ? "請 PM 分析並處理 QA 的阻礙。" : triage.group(3), e.getUser());
+            orchestrator.requestTriage(existing, triage.group(3) == null ? "請 PM 分析並處理 QA 的阻礙。" : triage.group(3) + withFiles(e, role, threadTs), e.getUser());
             return;
         }
         var bare = BARE_COMMAND.matcher(text);
         if (topLevel && role == SlackNotifier.Identity.SYSTEM && bare.matches() && routable(bare.group(2))
                 && routeToTask(orchestrator.lookup(bare.group(1)).orElse(null), e, threadTs, bare.group(2).trim())) return;
-        if (role == SlackNotifier.Identity.SYSTEM) orchestrator.createAndSubmit(e.getChannel(), threadTs, e.getUser(), text);
-        else orchestrator.requestRole(role, e.getChannel(), threadTs, e.getUser(), text);
+        String request = text + withFiles(e, role, threadTs);
+        if (role == SlackNotifier.Identity.SYSTEM) orchestrator.createAndSubmit(e.getChannel(), threadTs, e.getUser(), request);
+        else orchestrator.requestRole(role, e.getChannel(), threadTs, e.getUser(), request);
+    }
+
+    /**
+     * 訊息有附檔時登錄到 $AI_TEAM_HOME/slack-files，回傳附在需求後面的系統說明；下載與放進工作目錄在 worker 執行前做
+     * （InboundFiles.stage），這裡不連網，避免卡住單執行緒的事件入口。管理指令不會走到這裡。
+     */
+    String withFiles(AppMentionEvent e, SlackNotifier.Identity role, String threadTs) {
+        if (e.getFiles() == null || e.getFiles().isEmpty()) return "";
+        if (!orchestrator.acceptsSlackFiles()) {
+            notifier.post(SlackNotifier.Identity.SYSTEM, e.getChannel(), threadTs,
+                    "這則訊息的附檔沒有交給 agent：本實例未啟用接收附檔（AI_TEAM_SLACK_FILES）或不是配置式流程。需求文字照常處理。");
+            return "\n\n〔系統〕使用者附了檔案，但本實例未啟用接收附檔，agent 拿不到檔案內容。";
+        }
+        try {
+            var registration = InboundFiles.register(props.homePath(), e.getChannel(), threadTs, e.getTs(), role.name(),
+                    e.getFiles(), props.slackFilesMaxBytes());
+            if (!registration.rejected().isEmpty())
+                notifier.post(SlackNotifier.Identity.SYSTEM, e.getChannel(), threadTs,
+                        "下列附檔沒有收下：" + String.join("；", registration.rejected()));
+            return registration.note();
+        } catch (Exception ex) {
+            log.error("登錄附檔失敗：{}", com.zipe.aiteam.runtime.Diagnostics.describe(ex));
+            notifier.post(SlackNotifier.Identity.SYSTEM, e.getChannel(), threadTs, "附檔登錄失敗，這次 agent 拿不到檔案；需求文字照常處理。");
+            return "\n\n〔系統〕使用者附了檔案，但系統登錄失敗，agent 拿不到檔案內容。";
+        }
     }
 
     /**
@@ -273,7 +299,8 @@ public class SlackListener {
         audit.record(existing.id(), e.getUser(), AuditLog.ACTION_RECEIVED, "頻道頂層指令轉回原任務：" + command);
         notifier.post(SlackNotifier.Identity.SYSTEM, e.getChannel(), threadTs, "已把這則指令轉給任務 #" + existing.id()
                 + "，結果會貼在該任務原本的討論串；沒有建立新任務。");
-        orchestrator.requestTriage(existing, command, e.getUser());
+        // 附檔登錄在原任務的討論串，執行時才找得到；以主 App 下載（主 App 一定在頻道內）。
+        orchestrator.requestTriage(existing, command + withFiles(e, SlackNotifier.Identity.SYSTEM, existing.slackThreadTs()), e.getUser());
         return true;
     }
 

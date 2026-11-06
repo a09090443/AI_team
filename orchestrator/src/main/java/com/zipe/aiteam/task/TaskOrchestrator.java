@@ -233,6 +233,8 @@ public class TaskOrchestrator {
         recoverTasks();
         purgeWorkspaces();
         purgeVerificationScenes();
+        int inbox = com.zipe.aiteam.slack.InboundFiles.sweep(props.homePath(), java.time.Duration.ofDays(30));
+        if (inbox > 0) log.info("啟動清理：刪除 {} 個超過 30 天未動的討論串附檔快取", inbox);
         // 只刪被 .gitignore 忽略的建置產物，HEAD 與 git status 不變，部署前後的工作區比對（workspace-check.sh）照樣相同。
         if (reclaimer != null) reclaimer.maintain(null);
         log.info("啟動清理完成"); // deploy-orchestrator.sh 等這行才比對工作區
@@ -1315,6 +1317,8 @@ public class TaskOrchestrator {
         flowEngine.resumeApprovedPlan(task, this::enqueue);
     }
     public boolean channelCommandRouting() { return flowEngine != null && flowEngine.channelCommandRouting(); }
+    /** 使用者附檔只在配置式流程放進工作目錄（FlowEngine.stageInbox）；舊版管線不支援。 */
+    public boolean acceptsSlackFiles() { return flowEngine != null && flowEngine.enabled() && props.slackFiles(); }
     /** 已開 PR 的衝突同步：排程（byUser=null）與「同步 PR #編號」共用；判斷與權限都在流程引擎。 */
     public void checkPullRequest(Task task, String byUser) {
         if (flowEngine != null && flowEngine.owns(task.id())) { flowEngine.checkPullRequest(task, byUser, this::enqueue); return; }

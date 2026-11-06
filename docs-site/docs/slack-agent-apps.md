@@ -26,7 +26,7 @@
    scope 選 **`connections:write`**，複製 `xapp-` token。scope 無法事後修改，選錯只能重新產生
 7. （選用）**Basic Information → Display Information → App icon** 換頭像；只能上傳圖片
 
-manifest 已包含：Socket Mode、訂閱 `app_mention`、`chat:write`、`files:write`（附件上傳用）、`app_mentions:read`；
+manifest 已包含：Socket Mode、訂閱 `app_mention`、`chat:write`、`files:write`（附件上傳用）、`files:read`（下載使用者附檔用）、`app_mentions:read`；
 主 App 另有 `chat:write.customize`、`reactions:write` 與互動元件（按鈕）。
 刻意不給 `channels:history`：只處理被明確 @ 的訊息，不讀頻道歷史。
 
@@ -137,18 +137,20 @@ App ID 可直接開 `https://api.slack.com/apps/<App ID>`：Bot Token 在 **OAut
 | 重啟後仍顯示「共用主 token」 | 改到的是 `deploy/env.sh.template`（範本），服務讀的是 VM 上的 `~/ai-team/env.sh`；或檔案沒存到 |
 | 新增 scope 後沒生效 | 需要 **Reinstall to Workspace**；若 Bot Token 因此更換，也要更新 env.sh |
 | 討論串出現「附件未能上傳（missing_scope）」 | 該 App 缺 `files:write`，依下一節補上 |
+| 討論串出現「附檔下載失敗」且提到 files:read／登入頁 | 接收那則訊息的 App 缺 `files:read`，依下一節補上 |
 
 ### 既有 App 補上傳檔案權限
 
 2026-11-03 起 manifest 內含 `files:write`，供團隊配置啟用 `attachments` 後上傳附件（見[附件上傳到討論串](configurable-team.md#附件上傳到討論串2026-11-03)）。
+2026-11-06 起另含 `files:read`，供系統下載使用者在 @訊息附上的檔案（見[接收使用者附檔](configurable-team.md#接收使用者附檔2026-11-06)）。
 之前建立的 App 要由管理者本人逐一補上（OAuth 授權無法自動化）：
 
-1. [api.slack.com/apps](https://api.slack.com/apps) → 選 App → **OAuth & Permissions → Scopes → Bot Token Scopes → Add an OAuth Scope** → `files:write`
+1. [api.slack.com/apps](https://api.slack.com/apps) → 選 App → **OAuth & Permissions → Scopes → Bot Token Scopes → Add an OAuth Scope** → `files:write`、`files:read`
    （或在 **App Manifest** 把 scopes 改成 repo 內最新的 manifest）
 2. 頁面上方出現提示後按 **Reinstall to Workspace → Allow**
 3. Bot Token 通常不變；若有變，更新 `~/ai-team/env.sh` 並重啟服務
 
-沒補權限時功能不會中斷流程：系統只在討論串說明哪些檔案未上傳。角色沒有獨立 token 時由主 App 代傳，所以主 App 也要補。
+沒補權限時功能不會中斷流程：系統只在討論串說明哪些檔案未上傳或未下載。角色沒有獨立 token 時由主 App 代傳，所以主 App 也要補。
 
 ---
 
@@ -159,6 +161,7 @@ App ID 可直接開 `https://api.slack.com/apps/<App ID>`：Bot Token 在 **OAut
 - **不能觸發或中止任務**：沒有互動元件，按鈕與流程控制全部在主 App
 - **只能發到被邀請進去的頻道**
 - **上傳的檔案由系統挑選**：`files:write` 只用在系統驗證過的附件，agent 本身拿不到 token
+- **只下載被 @那則訊息的附檔**：`files:read` 由系統用來下載使用者附檔，不讀頻道裡其他檔案
 
 交接訊息中的 mention 是**通知**，不是**觸發**；實際執行順序由 orchestrator 驅動，
 理由見 [互動模型](interaction-model.md)。
@@ -204,7 +207,7 @@ App ID 可直接開 `https://api.slack.com/apps/<App ID>`：Bot Token 在 **OAut
 
 - `display_information.name` 與 `bot_user.display_name`；名稱須符合 Slack 長度限制。
 - `display_information.description`／`long_description`，如實描述角色用途。
-- 保留 Socket Mode、`app_mention`、`chat:write`、`files:write`、`app_mentions:read`；角色 App 不加 interactivity。
+- 保留 Socket Mode、`app_mention`、`chat:write`、`files:write`、`files:read`、`app_mentions:read`；角色 App 不加 interactivity。
 
 新增受版控檔案時，同步把檔名與用途加入 `docs-site/agent/project-tree.md`。若這是 repo 內正式支援的角色，也要把 manifest、
 token 變數占位與角色名稱加入 `deploy/bootstrap/check-source.sh` 的來源一致性檢查；否則 build 不會替你驗證新角色的資產是否齊全。

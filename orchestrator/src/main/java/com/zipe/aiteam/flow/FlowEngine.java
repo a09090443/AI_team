@@ -586,11 +586,13 @@ public class FlowEngine {
                     if (node.gate() == Gate.SERVICE) restoreServiceArtifacts(task, flow);
                     collectServiceSupport(task,flow,runner);
                     if(aborted(task) || stopForInterrupt(task,flow))return;
+                    Path inbox = stageInbox(task, flow, runner);
                     try (var progress = new StageProgress(slack, store, task,
                             flow.snapshot.definition().roles().get(runner.role()).executionLabel() + "／" + flow.node, props.progressIntervalSeconds(), true)) {
                         result = executor.execute(task, flow, runner);
                     }
                     catch (Exception e) { auditScope(task, flow, node); auditFallback(task, flow, node, runner); throw e; }
+                    finally { releaseInbox(task, flow, inbox); }
                     auditFallback(task, flow, node, runner);
                 }
                 if (aborted(task)) return;
@@ -2779,9 +2781,49 @@ public class FlowEngine {
         return "目前沒有足夠的新證據確認這個問題，原任務與部署結果保留。請補充目前看到的完整錯誤訊息，系統才能繼續定位；本次對話沒有重新部署或續跑原任務。";
     }
     private void runDialogue(Task task, FlowRun flow) throws Exception {
-        Role role = flow.snapshot.definition().roles().get(flow.dialogueRole);
         Node node = new Node(Kind.AGENT, flow.dialogueRole, null, Scope.READ_ONLY, Gate.REPORT, false, List.of(), null,
                 "end", "human", Map.of(), List.of(), 1, 900, 20, null);
+        Path staged = stageInbox(task, flow, node);
+        try { runDialogue(task, flow, node); }
+        finally { releaseInbox(task, flow, staged); }
+    }
+
+    /** 工作目錄是共用的主 repo（無原任務的對話、還沒建工作區的節點）：執行完就移除這個討論串的附檔副本。 */
+    private void releaseInbox(Task task, FlowRun flow, Path staged) {
+        if (staged == null || !staged.equals(Path.of(flow.snapshot.repository()).toAbsolutePath().normalize())) return;
+        try { InboundFiles.remove(staged, task.slackChannel(), task.slackThreadTs()); }
+        catch (Exception e) { audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_ERROR, "移除主 repo 的附檔副本失敗：" + Diagnostics.describe(e)); }
+    }
+
+    /**
+     * 使用者附檔（InboundFiles）：執行 agent 前下載並放進工作目錄的 .ai-team-inbox/。
+     * 失敗只留一行說明、稽核與 context，不改變階段結果。@return 放入的工作目錄；沒有附檔時回 null。
+     */
+    private Path stageInbox(Task task, FlowRun flow, Node node) {
+        if (!props.slackFiles() || !InboundFiles.pending(props.homePath(), task.slackChannel(), task.slackThreadTs())) return null;
+        try {
+            Path dir = executor.workingDirectory(task, flow, node).toAbsolutePath().normalize();
+            var staged = InboundFiles.stage(props.homePath(), task.slackChannel(), task.slackThreadTs(), dir,
+                    slack::downloadFile, props.slackFilesMaxBytes());
+            if (!staged.copied().isEmpty())
+                audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "使用者附檔已放入工作目錄：" + String.join("、", staged.copied()));
+            if (!staged.failed().isEmpty()) {
+                String failed = String.join("；", staged.failed());
+                audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_ERROR, "使用者附檔下載失敗：" + failed);
+                slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "下列附檔下載失敗，agent 拿不到內容：" + failed);
+                flow.context = FlowContext.append(flow.context, "系統：下列使用者附檔下載失敗，工作目錄裡沒有，不要假設內容：" + failed);
+                store.saveFlow(task.id(), flow);
+            }
+            return dir;
+        } catch (Exception e) {
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_ERROR, "使用者附檔準備失敗：" + Diagnostics.describe(e));
+            slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "附檔沒能放進工作目錄，agent 這次拿不到檔案；流程照常進行。");
+            return null;
+        }
+    }
+
+    private void runDialogue(Task task, FlowRun flow, Node node) throws Exception {
+        Role role = flow.snapshot.definition().roles().get(flow.dialogueRole);
         state(task, Task.State.STAGE_RUNNING, role.name() + " 唯讀對話處理中");
         collectServiceSupport(task,flow,node);
         if(aborted(task) || stopForInterrupt(task,flow))return;

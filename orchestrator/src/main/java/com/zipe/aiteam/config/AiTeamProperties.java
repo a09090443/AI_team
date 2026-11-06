@@ -162,6 +162,23 @@ public class AiTeamProperties {
     public long workspaceReclaimIdleHours() { return Math.max(0, workspaceReclaimIdleHours); }
 
     /**
+     * 接收使用者在 @訊息附上的檔案（InboundFiles）。預設 on；Slack App 需要 files:read。
+     * off 時附檔不交給 agent，討論串回一行說明。
+     */
+    @Value("${AI_TEAM_SLACK_FILES:on}")
+    private String slackFiles = "on";
+    /** 單檔上限（位元組），預設 20 MiB，不可超過 50 MiB。 */
+    @Value("${AI_TEAM_SLACK_FILES_MAX_BYTES:20971520}")
+    private long slackFilesMaxBytes = 20L * 1024 * 1024;
+
+    public boolean slackFiles() {
+        return slackFiles == null || !"off".equalsIgnoreCase(slackFiles.trim());
+    }
+    public long slackFilesMaxBytes() {
+        return Math.min(Math.max(1, slackFilesMaxBytes), com.zipe.aiteam.slack.InboundFiles.HARD_MAX_BYTES);
+    }
+
+    /**
      * 已開 PR 的合併／關閉追蹤（PullRequestMonitor 每 10 分鐘）。預設 on：PR 已合併的任務轉 COMPLETED 並刪除工作區。
      * 與衝突同步（project.autonomy.pullRequestSyncRounds）分開；off 時只有開了衝突同步的配置才查 GitHub（舊行為）。
      */

@@ -20,6 +20,7 @@ oauth_config:
       - app_mentions:read
       - chat:write
       - files:write
+      - files:read
       - chat:write.customize
       - reactions:write
 settings:

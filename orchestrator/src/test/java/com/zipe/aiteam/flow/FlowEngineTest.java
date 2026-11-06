@@ -1210,6 +1210,23 @@ class FlowEngineTest {
         assertThat(queued).isEmpty();assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
         verifyNoInteractions(executor,publisher);
     }
+    @Test void dialogueWithoutParentSeesSlackFilesAndMainRepoCopyIsRemoved() throws Exception {
+        when(props.homePath()).thenReturn(tmp);when(props.slackFiles()).thenReturn(true);when(props.slackFilesMaxBytes()).thenReturn(1024L);
+        mode="dialogueWrongUrl";
+        FlowRun f=store.flow(task.id()).orElseThrow();f.dialogue=true;f.dialogueRole="coordinator";f.node="dialogue";store.saveFlow(task.id(),f);
+        var file=new com.slack.api.model.File();file.setId("F1");file.setName("a.txt");file.setSize(2);
+        file.setUrlPrivateDownload("https://files.slack.com/files-pri/T1-F1/a.txt");
+        com.zipe.aiteam.slack.InboundFiles.register(tmp,"c","t","m1","COORDINATOR",List.of(file),1024);
+        Path repo=Path.of(f.snapshot.repository()).toAbsolutePath().normalize();
+        when(executor.workingDirectory(any(),any(),any())).thenReturn(repo);
+        doAnswer(c->{Files.writeString(c.getArgument(4),"hi");return null;}).when(slack).downloadFile(eq("COORDINATOR"),eq("F1"),anyString(),eq(1024L),any());
+        task=new Task("42","c","t","u","看附檔");store.save(task);
+        engine.run(task);
+        assertThat(inboxSeen).isTrue();
+        assertThat(repo.resolve(".ai-team-inbox")).doesNotExist();
+        assertThat(Files.readString(repo.resolve(".git/info/exclude"))).contains("/.ai-team-inbox/");
+        verify(audit).record(eq("42"),anyString(),eq(AuditLog.ACTION_STATE),contains("使用者附檔已放入工作目錄"));
+    }
     @Test void serviceDialogueCorrectsWrongUrlWithoutHumanOrDeploying() throws Exception {
         when(props.homePath()).thenReturn(tmp);mode="dialogueWrongUrl";
         FlowRun f=store.flow(task.id()).orElseThrow();f.dialogue=true;f.dialogueRole="coordinator";f.node="dialogue";
@@ -1257,6 +1274,7 @@ class FlowEngineTest {
     List<String> resumed = new ArrayList<>();
     List<String> consults = new ArrayList<>();
     String mode = "normal";
+    boolean inboxSeen;
     String deniedAt;
     boolean provisioned;
     boolean workspaceClean;
@@ -1298,6 +1316,7 @@ class FlowEngineTest {
             workspaceClean = true; workspaceHead = "head-qa-tests"; return workspaceHead; });
         when(executor.execute(any(), any(), any())).thenAnswer(c -> {
             FlowRun flow = c.getArgument(1); TeamDefinition.Node node = c.getArgument(2); calls.add(flow.node + ":" + node.role());
+            if (Files.exists(tmp.resolve("repo/.ai-team-inbox/c-t/m1/F1-a.txt"))) inboxSeen = true;
             Task executing = c.getArgument(0);
             if (mode.equals("dialogueWrongUrl")) {
                 var answer=mapper.createObjectNode().put("answer","請開http://192.0.2.20/").put("execution_status","COMPLETED").putNull("failure_report");

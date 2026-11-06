@@ -51,7 +51,7 @@ title: 操作與角色對話
 ```
 
 新討論串的派工交中央流程；v2 既有任務在 `AWAIT_HUMAN`／`WAITING_QUOTA` 時依原快照與節點續跑，仍受目前人工閘門限制。legacy 才交 PM 分流，要求 `AWAIT_HUMAN` 且已有 QA 計畫與結果；不符合會拒絕。
-角色對話不取代 QA、審查或發布核准，也不會自動讀取整個 Slack 歷史與未記錄附件。
+角色對話不取代 QA、審查或發布核准，也不會自動讀取整個 Slack 歷史；只有 @角色那則訊息附上的檔案會交給 agent。
 角色未建立獨立 App 時由主 App 代發，無法直接 @該角色。
 
 下一步：[故障排查](troubleshooting.md)、[Slack 與團隊設定](configuration.md)。

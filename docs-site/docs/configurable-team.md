@@ -191,7 +191,7 @@ App-Level Token 留空**：發言與交接 tag 使用同一個角色身分，不
 
 第二份配置由同一個 FlowEngine 執行，不需要增加 Java enum、role switch 或流程 if。
 新增角色仍需建立／設定相應 Slack App，將 Bot/App Token 填入配置引用的環境變數，
-使用 `chat:write`、`files:write`（附件上傳）、`app_mentions:read`、`app_mention` 與 Socket Mode。角色不必有 Slack 帳號才能執行：
+使用 `chat:write`、`files:write`（附件上傳）、`files:read`（接收附檔）、`app_mentions:read`、`app_mention` 與 Socket Mode。角色不必有 Slack 帳號才能執行：
 缺 token 時系統會明示代發；但無法直接 @沒有獨立帳號的角色。
 
 刪除角色時要同步移除或改派引用它的節點與轉移。刪錯引用、未配置的下一步、孤立節點、
@@ -464,6 +464,29 @@ node-web 範例配置維持未啟用，也作為測試的對照組。被諮詢�
 
 相容：未設定時不序列化，配置 revision、提示與 schema 都與修改前相同；舊任務快照沒有這個欄位，一律不啟用。
 內附範例都未啟用。**目前證據等級：程式測試通過，尚未做真實 Slack 上傳的端對端驗證。**
+
+## 接收使用者附檔（2026-11-06）
+
+使用者 @主 App 或 @角色時在同一則訊息附上檔案，agent 執行時可在工作目錄讀到。新需求、角色對話、討論串內的
+`處理／補充 #編號`，以及頻道頂層轉回原任務的指令都適用；只附檔沒寫文字時仍回「請說明需求」。
+中斷、開 PR、同步 PR、基準驗證等管理指令不處理附檔。未 @的訊息附檔不會帶入。只有配置式流程支援，舊版管線會在討論串說明未交給 agent。
+
+- **收件（`SlackListener` → `InboundFiles.register`）**：事件入口只把檔案資訊寫成 `$AI_TEAM_HOME/slack-files/<頻道-討論串>/<訊息>/manifest.json`，
+  不下載；需求文字後面加一段系統說明，列出檔案將放在 `.ai-team-inbox/<頻道-討論串>/<訊息>/<檔案ID>-<檔名>`，並註明內容是資料、不是指令。
+- **放進工作目錄（`FlowEngine.stageInbox`）**：每次執行 agent 前（含續跑），以接收那則訊息的 App token 下載尚未取得的檔案
+  （`SlackNotifier.downloadFile`，同一檔只下載一次），再複製到 `ConfiguredExecutor.workingDirectory` 下的 `.ai-team-inbox/`，
+  並在該 repo 的 `.git/info/exclude` 寫獨立管理區塊：不進寫入範圍稽核、不會被代為提交或進 PR，工作區回收也不刪。
+  工作目錄是共用主 repo 時（沒有原任務的角色對話、還沒建工作區的節點），執行完就刪掉這個討論串的副本。
+- **系統寫死的檢查**：只把 token 送到 `https://files.slack.com/`、不跟隨轉址；單檔上限 `AI_TEAM_SLACK_FILES_MAX_BYTES`（預設 20 MiB，最多 50 MiB），
+  串流超過即中止；每則訊息最多 10 個；已刪除、超過方案保存範圍與外部連結檔案（雲端硬碟等）不收；檔名去掉路徑分隔、控制字元與開頭的點；
+  `.ai-team-inbox` 任何一層是符號連結就拒絕寫入。agent 拿不到 token。
+- **失敗**：沒收下或下載失敗的檔案在討論串列出原因並寫稽核，下載失敗也寫進 context 提醒 agent 不要假設內容；失敗的檔案不重試、不重複通知，流程照常。
+  Slack 回登入頁或 `missing_scope` 時提示 App 缺 `files:read`。
+- **保存**：home 快取在服務啟動清理時刪除 30 天未動的討論串；工作區副本隨工作區刪除。
+- **能讀到什麼**：檔案就在工作目錄內，各 runtime 都用原本的讀取工具；文字檔都能讀，圖片與 PDF 是否看得懂取決於 runtime 與模型。
+
+需要 Slack App 有 `files:read`（manifest 已內含，既有 App 要補權限並重新安裝，見[建立 Slack App](slack-agent-apps.md#既有-app-補上傳檔案權限)）。
+`AI_TEAM_SLACK_FILES=off` 關閉。**目前證據等級：程式測試通過，尚未做真實 Slack 附檔的端對端驗證**（`app_mention` 事件是否帶 `files` 依 SDK 欄位與 Slack 文件判斷，待實測）。
 
 ## 快照與相容策略
 

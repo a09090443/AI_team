@@ -184,6 +184,37 @@ public class SlackNotifier {
         return upload(token.isBlank() ? clients.get(Identity.SYSTEM) : slack.methods(token), channel, thread, files);
     }
 
+    /**
+     * 下載使用者附檔（InboundFiles.stage 呼叫）。用接收那則訊息的 App token；角色沒有專屬 token 時用主 App。
+     * 需要 files:read。只送 token 到 files.slack.com、不跟隨轉址；Slack 回 HTML 代表沒有讀取權限。
+     */
+    public void downloadFile(String identity, String fileId, String url, long maxBytes, java.nio.file.Path target) throws Exception {
+        String own = identity == null || "SYSTEM".equalsIgnoreCase(identity) ? "" : props.roleBotToken(identity.toUpperCase(java.util.Locale.ROOT));
+        String token = own == null || own.isBlank() ? props.slackBotToken() : own;
+        if (url == null || url.isBlank()) {
+            var info = slack.methods(token).filesInfo(r -> r.file(fileId));
+            if (!info.isOk() || info.getFile() == null)
+                throw new IOException("files.info 失敗：" + info.getError() + ("missing_scope".equals(info.getError()) ? "（App 缺 files:read，補權限後重新安裝）" : ""));
+            url = info.getFile().getUrlPrivateDownload() != null ? info.getFile().getUrlPrivateDownload() : info.getFile().getUrlPrivate();
+            if (url == null) throw new IOException("Slack 沒有提供下載網址");
+        }
+        var request = java.net.http.HttpRequest.newBuilder(InboundFiles.validUrl(url))
+                .timeout(java.time.Duration.ofMinutes(2)).header("Authorization", "Bearer " + token).GET().build();
+        var client = java.net.http.HttpClient.newBuilder().followRedirects(java.net.http.HttpClient.Redirect.NEVER)
+                .connectTimeout(java.time.Duration.ofSeconds(20)).build();
+        var response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofInputStream());
+        String type = response.headers().firstValue("Content-Type").orElse("");
+        if (response.statusCode() != 200) {
+            response.body().close();
+            throw new IOException("Slack 回應 HTTP " + response.statusCode() + (response.statusCode() / 100 == 3 ? "（通常是 App 缺 files:read 或不在該頻道）" : ""));
+        }
+        if (type.toLowerCase(java.util.Locale.ROOT).startsWith("text/html")) {
+            response.body().close();
+            throw new IOException("Slack 回傳登入頁，App 可能缺 files:read 或沒有加入該頻道");
+        }
+        InboundFiles.save(response.body(), maxBytes, target);
+    }
+
     static String upload(MethodsClient client, String channel, String thread, List<com.zipe.aiteam.flow.Attachments.Candidate> files) {
         try {
             // requestFileInfo 會多呼叫 files.info（需要 files:read）；只要 files:write 就能完成上傳。
