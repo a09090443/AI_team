@@ -45,6 +45,19 @@ class InboundFilesTest {
         assertThat(r.note()).contains("F9-f9.txt").doesNotContain("F10-f10.txt");
     }
 
+    @Test void onlyDocumentFilesAreAccepted() throws Exception {
+        File image = file("IMG", "photo.png", 10); image.setMimetype("image/png");
+        File fakeDoc = file("FAKE", "shot.pdf", 10); fakeDoc.setMimetype("image/jpeg");
+        File noExt = file("NOEXT", "Makefile", 10);
+        List<File> files = new ArrayList<>(List.of(image, fakeDoc, noExt,
+                file("ZIP", "a.zip", 10), file("EXE", "run.sh", 10), file("SRC", "Main.java", 10)));
+        for (String ok : List.of("spec.PDF", "a.docx", "b.xlsx", "c.pptx", "d.md", "e.csv", "f.json"))
+            files.add(file("OK" + ok.hashCode(), ok, 10));
+        var r = InboundFiles.register(home, "C1", "1.1", "1.1", "SYSTEM", files, 1024);
+        assertThat(r.rejected()).hasSize(6).allSatisfy(x -> assertThat(x).contains("只接受文件類檔案"));
+        assertThat(r.note()).contains("spec.PDF", "a.docx", "b.xlsx", "c.pptx", "d.md", "e.csv", "f.json");
+    }
+
     @Test void noFilesMeansNoNoteAndNoStore() throws Exception {
         assertThat(InboundFiles.register(home, "C1", "1.1", "1.1", "SYSTEM", List.of(), 1024).empty()).isTrue();
         assertThat(home.resolve("slack-files")).doesNotExist();

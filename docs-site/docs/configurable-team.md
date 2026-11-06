@@ -478,12 +478,12 @@ node-web 範例配置維持未啟用，也作為測試的對照組。被諮詢�
   並在該 repo 的 `.git/info/exclude` 寫獨立管理區塊：不進寫入範圍稽核、不會被代為提交或進 PR，工作區回收也不刪。
   工作目錄是共用主 repo 時（沒有原任務的角色對話、還沒建工作區的節點），執行完就刪掉這個討論串的副本。
 - **系統寫死的檢查**：只把 token 送到 `https://files.slack.com/`、不跟隨轉址；單檔上限 `AI_TEAM_SLACK_FILES_MAX_BYTES`（預設 20 MiB，最多 50 MiB），
-  串流超過即中止；每則訊息最多 10 個；已刪除、超過方案保存範圍與外部連結檔案（雲端硬碟等）不收；檔名去掉路徑分隔、控制字元與開頭的點；
+  串流超過即中止；每則訊息最多 10 個；**只收文件類檔案**：副檔名須為 txt、md、csv、tsv、json、xml、yaml、yml、log、pdf、doc、docx、xls、xlsx、ppt、pptx、odt、ods、odp、rtf，且 Slack 標示的類型不是圖片／影音（圖片、影音、壓縮檔、執行檔、原始碼一律不收）；已刪除、超過方案保存範圍與外部連結檔案（雲端硬碟等）不收；檔名去掉路徑分隔、控制字元與開頭的點；
   `.ai-team-inbox` 任何一層是符號連結就拒絕寫入。agent 拿不到 token。
 - **失敗**：沒收下或下載失敗的檔案在討論串列出原因並寫稽核，下載失敗也寫進 context 提醒 agent 不要假設內容；失敗的檔案不重試、不重複通知，流程照常。
   Slack 回登入頁或 `missing_scope` 時提示 App 缺 `files:read`。
 - **保存**：home 快取在服務啟動清理時刪除 30 天未動的討論串；工作區副本隨工作區刪除。
-- **能讀到什麼**：檔案就在工作目錄內，各 runtime 都用原本的讀取工具；文字檔都能讀，圖片與 PDF 是否看得懂取決於 runtime 與模型。
+- **能讀到什麼**：檔案就在工作目錄內，各 runtime 都用原本的讀取工具；文字格式都能讀，PDF 與 Office 檔是否看得懂取決於 runtime、模型與沙箱內的轉換工具。
 
 需要 Slack App 有 `files:read`（manifest 已內含，既有 App 要補權限並重新安裝，見[建立 Slack App](slack-agent-apps.md#既有-app-補上傳檔案權限)）。
 `AI_TEAM_SLACK_FILES=off` 關閉。**目前證據等級：程式測試通過，尚未做真實 Slack 附檔的端對端驗證**（`app_mention` 事件是否帶 `files` 依 SDK 欄位與 Slack 文件判斷，待實測）。

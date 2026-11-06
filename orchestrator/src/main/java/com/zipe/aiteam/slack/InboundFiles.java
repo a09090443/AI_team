@@ -100,9 +100,24 @@ public final class InboundFiles {
         if (mode.equals("tombstone")) return "檔案已被刪除";
         if (mode.equals("hidden_by_limit")) return "超過工作區方案的檔案保存範圍，Slack 不提供內容";
         if (mode.equals("external") || f.isExternal()) return "外部連結檔案（例如雲端硬碟）不支援，請直接上傳檔案";
+        if (!document(f)) return "只接受文件類檔案（" + String.join("、", DOCUMENT_EXTENSIONS) + "）";
         if (f.getSize() != null && f.getSize() > limit) return "超過單檔 " + limit / 1024 / 1024 + " MB 上限";
         if (acceptedSoFar >= MAX_FILES) return "超過每則訊息 " + MAX_FILES + " 個的上限";
         return null;
+    }
+
+    /** 只收文件：純文字／資料格式與 Office、PDF。圖片、影音、壓縮檔、執行檔與原始碼一律不收。 */
+    static final List<String> DOCUMENT_EXTENSIONS = List.of(
+            "txt", "md", "csv", "tsv", "json", "xml", "yaml", "yml", "log",
+            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf");
+
+    /** 以檔名副檔名判斷；Slack 標示為圖片、影音的檔案即使副檔名相符也不收。 */
+    static boolean document(File f) {
+        String name = f.getName() == null ? "" : f.getName().toLowerCase(Locale.ROOT);
+        int dot = name.lastIndexOf('.');
+        if (dot < 0 || !DOCUMENT_EXTENSIONS.contains(name.substring(dot + 1))) return false;
+        String mime = f.getMimetype() == null ? "" : f.getMimetype().toLowerCase(Locale.ROOT);
+        return !(mime.startsWith("image/") || mime.startsWith("video/") || mime.startsWith("audio/"));
     }
 
     static String describe(File f) {

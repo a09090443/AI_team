@@ -154,7 +154,7 @@ PR 核准與結束訊息中的「團隊看板」段落，列出角色記錄、�
 - 前提是角色 App 已設定 Socket Mode 與 App-Level Token，見 [direct-agent-requests](/docs/direct-agent-requests)。
 - 團隊配置啟用 `attachments` 時，可請角色「把報表附上來」：角色宣告檔案，系統驗證後上傳到討論串；被拒的檔案會列出原因。
   App 需要 `files:write`，見 [既有 App 補權限](/docs/slack-agent-apps#既有-app-補上傳檔案權限)。
-- 反方向：@主 App 或 @角色時在同一則訊息附檔，agent 執行前會放進工作目錄的 `.ai-team-inbox/`；沒收下或下載失敗會在討論串列原因。
+- 反方向：@主 App 或 @角色時在同一則訊息附文件（txt、md、csv、json、pdf、Office 等；圖片、影音、壓縮檔、原始碼不收），agent 執行前會放進工作目錄的 `.ai-team-inbox/`；沒收下或下載失敗會在討論串列原因。
   App 需要 `files:read`；關閉用 `AI_TEAM_SLACK_FILES=off`，見 [接收使用者附檔](/docs/configurable-team#接收使用者附檔2026-11-06)。
 
 ## 基準驗證（2026-10-18 起）
