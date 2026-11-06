@@ -60,10 +60,15 @@ public class FlowRun {
     public List<AgentDispatch.Assignment> assignmentHistory = new ArrayList<>();
     /**
      * 受保護路徑分段改派：節點 → 本輪改派段的結果。改派角色只改允許的受保護路徑，系統核對後代為提交，
-     * 其餘工作接著由原角色完成。startHead 等於本輪起始 commit 時代表同一輪已完成，續跑時略過改派段。
+     * 其餘工作接著由原角色完成。返工保留候選，以 inputDigest 與目標 Git 物件重新核實後才沿用。
      */
     public Map<String,DelegatedPart> delegatedParts = new LinkedHashMap<>();
-    public record DelegatedPart(String role, String startHead, String head, List<String> files, String summary) {}
+    public record DelegatedPart(String role, String startHead, String head, List<String> files, String summary,
+                                String inputDigest) {
+        public DelegatedPart(String role, String startHead, String head, List<String> files, String summary) {
+            this(role, startHead, head, files, summary, null);
+        }
+    }
     public String acceptanceOwner;
     /**
      * 驗收負責人以「開 PR」命令發布、但審查還沒跑時記下指令者：先補跑審查，流程走到發布核准節點且檢查全過就直接發布，

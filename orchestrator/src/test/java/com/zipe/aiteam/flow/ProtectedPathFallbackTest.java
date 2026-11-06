@@ -120,6 +120,28 @@ class ProtectedPathFallbackTest {
         assertThatThrownBy(() -> TeamCatalog.validate(definition(wrongNode))).hasMessageContaining("只能設在實作節點");
     }
 
+    @Test void delegatedInputOnlyChangesForRelevantContractsOrIssues() throws Exception {
+        var flow = new FlowRun(TeamCatalog.load(Path.of("teams/gradle-fullstack.json"), key -> tmp.toString()));
+        var node = flow.snapshot.definition().nodes().get("implementation");
+        flow.baselineRevision = "baseline";
+        var plan = mapper.createObjectNode();
+        plan.putArray("protected_path_changes").add(".claude/rules/a.md");
+        var scenarios = plan.putArray("scenarios");
+        scenarios.addObject().put("steps", "核對 .claude/rules/a.md");
+        var unrelated = scenarios.addObject().put("steps", "核對 docs/guide.md");
+        flow.receipts.put("plan", plan);
+        String original = ProtectedPathFallback.inputDigest(flow, node);
+        unrelated.put("steps", "核對 docs/guide.md 與 postman/api.json");
+        assertThat(ProtectedPathFallback.inputDigest(flow, node)).isEqualTo(original);
+        flow.issueInventory.put("I1", mapper.readTree("{\"scope\":\"REPAIR\",\"description\":\"修正 docs/guide.md\",\"evidence\":\"數值不同\"}"));
+        assertThat(ProtectedPathFallback.inputDigest(flow, node)).isEqualTo(original);
+        flow.issueInventory.put("I2", mapper.readTree("{\"scope\":\"REPAIR\",\"description\":\"修正文案\",\"evidence\":\"沒有明確路徑\"}"));
+        assertThat(ProtectedPathFallback.inputDigest(flow, node)).isNotEqualTo(original);
+        flow.issueInventory.remove("I2");
+        ((ObjectNode) scenarios.get(0)).put("steps", "重新核對 .claude/rules/a.md 的新內容");
+        assertThat(ProtectedPathFallback.inputDigest(flow, node)).isNotEqualTo(original);
+    }
+
     @Test void reassignedImplementerIsToldItsBoundaries() {
         assertThat(ProtectedPathFallback.notice(fallback)).contains(".claude/rules/**", ".claude/settings", "不要嘗試 commit");
     }

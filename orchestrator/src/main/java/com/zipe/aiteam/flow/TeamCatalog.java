@@ -59,6 +59,7 @@ public class TeamCatalog {
     static final String TEAMS_DIR = "${teams}";
     private static void expandTeamsDir(JsonNode tree, String root) {
         tree.path("project").path("operations").forEach(operation -> expandIn(operation.path("argv"), root));
+        tree.path("project").path("verification").path("commands").forEach(command -> expandIn(command, root));
         tree.path("roles").forEach(role -> expandIn(role.path("tools"), root));
     }
     private static void expandIn(JsonNode values, String root) {

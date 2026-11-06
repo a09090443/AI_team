@@ -48,7 +48,7 @@ class TeamCatalogTest {
         assertThat(Files.readString(Path.of("teams/gradle-fullstack.json"))).doesNotContain("/home/agent");
     }
 
-    @Test void teamsDirIsExpandedOnlyInOperationArgvAndRoleTools() throws Exception {
+    @Test void teamsDirIsExpandedInFixedCommandsButNotProse() throws Exception {
         Files.createDirectories(tmp.resolve(".git"));
         Path teams = Files.createDirectories(tmp.resolve("teams"));
         for (String asset : List.of("prompts", "schemas", "skills")) copyTree(Path.of("teams", asset), teams.resolve(asset));
@@ -59,11 +59,15 @@ class TeamCatalogTest {
         ((ObjectNode) json.path("project").path("operations").path("probe")).putArray("argv").add("python3").add("${teams}/x.py");
         ((ObjectNode) json.path("project").path("operations").path("probe")).putArray("writes");
         ((ObjectNode) json.path("project")).put("buildInstructions", "keep ${teams} literal");
+        ((ObjectNode) json.path("project").path("verification")).putArray("commands")
+                .addArray().add("python3").add("${teams}/verify.py");
         Files.writeString(teams.resolve("team.json"), mapper.writeValueAsString(json));
         var definition = TeamCatalog.load(teams.resolve("team.json"), key -> tmp.toString()).definition();
         assertThat(definition.project().operations().get("probe").argv())
                 .containsExactly("python3", teams.toRealPath().toString().replace('\\', '/') + "/x.py");
         assertThat(definition.project().buildInstructions()).isEqualTo("keep ${teams} literal");
+        assertThat(definition.project().verification().commands().getFirst())
+                .containsExactly("python3", teams.toRealPath().toString().replace('\\', '/') + "/verify.py");
     }
 
     static void copyTree(Path from, Path to) throws Exception {

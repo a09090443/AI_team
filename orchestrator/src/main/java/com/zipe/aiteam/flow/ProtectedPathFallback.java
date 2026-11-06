@@ -98,6 +98,35 @@ public final class ProtectedPathFallback {
         return paths;
     }
 
+    /** 只納入受保護檔案的契約；無關的驗收情境調整不使已完成改派失效。 */
+    static String inputDigest(FlowRun flow, Node node) {
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var input = json.createObjectNode();
+        input.put("baseline", flow.baselineRevision);
+        input.put("configuration", flow.snapshot.revision());
+        input.put("supplements", flow.supplements);
+        input.set("fallback", json.valueToTree(node.protectedPathFallback()));
+        Set<String> paths = plannedPaths(flow, node);
+        input.set("paths", json.valueToTree(new TreeSet<>(paths)));
+        var scenarios = input.putArray("scenarios");
+        for (String id : node.requires() == null ? List.<String>of() : node.requires()) {
+            JsonNode plan = flow.receipts.get(id);
+            if (plan == null) continue;
+            for (JsonNode scenario : plan.path("scenarios"))
+                if (paths.stream().anyMatch(scenario.toString()::contains)) scenarios.add(scenario);
+        }
+        // 已知問題提到受保護路徑，或沒有明確檔案可定位時，保守使收據失效。
+        var issues = input.putArray("issues");
+        flow.issueInventory.values().forEach(issue -> {
+            if (!"REPAIR".equals(issue.path("scope").asText())) return;
+            Set<String> mentioned = mentionedPaths(issue.path("description").asText() + " " + issue.path("evidence").asText());
+            if (mentioned.isEmpty() || mentioned.stream().anyMatch(p -> paths.stream()
+                    .anyMatch(target -> target.equals(p) || target.startsWith(p + "/") || p.startsWith(target + "/"))))
+                issues.add(json.valueToTree(issue));
+        });
+        return Traceability.digest(input);
+    }
+
     static String planReason(JsonNode plan) {
         // 舊快照没有此欄位：仍可讀取，但不再從任意文字推測改派範圍。
         if (!plan.has("protected_path_changes")) return null;

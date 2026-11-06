@@ -119,7 +119,7 @@ export const docs = [
     status: 'current',
     summary: 'project.operations 操作契約、各階段沙箱預檢、真人計畫核准與自動測試分離、舊任務配置遷移。',
     readWhen: '讓新專案宣告建置／測試指令，或處理配置更新後的舊任務。',
-    code: ['orchestrator/src/main/java/com/zipe/aiteam/flow/OperationContract.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/TeamMigration.java'],
+    code: ['orchestrator/src/main/java/com/zipe/aiteam/flow/OperationContract.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/TeamMigration.java', 'orchestrator/teams/scripts/'],
   },
   {
     id: 'direct-ssh-deployment',

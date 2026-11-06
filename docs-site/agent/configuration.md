@@ -106,7 +106,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 | `buildInstructions`、`testInstructions` | 注入角色的建置／測試規範；`testInstructions` 的每一步都要有對應 `operations` |
 | `operations` | 操作契約：`{ "<id>": { nodes, directory, argv, writes } }`。`argv` 不支援管線，多步驟請拆開。執行檔不可為 `rm`（Codex 會拒絕，載入配置即失敗；清空目錄用 `find <目錄> -mindepth 1 -delete`）。`writes` 中沒有 git 追蹤檔的目錄會被系統自動寫進工作區 `.git/info/exclude`，不進寫入稽核或代為提交（見 [configurable-team](/docs/configurable-team)） |
 | `verification` | 系統獨立驗證：管理者固定的 `commands` 與 `timeoutSeconds`（最多 1800；超時不算測試失敗，交給真人；啟用 `project.autonomy.verificationContinuations` 時先在同一個 clone 自動續驗剩下的指令），在 QA 前於全新 clone 執行，依賴下載快取放在 `<安裝目錄>/verification-cache`；選填 `docOnlyPaths`（路徑 glob）：系統依 git diff 判定變更全部落在其中、且不含強制全跑檔時略過建置測試；同一份清單也會寫進實作節點的指示，要求純文件變更不要自行編譯（見 engineering-workflow）；選填 `commandScopes`（與 `commands` 一一對應的負責路徑，只跑範圍內有變更的指令）與 `qaOnlyPaths`（由 QA 驗證、系統不跑指令的路徑，須與 commandScopes 一起設定且不得重疊）；有不屬於任何範圍的變更就全跑。相同輸入指紋已通過的指令會重用（2026-10-17 起） |
-| `nodes.<實作>.protectedPathFallback` | 選填 `{"role", "paths"}`：需求提到原實作角色 runtime 寫不了的路徑、且其中有落在 `paths`（目錄 `/**`）內的，就分段改派這些檔案（範圍外的不交出去，原角色要改時被拒而停下問人；2026-10-08 前要「全部」在範圍內才改派）：該角色只改 `paths` 內的檔案（系統核對全部在範圍內後代為提交），其餘工作仍由原角色完成；行為設定類路徑寫死禁止（見 multi-runtime） |
+| `nodes.<實作>.protectedPathFallback` | 選填 `{"role", "paths"}`：前置計畫的 protected_path_changes 明列原實作角色 runtime 寫不了的路徑、且其中有落在 `paths`（目錄 `/**`）內的，就分段改派這些檔案（範圍外的不交出去，原角色要改時被拒而停下問人；2026-10-08 前要「全部」在範圍內才改派）：該角色只改 `paths` 內的檔案（系統核對全部在範圍內後代為提交），其餘工作仍由原角色完成；行為設定類路徑寫死禁止（見 multi-runtime） |
 | `requiredTools` | 啟動時沙箱工具鏈自檢逐一檢查，缺任一項服務不啟動 |
 | `protectedPaths`、`cachePaths` | 任何角色不可寫的路徑；允許的快取目錄（只限 `.m2/repository`、`.npm`、`.gradle/caches`、`.cache/<名稱>`） |
 | `requirePlanApproval`、`autoApprovePlanWhenValid` | 測試計畫是否需真人核准；通過機械檢查時是否自動核准（預設 false） |
@@ -205,7 +205,7 @@ bash deploy/bootstrap/check-source.sh
 
 `project.verification.docOnlyPaths` 配合系統 Git 差異與文字副檔名限制略過不相關產品建置，內附配置均已提供；SQL／腳本／設定不適用。
 必要文件站建置另由 verification 操作處理。可配置 qa-docs-dir／clean／snapshot／extract／install／build 等操作，僅寫 target/qa-docs，原 docs-site 唯讀，安裝離線使用實作準備的 npm 快取。
-plan 的 protected_path_changes 明列需跨 runtime 改派的檔案；不新增權限，仍須符合節點 protectedPathFallback.paths。詳見[配置流程](/docs/configurable-team)。尚未部署。
+plan 的 protected_path_changes 明列需跨 runtime 改派的檔案；不新增權限，仍須符合節點 protectedPathFallback.paths。已完成改派以相關契約指紋與目標 Git 物件內容核對後沿用；詳見[配置流程](/docs/configurable-team)及[多 runtime](/docs/multi-runtime)。
 protectedPathFallback.paths 每項為「明確目錄/**」或根目錄單一檔名（例如 `.npmrc`），不可涵蓋禁止清單或會自動執行的檔案；Claude Code 寫檔節點沒設定時，驗證與啟動 log 會提醒。詳見[多 runtime](/docs/multi-runtime)（2026-10-28 起）。
 
 

@@ -6,6 +6,9 @@ description: 分層責任、任務生命週期、流程節點、任務狀態與�
 
 # 系統全貌
 
+效率機制：`FlowEngine` 對測試計畫的延後／情境重複提供一次原節點自修；受保護路徑改派以相關契約指紋與 Git 物件內容核對後沿用。
+`teams/scripts/verify-gradle-jars.py` 提供配置式 Gradle 範例建置與 plain JAR 檢查，可由固定操作及系統獨立驗證使用。
+
 ## 分層責任
 
 | 層 | 負責者 | 內容 |

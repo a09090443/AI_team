@@ -497,8 +497,7 @@ public class FlowEngine {
                         if (!provisioned) syncBase(task, flow, node);
                         flow.beforeHead = workspaces.headSha(task.id());
                         flow.attemptHeads.put(flow.node, flow.beforeHead);
-                        // 新的一輪：上一輪的改派段結果不沿用（續跑同一輪時不會走到這裡）。
-                        flow.delegatedParts.remove(flow.node);
+                        // 保留候選收據；runDelegatedPart 會重新核對契約、未提交修改與 Git 物件內容。
                     } else flow.beforeHead = null;
                     flow.activeNode = flow.node;
                     // 新的一次執行：上一次沒答完的諮詢不沿用（同一次執行的續跑不會走到這裡）。
@@ -824,6 +823,14 @@ public class FlowEngine {
                     // handoff 角色或欄位寫錯（#1044）同樣只是輸出格式：附上可填的角色 ID 請同節點重送一次。
                     if (correction == null && !repairDraft && handoffCorrection != null) {
                         correction = handoffCorrection; formatKey = flow.node + AgentDispatch.FORMAT_RETRY; formatLabel = "交接（handoff）";
+                    }
+                    if (correction == null && node.gate() == Gate.TEST_PLAN && issueBlock == null && consultBlock == null
+                            && FailureReport.blockingReason("generic", report) == null
+                            && block.startsWith("驗收項目 ") && block.endsWith(" 已延後，不能同時寫情境")) {
+                        correction = "測試計畫內部矛盾：" + block
+                                + "。請由原節點核對可用操作，將該項保留於可執行情境或延後清單其中一處，"
+                                + "保留所有原驗收要求、門檻與其他內容；不得自行刪除驗收項目或變更需求。修正後重送完整計畫。";
+                        formatKey = flow.node + "#plan-format"; formatLabel = "測試計畫";
                     }
                     boolean formatRetry = correction != null && !flow.systemRetries.containsKey(formatKey);
                     if (formatRetry) {
@@ -1187,12 +1194,36 @@ public class FlowEngine {
             return null;
         }
         var done = flow.delegatedParts.get(flow.node);
-        if (done != null && Objects.equals(done.startHead(), flow.beforeHead)) return null;
+        if (done != null && Objects.equals(done.startHead(), flow.beforeHead)
+                && (done.inputDigest() == null || sameRuntime(task.continuation(),
+                        flow.snapshot.definition().roles().get(node.role())))) return null;
         Role primaryRole = flow.snapshot.definition().roles().get(node.role());
         AgentRuntime primary = executor.runtimeFor(primaryRole.runtime());
         var needed = ProtectedPathFallback.needed(flow, node, task.requestText(), primary);
         if (needed.isEmpty()) return null;
         var need = needed.get();
+        String inputDigest = ProtectedPathFallback.inputDigest(flow, node);
+        if (done != null && Objects.equals(done.role(), fb.role()) && inputDigest.equals(done.inputDigest())) {
+            List<String> paths = List.copyOf(ProtectedPathFallback.plannedPaths(flow, node));
+            boolean dirty = workspaces.uncommittedPaths(task.id()).stream().anyMatch(paths::contains);
+            List<com.zipe.aiteam.workspace.WorkspaceManager.FileIdentity> identities = List.of();
+            if (!dirty) {
+                try { identities = workspaces.compareFiles(task.id(), done.head(), workspaces.headSha(task.id()), paths); }
+                catch (com.zipe.aiteam.workspace.WorkspaceManager.WorkspaceException e) {
+                    audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE,
+                            "無法核實改派目標內容，保守重新執行改派：" + Diagnostics.describe(e));
+                }
+            }
+            if (!dirty && identities.size() == paths.size() && identities.stream()
+                    .allMatch(com.zipe.aiteam.workspace.WorkspaceManager.FileIdentity::unchanged)) {
+                flow.delegatedParts.put(flow.node, new FlowRun.DelegatedPart(done.role(), flow.beforeHead, done.head(),
+                        done.files(), done.summary(), inputDigest));
+                store.saveFlow(task.id(), flow);
+                audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE,
+                        "沿用已完成的受保護路徑改派：相關契約與目標檔案內容未變，不重跑 " + fb.role());
+                return null;
+            }
+        }
         Role alternate = flow.snapshot.definition().roles().get(fb.role());
         String outside = need.outside().isEmpty() ? "" : "；需求另外提到 " + need.outside() + "，不在允許範圍內，不改派，"
                 + node.role() + " 若真的要改會被拒絕並停下來問人";
@@ -1238,7 +1269,7 @@ public class FlowEngine {
             return result;
         }
         flow.delegatedParts.put(flow.node, new FlowRun.DelegatedPart(fb.role(), flow.beforeHead, workspaces.headSha(task.id()),
-                files, Diagnostics.clip(report.path("summary").asText(""), 2000)));
+                files, Diagnostics.clip(report.path("summary").asText(""), 2000), inputDigest));
         store.saveFlow(task.id(), flow);
         return null;
     }

@@ -301,6 +301,9 @@ agent_team/
 │   │   ├── task/
 │   │   └── workspace/
 │   ├── teams/                        # 配置式團隊定義（現行模式），修改後重啟、只影響新任務
+│   │   ├── scripts/
+│   │   │   ├── verify-gradle-jars.py # 複製配置的範例根目錄、建置 Gradle／Maven plain JAR 並檢查封裝
+│   │   │   └── test_verify_gradle_jars.py # 範例 JAR 空包、Boot layout、損毀與路徑邊界測試
 │   │   ├── skills/                   # 由 .agents 同步的 Slack runtime skill 套件
 │   │   │   └── service-build/
 │   │   │       ├── SKILL.md          # 建置流程（不得手改產生檔）

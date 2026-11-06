@@ -897,6 +897,52 @@ class FlowEngineTest {
         assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
     }
 
+    @Test void completedDelegationSurvivesUnrelatedHeadChangeButChangedTargetIsDelegatedAgain() throws Exception {
+        mode = "protectedRule"; enableProtectedPathFallback(); engine.run(task);
+        calls.clear(); workspaceHead = "head2";
+        var flow = store.flow(task.id()).orElseThrow();
+        flow.node = "implementation"; flow.activeNode = null;
+        flow.receipts.remove("implementation"); flow.priorReceipts.clear();
+        when(workspace.compareFiles(eq("42"), anyString(), eq("head2"), anyList()))
+                .thenReturn(List.of(new WorkspaceManager.FileIdentity(".claude/rules/api-endpoints.md", "blob1", "blob1")));
+        store.saveFlow(task.id(), flow); engine.run(task);
+        assertThat(calls).contains("implementation:builder").doesNotContain("implementation:builder_codex");
+
+        calls.clear(); flow = store.flow(task.id()).orElseThrow();
+        flow.node = "implementation"; flow.activeNode = null;
+        flow.receipts.remove("implementation"); flow.priorReceipts.clear();
+        workspaceHead = "head3";
+        when(workspace.compareFiles(eq("42"), anyString(), eq("head3"), anyList()))
+                .thenReturn(List.of(new WorkspaceManager.FileIdentity(".claude/rules/api-endpoints.md", "blob1", "blob2")));
+        store.saveFlow(task.id(), flow); engine.run(task);
+        assertThat(calls).containsSubsequence("implementation:builder_codex", "implementation:builder");
+    }
+
+    @Test void conflictingDeferredPlanIsCorrectedOnceWithoutTriage() throws Exception {
+        enablePlanDeferral(); mode = "planConflictOnce"; engine.run(task);
+        assertThat(calls.stream().filter(v -> v.startsWith("plan:"))).hasSize(2);
+        assertThat(calls).doesNotContain("triage:coordinator");
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        assertThat(store.flow(task.id()).orElseThrow().visits.get("plan")).isEqualTo(1);
+    }
+
+    @Test void recurringPlanConflictUsesNormalBlockedRouteAfterOneCorrection() throws Exception {
+        enablePlanDeferral(); mode = "planConflictAlways"; engine.run(task);
+        assertThat(calls).contains("triage:coordinator");
+        assertThat(store.flow(task.id()).orElseThrow().systemRetries).containsEntry("plan#plan-format", 1);
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
+    }
+
+    void enablePlanDeferral() throws Exception {
+        enableAutonomy();
+        var flow = store.flow(task.id()).orElseThrow();
+        ObjectNode definition = mapper.valueToTree(flow.snapshot.definition());
+        ((ObjectNode) definition.path("project").path("autonomy")).put("deferUnverifiable", true);
+        flow.snapshot = new TeamDefinition.Snapshot(flow.snapshot.revision(), mapper.treeToValue(definition, TeamDefinition.class),
+                flow.snapshot.repository(), flow.snapshot.assets());
+        store.saveFlow(task.id(), flow);
+    }
+
     @Test void delegatedPartReportingPartialStillHandsOverToThePrimaryImplementer() throws Exception {
         // #1054：codex 兩次都改好並提交受保護檔案，卻因 PARTIAL 被當成整個實作的結果，主實作段一次都沒跑。
         mode = "protectedRulePartial";
@@ -1334,7 +1380,8 @@ class FlowEngineTest {
             if (mode.equals("usage") && flow.node.equals("verification"))
                 throw new RuntimeUsageError("Codex CLI 用法錯誤，指令未送達模型（結束碼 2）：error: unexpected argument '-P' found");
             if (mode.equals("protectedRuleQuota") && flow.node.equals("implementation") && node.role().equals("builder")) {
-                store.saveCheckpoint(new Checkpoint("42", flow.node, "claude-code", "sonnet", "builder-session", "context", "head1", "quota"));
+                var activeRole = flow.snapshot.definition().roles().get(node.role());
+                store.saveCheckpoint(new Checkpoint("42", flow.node, activeRole.runtime(), activeRole.model(), "builder-session", "context", "head1", "quota"));
                 throw new QuotaExceeded("usage_limit_reached");
             }
             if (mode.equals("accessDenied") && flow.node.equals("verification"))
@@ -1397,6 +1444,11 @@ class FlowEngineTest {
             }
             if (node.gate() == TeamDefinition.Gate.TEST_PLAN || node.gate() == TeamDefinition.Gate.VERIFICATION)
                 ((ObjectNode) report).put("baseline_revision", flow.baselineRevision);
+            if (node.gate() == TeamDefinition.Gate.TEST_PLAN && (mode.equals("planConflictAlways")
+                    || (mode.equals("planConflictOnce") && calls.stream().filter(v -> v.startsWith("plan:")).count() == 1))) {
+                var item = ((ObjectNode) report).putArray("deferred_acceptance").addObject();
+                item.put("acceptance_id", "R1-A1").put("reason", "環境缺能力").put("needs", "固定操作");
+            }
             if (node.gate() == TeamDefinition.Gate.VERIFICATION)
                 ((ObjectNode) report).put("plan_revision", Traceability.digest(flow.receipts.get(node.plan())));
             if (flow.node.equals("design")) ((ObjectNode)report).put("route", "ready");

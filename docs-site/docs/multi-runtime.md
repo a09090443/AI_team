@@ -87,6 +87,12 @@ stdout／stderr 保留，既有 sessionStarted callback 與 checkpoint 介面維
 狀態：程式測試通過；根目錄檔案改派與 `.mvn`／`gradle/wrapper` 改派尚未經真實任務驗收。
 
 **分段改派（2026-10-04 起，取代整節點改派）**：同一輪實作分兩段依序執行（`FlowEngine.runDelegatedPart`）：
+
+2026-11-06 起，返工保留已完成改派的候選收據。系統以需求基準、配置、明確修改清單、引用目標路徑的情境及相關問題計算 `inputDigest`；
+契約相同、目標無未提交修改，且 Git 物件比對所有目標內容均未改變時，沿用改派成果。其他檔案的 commit 不再直接觸發重派。
+無明確檔案路徑的 REPAIR 問題保守納入指紋；缺少舊 commit、目標不存在或無法比對時重新改派。舊收據沒有指紋時只保留同一輪續跑的既有行為。
+沿用不表示驗收完成，原實作、QA、Review 與發布閘門照常。
+
 1. 改派段：改派角色只修改 `paths` 內的檔案，不跑建置測試、不 commit（說明 `ProtectedPathFallback.partNotice`）。
    派工前的受保護路徑告知（`ConfiguredExecutor.protectedPathNotice`）依**實際執行的角色**的 runtime 判斷，改派給 Codex 時不會出現
    「`.claude/` 一律拒寫」的說明。2026-10-05 前它誤用節點原定角色（Claude），改派段因此收到互相矛盾的指示，
@@ -103,8 +109,9 @@ stdout／stderr 保留，既有 sessionStarted callback 與 checkpoint 介面維
    主實作段從未執行、流程在分流與實作間空轉。`partNotice` 同時明講 status 只代表這一段、verify_passed 依 `git diff --check` 等檢查判定。
 2. 主實作段：原角色收到「受保護檔案已在 commit X 完成、不要修改」的說明（`primaryNotice`），完成其餘變更與建置測試；節點報告以這一段為準。
 
-同一輪續跑（例如額度用完後恢復）時，`delegatedParts` 的起始 commit 等於本輪起始 commit 就略過改派段，checkpoint 只交給 runtime 相符的那一段；
-節點新的一輪開始時清掉上一輪的紀錄。改派段若改錯，原角色寫不了那些檔案，由 QA 驗收擋下後返工重跑兩段。
+同輪續跑若起始 commit 相同且有原實作角色的相符 checkpoint，沿用已完成改派，保留額度恢復的既有行為；舊收據無 `inputDigest` 時也僅在同一起始 commit 略過。
+跨輪返工則重新核對候選收據；checkpoint 只交給 runtime 相符的那一段。
+改派段若改錯，原角色回報具體目標與問題，QA／Review 擋下後相關契約指紋失效，重新改派。
 真實實測（2026-10-05）：改派段的 Codex 角色只改 `.claude/rules/` 與 `.claude/skills/` 各一個檔案，核對通過由系統提交；
 主實作段的 Claude 角色接著改 `.agents/skills/` 的對應檔案，獨立驗證與 QA 通過。發布另因審查等級被擋，見 [review-gate](review-gate.md)。
 改成分段的原因：整個節點交給 Codex 時，Codex 內層沙箱把 `.agents` 掛成唯讀、也啟動不了 Gradle，只有 `build.gradle.kts` 改成。

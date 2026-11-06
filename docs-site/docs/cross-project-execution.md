@@ -45,6 +45,17 @@ Java＋文件網站與 Node 範例均已加入契約。新專案仍需管理者�
 不接受 `-c`、額外參數、絕對路徑或 `..`。派工前核對腳本實際 SHA256、禁止 symlink，並在可寫階段將檔案釘選唯讀。
 腳本內容更新必須重新審閱並更新配置雜湊；不自動信任新版本。仍由同一外層沙箱執行，不擴大權限。
 這不改變 project.verification.commands 禁止 shell 的獨立驗證政策。
+`project.verification.commands` 也支援 `${teams}` 展開為團隊配置目錄，可指向管理者隨 teams 部署的固定驗證程式；不是模型產生的指令。
+
+### Gradle／Maven 範例 JAR 驗證
+
+內附通用 `teams/scripts/verify-gradle-jars.py`，所有產品路徑由 argv 提供，例如：
+`["python3", "${teams}/scripts/verify-gradle-jars.py", "target/qa-jars", "examples"]`。
+它從 Git 追蹤與未忽略的新檔案中找到配置根目錄內的 Gradle／Maven 專案，複製到獨立暫存目錄後逐一執行 `gradle --no-daemon jar` 或 `mvn -B package`，
+檢查輸出 ZIP 完整性、至少一個 class，並拒絕 Boot layout。缺專案、缺產物或建置失敗都以非零結束碼停止；不代表已完成上傳或動態呼叫驗證。
+QA 操作可在相同 argv 加 `--offline`，並將輸出目錄列入 `writes` 與節點 `writablePaths`；實作先跑可連網版本準備依賴快取。
+`requiredTools` 仍須宣告 python3、git、gradle、mvn，角色工具白名單仍須授權相同固定操作；JDK toolchain 必須滿足各範例建置設定。
+若設 `commandScopes`，範例根目錄對應這條獨立驗證指令，不得只列為 QA 專屬後宣稱封裝已通過。
 目前 argv 為簡單、無空白／shell 特殊字元的參數；複雜命令不自行降級成 shell。
 `writes` 是操作需求，不是新的權限來源，也不代表列出所有執行中副作用。
 

@@ -48,7 +48,7 @@ triage 的 `"service": "deploy"` 路線，四個操作的 `nodes` 為 `["service
 `gradle-fullstack.json` 另有只供直接 @ 對話的 `api_guide` 角色（共用 prompt `prompts/api-guide.md`，`references` 指向 OpenAPI 範例網址），沒有任何節點引用；其他兩份不含。
 node-web 的 infrastructure 用 claude-code（不新增 Codex 依賴），其他兩份用 codex。
 
-操作 argv 與角色工具可寫 `${teams}`，載入時展開成該配置所在的 teams 目錄（例如 `${teams}/skills/service-build/scripts/client.py`），
+操作 argv、獨立驗證 commands 與角色工具可寫 `${teams}`，載入時展開成該配置所在的 teams 目錄（例如 `${teams}/skills/service-build/scripts/client.py`），
 實例安裝目錄不同也不必改配置；快照保存展開後的實際路徑。
 
 **實例 overlay**：專案配置（`<project>.json`、專屬 prompt、`skills/service-build/references/<project>.md` 等）放在
