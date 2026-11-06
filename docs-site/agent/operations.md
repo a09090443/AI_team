@@ -158,6 +158,11 @@ PR 核准與結束訊息中的「團隊看板」段落，列出角色記錄、�
 - 反方向：@主 App 或 @角色時在同一則訊息附文件（txt、md、csv、json、pdf、Office 等；圖片、影音、壓縮檔、原始碼不收），agent 執行前會放進工作目錄的 `.ai-team-inbox/`；PDF、docx、xlsx、xls、pptx 另有系統轉出的 `.md` 純文字版（表格與圖可能失真，原檔仍在）；沒收下或下載失敗會在討論串列原因。
   App 需要 `files:read`；關閉用 `AI_TEAM_SLACK_FILES=off`，見 [接收使用者附檔](/docs/configurable-team#接收使用者附檔2026-11-06)。
 
+## 受保護 rules 修改
+
+開發任務需要更新受保護 rules 時，由核准計畫與配置決定處理方式；啟用 `protectedPathFallback.programRules` 後可由原角色唯讀提案、系統核對套用，提案不合時交原改派角色。
+不需要新增 Slack 指令，也不代表免除 QA、審查或 PR 核准；詳見 [rules 程式套用](/docs/multi-runtime#rules-由程式套用2026-11-06)。
+
 ## 基準驗證（2026-10-18 起）
 
 ```text

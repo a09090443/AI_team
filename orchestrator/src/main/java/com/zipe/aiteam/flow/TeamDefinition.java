@@ -156,7 +156,10 @@ public record TeamDefinition(int version, String id, Project project, Map<String
      * 實作節點選填：需求要改「原角色 runtime 必定寫不了」的路徑（例如 Claude Code 的 `.claude/`）時，
      * 若全部落在 paths 內，就改派給 role 實作；系統事後核對實際變更。見 {@link ProtectedPathFallback}。
      */
-    public record Fallback(String role, List<String> paths) {}
+    public record Fallback(String role, List<String> paths,
+                           @JsonInclude(JsonInclude.Include.NON_NULL) Boolean programRules) {
+        public Fallback(String role, List<String> paths) { this(role, paths, null); }
+    }
     public record Node(Kind kind, String role, String schema, Scope scope, Gate gate,
                        boolean workspace, List<String> writablePaths, String plan,
                        String next, String blocked, Map<String, String> routes,

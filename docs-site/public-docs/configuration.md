@@ -4,7 +4,7 @@ title: Slack 與團隊設定
 
 # Slack 與團隊設定
 
-設定分成私人的 `env.sh` 與不含憑證的團隊 JSON；選填 `team.env` 在 env.sh 後載入，同名值以前者為準。
+設定分成私人的 `env.sh` 與不含憑證的團隊 JSON；選填 `team.env` 在 env.sh 後載入，同名值以 `team.env` 為準。
 JSON 只填 token 的環境變數名稱，不填 token 值。以下為設定索引，完整欄位見 repo 的 `docs-site/agent/configuration.md`。
 
 ## 主 App 與角色 App
@@ -32,7 +32,7 @@ Bot Token 控制發言身分；App-Level Token 用於 Socket Mode 與直接 ment
 | `AI_TEAM_HOME` | 實際安裝目錄 |
 | `AI_TEAM_REPO` | 本機目標 repo；配置式專案另由 `repositoryEnv` 指定來源變數 |
 | `AI_TEAM_DEFINITION` | 團隊 JSON 的絕對路徑；留空啟用 legacy 模式 |
-| `CLAUDE_BIN`／`CODEX_BIN` | CLI 執行檔絕對路徑 |
+| `CLAUDE_BIN`／`CODEX_BIN`／`OPENCODE_BIN` | CLI 執行檔絕對路徑；Java 固定要求 Claude，其餘依角色 runtime 檢查；bootstrap preflight 固定要求 Claude 與 Codex，opencode 路徑非空時也檢查 |
 | `AI_TEAM_GITHUB_TOKEN` | 發布時推分支與建立 PR；未設定會在發布階段失敗 |
 | `AI_TEAM_INSTANCE` | 多服務實例使用不同名稱，避免 systemd unit 衝突 |
 | `AI_TEAM_REPORT_DETAIL` | `brief` 或 `full`，預設 brief |

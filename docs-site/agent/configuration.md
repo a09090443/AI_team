@@ -32,7 +32,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 | `GRADLE_USER_HOME` | 只有 Gradle 專案需要：指向 `$HOME/.cache/gradle`，配置 `cachePaths` 宣告 `.cache/gradle`；沙箱白名單會帶入，系統獨立驗證不受影響 |
 | `AI_TEAM_INSTANCE` | 服務實例名稱（建議放 `team.env`）。單一服務留空；同一台 VM 多個專案服務時**必填且不可重複**，systemd unit 改名為 `ai-team-<實例>-…`。格式見 [多個服務實例](/docs/configurable-team#同一台-vm-多個服務實例) |
 | `AI_TEAM_HOME`、`AI_TEAM_REPO`、`AI_TEAM_WORKSPACES`、`AI_TEAM_LOGS` | 服務根目錄、目標 repo 鏡像、任務工作區、階段 log |
-| `CLAUDE_BIN`、`CODEX_BIN`、`OPENCODE_BIN` | 各 CLI 絕對路徑；只有用到該 runtime 才需要 |
+| `CLAUDE_BIN`、`CODEX_BIN`、`OPENCODE_BIN` | 各 CLI 絕對路徑。Java 啟動檢查固定要求 `CLAUDE_BIN`；`CODEX_BIN`／`OPENCODE_BIN` 僅在角色使用該 runtime 時要求。bootstrap `preflight.sh` 另固定要求 Claude 與 Codex 都可執行，並在 `OPENCODE_BIN` 非空時檢查它，即使團隊只用一種 runtime 也不能省略 preflight 所需路徑 |
 | `AI_TEAM_GITHUB_TOKEN` | 推分支與開 PR；留空時管線能跑完但核准後推不出去（啟動 log 會出 WARN）。`PullRequestPublisher` 以它當 HTTPS git 推送密碼並呼叫 GitHub REST API 開 PR。建議用只限目標 repo 的 Fine-grained token：<https://github.com/settings/personal-access-tokens/new> → Repository access 只選該 repo → Repository permissions 設 **Contents: Read and write**、**Pull requests: Read and write**（Metadata 唯讀自動帶入）。每個實例填自己 repo 的 token，由使用者本人填入 `env.sh`；到期要換新並重啟 |
 | `AI_TEAM_BASE_BRANCH`、`AI_TEAM_BRANCH_PREFIX` | 基準分支（留空自動偏好 `develop`）與任務分支前綴 |
 | `AI_TEAM_GIT_USER_NAME`、`AI_TEAM_GIT_USER_EMAIL` | agent commit 署名，寫在工作區 local config |
@@ -44,7 +44,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 | `AI_TEAM_BASELINE_VERIFY` | `on`（預設）或 `off`。on 時服務啟動會在「目前驗證指令／工具鏈＋基準分支最新 commit」還沒有結果時自動跑一次（只改提示詞、角色或流程不會觸發）[基準驗證](/docs/baseline-verification)；off 只關掉自動觸發，Slack「基準驗證」指令照樣可用 |
 | `AI_TEAM_SLACK_FILES`、`AI_TEAM_SLACK_FILES_MAX_BYTES`、`AI_TEAM_SLACK_FILES_CONVERT` | 接收使用者附檔（2026-11-06 起）。`on`（預設）時 @訊息附上的檔案在 agent 執行前下載到工作目錄的 `.ai-team-inbox/`（不進 git／PR）；`off` 時附檔不交給 agent 並在討論串說明。單檔上限預設 20971520（20 MiB），最多 50 MiB；每則訊息最多 10 個，只收文件類檔案（文字／資料格式、PDF、Office）。`AI_TEAM_SLACK_FILES_CONVERT`（預設 `on`）另把 PDF、docx、xlsx、xls、pptx 轉出同名加 `.md` 的純文字輔助版本（原檔保留），`off` 只放原檔。Slack App 需要 `files:read`，見 [接收使用者附檔](/docs/configurable-team#接收使用者附檔2026-11-06) |
 | `AI_TEAM_WORKSPACE_RECLAIM`、`AI_TEAM_WORKSPACE_RECLAIM_IDLE_HOURS` | 工作區佔用控制（2026-11-05 起）。`on`（預設）時可用空間低於 1 GiB 先自動回收已結束任務的工作區與閒置任務的建置產物，回到 2 GiB 才停；`off` 維持舊行為（空間不足直接停等真人）。IDLE_HOURS 預設 24：保留中的閒置任務超過這個時數沒有狀態變更就刪建置產物，`0` 表示只在空間不足時回收。只刪被 `.gitignore` 忽略的整個目錄，git 工作樹、commit 與未提交修改不動，見 [工作區佔用控制](/docs/engineering-workflow#工作區佔用控制2026-11-05) |
-| `AI_TEAM_PR_TRACKING` | 已開 PR 的合併／關閉追蹤（2026-11-06 起）。`on`（預設）時每 10 分鐘查 `PR_CREATED` 任務的 PR：已合併就轉 `COMPLETED` 並刪除工作區，關閉未合併只停止追蹤、保留工作區；與衝突同步 `project.autonomy.pullRequestSyncRounds` 分開。`off` 回到舊行為（只有開衝突同步才查）。見 [PR 合併後結案](/docs/engineering-workflow#pr-合併後結案2026-11-06) |
+| `AI_TEAM_PR_TRACKING` | 已開 PR 的合併／關閉追蹤（2026-11-06 起）。`on`（預設）時每 10 分鐘查 `PR_CREATED` 任務的 PR：已合併就轉 `COMPLETED` 並刪除工作區，關閉未合併只停止追蹤、保留工作區；與衝突同步 `project.autonomy.pullRequestSyncRounds` 分開。`off` 且未開衝突同步時不查；若衝突同步仍開啟，查到合併仍會結案。見 [PR 合併後結案](/docs/engineering-workflow#pr-合併後結案2026-11-06) |
 | `AI_TEAM_BACKUP_KEEP` | 部署腳本（`deploy-orchestrator.sh`、`deploy-jar-safe.sh`）成功後保留的 `orchestrator-backup.*` 份數，含本次備份，預設 5；本次備份（回復點）一律保留，`0` 或非數字＝不輪替。部署失敗時不輪替。服務本身不讀 |
 | `AI_TEAM_EXPLAINER_MODEL`、`AI_TEAM_EXPLAINER_ENABLED` | 系統錯誤白話說明所用模型（預設 haiku）與開關；布林值不能設成空字串 |
 | `AI_TEAM_MODEL_<角色>`、`AI_TEAM_RUNTIME_<角色>`、`AI_TEAM_CODE_REVIEW` | **僅 legacy 模式**；配置式模式改在 JSON 的 `roles` 設定 |
@@ -74,7 +74,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 
 `sharedInstructions` 是選填欄位：所有角色共用的工作規則檔（配置目錄內相對路徑），建立快照時一併凍結，
 正式階段附在角色提示之後、技能與本次階段指示之前（「【團隊共用工作規則】」區塊）；唯讀對話與諮詢回答不附。
-沒設定時不序列化，revision 不變。四份內附配置都指向 `prompts/shared.md`。
+沒設定時不序列化，revision 不變。三份內附配置都指向 `prompts/shared.md`。
 
 `collaboration` 是選填欄位，用來啟用角色諮詢、共享看板，以及給需求／分流節點的團隊名單（2026-10-28 起），各欄位的上限如下：
 
@@ -107,6 +107,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 | `operations` | 操作契約：`{ "<id>": { nodes, directory, argv, writes } }`。`argv` 不支援管線，多步驟請拆開。執行檔不可為 `rm`（Codex 會拒絕，載入配置即失敗；清空目錄用 `find <目錄> -mindepth 1 -delete`）。`writes` 中沒有 git 追蹤檔的目錄會被系統自動寫進工作區 `.git/info/exclude`，不進寫入稽核或代為提交（見 [configurable-team](/docs/configurable-team)） |
 | `verification` | 系統獨立驗證：管理者固定的 `commands` 與 `timeoutSeconds`（最多 1800；超時不算測試失敗，交給真人；啟用 `project.autonomy.verificationContinuations` 時先在同一個 clone 自動續驗剩下的指令），在 QA 前於全新 clone 執行，依賴下載快取放在 `<安裝目錄>/verification-cache`；選填 `docOnlyPaths`（路徑 glob）：系統依 git diff 判定變更全部落在其中、且不含強制全跑檔時略過建置測試；同一份清單也會寫進實作節點的指示，要求純文件變更不要自行編譯（見 engineering-workflow）；選填 `commandScopes`（與 `commands` 一一對應的負責路徑，只跑範圍內有變更的指令）與 `qaOnlyPaths`（由 QA 驗證、系統不跑指令的路徑，須與 commandScopes 一起設定且不得重疊）；有不屬於任何範圍的變更就全跑。相同輸入指紋已通過的指令會重用（2026-10-17 起） |
 | `nodes.<實作>.protectedPathFallback` | 選填 `{"role", "paths"}`：前置計畫的 protected_path_changes 明列原實作角色 runtime 寫不了的路徑、且其中有落在 `paths`（目錄 `/**`）內的，就分段改派這些檔案（範圍外的不交出去，原角色要改時被拒而停下問人；2026-10-08 前要「全部」在範圍內才改派）：該角色只改 `paths` 內的檔案（系統核對全部在範圍內後代為提交），其餘工作仍由原角色完成；行為設定類路徑寫死禁止（見 multi-runtime） |
+| `nodes.<實作>.protectedPathFallback.programRules` | 選填布林值，省略／false＝既有改派；true 僅允許原角色為 claude-code。計畫與配置允許的清單全是已存在的 `.claude/rules/**/*.md` 時，先由原角色唯讀產生 path／sha256／content 提案、程式驗證套用；最多10檔、每檔64 KiB、總量256 KiB。提案不合或不支援安全目錄操作時回既有改派；開始寫入後的失敗停止流程。不得覆蓋專案 protectedPaths；仍須 fallback role／paths。詳見 [rules 程式套用](/docs/multi-runtime#rules-由程式套用2026-11-06) |
 | `requiredTools` | 啟動時沙箱工具鏈自檢逐一檢查，缺任一項服務不啟動 |
 | `protectedPaths`、`cachePaths` | 任何角色不可寫的路徑；允許的快取目錄（只限 `.m2/repository`、`.npm`、`.gradle/caches`、`.cache/<名稱>`） |
 | `requirePlanApproval`、`autoApprovePlanWhenValid` | 測試計畫是否需真人核准；通過機械檢查時是否自動核准（預設 false） |

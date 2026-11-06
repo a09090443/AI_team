@@ -228,8 +228,12 @@ v2 配置式流程的整份執行快照，對應 `com.zipe.aiteam.flow.FlowRun`�
 | `serviceCommittedPaths` | 只部署的 service 由系統提交的部署檔路徑（2026-10-31）；service_triage 改派開發時據此移出，空值不寫入 |
 | `snapshot.definition.collaboration`、`nodes.*.consultRoles` | 對應的配置欄位 |
 
-`snapshot.definition.sharedInstructions`（2026-10-23）與上述欄位一樣在 null 時不寫入；但四份內附配置都有設定，
+`snapshot.definition.sharedInstructions`（2026-10-23）與上述欄位一樣在 null 時不寫入；目前三份內附配置都有設定，
 所以部署後新建的任務快照一律帶這個欄位，舊 JAR 讀不了，回滾需搭配部署前的 DB 備份。
+
+`snapshot.definition.nodes.<節點>.protectedPathFallback.programRules`（2026-11-06）為選填 Boolean；null 時省略，不改舊快照版本。
+true 啟用受控 rules 提案套用，false／省略維持改派。新欄位出現在快照後舊 JAR 不認得，回滾需與資料備份成套處理。
+程式套用沿用 `delegatedParts`：`role` 記原提案角色（既有改派仍記 fallback 角色），`summary` 說明由程式套用，HEAD 與契約指紋的核對方式相同。
 
 這些欄位為空時都不會寫進 JSON，所以沒有用到協作的任務，舊 JAR 仍然讀得到。只有用過協作的任務會受「舊 JAR 不能解析」的限制。
 

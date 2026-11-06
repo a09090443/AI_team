@@ -428,7 +428,9 @@ PR 是系統自己開的，分支與工作區都還在，因此改由原任務�
 啟動清理保留 `PR_CREATED` 的工作區，累積到 13 GB。
 
 **開關**：`AI_TEAM_PR_TRACKING`（env.sh／team.env，預設 `on`，所有實例與團隊配置通用），與衝突同步分開。
-`off` 回到舊行為：只有開了衝突同步的配置才查 GitHub，合併後不結案。
+`off` 且未開衝突同步時不查 GitHub；若 `pullRequestSyncRounds` 仍大於 0，衝突同步仍會查詢，
+查到合併時也會結案並刪除工作區。此開關不是「保留已合併工作區」的總開關；
+它也控制舊版已標記關閉任務的補查，關閉後不執行下述補查。
 
 **處理**（`FlowEngine.checkPullRequest` → `pullRequestFinished`）：
 

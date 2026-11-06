@@ -877,6 +877,7 @@
       "timeoutSeconds": 3600,
       "maxTurns": 80,
       "protectedPathFallback": {
+        "programRules": true,
         "role": "builder_codex",
         "paths": [
           ".claude/rules/**",

@@ -41,7 +41,8 @@ Java 路徑相對於 `orchestrator/src/main/java/com/zipe/aiteam/`。
 
 ## Runtime 與隔離邊界
 
-支援 Claude Code、Codex adapter，opencode 為選用 adapter；opencode 在 VM 沙箱的端對端尚未驗證。
+支援 Claude Code、Codex adapter，opencode 為選用 adapter；opencode 在 VM 沙箱下的唯讀角色對話已有真實 Slack 端對端紀錄，
+寫入工作區的正式階段、較大結構化 schema 與提權釘選仍待驗證。
 安全邊界置於 runtime 外層，不能只依各 CLI 的權限旗標。systemd 沙箱限制檔案與資源，但不代表所有網路都已隔離。
 操作契約、工具白名單、本機測試網路與 CLI 自身限制須一起核對。
 

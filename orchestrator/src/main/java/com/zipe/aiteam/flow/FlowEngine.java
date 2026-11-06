@@ -1203,7 +1203,9 @@ public class FlowEngine {
         if (needed.isEmpty()) return null;
         var need = needed.get();
         String inputDigest = ProtectedPathFallback.inputDigest(flow, node);
-        if (done != null && Objects.equals(done.role(), fb.role()) && inputDigest.equals(done.inputDigest())) {
+        if (done != null && (Objects.equals(done.role(), fb.role())
+                || (Boolean.TRUE.equals(fb.programRules()) && Objects.equals(done.role(), node.role())))
+                && inputDigest.equals(done.inputDigest())) {
             List<String> paths = List.copyOf(ProtectedPathFallback.plannedPaths(flow, node));
             boolean dirty = workspaces.uncommittedPaths(task.id()).stream().anyMatch(paths::contains);
             List<com.zipe.aiteam.workspace.WorkspaceManager.FileIdentity> identities = List.of();
@@ -1224,6 +1226,7 @@ public class FlowEngine {
                 return null;
             }
         }
+        if (tryProgramRules(task, flow, node, primaryRole, need, inputDigest)) return null;
         Role alternate = flow.snapshot.definition().roles().get(fb.role());
         String outside = need.outside().isEmpty() ? "" : "；需求另外提到 " + need.outside() + "，不在允許範圍內，不改派，"
                 + node.role() + " 若真的要改會被拒絕並停下來問人";
@@ -1273,6 +1276,66 @@ public class FlowEngine {
         store.saveFlow(task.id(), flow);
         return null;
     }
+    /** Opt-in program writer for already authorized rules; existing Codex delegation remains the fallback. */
+    private boolean tryProgramRules(Task task, FlowRun flow, Node node, Role primaryRole,
+                                    ProtectedPathFallback.Need need, String inputDigest) throws Exception {
+        if (!"claude-code".equals(primaryRole.runtime()) || task.continuation() != null
+                || !RulesProposal.eligible(node, need.delegated())) return false;
+        if (need.delegated().stream().anyMatch(path -> RulesProposal.protectedBy(flow.snapshot.definition().project().protectedPaths(), path)
+                || (node.scope() == Scope.LIMITED && !PathRules.allows(node.writablePaths(), path)))) return false;
+        for (String id : node.requires() == null ? List.<String>of() : node.requires()) {
+            Node prerequisite = flow.snapshot.definition().nodes().get(id);
+            if (prerequisite != null && prerequisite.gate() == Gate.TEST_PLAN
+                    && PlanApproval.blockingReason(flow, id) != null) return false;
+        }
+        if (workspaces.uncommittedPaths(task.id()).stream().anyMatch(need.delegated()::contains)) return false;
+        Path cwd = workspaces.pathFor(task.id());
+        List<RulesProposal.Original> originals;
+        try { originals = RulesProposal.capture(cwd, need.delegated()); }
+        catch (java.io.IOException e) {
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "rules 程式套用前置不符，使用既有改派：" + Diagnostics.safe(e.getMessage()));
+            return false;
+        }
+        String head = workspaces.headSha(task.id());
+        stageInbox(task, flow, node);
+        Map<String, String> leftover = workspaces.uncommittedStates(task.id());
+        // No active continuation was allowed above. Replace the previous stage's checkpoint with a
+        // fresh current-node marker so quota/interrupt recovery never resumes that previous stage.
+        // The proposal session itself is never resumed as an implementation session.
+        store.saveCheckpoint(new Checkpoint(task.id(), flow.node, primaryRole.runtime(), Objects.toString(primaryRole.model(), ""),
+                null, "\n工作目錄：" + cwd + "\nrules 唯讀提案未接續為實作 session；恢復時走既有受控改派。", head, null));
+        AgentRuntime.RuntimeResult result;
+        try (var progress = new StageProgress(slack, store, task, primaryRole.executionLabel() + "／rules 修改提案", props.progressIntervalSeconds(), true)) {
+            result = executor.proposeRules(task, flow, node, originals);
+        }
+        if (result != null) audit.record(task.id(), node.role(), AuditLog.ACTION_RUNTIME,
+                "節點=" + flow.node + "（唯讀 rules 修改提案）；配置=" + flow.snapshot.revision(), result.costEstimate(), result.sessionId());
+        if (aborted(task) || interruptRequests.containsKey(task.id())) return true;
+        Map<String, byte[]> changes;
+        try {
+            if (result == null || result.isError() || (result.permissionDenials() != null && !result.permissionDenials().isEmpty()))
+                throw new java.io.IOException("提案未成功或有工具拒絕");
+            changes = RulesProposal.validate(result.structuredOutput(), originals);
+            if (!Objects.equals(head, workspaces.headSha(task.id()))
+                    || !inputDigest.equals(ProtectedPathFallback.inputDigest(flow, node))
+                    || !originals.equals(RulesProposal.capture(cwd, need.delegated()))
+                    || workspaces.uncommittedPaths(task.id()).stream().anyMatch(need.delegated()::contains))
+                throw new java.io.IOException("提案產生後來源或契約已改變");
+        } catch (java.io.IOException e) {
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "rules 提案未採用，使用既有改派：" + Diagnostics.safe(e.getMessage()));
+            return false;
+        }
+        // No fallback after entering the writer: partial IO failure must stop downstream and publishing.
+        RulesProposal.apply(cwd, originals, changes);
+        List<String> files = auditDelegatedPart(task, flow, node, leftover, "rules 提案 " + node.role() + "，程式套用");
+        flow.delegatedParts.put(flow.node, new FlowRun.DelegatedPart(node.role(), flow.beforeHead,
+                workspaces.headSha(task.id()), files, "原實作角色提出 rules 修改，系統以原文 SHA-256 與允許清單核對後套用；不代表驗收通過", inputDigest));
+        store.saveFlow(task.id(), flow);
+        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "rules 程式套用與逐檔稽核完成：" + need.delegated());
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id()
+                + " 的 rules 修改已由系統核對並套用，接著由原實作角色完成其餘工作；QA、審查與 PR 核准照常。");
+        return true;
+    }
     private static boolean sameRuntime(Checkpoint checkpoint, Role role) {
         return checkpoint != null && checkpoint.runtime().equals(role.runtime())
                 && Objects.equals(checkpoint.model(), Objects.toString(role.model(), ""));
@@ -1290,6 +1353,9 @@ public class FlowEngine {
      * 範圍外的不提交，留給原角色。
      */
     private List<String> auditDelegatedPart(Task task, FlowRun flow, Node node, Node delegate, Map<String, String> leftover) throws Exception {
+        return auditDelegatedPart(task, flow, node, leftover, "分段改派 " + delegate.role());
+    }
+    private List<String> auditDelegatedPart(Task task, FlowRun flow, Node node, Map<String, String> leftover, String source) throws Exception {
         if (flow.beforeHead == null) throw new SecurityException("缺少改派段的起始 commit，不能核實寫入範圍");
         var fb = node.protectedPathFallback();
         var planned = ProtectedPathFallback.plannedPaths(flow, node);
@@ -1307,7 +1373,7 @@ public class FlowEngine {
         List<String> changed = all.stream().filter(p -> !others.contains(p)).toList();
         List<String> dirty = workspaces.uncommittedPaths(task.id()).stream().filter(changed::contains).toList();
         if (!dirty.isEmpty()) {
-            String head = workspaces.commitPaths(task.id(), dirty, "任務 #" + task.id() + " 受保護檔案（分段改派 " + delegate.role() + "，系統核對後代為提交）");
+            String head = workspaces.commitPaths(task.id(), dirty, "任務 #" + task.id() + " 受保護檔案（" + source + "，系統核對後代為提交）");
             audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "分段改派核對通過，系統代為提交 "
                     + dirty.size() + " 個檔案：" + String.join(", ", dirty) + "；commit=" + head);
         }

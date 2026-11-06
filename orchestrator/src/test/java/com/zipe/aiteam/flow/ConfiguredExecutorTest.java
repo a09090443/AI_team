@@ -16,6 +16,21 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 
 class ConfiguredExecutorTest {
+    @Test void rulesProposalUsesFreshReadOnlySessionAndDoesNotReplaceCheckpoint() throws Exception {
+        flow.node = "implementation";
+        var captured = org.mockito.ArgumentCaptor.forClass(AgentRuntime.RuntimeRequest.class);
+        var originals = List.of(new RulesProposal.Original(".claude/rules/guide.md", "original-hash", "old rules"));
+        executor.proposeRules(new Task("42", "c", "t", "u", "更新 rules"), flow,
+                flow.snapshot.definition().nodes().get("implementation"), originals);
+        verify(runtime).execute(captured.capture(), any());
+        var request = captured.getValue();
+        assertThat(request.allowedTools()).containsExactly("Read", "Grep", "Glob");
+        assertThat(request.resumeSessionId()).isNull();
+        assertThat(request.sandboxPolicy().writablePaths()).doesNotContain(repo);
+        assertThat(request.prompt()).contains("original-hash", "old rules", ".claude/rules/guide.md");
+        assertThat(request.timeout()).isLessThanOrEqualTo(java.time.Duration.ofSeconds(300));
+        verify(store, never()).saveCheckpoint(any());
+    }
     @Test void parentDialogueMustNotFallBackWhenOriginalWorkspaceIsMissing() throws Exception {
         var parent = new FlowRun(flow.snapshot); parent.workspaceReady = true; parent.workspacePath = repo.toString();
         when(store.flow("parent")).thenReturn(Optional.of(parent));

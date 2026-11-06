@@ -897,6 +897,83 @@ class FlowEngineTest {
         assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
     }
 
+    Path enableProgramRules() throws Exception {
+        mode = "protectedRule"; enableProtectedPathFallback();
+        var flow = store.flow(task.id()).orElseThrow();
+        ObjectNode json = mapper.valueToTree(flow.snapshot.definition());
+        ((ObjectNode) json.path("nodes").path("implementation").path("protectedPathFallback")).put("programRules", true);
+        flow.snapshot = new TeamDefinition.Snapshot(flow.snapshot.revision(), mapper.treeToValue(json, TeamDefinition.class),
+                flow.snapshot.repository(), flow.snapshot.assets()); store.saveFlow(task.id(), flow);
+        Path file = tmp.resolve("work/.claude/rules/api-endpoints.md");
+        Files.createDirectories(file.getParent()); Files.writeString(file, "old");
+        return file;
+    }
+
+    @Test @org.junit.jupiter.api.condition.EnabledOnOs(org.junit.jupiter.api.condition.OS.LINUX)
+    void programRulesProposalIsAppliedAndPrimaryContinuesWithoutCodex() throws Exception {
+        Path file = enableProgramRules(); String path = ".claude/rules/api-endpoints.md";
+        when(executor.proposeRules(any(), any(), any(), anyList())).thenAnswer(call -> {
+            List<RulesProposal.Original> originals = call.getArgument(3);
+            var proposal = mapper.createObjectNode();
+            proposal.putArray("changes").addObject().put("path", path).put("sha256", originals.getFirst().sha256()).put("content", "new");
+            return new AgentRuntime.RuntimeResult("proposal", "", proposal, 0.01, false, null, "model", null);
+        });
+        when(workspace.auditPaths(eq("42"), anyString())).thenAnswer(c ->
+                workspaceHead.equals("head1") && Files.readString(file).equals("new") ? List.of(path) : List.of());
+        when(workspace.uncommittedPaths("42")).thenAnswer(c ->
+                workspaceHead.equals("head1") && Files.readString(file).equals("new") ? List.of(path) : List.of());
+        engine.run(task);
+        assertThat(Files.readString(file)).isEqualTo("new");
+        assertThat(calls).contains("implementation:builder").doesNotContain("implementation:builder_codex");
+        assertThat(store.flow("42").orElseThrow().delegatedParts.get("implementation").role()).isEqualTo("builder");
+        verify(workspace).commitPaths(eq("42"), eq(List.of(path)), anyString());
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        verifyNoInteractions(publisher);
+    }
+
+    @Test @org.junit.jupiter.api.condition.EnabledOnOs(org.junit.jupiter.api.condition.OS.LINUX)
+    void invalidProgramRulesProposalFallsBackWithoutWriting() throws Exception {
+        Path file = enableProgramRules();
+        when(executor.proposeRules(any(), any(), any(), anyList())).thenReturn(
+                new AgentRuntime.RuntimeResult("proposal", "", mapper.createObjectNode(), null, false, null, "model", null));
+        engine.run(task);
+        assertThat(Files.readString(file)).isEqualTo("old");
+        assertThat(calls).containsSubsequence("implementation:builder_codex", "implementation:builder");
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+    }
+
+    @Test @org.junit.jupiter.api.condition.EnabledOnOs(org.junit.jupiter.api.condition.OS.LINUX)
+    void programRulesQuotaKeepsCurrentNodeWithoutResumingTheProposalSession() throws Exception {
+        Path file = enableProgramRules();
+        store.saveCheckpoint(new Checkpoint("42", "plan", "codex", "old-model", "previous-session", "old plan", "head1", null));
+        when(executor.proposeRules(any(), any(), any(), anyList())).thenThrow(new com.zipe.aiteam.runtime.QuotaExceeded("usage limit reached"));
+        engine.run(task);
+        assertThat(task.state()).isEqualTo(Task.State.WAITING_QUOTA);
+        var checkpoint = store.checkpoint("42").orElseThrow();
+        assertThat(checkpoint.role()).isEqualTo("implementation");
+        assertThat(checkpoint.runtime()).isEqualTo("claude-code");
+        assertThat(checkpoint.sessionId()).isNull();
+        assertThat(Files.readString(file)).isEqualTo("old");
+        assertThat(calls).doesNotContain("implementation:builder_codex");
+    }
+
+    @Test void oldSnapshotDoesNotInvokeProgramWriter() throws Exception {
+        mode = "protectedRule"; enableProtectedPathFallback(); engine.run(task);
+        verify(executor, never()).proposeRules(any(), any(), any(), anyList());
+        assertThat(calls).contains("implementation:builder_codex");
+    }
+
+    @Test void programWriterDoesNotOverrideProjectProtectedPaths() throws Exception {
+        Path file = enableProgramRules(); var flow = store.flow("42").orElseThrow();
+        ObjectNode tree = mapper.valueToTree(flow.snapshot.definition());
+        ((ObjectNode) tree.path("project")).putArray("protectedPaths").add(".claude/rules/**");
+        flow.snapshot = new TeamDefinition.Snapshot(flow.snapshot.revision(), mapper.treeToValue(tree, TeamDefinition.class),
+                flow.snapshot.repository(), flow.snapshot.assets()); store.saveFlow("42", flow);
+        engine.run(task);
+        verify(executor, never()).proposeRules(any(), any(), any(), anyList());
+        assertThat(Files.readString(file)).isEqualTo("old");
+    }
+
     @Test void completedDelegationSurvivesUnrelatedHeadChangeButChangedTargetIsDelegatedAgain() throws Exception {
         mode = "protectedRule"; enableProtectedPathFallback(); engine.run(task);
         calls.clear(); workspaceHead = "head2";

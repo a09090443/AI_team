@@ -93,7 +93,7 @@ stdout／stderr 保留，既有 sessionStarted callback 與 checkpoint 介面維
 無明確檔案路徑的 REPAIR 問題保守納入指紋；缺少舊 commit、目標不存在或無法比對時重新改派。舊收據沒有指紋時只保留同一輪續跑的既有行為。
 沿用不表示驗收完成，原實作、QA、Review 與發布閘門照常。
 
-1. 改派段：改派角色只修改 `paths` 內的檔案，不跑建置測試、不 commit（說明 `ProtectedPathFallback.partNotice`）。
+1. 改派段：預設由改派角色只修改 `paths` 內的檔案，不跑建置測試、不 commit（說明 `ProtectedPathFallback.partNotice`）；啟用下述 rules 程式套用時先嘗試唯讀提案。
    派工前的受保護路徑告知（`ConfiguredExecutor.protectedPathNotice`）依**實際執行的角色**的 runtime 判斷，改派給 Codex 時不會出現
    「`.claude/` 一律拒寫」的說明。2026-10-05 前它誤用節點原定角色（Claude），改派段因此收到互相矛盾的指示，
    只做唯讀查核就回報 BLOCKED（受保護文件一個也沒改，稽核顯示「改派段未完成」）。
@@ -120,6 +120,30 @@ stdout／stderr 保留，既有 sessionStarted callback 與 checkpoint 介面維
 系統以 `violations` 核對（原 runtime 寫不了又不在 `paths` 內的路徑才算越界），通過後代為提交。新任務不再寫入 `roleOverrides`。
 VM 實測（`CodexSandboxVmTest.workspaceImplementerCanWriteClaudeRulesButNotGit`，不呼叫模型）：實作節點外層政策下
 Codex 可寫 `.claude/rules/`、`.claude/skills/`，`.git` 與 `.git/hooks` 不可寫。典型設定為 Codex 角色、paths 為 `.claude/rules/**`、`.claude/skills/**`。
+
+### rules 由程式套用（2026-11-06）
+
+實作節點的 `protectedPathFallback.programRules: true` 啟用；省略或 `false` 維持既有改派。
+只適用原角色為 `claude-code`，仍須配置另一個 runtime 的 fallback 角色與 `paths`，不新增權限。
+Maven 與 Gradle 內附範例啟用；node-web 維持關閉，舊任務快照不自動啟用。
+
+- 先從前置 TEST_PLAN 的 `protected_path_changes` 取得明確路徑，核對既有計畫核准政策、fallback 白名單、專案 `protectedPaths` 與 LIMITED 節點寫入範圍。
+  本次可改派清單必須全是 `.claude/rules/` 下已存在的 UTF-8 `.md`，最多 10 檔、單檔 64 KiB、原文與新文各合計最多 256 KiB；不支援新增、刪除、改名。
+  有未提交目標、混有 skills／wrapper 等其他類型、已有續跑 checkpoint，或平台不支援安全目錄操作時，直接走既有改派。
+- 原實作角色開一次新的唯讀提案對話：外層唯讀沙箱、僅 Read／Grep／Glob、最多 10 回合及 300 秒（不超過原節點上限）。
+  有原階段續跑 checkpoint 時不啟動此路線；開始提案前只保存目前節點的全新恢復標記，不保存提案 session，額度／中斷恢復時走既有改派，避免誤續前一節點或把提案對話當實作 session。
+  依需求、前置契約與原文產生 `changes[{path, sha256, content}]`，每個授權檔案恰好一次；不執行提案中的任何指令。
+- 系統重查來源 HEAD、契約指紋與原文 SHA-256，拒絕額外路徑、重複項目、空白新文、非文件內容與超量提案。
+  提案格式不符、工具拒絕或來源已變時，不套用，改走既有 Codex／配置角色改派；額度、逾時等 runtime 例外交原流程處理，不宣稱套用成功。
+- `RulesProposal` 以 Linux `SecureDirectoryStream` 與 `NOFOLLOW_LINKS` 逐層開啟目錄，拒絕符號連結。
+  全部原文通過後才準備替換檔，以目錄相對 rename 替換檔案；硬連結的其他名稱不會被截斷。
+  開始寫入後若失敗，停止下游與發布，不把可能部分套用的結果交回自動改派；不保證跨多檔交易或斷電回復。
+- 沿用逐檔變更稽核與系統代提交，將原提案角色記入 `delegatedParts.role`，summary 註明由程式套用。
+  主實作、獨立驗證、QA、Review 與 PR 核准照常；內容是否正確仍由驗收判定，原文雜湊不能證明語意安全。
+
+禁止清單（settings、hooks 等）維持不變。此功能是管理者明確啟用的受控寫入器，不提供任意檔案寫入或腳本代理。
+驗證狀態：程式測試與 Ubuntu Linux 檔案操作測試通過（含原文變更拒絕、符號連結拒絕、硬連結不截斷，以及程式套用／改派整合）。
+模型與 systemd 沙箱在流程測試中使用替身；尚無真實 Slack 新流程端對端證據或耗時量測。
 
 系統的處理方式（2026-09-30 起）：
 

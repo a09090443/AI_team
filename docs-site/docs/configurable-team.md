@@ -36,6 +36,10 @@ repo 的 `orchestrator/teams/` 只放共用 prompts、schemas、skills 與三份
 | `maven-library.json` | Maven 多模組函式庫；開延後驗收、角色諮詢、計畫自動核准、受保護路徑改派（`.claude/rules`、`.claude/skills`、`.mvn`） |
 | `gradle-fullstack.json` | Gradle 後端＋npm 前端＋文件站；啟用[功能開關一覽](#功能開關一覽)的全部項目（服務建置路線同下，service 節點另引用 `skills/service-build/references/project-template.md`） |
 
+Maven 與 Gradle 範例另設 `protectedPathFallback.programRules: true`，對已授權且已存在的 Markdown rules 優先嘗試原角色唯讀提案、系統套用，其他類型或提案未採用時仍走改派。
+node-web 維持關閉；實例 overlay 須自行明確加入此欄位並重啟，既有任務不自動啟用。
+此旗標不在現行 `TeamMigration` 白名單，既有任務須另建或承接，詳見 [rules 程式套用](multi-runtime.md#rules-由程式套用2026-11-06)。
+
 三份範例都內附同一組**沙箱版服務建置路線**（2026-10-29）：`infrastructure` 角色、`service`／`service_triage` 節點、intake 的 `service` 路線，
 以及 `service-prepare`／`service-start`／`service-health`／`service-diagnose` 四個操作（後三者以 `client.py exec` 執行 agent 寫在 `ai-team-sandbox/` 的腳本）。
 2026-10-31 起另有開發後部署：`deploy` 節點（複製 service，`requires: [intake, verification]`、`next: review`、`blocked: triage`）、
@@ -153,6 +157,7 @@ App-Level Token 留空**：發言與交接 tag 使用同一個角色身分，不
 | 已開 PR 衝突自動同步 | `project.autonomy.pullRequestSyncRounds`／`pullRequestSyncAutoPush` |
 | 自主派工 | 節點 `candidateRoles` |
 | 跨 runtime 改派 | 節點 `protectedPathFallback` |
+| rules 程式套用 | 節點 `protectedPathFallback.programRules`，僅原角色為 Claude Code；省略關閉，仍保留跨 runtime 改派備援 |
 | 服務建置路線 | `service` 節點、`serviceTarget` |
 | 依變更範圍驗證 | `commandScopes` |
 | 文件略過產品建置 | `docOnlyPaths` |
@@ -176,7 +181,7 @@ App-Level Token 留空**：發言與交接 tag 使用同一個角色身分，不
 | 只在 Windows 能跑的建置任務 | repo 的建置腳本寫死 Windows 工具時，操作要以參數排除該任務（例如 Gradle 的 `-x <task>`），並在建置指示禁止 agent 改建置檔繞過 |
 | bash 腳本 | 不能當 operation 或系統驗證指令；寫在建置指示，由實作 agent 自行執行。**不能列為驗收項目**：測試計畫只能引用操作或內建 `inspect-content`，改由審查檢查 |
 | 依變更範圍跑後端 | 建置／測試指示可規定只有變更含後端目錄或版本設定時才跑後端編譯與測試，只改部署檔、前端或文件時不跑；`implementation.timeoutSeconds` 上限 3600 |
-| `.claude/` 文件修改 | Claude Code 實作角色寫不了 `.claude/`；實作節點設 `protectedPathFallback`，`.claude/rules/**`、`.claude/skills/**` 分段改派 Codex 角色，其餘（含 `.agents/`、程式、建置測試）由原角色接著完成，見 [多 runtime](multi-runtime.md)。settings／hooks 等仍須真人處理 |
+| `.claude/` 文件修改 | Claude Code 實作角色寫不了 `.claude/`；實作節點設 `protectedPathFallback` 分段改派，啟用 `programRules` 時對已授權 Markdown rules 優先嘗試原角色唯讀提案、程式核對套用；skills 等仍交改派角色，其餘由原角色完成，見 [多 runtime](multi-runtime.md)。settings／hooks 等仍須真人處理 |
 | Codex 節點跑 Gradle | Codex 內層沙箱只開放工作區與 `/tmp` 可寫，且沒有網路 namespace 介面，Gradle 會出現「Failed to load native library」或「Could not determine a usable wildcard IP」。要跑 Gradle 的 Codex 節點（例如 QA）開 `localTestNetwork`；改派段只改 `.claude/` 檔案、不跑建置（實作節點不能開 `localTestNetwork`） |
 | Codex 寫不了 `.agents/**` | Codex 內層沙箱把工作區的 `.agents` 掛成唯讀（[雙層沙箱](codex-nested-sandbox.md)），所以同時改 `.claude/` 與 `.agents/` 的需求要用分段改派，不能整節點改派 |
 | `docOnlyPaths` | 可列 `*.md`、`docs/**`、`.claude/**`、`.agents/**` 與文件網站的純 Markdown 目錄；變更全部在其中且通過文字副檔名及強制全跑檢查時略過系統建置。文件網站的設定檔、`src/`、`package.json` 照樣全跑 |

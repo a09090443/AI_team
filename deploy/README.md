@@ -7,7 +7,7 @@
 | `bootstrap/` | 從零建置工具（工具鏈、安裝、前置檢查、啟停、稽核、備份還原）。新機只用這裡 |
 | `env.sh.template` | 環境變數範本，複製為 VM 上的 `~/ai-team/env.sh`（權限 600）；token 由使用者本人填 |
 | `slack-app-manifest.yaml` | 主 App `zipe-ai-team` 的 manifest |
-| `agent-manifests/` | 五個既有角色與 Infrastructure Agent 的 manifest；建立 App 與新增配置式角色的步驟見 [建立 Slack App](../docs-site/docs/slack-agent-apps.md) |
+| `agent-manifests/` | 五個既有角色、Infrastructure Agent 與 API Guide Agent 的 manifest；建立 App 與新增配置式角色的步驟見 [建立 Slack App](../docs-site/docs/slack-agent-apps.md) |
 | `deploy-orchestrator.sh` | 既有 VM 的通用受控部署：換上隔離目錄建好的 JAR，以及來源 `teams` 疊上實例 `team-overlay/` 並通過驗證的合併結果（`bootstrap/stage-teams.sh`）；安裝目錄原本有 `src/main` 時才一併更新來源，前後比對任務資料與工作區（`bootstrap/workspace-check.sh`：已結束任務的工作區可被啟動清理刪除，其餘須不變），失敗自動回復 |
 | `deploy-jar-safe.sh` | 既有 VM 只換 JAR 的受控部署，啟動失敗自動回復 |
 | `service-context/` | 服務建置的管理者維運說明範本（`*.example.json`），核對後放到實例的 `service-context/` |
@@ -23,5 +23,7 @@
 
 ## 維運產物保留
 
-隔離來源與建置目錄目前由呼叫者選定；安裝器保留暫存建置，升級腳本保留實例內的 `orchestrator-backup.*`，尚無統一的自動輪替政策。
+隔離來源與建置目錄目前由呼叫者選定，安裝器保留暫存建置，這些目錄尚無統一的自動保留期限。
+兩支升級腳本成功後會輪替實例內的 `orchestrator-backup.*`，保留最近 `AI_TEAM_BACKUP_KEEP` 份（預設 5，含本次）；
+本次回復點一律保留，部署失敗不輪替，`0` 或非數字關閉輪替。
 清理限制見 [INSTALL](../docs-site/docs/INSTALL.md#維運產物的現行限制)。不要依名稱或日期直接刪除仍被服務、作業或回復流程引用的路徑。

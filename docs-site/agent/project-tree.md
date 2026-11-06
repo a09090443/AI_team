@@ -186,6 +186,7 @@ agent_team/
 │   │   │   ├── ContractRecovery.java # 恢復被系統規則誤判的前置契約
 │   │   │   ├── DocOnlyChanges.java   # 純文件變更判定（略過建置測試）與強制全跑名單
 │   │   │   ├── ProtectedPathFallback.java # 受保護路徑改派實作者：判定、禁止清單與事後核對
+│   │   │   ├── RulesProposal.java        # 已授權 rules 的原文雜湊、提案驗證與安全目錄相對套用
 │   │   │   ├── VerificationRecovery.java # 配置核准後授予一次驗收重跑
 │   │   │   ├── Traceability.java     # 需求基準、原子驗收項目與覆蓋對照
 │   │   │   ├── IssueTracker.java     # 跨專案問題清單、需求對應、逐項驗證與承接完整性
@@ -283,6 +284,7 @@ agent_team/
 │   │   ├── SpringWiringTest.java
 │   │   ├── agent/
 │   │   ├── flow/
+│   │   │   ├── RulesProposalTest.java   # rules 提案路徑、原文雜湊、符號／硬連結與 Linux 套用測試
 │   │   │   ├── AttachmentsTest.java  # 附件路徑逃逸、機密檔、上限與舊快照不變
 │   │   │   ├── OperationJobsTest.java # 跨專案作業日誌、來源綁定及取消
 │   │   │   ├── ServiceArtifactsTest.java # 部署檔保存排除機密、只補缺檔、竄改與超量

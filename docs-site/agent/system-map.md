@@ -176,6 +176,7 @@ agent 不能自行指定角色或跳到任意節點。
 
 工作分類由共用提示指導，純文字採合併內容查核、文件站採隔離副本建置、SQL／設定採行為驗證；不是新的節點或跳關。
 plan.protected_path_changes 由實作前置計畫提供，ProtectedPathFallback 取清單與允許目錄交集，FlowEngine 在代提交前逐檔核對。文字提及不再觸發改派。
+實作節點可選 `protectedPathFallback.programRules`：`ConfiguredExecutor.proposeRules` 以原角色的新唯讀 session 產生已授權 rules 提案，`RulesProposal` 核對原文與安全路徑後套用，沿用稽核與收據；提案不符時退回原改派。詳見[多 runtime](/docs/multi-runtime#rules-由程式套用2026-11-06)。
 現有 requires、計畫核准、QA／Review 與 PR 閘門保持；舊快照不自動載入新提示／schema／操作，詳見[配置流程](/docs/configurable-team)。
 
 

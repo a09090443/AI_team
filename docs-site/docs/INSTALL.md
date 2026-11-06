@@ -4,7 +4,7 @@
 [配置式團隊指南](configurable-team.md) 設定 `AI_TEAM_DEFINITION`，先靜態驗證再啟動。
 留空仍使用以下 legacy 五角色配置；新模式不需要沿用固定角色清單。
 
-更新：2026-09-13。**目前尚未通過乾淨 VM 重建驗收**；進度、缺口與證據見 [rebuild-verification.md](rebuild-verification.md)。
+更新：2026-11-06。**目前尚未通過乾淨 VM 重建驗收**；進度、缺口與證據見 [rebuild-verification.md](rebuild-verification.md)。
 不是一鍵安裝：安裝媒體、官方工具鏈 checksum、系統套件與本人登入仍需先備妥。
 不得把舊 VM clone、暖快取建置或 mock 測試冒充從零驗證。
 
@@ -12,7 +12,7 @@
 
 ## 1. 獨立 VM 與系統前置條件
 
-既有 VM `AI` 與 SSH 2222 保持不動。演練使用新 VM、新磁碟、新 OS 安裝；名稱與 ISO 路徑須先確認。
+既有 VM 與 SSH 連接埠保持不動。演練使用新 VM、新磁碟、新 OS 安裝；名稱、ISO 路徑與可用轉發埠須先確認。
 建議演練配置 4 vCPU／8 GB／40 GB，啟動前確認主機有餘裕。NAT SSH 綁 127.0.0.1:2223，避免衝突。
 Linux x86_64／glibc／systemd 是目前建置配置；優先驗證 Debian／Ubuntu 與 Rocky／AlmaLinux，
 不限定 Ubuntu。各版本的實測狀態見 [linux-support.md](linux-support.md)。
@@ -160,7 +160,8 @@ opencode providers        # 別名 auth；本人操作，不要輸出 auth.json
   失敗樣態會是「一份說明文字」而不是明確錯誤，請以 `opencode run --help` 重新核對契約。
 
 **目前的驗證狀態**：旗標、事件流及 Linux 狀態目錄位置已在 opencode 1.18.19 實測，1.19.5 重新核對旗標與事件流結構一致；
-**沙箱包裝下的端對端執行仍未驗證**。在完成前，不要把正式角色切成 opencode。
+2026-11-04 已有 **VM 沙箱下唯讀角色對話的真實 Slack 端對端紀錄**；這不代表寫入工作區的正式階段、
+需求／測試計畫／審查等較大 schema 或提權釘選已驗證。這些用途完成驗證前，不要把正式流程角色切成 opencode。
 
 ## 4. 沙箱前置條件
 
@@ -282,8 +283,10 @@ App-Level Token 的 scope 必須是 `connections:write`，且該 App 要開啟 S
 訂閱 `app_mention`、具備 `app_mentions:read`。設定步驟與疑難排解見
 [建立 Slack App](slack-agent-apps.md)。
 
-`CODEX_BIN` 指向 codex 執行檔；只有在有角色的 runtime 設為 codex 時才會被要求
-（Reviewer 預設就是），設定值打錯會在啟動時直接失敗，不會安靜退回 claude-code。
+`CLAUDE_BIN` 在 Java 啟動檢查中固定必填且須可執行。
+`CODEX_BIN` 指向 codex 執行檔；Java 啟動檢查只在有角色的 runtime 設為 codex 時要求它
+（legacy Reviewer 預設就是），設定值打錯會直接失敗，不會安靜退回 claude-code。
+但 bootstrap 的 `preflight.sh` 固定要求 `CLAUDE_BIN` 與 `CODEX_BIN` 都可執行，不能因團隊只用一種 runtime 就省略。
 `OPENCODE_BIN` 同理，只有在有角色設為 `opencode` 時才會被要求，範本裡是註解掉的；
 `AI_TEAM_RUNTIME_<角色>` 可填 `claude-code`（預設）、`codex` 或 `opencode`，
 留空退回 claude-code。preflight 只在 `OPENCODE_BIN` 有值時檢查它可執行。
@@ -388,7 +391,7 @@ preflight 本機通過不代表登入或 Slack 成功。核對本次啟動 log�
 |---|---|
 | 基礎 | 新 OS／空快取證據、安裝媒體／工具鏈 checksum、版本與下載 log |
 | 應用 | check-source、完整 Maven 測試與 jar SHA256 |
-| Runtime | Claude／Codex 結構化輸出、resume、外部沙箱實測；CLI 版本一致。<br>用到 opencode 時另加：沙箱包裝下的實跑、狀態目錄可寫與提權釘選生效（尚未有人做過） |
+| Runtime | Claude／Codex 結構化輸出、resume、外部沙箱實測；CLI 版本一致。<br>用到 opencode 時另加：預定用途的沙箱實跑、狀態目錄可寫與提權釘選生效；目前只有唯讀角色對話具真實 Slack 端對端證據，正式寫入階段與提權釘選仍待驗證 |
 | Slack | 詢問任務正常結束；白名單／去重；五角色正確身分 |
 | 完整管線 | PM→可選 Architecture→QA 規劃→**真人核准測試計畫**→Backend→QA 驗收→Reviewer→人工閘門 |
 | 核准閘門 | 計畫核准收據綁定 baseline／plan_revision／配置版本／核准人；未核准不得派工 QA |

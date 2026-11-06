@@ -33,6 +33,15 @@ class ProtectedPathFallbackTest {
                 .contains(".claude/rules/api-endpoints.md", "backend/src/A.kt");
     }
 
+    @Test void programRulesIsOptInAndOnlyForClaudeCodePrimary() throws Exception {
+        assertThat(mapper.valueToTree(fallback).has("programRules")).isFalse();
+        var tree = fullstack();
+        ((ObjectNode) tree.path("nodes").path("implementation").path("protectedPathFallback")).put("programRules", true);
+        TeamCatalog.validate(definition(tree));
+        ((ObjectNode) tree.path("roles").path("builder")).put("runtime", "opencode");
+        assertThatThrownBy(() -> TeamCatalog.validate(definition(tree))).hasMessageContaining("programRules");
+    }
+
     @Test void delegatesOnlyExplicitPlanPathsNotMentionsOrOtherReceipts() throws Exception {
         var flow = new FlowRun(TeamCatalog.load(Path.of("teams/gradle-fullstack.json"), key -> tmp.toString()));
         var node = flow.snapshot.definition().nodes().get("implementation");
