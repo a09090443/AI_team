@@ -23,6 +23,8 @@
         <slack.bolt.version>1.45.3</slack.bolt.version>
         <tyrus.version>1.22</tyrus.version>
         <sqlite.version>3.49.1.0</sqlite.version>
+        <pdfbox.version>3.0.5</pdfbox.version>
+        <poi.version>5.4.1</poi.version>
     </properties>
 
     <dependencies>
@@ -55,6 +57,19 @@
             <groupId>com.slack.api</groupId>
             <artifactId>bolt-socket-mode</artifactId>
             <version>${slack.bolt.version}</version>
+        </dependency>
+
+        <!-- 使用者附檔（PDF、docx、xlsx、xls、pptx）轉成 Markdown 輔助版本（DocumentMarkdown）：
+             在 JVM 內轉，所有實例與 runtime 都能用，VM 不必另裝 pdftotext／pandoc。 -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>${pdfbox.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>${poi.version}</version>
         </dependency>
 
         <!-- 測試：WorkspaceManager 會做 rm -rf 與 git 操作，需要真的驗證過 -->

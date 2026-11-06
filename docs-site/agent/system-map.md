@@ -32,7 +32,7 @@ FlowEngine 的新任務承接、續跑、發布及角色請求均保留這個身
 
 設定了 `attachments` 的團隊，agent 可在報告宣告要給使用者下載的檔案；`Attachments` 驗證路徑、機密檔與大小後，
 由 `SlackNotifier.uploadConfigured` 以角色身分上傳到討論串，失敗不影響流程。詳見[附件上傳到討論串](/docs/configurable-team#附件上傳到討論串2026-11-03)。
-反方向：使用者 @訊息的附檔由 `SlackListener` 經 `InboundFiles` 登錄（不連網），`FlowEngine.stageInbox` 在執行 agent 前以 `SlackNotifier.downloadFile` 下載並放進工作目錄的 `.ai-team-inbox/`（git exclude）。詳見[接收使用者附檔](/docs/configurable-team#接收使用者附檔2026-11-06)。
+反方向：使用者 @訊息的附檔由 `SlackListener` 經 `InboundFiles` 登錄（不連網），`FlowEngine.stageInbox` 在執行 agent 前以 `SlackNotifier.downloadFile` 下載並放進工作目錄的 `.ai-team-inbox/`（git exclude），PDF／Office 另由 `DocumentMarkdown` 轉出 `.md` 輔助版本。詳見[接收使用者附檔](/docs/configurable-team#接收使用者附檔2026-11-06)。
 
 ## 兩種執行模式
 

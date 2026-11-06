@@ -278,7 +278,7 @@ public class SlackListener {
         }
         try {
             var registration = InboundFiles.register(props.homePath(), e.getChannel(), threadTs, e.getTs(), role.name(),
-                    e.getFiles(), props.slackFilesMaxBytes());
+                    e.getFiles(), props.slackFilesMaxBytes(), props.slackFilesConvert());
             if (!registration.rejected().isEmpty())
                 notifier.post(SlackNotifier.Identity.SYSTEM, e.getChannel(), threadTs,
                         "下列附檔沒有收下：" + String.join("；", registration.rejected()));

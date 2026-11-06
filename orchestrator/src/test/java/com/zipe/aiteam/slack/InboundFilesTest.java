@@ -93,6 +93,34 @@ class InboundFilesTest {
         assertThat(exclude.split(InboundFiles.EXCLUDE_BEGIN, -1)).hasSize(2);
     }
 
+    @Test void convertibleFilesGetMarkdownOnceAndKeepOriginal() throws Exception {
+        File pdf = file("P1", "spec.pdf", 5); pdf.setMimetype("application/pdf");
+        File bad = file("P2", "scan.pdf", 5); bad.setMimetype("application/pdf");
+        var r = InboundFiles.register(home, "C1", "1.1", "2.2", "SYSTEM", List.of(pdf, bad, file("T1", "a.txt", 5)), 1024, true);
+        assertThat(r.note()).contains("5 B）；Markdown 版：.ai-team-inbox/C1-1_1/2_2/P1-spec.pdf.md", "以原檔為準")
+                .doesNotContain("a.txt.md");
+        assertThat(InboundFiles.register(home, "C1", "9.9", "2.2", "SYSTEM", List.of(pdf), 1024, false).note()).doesNotContain(".md");
+        int[] conversions = {0};
+        InboundFiles.Converter converter = (source, target, name) -> {
+            conversions[0]++;
+            if (name.equals("scan.pdf")) return "沒有文字層（可能是掃描檔或圖片）";
+            try { Files.writeString(target, "# " + name); } catch (IOException e) { return e.getMessage(); }
+            return null;
+        };
+        InboundFiles.Downloader dl = (identity, id, url, max, target) -> Files.writeString(target, "raw");
+        var first = InboundFiles.stage(home, "C1", "1.1", work, dl, 1024, converter);
+        String prefix = ".ai-team-inbox/C1-1_1/2_2/";
+        assertThat(first.copied()).containsExactlyInAnyOrder(prefix + "P1-spec.pdf", prefix + "P1-spec.pdf.md", prefix + "P2-scan.pdf", prefix + "T1-a.txt");
+        assertThat(first.unconverted()).singleElement().asString().contains("scan.pdf", "掃描檔");
+        assertThat(work.resolve(prefix + "P1-spec.pdf")).hasContent("raw");
+        assertThat(work.resolve(prefix + "P1-spec.pdf.md")).hasContent("# spec.pdf");
+        assertThat(work.resolve(prefix + "P2-scan.pdf.md")).doesNotExist();
+        var second = InboundFiles.stage(home, "C1", "1.1", work, dl, 1024, converter);
+        assertThat(second.copied()).isEmpty();
+        assertThat(second.unconverted()).isEmpty();
+        assertThat(conversions[0]).isEqualTo(2);
+    }
+
     @Test void downloadFailureIsReportedOnceAndNotRetried() throws Exception {
         InboundFiles.register(home, "C1", "1.1", "2.2", "SYSTEM", List.of(file("F1", "a.txt", 5)), 1024);
         int[] calls = {0};

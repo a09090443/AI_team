@@ -177,6 +177,12 @@ public class AiTeamProperties {
     public long slackFilesMaxBytes() {
         return Math.min(Math.max(1, slackFilesMaxBytes), com.zipe.aiteam.slack.InboundFiles.HARD_MAX_BYTES);
     }
+    /** PDF、docx、xlsx、xls、pptx 附檔另轉出 Markdown 輔助版本（DocumentMarkdown，原檔保留）。預設 on。 */
+    @Value("${AI_TEAM_SLACK_FILES_CONVERT:on}")
+    private String slackFilesConvert = "on";
+    public boolean slackFilesConvert() {
+        return slackFilesConvert == null || !"off".equalsIgnoreCase(slackFilesConvert.trim());
+    }
 
     /**
      * 已開 PR 的合併／關閉追蹤（PullRequestMonitor 每 10 分鐘）。預設 on：PR 已合併的任務轉 COMPLETED 並刪除工作區。

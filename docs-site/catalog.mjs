@@ -175,7 +175,7 @@ export const docs = [
     status: 'current',
     summary: '白名單使用者 @角色 唯讀提問，或以「執行」前綴派工；啟用條件、脈絡與權限、真實驗收清單。',
     readWhen: '要直接問某個角色問題或派工，或判斷直接 @角色為何沒反應。',
-    code: ['orchestrator/src/main/java/com/zipe/aiteam/task/DirectRequest.java', 'orchestrator/src/main/java/com/zipe/aiteam/slack/InboundFiles.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/DialogueReferences.java', 'orchestrator/teams/prompts/api-guide.md'],
+    code: ['orchestrator/src/main/java/com/zipe/aiteam/task/DirectRequest.java', 'orchestrator/src/main/java/com/zipe/aiteam/slack/InboundFiles.java', 'orchestrator/src/main/java/com/zipe/aiteam/slack/DocumentMarkdown.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/DialogueReferences.java', 'orchestrator/teams/prompts/api-guide.md'],
   },
   {
     id: 'plan-approval-buttons',

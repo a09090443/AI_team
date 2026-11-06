@@ -483,7 +483,15 @@ node-web 範例配置維持未啟用，也作為測試的對照組。被諮詢�
 - **失敗**：沒收下或下載失敗的檔案在討論串列出原因並寫稽核，下載失敗也寫進 context 提醒 agent 不要假設內容；失敗的檔案不重試、不重複通知，流程照常。
   Slack 回登入頁或 `missing_scope` 時提示 App 缺 `files:read`。
 - **保存**：home 快取在服務啟動清理時刪除 30 天未動的討論串；工作區副本隨工作區刪除。
-- **能讀到什麼**：檔案就在工作目錄內，各 runtime 都用原本的讀取工具；文字格式都能讀，PDF 與 Office 檔是否看得懂取決於 runtime、模型與沙箱內的轉換工具。
+- **Markdown 輔助版本（`DocumentMarkdown`，2026-11-06 起）**：PDF、docx、xlsx、xls、pptx 下載後在 JVM 內以 PDFBox／POI
+  轉出同名加 `.md` 的純文字版，與原檔放在同一目錄；需求說明會列出 .md 路徑，並註明表格、圖與版面可能失真、有疑問以原檔為準。
+  PDF 依頁分節；Word 保留標題、清單與表格；試算表每個工作表一個 Markdown 表格（公式取上次計算結果，每表最多 5000 列、100 欄）；
+  投影片依張分節並含備註。輸出上限 100 萬字元，單檔轉換逾時 120 秒。每個檔案只轉一次，結果記在 manifest。
+  轉不出內容（有密碼、檔案損壞、沒有文字層的掃描檔）時不產生 .md，只寫稽核與 context 請 agent 直接讀原檔，不在討論串發訊息。
+  doc、ppt、odf、rtf 等舊格式不轉。`AI_TEAM_SLACK_FILES_CONVERT=off` 關閉（只放原檔）。
+  **設計理由**：在系統內轉而不是派 agent 轉——結果確定、不耗 token、所有 runtime 共用；能直接讀 PDF 的 runtime（Claude Code）遇到表格或圖時仍可讀原檔。
+  不能讀 PDF 的 runtime（Codex、opencode）需要精確表格時目前只有可能失真的 .md，是已知限制。
+- **能讀到什麼**：檔案就在工作目錄內，各 runtime 都用原本的讀取工具；文字格式與轉出的 .md 都能讀。原檔 PDF 與 Office 能否看懂取決於 runtime、模型與沙箱內的工具（Claude Code 可直接讀 PDF；Codex／opencode 的沙箱內沒有 PDF 工具）。
 
 需要 Slack App 有 `files:read`（manifest 已內含，既有 App 要補權限並重新安裝，見[建立 Slack App](slack-agent-apps.md#既有-app-補上傳檔案權限)）。
 `AI_TEAM_SLACK_FILES=off` 關閉。**目前證據等級：程式測試通過，尚未做真實 Slack 附檔的端對端驗證**（`app_mention` 事件是否帶 `files` 依 SDK 欄位與 Slack 文件判斷，待實測）。

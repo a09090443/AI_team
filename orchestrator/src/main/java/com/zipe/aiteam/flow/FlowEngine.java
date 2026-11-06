@@ -2804,7 +2804,7 @@ public class FlowEngine {
         try {
             Path dir = executor.workingDirectory(task, flow, node).toAbsolutePath().normalize();
             var staged = InboundFiles.stage(props.homePath(), task.slackChannel(), task.slackThreadTs(), dir,
-                    slack::downloadFile, props.slackFilesMaxBytes());
+                    slack::downloadFile, props.slackFilesMaxBytes(), props.slackFilesConvert() ? DocumentMarkdown::convert : null);
             if (!staged.copied().isEmpty())
                 audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "使用者附檔已放入工作目錄：" + String.join("、", staged.copied()));
             if (!staged.failed().isEmpty()) {
@@ -2812,6 +2812,13 @@ public class FlowEngine {
                 audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_ERROR, "使用者附檔下載失敗：" + failed);
                 slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "下列附檔下載失敗，agent 拿不到內容：" + failed);
                 flow.context = FlowContext.append(flow.context, "系統：下列使用者附檔下載失敗，工作目錄裡沒有，不要假設內容：" + failed);
+                store.saveFlow(task.id(), flow);
+            }
+            // 轉不出 Markdown 不影響原檔交付，只告訴 agent 直接讀原檔；不貼討論串，避免雜訊。
+            if (!staged.unconverted().isEmpty()) {
+                String unconverted = String.join("；", staged.unconverted());
+                audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "使用者附檔未轉出 Markdown：" + unconverted);
+                flow.context = FlowContext.append(flow.context, "系統：下列使用者附檔沒能轉成 Markdown，請直接讀原檔：" + unconverted);
                 store.saveFlow(task.id(), flow);
             }
             return dir;
