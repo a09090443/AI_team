@@ -87,7 +87,13 @@ public class TaskOrchestrator {
             else message += "\n目前執行中：" + (current.isEmpty() ? "無" : current)
                     + "\n前方排隊任務（依順序）：" + (ahead.isEmpty() ? "無" : String.join(" → ", ahead))
                     + "\n等待前方工作依序釋放執行名額後開始；前方任務完成這一輪、暫停等人或等額度，都會釋放名額。";
-            queueNotice(item.task(), message + "\n不需要重複送出；輪到時會再通知。此為本次排入時的狀態。");
+            message += "\n不需要重複送出；輪到時會再通知。此為本次排入時的狀態。";
+            // 真的要等、且是可取消的排隊狀態才附按鈕；基準驗證不是任務，不能取消。
+            boolean offerCancel = (!current.isEmpty() || !ahead.isEmpty()) && CANCELLABLE.contains(item.task().state())
+                    && !com.zipe.aiteam.flow.BaselineVerifier.ID.equals(item.task().id());
+            if (offerCancel) message += "\n重複送出的需求可由提出者按「取消排隊」，不會啟動任何 agent。";
+            queueNotice(item.task(), message, offerCancel
+                    ? com.zipe.aiteam.slack.SlackBlocks.queuedBlocks(item.task().id(), message) : null);
             pending.add(item);
             work.offer(item);
         }
@@ -97,21 +103,69 @@ public class TaskOrchestrator {
         return store.find(task.id()).map(t -> t.state() == Task.State.ABORTED).orElse(false);
     }
 
-    private void queueNotice(Task task, String message) {
-        try { slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), message); }
+    private void queueNotice(Task task, String message) { queueNotice(task, message, null); }
+    private void queueNotice(Task task, String message, List<com.slack.api.model.block.LayoutBlock> blocks) {
+        try {
+            if (blocks == null || slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), message, blocks) == null)
+                slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), message);
+        }
         catch (Exception e) { log.warn("任務 #{} 佇列通知失敗，仍保留排程", task.id(), e); }
     }
 
+    /**
+     * 開始執行與取消排隊都在 queueLock 內決定：取消先拿到鎖，這裡會看到 ABORTED 而略過；
+     * 這裡先拿到鎖，active 已是此任務，取消就會被拒絕。不會同時跑起來又被標成中止。
+     */
     void executeQueued(QueuedTask item) {
-        synchronized (queueLock) { pending.remove(item); active = item; }
+        boolean skip;
+        synchronized (queueLock) {
+            pending.remove(item);
+            skip = cancelled(item.task());
+            active = skip ? null : item;
+        }
+        if (skip) return;
         try {
-            if (!cancelled(item.task())) {
-                queueNotice(item.task(), "輪到" + queueLabel(item.task()) + "，開始執行這一輪工作。");
-                item.run();
-            }
+            queueNotice(item.task(), "輪到" + queueLabel(item.task()) + "，開始執行這一輪工作。");
+            item.run();
         } finally {
             synchronized (queueLock) { active = null; }
         }
+    }
+
+    /** 還沒有 agent 在跑、只在中央佇列等待的狀態；可直接取消，不必先中斷。 */
+    public static final java.util.Set<Task.State> CANCELLABLE =
+            java.util.EnumSet.of(Task.State.QUEUED, Task.State.RESUME_QUEUED, Task.State.TRIAGE_QUEUED);
+
+    /**
+     * 取消排隊中的任務：直接轉 ABORTED 並移出中央佇列，不啟動任何 agent。
+     * 狀態轉換用條件更新（claimState），並與 executeQueued 共用 queueLock，見該方法說明。
+     * 已輪到執行（含剛開始、狀態尚未改成執行中）或已不在排隊狀態時拒絕並說明。
+     * 呼叫者負責權限檢查（白名單、原討論串、提出者，見 SlackListener）。
+     */
+    public boolean cancelQueued(Task task, String byUser) {
+        Task.State from = null, seen;
+        boolean started;
+        synchronized (queueLock) {
+            seen = store.find(task.id()).map(Task::state).orElse(task.state());
+            started = active != null && active.task().id().equals(task.id());
+            if (!started && CANCELLABLE.contains(seen) && store.claimState(task.id(), seen, Task.State.ABORTED)) {
+                from = seen;
+                pending.removeIf(p -> p.task().id().equals(task.id()));
+                work.removeIf(j -> j instanceof QueuedTask q && q.task().id().equals(task.id()));
+            }
+        }
+        if (from == null) {
+            audit.record(task.id(), byUser, AuditLog.ACTION_REJECTED, "取消排隊被拒：" + (started ? "已輪到執行" : seen));
+            slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), started || seen.isRunning()
+                    ? "任務 #" + task.id() + " 已經開始執行，無法取消排隊；要停下請按進度訊息上的「中斷這一輪」，停下後再按「中止任務」。"
+                    : "任務 #" + task.id() + " 目前不是排隊狀態（" + seen + "），未變更任何任務。");
+            return false;
+        }
+        task.state(Task.State.ABORTED);
+        audit.stateChange(task, from, Task.State.ABORTED, byUser);
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                "🛑 任務 #" + task.id() + " 已由 <@" + byUser + "> 取消排隊（原狀態 " + from + "），已移出中央佇列，沒有啟動任何 agent。");
+        return true;
     }
     private final Semaphore slots;
     private final Thread worker;
@@ -491,6 +545,11 @@ public class TaskOrchestrator {
     }
 
     public void abort(Task task, String byUser) {
+        // 排隊中走原子取消：與「輪到執行」同時發生時，不可把已開始的任務標成中止卻沒停下。
+        if (CANCELLABLE.contains(store.find(task.id()).map(Task::state).orElse(task.state()))) {
+            cancelQueued(task, byUser);
+            return;
+        }
         Task.State from = task.state();
         task.state(Task.State.ABORTED);
         store.save(task);

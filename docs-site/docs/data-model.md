@@ -79,7 +79,7 @@ task (1) ──┬── (0..1) task_checkpoint     中斷現場
 
 | 分類 | 值 | 意義 |
 |---|---|---|
-| 佇列 | `QUEUED` | 已受理，等待排入執行 |
+| 佇列 | `QUEUED` | 已受理，等待排入執行；提出者可「取消排隊」直接轉 `ABORTED`（與下兩個排隊狀態相同） |
 | 等待 | `WAITING_QUOTA` | 額度用盡，等待 `QuotaAutoResume` 或人工續跑 |
 | 等待 | `RESUME_QUEUED` | 續跑已被領取，等待執行（原子轉換，連按只有一次生效） |
 | 等待 | `TRIAGE_QUEUED` | PM 派工已被領取，等待執行 |

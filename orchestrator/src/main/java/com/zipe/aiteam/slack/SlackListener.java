@@ -47,7 +47,7 @@ public class SlackListener {
             candidate = value.substring(1, value.length() - 1).trim();
         }
         // 只解開整則已知管理指令；不從一般問題或程式範例中擷取指令。
-        return candidate.matches("(?s)^(補充|處理|中斷|開\\s*PR)\\s+#\\d+(?:\\s+.*)?$") || BASELINE.matcher(candidate).matches() ? candidate : value;
+        return candidate.matches("(?s)^(補充|處理|中斷|取消排隊|開\\s*PR)\\s+#\\d+(?:\\s+.*)?$") || BASELINE.matcher(candidate).matches() ? candidate : value;
     }
 
     private final AiTeamProperties props;
@@ -107,6 +107,7 @@ public class SlackListener {
             });
         }
 
+        registerCancelQueuedAction(app);
         registerPlanActions(app);
         registerHumanGateActions(app);
         registerHumanInputActions(app);
@@ -210,6 +211,12 @@ public class SlackListener {
                 return;
             }
             orchestrator.interrupt(existing, e.getUser());
+            return;
+        }
+        // 與「取消排隊」按鈕同一條路；排隊回覆沒有貼出按鈕時用打字的。
+        var cancelQueued = Pattern.compile("^取消排隊\\s+#(\\d+)\\s*$").matcher(text);
+        if (cancelQueued.matches()) {
+            handleCancelQueued(e.getUser(), cancelQueued.group(1), e.getChannel(), threadTs);
             return;
         }
         // 驗收負責人命令開 PR：與停止訊息的「開 PR」按鈕送同一串指令，權限與證據檢查都在流程引擎。
@@ -323,6 +330,42 @@ public class SlackListener {
      * 停止訊息上的選項按鈕。按鈕不是新的權限路徑：它送出的就是使用者本來要手動打的
      * 那串「補充」指令，走同一套白名單與同一套驗證，只是不必自己抄授權碼。
      */
+    private void registerCancelQueuedAction(App app) {
+        app.blockAction(SlackBlocks.ACTION_CANCEL_QUEUED, (req, ctx) -> {
+            var p = req.getPayload();
+            String user = p.getUser().getId(), value = p.getActions().getFirst().getValue();
+            String channel = p.getChannel() == null ? null : p.getChannel().getId();
+            String thread = p.getMessage() == null ? null : p.getMessage().getThreadTs();
+            ingress.execute(() -> {
+                try { handleCancelQueued(user, value, channel, thread); }
+                catch (Exception e) { log.error("處理取消排隊失敗：{}", com.zipe.aiteam.runtime.Diagnostics.describe(e)); }
+            });
+            return ctx.ack();
+        });
+    }
+    /**
+     * 取消排隊：白名單、原頻道、原討論串、任務提出者四項都要符合。
+     * 排隊中的任務還沒有任何 agent 產出，只有提出者能判斷它是不是重複送出的。
+     */
+    void handleCancelQueued(String user, String taskId, String channel, String thread) {
+        if (!props.allowedUsers().contains(user)) {
+            audit.record(taskId, user, AuditLog.ACTION_REJECTED, "非白名單使用者嘗試取消排隊");
+            return;
+        }
+        Task task = orchestrator.lookup(taskId).orElse(null);
+        if (task == null || !task.slackChannel().equals(channel) || !task.slackThreadTs().equals(thread)) {
+            if (channel != null && thread != null)
+                notifier.post(SlackNotifier.Identity.SYSTEM, channel, thread, "請在該任務原討論串取消排隊，未變更任何任務。");
+            return;
+        }
+        if (!user.equals(task.requesterUserId())) {
+            audit.record(task.id(), user, AuditLog.ACTION_REJECTED, "非提出者嘗試取消排隊");
+            notifier.post(SlackNotifier.Identity.SYSTEM, channel, thread,
+                    "只有提出者 <@" + task.requesterUserId() + "> 可以取消排隊中的任務 #" + task.id() + "，未變更任何任務。");
+            return;
+        }
+        orchestrator.cancelQueued(task, user);
+    }
     private void registerHumanGateActions(App app) {
         app.blockAction(HumanGate.ACTION_PATTERN, (req, ctx) -> {
             var p = req.getPayload();

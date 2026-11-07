@@ -26,6 +26,16 @@ public final class SlackBlocks {
     public static final String ACTION_CONTINUE = "ai_team_continue";
     /** 只停目前這一輪、任務保留可續跑；和 ACTION_ABORT（終止任務）刻意分開。 */
     public static final String ACTION_INTERRUPT = "ai_team_interrupt";
+    /** 只取消還在排隊、尚未開始的任務；已開始就拒絕，不會變成中止執行中的任務。 */
+    public static final String ACTION_CANCEL_QUEUED = "ai_team_cancel_queued";
+
+    /** 排隊回覆：前方還有工作時附一顆「取消排隊」，重複送出的需求不必等它開始跑。 */
+    public static List<LayoutBlock> queuedBlocks(String taskId, String text) {
+        return asBlocks(section(s -> s.text(markdownText(clip(text, 2900)))),
+                actions(a -> a.elements(asElements(
+                        button(b -> b.actionId(ACTION_CANCEL_QUEUED).value(taskId).style("danger")
+                                .text(plainText("取消排隊")))))));
+    }
 
     /** 執行中的定期狀態訊息：附一顆「中斷這一輪」。 */
     public static List<LayoutBlock> progressBlocks(String taskId, String text) {
