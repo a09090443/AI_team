@@ -78,17 +78,51 @@ java -jar "$HOME/ai-team/orchestrator/target/ai-team-orchestrator-0.1.0.jar" --v
 ## 每個角色各自選 AI CLI 與模型
 
 每個角色在 `roles` 中各自指定使用哪個 AI CLI（`runtime`）與模型，同一團隊可以混用。
-例如 PM 用 Claude Code 的 opus 拆解需求、Backend 用 sonnet 實作、QA 改用 Codex 驗收：
+以內附範例 `orchestrator/teams/gradle-fullstack.json` 為例（只列相關欄位）：
 
 ```json
 "roles": {
-  "coordinator": { "name": "PM Agent",      "runtime": "claude-code", "model": "opus" },
-  "builder":     { "name": "Backend Agent", "runtime": "claude-code", "model": "sonnet" },
-  "tester":      { "name": "QA Agent",      "runtime": "codex",       "model": "<codex 模型名>", "reasoningEffort": "medium" }
+  "coordinator":    { "name": "PM Agent",             "runtime": "claude-code", "model": "opus" },
+  "architect":      { "name": "Architecture Agent",   "runtime": "claude-code", "model": "opus" },
+  "builder":        { "name": "Backend Agent",        "runtime": "claude-code", "model": "opus" },
+  "tester":         { "name": "QA Agent",             "runtime": "codex", "model": "gpt-5.6-sol", "reasoningEffort": "medium" },
+  "inspector":      { "name": "Code Reviewer",        "runtime": "codex" },
+  "infrastructure": { "name": "Infrastructure Agent", "runtime": "codex", "model": "gpt-5.6-sol", "reasoningEffort": "medium" },
+  "builder_codex":  { "name": "Backend Agent",        "runtime": "codex", "model": "gpt-5.6-sol", "reasoningEffort": "medium" },
+  "api_guide":      { "name": "API Guide Agent",      "runtime": "claude-code", "model": "sonnet" }
 }
 ```
 
-範例只列相關欄位；完整角色還需要 `prompt`、`tools` 與 token 變數名稱，可從 `orchestrator/teams/node-web.json` 複製後修改。
+完整角色還需要 `prompt`、`tools` 與 token 變數名稱，請從範例檔複製後修改。
+
+### 內附範例各角色使用的 CLI 與模型
+
+三份範例都在 `orchestrator/teams/`。「—」表示該範例沒有這個角色；Code Reviewer 未填 `model`，使用 Codex CLI 的預設模型。
+
+| 角色（負責節點） | `gradle-fullstack.json` | `maven-library.json` | `node-web.json` |
+|---|---|---|---|
+| PM Agent（intake、triage、service_triage） | claude-code／opus | claude-code／opus | claude-code／opus |
+| Architecture Agent（design） | claude-code／opus | claude-code／opus | — |
+| Backend Agent（implementation） | claude-code／opus | claude-code／opus | claude-code／opus |
+| QA Agent（plan、verification） | codex／gpt-5.6-sol／medium | codex／gpt-5.6-sol／medium | claude-code／sonnet |
+| Code Reviewer（review） | codex／CLI 預設 | codex／CLI 預設 | — |
+| Security Reviewer（review） | — | — | claude-code／sonnet |
+| Frontend Agent（frontend） | — | — | claude-code／sonnet |
+| Infrastructure Agent（service、deploy） | codex／gpt-5.6-sol／medium | codex／gpt-5.6-sol／medium | claude-code／sonnet |
+| Backend Agent 改派備援（builder_codex） | codex／gpt-5.6-sol／medium | codex／gpt-5.6-sol／medium | — |
+| API Guide Agent（只供直接 @ 對話） | claude-code／sonnet | — | — |
+
+範例這樣分配的理由：
+
+- **需求拆解、設計與實作用 Claude Code opus**：這些階段要讀懂需求與程式脈絡並做取捨，選推理較強的模型。
+- **QA 與審查改用 Codex**：寫程式和驗收的不是同一個模型，比較不會漏掉同一類盲點。
+- **builder_codex 是備援，不是主實作者**：Claude Code 寫不了 `.claude/`、`.mvn`、`gradle/wrapper` 等受保護路徑，
+  實作節點的 `protectedPathFallback` 只把這些檔案改派給它，其餘工作仍由 Claude Code 的 Backend 完成。
+- **node-web 全部用 Claude Code**：它是功能開關全關的對照範例，不需要額外安裝與登入 Codex；
+  較單純的驗收、審查、前端與部署角色用 sonnet，節省額度。
+- **API Guide Agent 用 sonnet**：只回答 API 用法問題、不寫檔，不需要最強的模型。
+
+範例中的模型名是撰寫時可用的名稱；你的帳號能用哪些模型、名稱是否改版，以各 CLI 當下支援為準。
 
 | 欄位 | 必填 | 說明 |
 |---|---|---|
@@ -96,8 +130,6 @@ java -jar "$HOME/ai-team/orchestrator/target/ai-team-orchestrator-0.1.0.jar" --v
 | `model` | 否 | 該 CLI 認得的模型名；留空交給 CLI 預設。三家格式不通用，opencode 為 `provider/model` |
 | `reasoningEffort` | 否 | 推理強度 `low`／`medium`／`high`／`xhigh`，目前只支援 `codex`；其他 runtime 填寫會驗證失敗 |
 
-- 選擇依據：拆解需求與審查適合推理較強的模型；照計畫實作與重複驗證可用較快、較省額度的模型；
-  驗收與實作用不同 runtime，可降低同一模型自己驗自己的盲點。
 - 各 CLI 的額度分開計算；某個 runtime 用盡時，輪到使用它的角色才會讓任務停在 `WAITING_QUOTA`。
 - opencode 目前只實測過唯讀角色對話，寫入工作區的正式階段尚未驗證，正式流程建議先用 Claude Code 或 Codex。
 - 名稱打錯時，Claude Code 會直接失敗；Codex 可能退回預設模型而不報錯，改完要看實際回報確認。
