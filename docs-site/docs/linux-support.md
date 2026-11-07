@@ -44,3 +44,44 @@ os-release 當文字解析，不以 shell source 執行。未知 ID_LIKE 不會�
 每個發行版／版本分開驗證；不得把 Ubuntu 成功推論成 Rocky 已成功。
 發布、憑證與現有 VM 保護規則仍遵循 [INSTALL.md](INSTALL.md)。
 本機 fixture 的 16 項斷言驗證分類與拒絕邏輯，不驗證真實 Linux 的 kernel 或安全政策。
+
+## Windows 主機上的 VirtualBox 停滯排查
+
+Windows 啟用 Hyper-V 時，VirtualBox 可能改走 NEM 相容路徑；`VBox.log` 若出現
+`AMD-V is not available`、`Snail execution mode`，表示沒有使用預期的直接硬體虛擬化路徑，
+不能僅據此判定 BIOS 沒開虛擬化。[Oracle 7.2 疑難排解](https://docs.oracle.com/en/virtualization/virtualbox/7.2/user/Troubleshooting.html)
+將 VirtualBox 與 Hyper-V 共存列為效能衝突情境；這是可疑因素，不能單憑該訊息認定它造成某次核心停滯。
+
+Linux 的 `soft lockup`／`RCU stall` 是 CPU 或核心工作未及時推進的警訊；
+計時器、中斷、排程、核心缺陷與負載都可能相關，時間跳動也可能觸發警告。
+必須對照堆疊與前後事件，不能把 `OOM is now expected behavior` 當成已發生 OOM 的證據。
+原因分類與堆疊判讀見 [Linux RCU 文件](https://docs.kernel.org/RCU/stallwarn.html)。
+
+排查順序：先保存主控台、`VBox.log` 的 NEM／心跳／時間追趕紀錄與 guest kernel log，
+再核對主機及客體的記憶體、CPU／I/O 壓力、同時執行的 VM 與工作負載；SSH 不通時標示無法取得的證據。
+主機當下尚有記憶體，不代表客體從未缺記憶體；調低 vCPU 或冷開機能恢復，也不代表根因已排除。
+用固定工作負載、相同觀察時間做單一變因對照，才區分虛擬化後端、核心與資源競爭。
+停用 Hyper-V 或相依安全功能涉及主機環境與防護，需另行評估與授權，不為了通過驗證直接停用或放寬沙箱。
+
+### 直接硬體虛擬化的可還原測試
+
+以下是管理員評估影響後手動執行的主機操作，不是 agent 可自行停用防護的授權。
+先正常關閉所有 VM、退出 Docker Desktop 並保存 WSL 工作；BIOS／UEFI 的 SVM／AMD-V 保持啟用。
+停用 Windows hypervisor 期間，WSL2、依賴 Hyper-V／WSL2 的 Docker 後端，以及依賴 hypervisor 的安全功能會受影響。
+若有 BitLocker／裝置加密，先確認可取得復原金鑰；不為了此測試直接關閉 Secure Boot 或解密磁碟。
+
+以系統管理員身分開啟 PowerShell，先用 `bcdedit /enum "{current}"` 記錄原設定，
+再執行 `bcdedit /set "{current}" hypervisorlaunchtype off`，成功後重新啟動 Windows。
+這是持續生效的開機設定，不會在下一次重開機自動還原；語法與影響見
+[Microsoft BCDEdit 文件](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/bcdedit--set)。
+
+重開後用 `(Get-CimInstance Win32_ComputerSystem).HypervisorPresent` 確認應為 `False`，
+再啟動 VM 並檢查本次 `VBox.log` 的硬體虛擬化初始化；不能只看 VM 設定勾選狀態。
+若仍為 `True` 或仍走 NEM，先查 VBS／Memory Integrity／Credential Guard 與管理政策，
+不要直接連帶停用；相依關係見
+[Microsoft Hyper-V 衝突說明](https://learn.microsoft.com/en-us/troubleshoot/windows-client/application-management/virtualization-apps-not-work-with-hyper-v)。
+成功切換後，以相同負載與觀察時間比較停滯情形，尚未完成對照前不可宣稱根因已排除。
+
+還原時先正常關閉 VM，再以管理員執行 `bcdedit /set "{current}" hypervisorlaunchtype auto` 並重新啟動。
+若原本未設定此欄位而需精確還原，改用 `bcdedit /deletevalue "{current}" hypervisorlaunchtype`。
+確認 Windows hypervisor、原有安全功能與 WSL2／Docker 狀態恢復；此指令不會重新安裝已移除的 Windows 功能。
