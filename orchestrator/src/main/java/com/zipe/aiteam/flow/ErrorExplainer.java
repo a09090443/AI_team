@@ -70,7 +70,7 @@ public class ErrorExplainer {
             Path dir = props.homePath().resolve("explainer").resolve(task.id()).toAbsolutePath().normalize();
             Files.createDirectories(dir);
             Path system = dir.resolve("system.md");
-            Files.writeString(system, RULES, StandardCharsets.UTF_8);
+            Files.writeString(system, RULES + com.zipe.aiteam.runtime.OutputLanguage.RULE, StandardCharsets.UTF_8);
             String prompt = "情境：" + situation
                     + "\n使用者原本的需求：" + Diagnostics.clip(task.requestText(), 500)
                     + "\n可用的選項（只能引用這些，效果只能照後面的說明）："

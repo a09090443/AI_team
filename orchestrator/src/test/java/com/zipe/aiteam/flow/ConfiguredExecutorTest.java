@@ -340,7 +340,7 @@ class ConfiguredExecutorTest {
         assertThat(sent.resumeSessionId()).isNull();
         assertThat(sent.jsonSchema()).contains("\"answer\"", "\"confidence\"");
         assertThat(sent.prompt()).contains("登入 API 回傳哪些錯誤碼？", "計畫草稿：登入情境", "團隊共享看板");
-        assertThat(Files.readString(sent.systemPromptFile())).contains("唯讀", "另一位團隊角色");
+        assertThat(Files.readString(sent.systemPromptFile())).contains("唯讀", "另一位團隊角色", "台灣口語的繁體中文", "不得出現任何簡體字");
         verify(store, never()).saveCheckpoint(any());
     }
     @Test void collaborativeSnapshotAddsBoardConsultAndAnswersToTheStage() throws Exception {
@@ -415,7 +415,7 @@ class ConfiguredExecutorTest {
         assertThat(request.prompt()).contains("Node Web", "TypeScript", "新增畫面");
         assertThat(Files.readString(request.systemPromptFile())).isEqualTo(flow.snapshot.assets().get("prompts/implement.md")
                 + "\n\n【團隊共用工作規則】\n" + flow.snapshot.assets().get("prompts/shared.md")
-                + "\n\n" + flow.snapshot.assets().get(IssueTracker.CONTRACT));
+                + "\n\n" + flow.snapshot.assets().get(IssueTracker.CONTRACT) + com.zipe.aiteam.runtime.OutputLanguage.RULE);
         verify(store).saveCheckpoint(argThat(cp -> cp.role().equals("frontend") && cp.runtime().equals("claude-code")));
     }
     @Test void limitedNodeCannotWriteProductOrWholeWorkspace() throws Exception {

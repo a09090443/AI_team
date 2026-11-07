@@ -228,6 +228,7 @@ agent_team/
 │   │   │   ├── CodexRuntime.java
 │   │   │   ├── CommandRuns.java      # 從 Claude session 紀錄／Codex 事件流讀出本輪指令與結束碼
 │   │   │   ├── OpenCodeRuntime.java
+│   │   │   ├── OutputLanguage.java   # 附在所有 agent 系統提示的台灣繁體中文輸出規則
 │   │   │   ├── CodexLocalTestPolicy.java # localTestNetwork 的 Codex 權限設定
 │   │   │   ├── CodexSandboxPreparation.java # Codex 雙層沙箱掛載點準備
 │   │   │   ├── SessionCapture.java   # 從 JSONL 事件流取出 session id

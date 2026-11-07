@@ -122,7 +122,7 @@ public class StageRunner {
                 stage.role(),
                 workDir,
                 promptFile,
-                buildPrompt(task, stage, workDir, runtime, upstream, feedback) + FailureReport.INSTRUCTIONS,
+                buildPrompt(task, stage, workDir, runtime, upstream, feedback) + FailureReport.INSTRUCTIONS + com.zipe.aiteam.runtime.OutputLanguage.RULE,
                 stage.allowedTools(),
                 schema,
                 continuing ? previous.sessionId() : (feedback != null ? resumeSessionId : null),
