@@ -9,6 +9,19 @@ JSON 只填 token 的環境變數名稱，不填 token 值。以下為設定索�
 
 ## 主 App 與角色 App
 
+:::info[「主 App」是哪一個？]
+
+主 App 是管理者用 `deploy/slack-app-manifest.yaml` 建立的那一個 Slack App，**一個專案頻道只有一個**。
+內附 manifest 的預設名稱是 `zipe-ai-team`，管理者可能改成別的名稱；本手冊範例裡的 `@zipe-ai-team` 就是主 App。
+
+- 建立需求，以及 `補充 #123`、`中斷 #123`、`取消排隊 #123` 等指令，都是 @主 App。
+- 任務的排隊回覆、狀態卡與按鈕都由主 App 發出；討論串裡「已排入中央佇列」那則訊息的發送者就是它。
+- `PM Agent`、`QA Agent`、`Backend Agent` 這類名稱是**角色 App**，只用來以角色身分發言或回答直接提問，@它們不會建立工作任務。
+
+名稱由 manifest 的 `display_information.name` 與 `bot_user.display_name` 決定；改名後請告知使用者要 @哪一個。
+
+:::
+
 1. 在 [Slack App 管理介面](https://api.slack.com/apps)按「Create New App」，選「Paste a manifest」，貼上 `deploy/slack-app-manifest.yaml` 的內容建立主 App，再安裝至 workspace。
 
    ![Create new app 對話框：選 From scratch 下的 Paste a manifest](./img/slack-create-app.png)
@@ -22,7 +35,11 @@ JSON 只填 token 的環境變數名稱，不填 token 值。以下為設定索�
 
      ![Basic Information 頁的 App-Level Tokens 區塊，scope 為 connections:write](./img/slack-app-level-token.png)
 
-   token 只放進 `env.sh`，不要截圖、貼到聊天或提交到 repo。
+   :::danger
+
+   token 只放進 `env.sh`，**不要截圖、貼到聊天或提交到 repo**。
+
+   :::
 3. 每個角色使用 `deploy/agent-manifests/` 對應 manifest 建立並安裝獨立 App，使用自己的兩種 token。
 4. 邀請主 App 與已建立的角色 App 進目標頻道（在頻道輸入 `/invite @App名稱`）；安裝到 workspace 不等於已加入頻道。
 5. 確認沒有執行中或排隊任務後重啟服務，逐一實際 @角色並驗證流程發言身分。
@@ -30,7 +47,12 @@ JSON 只填 token 的環境變數名稱，不填 token 值。以下為設定索�
 預設角色的環境變數後綴為 `PM`、`ARCHITECTURE`、`BACKEND`、`QA`、`CODE_REVIEW`。
 例如 QA 使用 `SLACK_BOT_TOKEN_QA` 與 `SLACK_APP_TOKEN_QA`。
 Bot Token 控制發言身分；App-Level Token 用於 Socket Mode 與直接 mention。缺 Bot Token 退回主 App 代發，缺 App-Level Token 無法直接 @角色。
-不要共用主 App 的 App-Level Token。只設角色 App-Level Token 卻缺專屬 Bot Token 時，服務會拒絕啟用角色連線。
+
+:::warning
+
+**不要共用主 App 的 App-Level Token。** 只設角色 App-Level Token 卻缺專屬 Bot Token 時，服務會拒絕啟用角色連線。
+
+:::
 
 新增配置式角色時，在角色設定指定 `botTokenEnv`／`appTokenEnv`，建立對應 manifest，完成安裝、token、邀請、重啟與實際驗證；
 也可刻意不建獨立 App，但需讓使用者知道由主 App 代發、不能直接 @。
@@ -72,7 +94,11 @@ Bot Token 控制發言身分；App-Level Token 用於 Socket Mode 與直接 ment
 java -jar "$HOME/ai-team/orchestrator/target/ai-team-orchestrator-0.1.0.jar" --validate-team "$HOME/ai-team/teams/node-web.json"
 ```
 
-這只驗證配置，不代表目標 repo、工具或真實流程已驗收。確認後設定 AI_TEAM_DEFINITION 並重啟，新任務才載入新快照。
+:::info
+
+這只驗證配置，不代表目標 repo、工具或真實流程已驗收。確認後設定 AI_TEAM_DEFINITION 並重啟，**只有新任務會載入新快照**。
+
+:::
 舊任務使用受控遷移或承接，詳見[故障排查](troubleshooting.md)。
 
 ## 每個角色各自選 AI CLI 與模型
@@ -160,8 +186,13 @@ CLI 與模型寫在團隊 JSON 裡，而每個專案各自有一份團隊 JSON�
 - 模型名格式是 `provider/model`（例如 `openrouter/deepseek/deepseek-v4.1-flash`），`opus`、`gpt-5.6-sol` 這類名稱在 opencode 無效；名稱錯誤會明確報錯。
 - 該實例的 `env.sh` 要設定 `OPENCODE_BIN`，並由本人執行 `opencode auth login` 登入所用的供應商。
   上線前可先用 `opencode run --format json -m <模型> -- "只回覆 OK"` 試呼叫，確認模型名與登入可用。
-- 目前只實測過**唯讀的直接 @ 對話角色**（如上例的 API Guide），寫入工作區的流程節點（實作、驗收等）尚未驗證，先不要用在這些角色。
 - opencode 是唯一會回報實際花費金額的 runtime，可用來比較不同模型的成本。
+
+:::warning[opencode 的驗證範圍]
+
+目前只實測過**唯讀的直接 @ 對話角色**（如上例的 API Guide），寫入工作區的流程節點（實作、驗收等）尚未驗證，先不要用在這些角色。
+
+:::
 
 一個服務只載入一個專案配置，所以「多個專案」就是在同一台主機安裝多個服務實例，每個實例各自有：
 
@@ -172,9 +203,14 @@ CLI 與模型寫在團隊 JSON 裡，而每個專案各自有一份團隊 JSON�
 | `AI_TEAM_INSTANCE` | 同一台主機有多個實例時必填，且不可重複 |
 | 頻道與 Slack App | 每個實例只聽自己的 `AI_TEAM_CHANNEL_ID`，並使用自己的一組主 App 與角色 App，不可共用 token |
 
-- 專案自己的配置建議放在實例的 `team-overlay/`，部署時會合併進 `teams/`；不要直接改線上 `teams/`，下次部署會被擋下。
+:::warning
+
+- 專案自己的配置建議放在實例的 `team-overlay/`，部署時會合併進 `teams/`；**不要直接改線上 `teams/`**，下次部署會被擋下。
 - 工具鏈與 CLI 登入可以共用；共用登入時**額度也共用**：A 專案用完 Claude 額度，B 專案使用 Claude 的角色同樣會停在 `WAITING_QUOTA`。
   把較耗額度的專案角色改用另一個 CLI，可以分散壓力。
+
+:::
+
 - 修改某個專案的配置只影響該實例，且只對新任務生效。
 
 | 欄位 | 必填 | 說明 |
@@ -185,7 +221,7 @@ CLI 與模型寫在團隊 JSON 裡，而每個專案各自有一份團隊 JSON�
 
 - 各 CLI 的額度分開計算；某個 runtime 用盡時，輪到使用它的角色才會讓任務停在 `WAITING_QUOTA`。
 - opencode 目前只實測過唯讀角色對話，寫入工作區的正式階段尚未驗證，正式流程建議先用 Claude Code 或 Codex。
-- 名稱打錯時，Claude Code 會直接失敗；Codex 可能退回預設模型而不報錯，改完要看實際回報確認。
+- 名稱打錯時，Claude Code 會直接失敗；**Codex 可能退回預設模型而不報錯**，改完要看實際回報確認。
 - 討論串的階段進度訊息會顯示實際使用的角色、runtime、模型與推理強度，例如
   `QA Agent／codex／模型：…／推理：medium`；未指定模型時顯示「CLI 預設」。
 - 修改後先用上方 `--validate-team` 驗證，再重啟服務；只有新任務會套用，既有任務沿用建立時的快照。

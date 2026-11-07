@@ -5,7 +5,12 @@ title: 安裝與驗證
 # 安裝與驗證
 
 本頁提供不綁定私人主機的安裝路線；詳細腳本契約以儲存庫 `docs-site/docs/INSTALL.md` 為準。
-目前尚未完成乾淨 VM 的完整重建驗收，以下步驟不能視為已驗證的一鍵安裝。
+
+:::warning
+
+目前尚未完成乾淨 VM 的完整重建驗收，**以下步驟不能視為已驗證的一鍵安裝**。
+
+:::
 
 ## 環境與帳號
 
@@ -41,8 +46,12 @@ bash "$HOME/ai-team/service.sh" start
 bash "$HOME/ai-team/service.sh" status
 ```
 
-目前 bootstrap preflight 仍要求 `CLAUDE_BIN` 與 `CODEX_BIN` 都有效；不要因團隊只用一種 runtime 就省略。
-preflight 只查本機前置，不呼叫模型或 Slack，也不證明 CLI 登入、實際沙箱、訊息送達與 PR 成功。
+:::warning
+
+- 目前 bootstrap preflight 仍要求 `CLAUDE_BIN` 與 `CODEX_BIN` **都有效**；不要因團隊只用一種 runtime 就省略。
+- preflight 只查本機前置，不呼叫模型或 Slack，**不證明** CLI 登入、實際沙箱、訊息送達與 PR 成功。
+
+:::
 
 ## 分層驗收
 
@@ -55,7 +64,12 @@ preflight 只查本機前置，不呼叫模型或 Slack，也不證明 CLI 登�
 | 發布 | 真人核准後建立正確 PR；另行確認合併與產品驗收 |
 | 乾淨重建 | 新系統、無沿用暖快取，逐層保存證據；目前未完成 |
 
-連上 Socket Mode 或程序仍在執行，不等於端對端驗收通過。
+:::info
+
+連上 Socket Mode 或程序仍在執行，**不等於端對端驗收通過**。
+
+:::
+
 Slack 層通過時，在目標頻道 @主 App 會在討論串收到任務編號與排隊／開始執行的回覆：
 
 ![@主 App 後收到任務已排入佇列並開始執行的回覆](./img/task-created-queued.png)
@@ -64,6 +78,11 @@ Slack 層通過時，在目標頻道 @主 App 會在討論串收到任務編號�
 
 先確認沒有執行中與排隊工作，備份資料與配置，在隔離目錄建置後使用既有升級流程。
 `deploy/deploy-orchestrator.sh` 與 `deploy/deploy-jar-safe.sh` 用於既有服務升級，新機使用 bootstrap。
-不要在執行中服務的 target 目錄 clean/build。停止被拒時先處理工作，不強制停止來繞過保護。
-資料庫沒有自動遷移機制，schema 或快照型別變更前必須規劃相容性與復原。
+
+:::danger
+
+- 不要在執行中服務的 target 目錄 clean/build。停止被拒時先處理工作，不強制停止來繞過保護。
+- **資料庫沒有自動遷移機制**，schema 或快照型別變更前必須規劃相容性與復原。
+
+:::
 
