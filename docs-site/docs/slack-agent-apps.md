@@ -1,5 +1,16 @@
 # 建立 Slack App（主 App 與角色 App）
 
+:::info[「主 App」（也寫作「主機器人」）是哪一個？]
+
+主 App 是用 `deploy/slack-app-manifest.yaml` 建立的 Slack App，每個服務實例（每個專案頻道）只有一個；
+內附 manifest 的預設名稱是 `zipe-ai-team`，各實例可改名。文件裡的「@主 App」「@主機器人」「@zipe-ai-team」都是指它。
+
+- 建立需求、`補充`／`處理`／`中斷`／`取消排隊`／`開 PR` 等指令都 @主 App；排隊回覆、狀態卡、按鈕、錯誤與閘門訊息也都由它發出。
+- `PM Agent`、`QA Agent` 等是**角色 App**（`deploy/agent-manifests/`），只以角色身分發言與回答直接提問，不能建立、核准或中止任務。
+- 名稱由 manifest 的 `display_information.name` 與 `bot_user.display_name` 決定；改名後告知使用者要 @哪一個。
+
+:::
+
 系統需要一個主 App 與五個角色 App：
 
 | App | manifest | 用途 |
@@ -32,6 +43,12 @@ manifest 已包含：Socket Mode、訂閱 `app_mention`、`chat:write`、`files:
 
 ## 2. 填進設定
 
+:::danger
+
+token 只寫進權限 600 的 `env.sh`；**不要貼進聊天、shell 指令歷史、團隊 JSON 或 Git**。
+
+:::
+
 在 VM 用編輯器改 `~/ai-team/env.sh`（權限 600），**不要把 token 貼進聊天或 shell 指令歷史**：
 
 | App | Bot Token（`xoxb-`） | App-Level Token（`xapp-`） |
@@ -44,12 +61,23 @@ manifest 已包含：Socket Mode、訂閱 `app_mention`、`chat:write`、`files:
 | Code Reviewer | `SLACK_BOT_TOKEN_CODE_REVIEW` | `SLACK_APP_TOKEN_CODE_REVIEW` |
 
 角色缺 Bot Token 時發言退回主 App 名稱覆寫；缺 App-Level Token 時直接 @ 該角色不會有反應，其餘功能不受影響。
+
+:::warning
+
 每個角色要用自己的 token，不可共用主 App 的。
+
+:::
 
 `AI_TEAM_ALLOWED_USERS` 填 Slack **member ID**（`U` 開頭），不是顯示名稱：
 點自己的頭像 → 檢視完整個人檔案 → 右側 `⋯` → 複製成員 ID。
 
 ## 3. 六個都邀請進頻道
+
+:::warning
+
+**安裝到 workspace ≠ 加入頻道。** 每個 App 都要用 `/invite` 邀請進目標頻道。
+
+:::
 
 **安裝到 workspace ≠ 加入頻道。** 沒邀請的話主 App 收不到 @，角色 App 發言會得到 `not_in_channel`：
 
@@ -163,8 +191,12 @@ App ID 可直接開 `https://api.slack.com/apps/<App ID>`：Bot Token 在 **OAut
 - **上傳的檔案由系統挑選**：`files:write` 只用在系統驗證過的附件，agent 本身拿不到 token
 - **只下載被 @那則訊息的附檔**：`files:read` 由系統用來下載使用者附檔，不讀頻道裡其他檔案
 
+:::warning
+
 交接訊息中的 mention 是**通知**，不是**觸發**；實際執行順序由 orchestrator 驅動，
 理由見 [互動模型](interaction-model.md)。
+
+:::
 
 ---
 

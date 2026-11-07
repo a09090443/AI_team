@@ -45,9 +45,14 @@ task (1) ──┬── (0..1) task_checkpoint     中斷現場
 
 ## task
 
+:::danger[回滾相容性]
+
 **2026-10-11 相容性注意**：新 JAR 可讀取沒有 issueInventory／issueEvidence／issueContext／issueScopeChangeAuthorized 的舊 FlowRun，預設為空／false，
 是否啟用問題追蹤仍依快照資產標記。新版將這些欄位寫入 JSON 後，舊 JAR 的嚴格反序列化無法讀取；
 回滾應成套還原部署前 JAR、teams 與備份 DB，且不得覆蓋部署後新增的任務／核准紀錄，須先評估並保留現場。
+
+:::
+
 沒有自動資料遷移，也不回溯把舊摘要當成已驗證的問題清單。
 
 任務主表，一則 Slack 需求一列。對應 `com.zipe.aiteam.task.Task`。
@@ -118,7 +123,12 @@ Slack `event_id` 去重表。
 
 索引：`idx_processed_event_seen_at ON processed_event(seen_at)`，供清除舊紀錄。
 保留時間 `TaskStore.DEDUP_RETENTION_HOURS` = 1 小時（Slack 最長 5 分鐘後重送）。
+
+:::warning
+
 **必須持久化**：服務重啟後若把 Slack 的重送當成新任務，同一個需求會被執行兩次。
+
+:::
 
 ## audit_log
 
@@ -170,9 +180,14 @@ data    TEXT NOT NULL
 ```
 
 `data` 是 Jackson 直接序列化對應 Java 型別的結果，由 `TaskStore` 讀寫。
+
+:::danger
+
 **這些結構沒有版本欄位**：Java 型別改了欄位名稱，舊資料就解析失敗，
 而 `TaskStore` 對解析失敗一律拋 `IllegalStateException`（例如「流程快照損毀，拒絕改用新配置」）
 而不是靜默降級——寧可停下來，也不要拿半份狀態繼續跑。改這些 record 前先確認線上沒有進行中的任務。
+
+:::
 
 ### task_checkpoint
 
@@ -313,11 +328,20 @@ true 啟用受控 rules 提案套用，false／省略維持改派。新欄位出
 `base`（固定 Git 基準）、`head`、`planDigest`（所有已保存測試計畫的雜湊）、`files[]`（`path`、`before`、`after`，後兩者為 Git mode／blob ID）、
 `log`（系統比較結果 JSON）及 `sha256`。未引用內建比對的舊計畫保持 null。
 計畫情境新增 `unchanged_paths` 字串陣列，配合 `operation_ids` 的 `compare-unchanged-files` 使用；舊計畫缺欄位仍可讀取。
+
+:::danger
+
 **新版保存 `comparisonBase`／`fileComparison` 後不可直接換回不認識欄位的舊 JAR**；回滾須配合升級前 DB 備份評估，不覆蓋升級後任務。
+
+:::
+
+:::danger
 
 **回滾風險**：`TaskStore` 以預設 ObjectMapper 讀 `flow_run.data`，未知欄位會拋錯。新版寫入的欄位
 （例如 `spinoffs`、`spinoffOf`）對舊資料相容（缺欄位取預設值），但**回滾到不認得這些欄位的舊 JAR 後，
 讀這些任務會解析失敗**。回滾前先確認沒有任務寫入新欄位，或一併處理資料。
+
+:::
 
 相關文件：[configurable-team.md](configurable-team.md)、[engineering-workflow.md](engineering-workflow.md)、
 [plan-approval-buttons.md](plan-approval-buttons.md)、[cross-project-execution.md](cross-project-execution.md)。

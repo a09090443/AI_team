@@ -31,8 +31,12 @@ SKILL.md 缺少 `name`（須等於目錄名）或 `description`、MCP 項目同�
 
 ## 各工具讀取位置
 
+:::info
+
 「狀態」一欄依本專案原則區分：**已使用**表示本專案實際以該工具工作並讀到規則；
 **文件記載**表示依官方文件設定，尚未在本專案實測。
+
+:::
 
 | 工具 | 規則 | Skills | MCP | 狀態 |
 |---|---|---|---|---|
@@ -71,9 +75,14 @@ skill 是執行步驟，規則本文仍只寫在 `AGENTS.md`；兩者衝突時�
 
 ### 長任務的上下文整理
 
+:::info
+
 2026-10-15 安裝社群專案 [Agent Skills for Context Engineering](https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering/tree/main/skills/context-compression)
 的 `context-compression` 原版（含 references、scripts、tests），單一來源為 `.agents/skills/context-compression/`，
 Claude Code 鏡像由同步腳本產生。其餘工具沿用上表的原生 skills 讀取方式；安裝與檔案一致性驗證不代表各工具已實際觸發 skill。
+
+:::
+
 可要求 agent「使用 context-compression 整理目前任務並建立交接摘要」。下次載入專案時可發現新 skill；未更新清單的工具請重新開啟工作階段。
 
 `AGENTS.md`「長任務自動整理上下文」要求 agent 自行判斷觸發：長任務階段完成且探索內容累積、

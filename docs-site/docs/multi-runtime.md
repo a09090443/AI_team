@@ -7,7 +7,12 @@
 
 ## 安全邊界在 runtime 之外
 
+:::danger[為什麼一定要外層沙箱]
+
 若安全依賴各 CLI 自己的權限旗標，系統安全性就等於**所有 runtime 中最弱的那一個**。
+
+:::
+
 因此每次 agent 執行都必須經過 `ExecutionSandbox` 包裝（`RuntimeRequest.sandboxPolicy` 不可為 null），
 各 runtime 的權限旗標（如 Claude Code 的 `--permission-mode dontAsk` + `--allowedTools`）只是縱深防禦的第二層。
 新增一個不熟悉的 CLI 時，不需要先搞懂它的權限模型才敢用。
@@ -193,4 +198,9 @@ opencode 尚未實作，回空清單表示「沒有證據」，核對因此不�
 
 理由：角色定義要與 runtime 無關；執行期切換會讓成本、額度、稽核難以追蹤；
 除錯需要「同一任務換 runtime 重跑」的能力，選擇權必須在外層。
+
+:::info
+
 目前**沒有**額度用盡時自動改用另一個 runtime 的 fallback；額度用盡走 [額度暫停與自動續跑](quota-continuation.md)。
+
+:::

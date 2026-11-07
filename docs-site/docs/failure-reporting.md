@@ -15,7 +15,12 @@ agent 自陳與 runtime 實際事件分開標示，不強迫模型杜撰未知�
 共用回報提示要求 summary 先以 2–4 句說明進度、具體原因、對使用者目標的影響與下一步處理者，
 再提供路徑、需求編號、節點與證據等技術補充。明確區分檔案產出、測試通過與環境啟動，不能混稱完成。
 待決事項以使用者可理解的結果與限制表達；細節見 [真人決定說明](plan-approval-buttons.md#由-agent-本人說明需要你決定的事)。
+
+:::info
+
 這是模型提示要求，不代表程式已能機械驗證回覆是否易懂。
+
+:::
 
 共用驗證會攔下 BLOCKED、缺漏的失敗回報，以及宣稱 COMPLETED 卻仍有
 FAILED/PARTIAL/FAIL/LOW、建置未過、越界或 reviewer 阻擋的矛盾結果。
@@ -85,7 +90,13 @@ VM 供授權查核。格式檢查保證欄位存在，不保證 agent 自陳內�
 （例如 `Failed to start transient service`、串流中斷、供應商暫時沒有容量 `model is at capacity`（2026-11-02 起）），
 或是任何提到 `systemd-run` 的 IOException，就判定為系統沒跑起來，
 還原本輪計數後自動重試，最多 `RETRY_LIMIT`（2）次，用完才停給人。
+
+:::info
+
 **參數過長（`Argument list too long`，E2BIG）不重試**，因為它每次必定重現。runtime、操作預檢與系統獨立驗證都以
+
+:::
+
 `ArgumentListTooLong.start` 啟動子行程；遇到 E2BIG 時，錯誤紀錄會寫出參數個數與總大小、最大的參數是第幾個、多大、開頭內容，
 以及沙箱唯讀釘選的數量，說明 agent 和管理者因此看得出是哪裡過長。
 2026-10-08 前，只要是提到 `systemd-run` 的 IOException 就重試，錯誤紀錄也不寫診斷；QA 因此可能重試兩次，

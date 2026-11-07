@@ -1,6 +1,10 @@
 # 從零重建驗證紀錄
 
+:::warning
+
 狀態：**進行中，不能宣稱乾淨 VM 重建成功**。目前所有通過紀錄都來自既有 VM 或本機，不是乾淨 VM 重建驗收。
+
+:::
 
 ## 尚待完成的驗收
 
@@ -74,4 +78,8 @@
   install-app 與 restore 拒絕覆蓋既有目錄；check-linux tools 在 Windows 正確拒絕。
   本機缺 sqlite3／flock，未跑完整 Linux 備份／還原 fixture。傳 source 測試包到 VM 被權限審核拒絕，未繞過、未做 VM 測試。
 
+:::info
+
 測試數字請以當次建置 log 為準，不要沿用本文數字。
+
+:::

@@ -1,7 +1,12 @@
 # Codex CLI 參數契約與「未呼叫模型」的失敗處理
 
 本文記錄 `CodexRuntime`／`CodexLocalTestPolicy` 依賴的 CLI 行為（皆為實機測試，非推測）。
+
+:::warning
+
 首次於 codex-cli 0.153.4 實測，2026-09-25 升級到 0.156.1、2026-11-04 升級到 0.166.0 時重驗。**換 CLI 版本時要重跑下方的契約測試再上線。**
+
+:::
 
 ## 1. `codex sandbox` 與 `codex exec` 的參數不對稱
 
@@ -27,8 +32,12 @@ Error loading config.toml: unknown configuration field `active_permission_profil
 
 ## 2. `codex exec resume` 的選項必須放在子指令
 
+:::danger
+
 權限 `-c` 選項若放在父層 `codex exec` 與 `resume` 之間，CLI 接受語法，但 resume **不會套用**，
 靜默退回 `:read-only`（`turn_context` 顯示 `active_permission_profile=:read-only`，Maven 無法寫入 `target` 與 `/tmp`）。
+
+:::
 
 - resume 形式：`codex exec resume <子指令選項> <session-id> -`，所有選項放在 session id 之前。
 - permission profile 定義、`default_permissions`、schema、model 與 reasoning 都放在 `resume` 之後。

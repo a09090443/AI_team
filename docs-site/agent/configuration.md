@@ -50,12 +50,22 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 | `AI_TEAM_MODEL_<角色>`、`AI_TEAM_RUNTIME_<角色>`、`AI_TEAM_CODE_REVIEW` | **僅 legacy 模式**；配置式模式改在 JSON 的 `roles` 設定 |
 
 `<角色>` 為 `PM`、`ARCHITECTURE`、`BACKEND`、`QA`、`CODE_REVIEW`。
+
+:::danger
+
 使用 Claude 訂閱帳號時不可設定 `ANTHROPIC_API_KEY`，也不能用 `--bare`。
+
+:::
 
 ## 團隊配置 JSON
 
 結構對所有專案相同；`orchestrator/teams/` 內附的配置可當範例，可用的功能開關見[功能開關一覽](/docs/configurable-team#功能開關一覽)。
+
+:::warning
+
 所有 prompt／schema 路徑必須在配置檔所在目錄內，跳脫或 symlink 指向外部會被拒絕。
+
+:::
 
 ```json
 {

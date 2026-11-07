@@ -98,7 +98,12 @@ Linux 精確 cgroup 清理、獨立 SSH health 與原收據對帳已實測；所
 4. QUEUED/RUNNING/UNCERTAIN 都視為尚待對帳；到期不宣稱成功，也不自動重送 start。恢復以結果指紋限次，時間戳更新不產生新恢復機會；失敗／未知仍須診斷或沿既有受阻路由處理。
 
 模型逾時須為 RuntimeTimedOut、phase=MODEL 且 cleanup.status=CONFIRMED，FlowEngine 才啟動逾時對帳。清理只停止本次模型 sandbox unit 的整個 cgroup，保留 stdout／session，不會停止 Agent 獨立 executor 或遠端部署 job。
+
+:::warning
+
 模型逾時不等於部署失敗：外層模型程序停止後，遠端作業可能仍會成功完成，必須以 job ID 對帳。
+
+:::
 
 ### 遠端受理與可信檢查點
 
@@ -117,8 +122,12 @@ executor 的獨立 operation-executor-heartbeat 不依工作區佇列心跳判�
 
 ## 服務追問與使用者入口
 
+:::warning
+
 使用者取得的網址必須是**從使用者所在位置**可開啟的完整入口（含應用路徑）。VM 內網位址或根路徑在使用者電腦上可能逾時或 404，
 不能把 Agent VM 內可達當成使用者可達。
+
+:::
 
 - `service-context` 的 `access_endpoints` 分開使用者完整入口（`url`、`audience`）與 Agent VM 探測位址（`probe_url`）。
   ServiceDelivery 完成閘門核對已登錄入口本次 probe 與摘要中的 url；角色對話注入同一資訊並檢查回覆。

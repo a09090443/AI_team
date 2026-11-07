@@ -47,10 +47,20 @@ export AI_TEAM_MODEL_CODE_REVIEW=""   # 預設 runtime 是 codex，要填 codex 
 | （留空） | `claude-sonnet-5`（CLI 預設） |
 
 完整模型 ID 也可以填。訂閱帳號下三個層級都可用。
+
+:::warning
+
 換成 codex 或 opencode runtime 時模型名互不通用：codex 收到不認識的名稱**不會拒絕**而是退回 fallback，
 opencode 格式是 `provider/model`（見 [多 Runtime 設計](multi-runtime.md)）。
 
+:::
+
+:::info
+
 **打錯名稱不會安靜退回預設**（claude-code）—— `claude` 會以結束碼 1 失敗，該階段直接中止。
+
+:::
+
 這是刻意保留的行為：這個專案已經被靜默失敗坑過好幾次，寧可大聲壞掉。
 
 ---

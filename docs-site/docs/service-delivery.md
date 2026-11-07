@@ -14,7 +14,13 @@
 這條路線適用部署既有程式、SIT 與測試環境；不先撰寫 QA 測試計畫，不無條件跑完整前後端回歸。
 新增功能或修改產品程式仍走 `design → plan → implementation → verification → review → approval`。
 服務路線只准寫管理者列出的環境設定與手冊目錄，事後 `auditScope` 核對全部變更；不能以它跳過產品驗收。
+
+:::danger
+
 可提交的設定由系統核對後代為提交；`.env`、真實 `.env.*`、`.secrets`、`.ssh`、`.pem`／`.key` 禁止在此路線修改。
+
+:::
+
 `.env.*.example`／`.env.*.template` 可作不含真實憑證的範本。
 
 服務建置 skill 的固定腳本不含任何產品路徑，產品差異全部來自管理者設定（見下方「產品配置」）。
@@ -224,7 +230,13 @@ service 節點通過完成閘門時（`ServiceArtifacts`），系統把本任務
 
 `TaskStore.serviceHistory` 讀取同實例資料庫、同頻道、同目標的最近 12 筆 SERVICE 階段報告，排除本任務與分流敘述。
 `ConfiguredExecutor` 在有 serviceTarget 的正式節點注入任務編號、時間、角色回報的狀態與檢查結束碼；
+
+:::warning
+
 這些是歷史角色報告，不代表目前健康或本次檢查通過，也不能當新主機操作授權。
+
+:::
+
 歷史查無資料不等於從未部署。沒有正式階段報告的舊工具收據，可由管理者登錄成帶來源的歷史摘要。
 
 另外讀取實例目錄 `$AI_TEAM_HOME/service-context/<target>.json`，這是管理者維運說明，不是模型生成的操作設定。

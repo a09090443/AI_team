@@ -21,8 +21,13 @@ JSON 為可直接解析的配置格式，不代表未來綁定某個 CLI；runti
 export AI_TEAM_DEFINITION="$AI_TEAM_HOME/teams/<project>.json"
 ```
 
+:::danger
+
 新安裝會複製 `orchestrator/teams/`；既有服務升級須一併部署此資料夾與新版 jar，
 先備份資料庫及舊版檔案，再確認無執行中／排隊任務後重啟。不可在執行中的 target/ 建置。
+
+:::
+
 服務啟動時完整讀取配置與資產；修改配置後須重啟，新任務才採用新版本。
 專案自己的配置不放在 repo，而放在實例 overlay，見下一節。
 
@@ -69,7 +74,12 @@ node-web 的 infrastructure 用 claude-code（不新增 Codex 依賴），其他
 **為什麼不把專案 json 放到 teams 以外**：`TeamCatalog` 只接受配置檔所在目錄內的 prompt／schema／skill（symlink 指出去也拒絕），
 所以專案 json 必須和共用 prompts 位於同一個目錄；overlay 是在部署時疊進 `teams/`，而不是另開目錄引用。
 
+:::warning
+
 **修改實例配置**：改 overlay 的檔案，再複製到 `teams/`（或等下次部署帶入）並重啟；只改 `teams/` 會讓下次部署擋停。
+
+:::
+
 overlay 本身的版本管理（私有 repo 或本機紀錄）由各實例的維運者決定。
 
 可在啟動前只做靜態驗證，不連 Slack、不呼叫模型：
@@ -79,7 +89,12 @@ java -jar "$AI_TEAM_HOME/orchestrator/target/ai-team-orchestrator-0.1.0.jar" \
   --validate-team "$AI_TEAM_DEFINITION"
 ```
 
+:::info
+
 此命令驗證配置結構、引用、資產與 Git repository 目錄，**不驗證 CLI 登入、runtime 可用性、Slack token scope 或沙箱隔離**。
+
+:::
+
 正常服務啟動還會驗證 runtime registry、自檢沙箱與配置列出的必要工具。
 
 | 配置區塊 | 責任 |
@@ -139,7 +154,12 @@ checkpoint 保存的是節點 ID，不再靠 PM／QA 等角色名稱判斷續跑
 此時主 App 各自一個，角色沿用第一個實例的 App，但其他實例**只填角色的 Bot Token（`SLACK_BOT_TOKEN_<角色>`）、
 App-Level Token 留空**：發言與交接 tag 使用同一個角色身分，不影響第一個實例；代價是其他實例的頻道不能直接 @角色
 （事件會送到持有 App-Level Token 的第一個實例，它只記錄「忽略非指定頻道」後丟棄）。角色 App 要另外邀請進其他頻道。
+
+:::danger
+
 **不可**在兩個實例填同一個 App-Level Token，否則 Slack 會把事件分給任一條連線。
+
+:::
 
 **驗證狀態**：unit 命名、glob 互不配對與 preflight 檢查有程式測試；已實測同一台 VM 同時啟動兩個實例
 （各自 0 ERROR、自檢 unit 帶各自字首、443 連線分屬各自 PID）。
@@ -279,7 +299,13 @@ LIMITED 驗收節點若只在其核准的測試路徑留下未提交變更，系
 明令不得宣稱執行過該工具。詳見 [adr-blocked-finding-continuity.md](adr-blocked-finding-continuity.md)。
 
 原討論串 `@主機器人／角色 補充 #編號 答案` 會續跑原快照節點。
+
+:::tip
+
 同一工作討論串不會因一般 @主機器人訊息再建第二個平行工作任務（原任務已結束也一樣）；新需求請開新討論串。
+
+:::
+
 回覆內容依原任務狀態區分（`TaskOrchestrator.threadTakenMessage`），只有 `AWAIT_HUMAN`／`WAITING_QUOTA` 才建議「補充」，細節見 `docs-site/agent/operations.md` 的「建立任務」。
 文件維護請求查到有明確依據的文件錯誤時，intake 提示要求使用 `implementation` 合併派修，
 不因 intake 唯讀而把修正當成範圍外；明確只檢查不修改或詢問運作方式才維持純詢問。
@@ -451,7 +477,12 @@ plan schema 要求 `protected_path_changes` 明列需跨 runtime 改派的檔案
 - triage 可諮詢 architect／builder／tester／infrastructure。
 
 node-web 範例配置維持未啟用，也作為測試的對照組。被諮詢的角色必須有 `capabilities`。
+
+:::warning
+
 **目前證據等級：程式測試通過，尚未做真實 Slack／CLI 端對端驗證。**
+
+:::
 
 ## 附件上傳到討論串（2026-11-03）
 
@@ -468,7 +499,12 @@ node-web 範例配置維持未啟用，也作為測試的對照組。被諮詢�
 - 每個會上傳的 Slack App 都需要 `files:write`（manifest 已內含）；既有 App 要補權限並重新安裝，見[建立 Slack App](slack-agent-apps.md#既有-app-補上傳檔案權限)。
 
 相容：未設定時不序列化，配置 revision、提示與 schema 都與修改前相同；舊任務快照沒有這個欄位，一律不啟用。
+
+:::warning
+
 內附範例都未啟用。**目前證據等級：程式測試通過，尚未做真實 Slack 上傳的端對端驗證。**
+
+:::
 
 ## 接收使用者附檔（2026-11-06）
 
@@ -515,7 +551,12 @@ CLI session 仍存在原 runtime 狀態目錄，checkpoint 保存其 ID；環境
 Runnable 交給 TaskOrchestrator，由真正的執行中工作與 FIFO 排隊清單產生通知，不以資料庫狀態推測順序。
 排入時列出執行中／前方任務，開始時另行通知；排隊通知為當下快照。現有流程、核准政策與執行順序不變。
 
+:::warning
+
 沒有 `flow_run` 的歷史任務沒有足夠資料可自動建立可信快照。新模式會拒絕續跑／發布這些任務，**不猜測遷移**。
+
+:::
+
 要處理它們，須以原專案環境停用 `AI_TEAM_DEFINITION`，走原 TaskOrchestrator 的 legacy 相容路徑，或另行做明確遷移。
 因此原始 StageSpec 常數與部分 role switch 暫時仍在，但不是新模式增刪角色的入口。
 待歷史未完成任務結束並驗收後，才能另做 legacy 清除。

@@ -54,6 +54,8 @@ description: agent 在本 repo 修改程式、配置或文件時必須遵守的�
 - **不要再擴充 legacy role switch**；新角色與流程一律走 `orchestrator/teams/`。
 - 新增 Agent 時，完成回報必須包含加入 Slack 的操作方式；若不建獨立角色 App，要明示由主 App 代發且不能直接 `@`。
 - `deploy/deploy-orchestrator.sh`、`deploy/deploy-jar-safe.sh` 只用於升級既有 VM；新機一律走 `deploy/bootstrap/`。不要再新增一次性的 `deploy-<功能>-<日期>.sh`。
+- 現行文件與公開手冊的重點用 Docusaurus 提示框標色：`:::info` 名詞與補充、`:::tip` 建議做法、`:::warning` 易誤會處與未實測的驗證狀態、
+  `:::danger` 不可逆、會遺失資料或與安全有關的操作。只框真正的重點，一般說明維持段落；`紀錄`／`決策` 文件不為了加色塊改寫原文。
 
 ## 安全與證據
 

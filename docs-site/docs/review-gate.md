@@ -74,7 +74,11 @@ ReviewGate 的硬性條件不變。規則是配置資產，只套用到新任務
 - PR 說明新增「負責人放行的審查項目」段落；這些項目不再混進「審查建議」。
 - 停止訊息的「開 PR」按鈕只在 `OwnerPublish.evaluate` 通過時出現（收據會在執行時補跑，不列入判斷）。
 
+:::warning[驗證狀態]
+
 程式測試通過（ReviewGateTest、FlowEngineTest、HumanOptionsTest、TriageRoutingTest）；真實 Slack 端對端尚未實測。
+
+:::
 
 ### 放行未核實事項、補跑審查（2026-10-08）
 

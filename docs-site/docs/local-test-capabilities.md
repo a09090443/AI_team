@@ -51,7 +51,12 @@ cmp llms.txt target/qa-docs/doc-site/build/llms.txt
 cmp llms-full.txt target/qa-docs/doc-site/build/llms-full.txt
 ```
 
+:::info
+
 這是該專案經實測的操作契約，不代表其他專案都能略過安裝 scripts。
+
+:::
+
 Maven 使用 `-o`；QA 沙箱不為此開放套件站外連。依賴（含升級的新版本）由實作階段下載進共用快取：
 實作節點的 Claude Code 操作跑在只限檔案系統的 systemd 沙箱，可以連外，`mvn`／`gradle`／`npm ci` 會寫進團隊配置 `cachePaths` 宣告的快取。
 QA 遇到快取缺件時，代表實作階段沒有跑過對應建置，要退回實作補跑，不是維運問題。
