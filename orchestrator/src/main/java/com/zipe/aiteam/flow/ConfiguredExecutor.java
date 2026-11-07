@@ -242,8 +242,24 @@ public class ConfiguredExecutor {
         if (continuation != null && !continuation.role().equals(flow.node)) throw new IllegalStateException("checkpoint 節點與快照不符");
         if (continuation != null && (!continuation.runtime().equals(role.runtime())
                 || !Objects.equals(continuation.model(), Objects.toString(role.model(), "")))) throw new IllegalStateException("checkpoint runtime/model 與原配置不符，拒絕跨引擎續跑");
+        String resumeSession = continuation == null ? null : continuation.sessionId();
+        if (resumeSession != null && !resumeSession.isBlank()) {
+            // 提示快取逾期後續用舊 session 會把整段舊對話重新計費；改開新 session，舊對話全文複製給它查閱。
+            var transcript = runtime.sessionTranscript(props.userHome(), resumeSession);
+            var idle = ResumeFreshness.idleMinutes(transcript, java.time.Instant.now());
+            if (ResumeFreshness.stale(idle, props.resumeIdleMinutes())) {
+                String copied = null;
+                try {
+                    copied = ResumeFreshness.handOver(cwd, transcript.get(), resumeSession);
+                } catch (java.io.IOException e) {
+                    // 複製失敗不阻擋續跑；說明裡會請 agent 以工作區現況與已附報告為準。
+                }
+                context.append(ResumeFreshness.notice(idle.get(), copied));
+                resumeSession = null;
+            }
+        }
         Checkpoint cp = new Checkpoint(task.id(), flow.node, role.runtime(), Objects.toString(role.model(), ""),
-                continuation == null ? null : continuation.sessionId(), context.toString(), flow.beforeHead, null);
+                resumeSession, context.toString(), flow.beforeHead, null);
         store.saveCheckpoint(cp);
         boolean requirementChange = !flow.dialogue && AutonomousRecovery.requirementChangeOptions(flow);
         var request = new AgentRuntime.RuntimeRequest(task.id(), flow.node, cwd, prompt, context + FailureReport.INSTRUCTIONS

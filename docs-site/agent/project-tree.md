@@ -177,6 +177,7 @@ agent_team/
 │   │   │   ├── FlowLimits.java       # 防循環上限的唯一判斷（引擎與按鈕共用）
 │   │   │   ├── FlowGates.java        # 依工作契約（gate）驗證節點報告
 │   │   │   ├── FlowContext.java      # 滾動的交接紀錄 flow.context
+│   │   │   ├── ResumeFreshness.java  # 長時間中斷後改開新 session，舊對話全文複製到 .ai-team-context/
 │   │   │   ├── ConfiguredExecutor.java # 執行配置節點與角色對話：組 prompt、呼叫 runtime
 │   │   │   ├── TeamDefinition.java   # 團隊配置 JSON 的型別與驗證
 │   │   │   ├── TeamCatalog.java      # 啟動時載入團隊配置與 prompt／schema 資產

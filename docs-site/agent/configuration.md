@@ -48,6 +48,7 @@ description: env.sh 環境變數與團隊配置 JSON 的欄位、可選值與限
 | `AI_TEAM_PR_TRACKING` | 已開 PR 的合併／關閉追蹤（2026-11-06 起）。`on`（預設）時每 10 分鐘查 `PR_CREATED` 任務的 PR：已合併就轉 `COMPLETED` 並刪除工作區，關閉未合併只停止追蹤、保留工作區；與衝突同步 `project.autonomy.pullRequestSyncRounds` 分開。`off` 且未開衝突同步時不查；若衝突同步仍開啟，查到合併仍會結案。見 [PR 合併後結案](/docs/engineering-workflow#pr-合併後結案2026-11-06) |
 | `AI_TEAM_BACKUP_KEEP` | 部署腳本（`deploy-orchestrator.sh`、`deploy-jar-safe.sh`）成功後保留的 `orchestrator-backup.*` 份數，含本次備份，預設 5；本次備份（回復點）一律保留，`0` 或非數字＝不輪替。部署失敗時不輪替。服務本身不讀 |
 | `AI_TEAM_EXPLAINER_MODEL`、`AI_TEAM_EXPLAINER_ENABLED` | 系統錯誤白話說明所用模型（預設 haiku）與開關；布林值不能設成空字串 |
+| `AI_TEAM_RESUME_IDLE_MINUTES` | 續跑時舊 session 閒置超過幾分鐘就改開新 session，預設 60、`0`＝停用（一律接回）；**不能設成空字串**。見 [長時間中斷後改開新 session](/docs/quota-continuation#長時間中斷後改開新-session2026-11-07) |
 | `AI_TEAM_MODEL_<角色>`、`AI_TEAM_RUNTIME_<角色>`、`AI_TEAM_CODE_REVIEW` | **僅 legacy 模式**；配置式模式改在 JSON 的 `roles` 設定 |
 
 `<角色>` 為 `PM`、`ARCHITECTURE`、`BACKEND`、`QA`、`CODE_REVIEW`。

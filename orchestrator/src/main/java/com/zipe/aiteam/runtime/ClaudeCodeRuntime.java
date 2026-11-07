@@ -65,6 +65,11 @@ public class ClaudeCodeRuntime implements AgentRuntime {
         return CommandRuns.fromClaudeSession(Path.of(System.getProperty("user.home"), ".claude"), result.sessionId(), startedAt);
     }
 
+    @Override
+    public java.util.Optional<Path> sessionTranscript(Path home, String sessionId) {
+        return CommandRuns.claudeTranscript(home.resolve(".claude"), sessionId);
+    }
+
     /** claude 的 session 記錄、憑證更新與外掛快取都在這裡。 */
     @Override
     public List<Path> statePaths(Path home) {

@@ -248,6 +248,16 @@ public class AiTeamProperties {
     public String explainerModel() { return explainerModel == null || explainerModel.isBlank() ? "haiku" : explainerModel.trim(); }
     public boolean explainerEnabled() { return explainerEnabled; }
 
+    /**
+     * 續跑時舊 session 閒置超過幾分鐘就改開新 session（0＝停用，一律續用）。
+     * 供應商的提示快取最多保留約 1 小時，逾期後 --resume 會把整段舊對話重新計費；
+     * 實測中斷 85 分鐘以上的續跑，第一筆就重寫 15～20 萬 token。
+     */
+    @Value("${AI_TEAM_RESUME_IDLE_MINUTES:60}")
+    private int resumeIdleMinutes = 60;
+
+    public int resumeIdleMinutes() { return Math.max(0, resumeIdleMinutes); }
+
     @Value("${AI_TEAM_PROGRESS_INTERVAL_SECONDS:300}")
     private long progressIntervalSeconds = 300;
 

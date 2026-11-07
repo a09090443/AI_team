@@ -81,6 +81,10 @@ public class CodexRuntime implements AgentRuntime {
                 Capability.NATIVE_AGENTS_MAP);
     }
 
+    @Override public java.util.Optional<Path> sessionTranscript(Path home, String sessionId) {
+        return CommandRuns.codexTranscript(home.resolve(".codex"), sessionId);
+    }
+
     /** codex 的 session、憑證與多個 sqlite 狀態檔都在 ~/.codex。 */
     @Override
     public List<Path> statePaths(Path home) {

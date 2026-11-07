@@ -22,6 +22,24 @@ Claude 預先產生 `--session-id` 並先存入資料庫；Codex 從 `thread.sta
 - 沒有 session ID 時會明確通知，改以保存的需求與上游脈絡啟動同一階段的新 session。
   CLI 明確回報 session 不存在時，通知後只嘗試一次新 session 接手；其他錯誤保持待查，不自動改 runtime、模型或權限。
 
+## 長時間中斷後改開新 session（2026-11-07）
+
+供應商的提示快取最多保留約 1 小時。逾期後接回舊 session，整段累積的舊對話都要以寫入快取的價格重新計費：
+實測中斷 85～1336 分鐘的 6 次續跑，第一筆就重寫 15.7～19.9 萬 token（新 session 中位數約 7.4 萬），
+triage 只跑 2 輪就花約 US$2。中斷又常是額度用完造成的，續跑再吃掉一大塊額度，容易再撞上限。
+
+因此配置式流程（`ConfiguredExecutor`）續跑前，先找 runtime 自己寫的對話紀錄檔（`AgentRuntime.sessionTranscript`），
+以最後修改時間計算閒置多久，超過 `AI_TEAM_RESUME_IDLE_MINUTES`（預設 60，`0`＝停用）就不接回舊 session，改開新 session：
+
+- 需求、上游報告、交接紀錄、受阻發現本來每次都會重新附上，新 session 拿到的內容和續跑相同。
+- 少掉的只有上一輪自己的推理與工具輸出：系統把舊對話紀錄複製到工作目錄的 `.ai-team-context/previous-session-<id>.jsonl`
+  （寫入 `.git/info/exclude`，不會被 commit 或帶進 PR；目錄是符號連結時拒絕寫入），提示裡請 agent 先核實 git 現況，
+  需要時用 grep 查舊紀錄，不要整份讀入。舊副本保留，連續多次長時間中斷也查得到更早的對話。複製失敗不阻擋續跑。
+- 支援 Claude（`~/.claude/projects/*/<session>.jsonl`）與 Codex（`~/.codex/sessions/**/rollout-*-<thread>.jsonl`）；
+  opencode 與找不到紀錄檔時維持接回舊 session。legacy `StageRunner` 不套用。
+- 唯讀節點在主 repo 執行時，副本會留在主 repo 的 `.ai-team-context/`（已排除於 git）。
+- 只有程式測試；省下多少 token 待真實任務的續跑實測。
+
 ## 自動續跑排程
 
 `QuotaAutoResume` 每 60 秒檢查一次。任務符合下列全部條件才會自動排入原中央佇列：

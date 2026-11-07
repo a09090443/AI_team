@@ -77,18 +77,44 @@ public final class CommandRuns {
 
     /** 依 session id 在 ~/.claude/projects 底下找紀錄檔；找不到回空（不代表沒有執行）。 */
     public static List<CommandRun> fromClaudeSession(Path claudeHome, String sessionId, Instant since) {
-        if (sessionId == null || sessionId.isBlank() || !sessionId.matches("[0-9A-Za-z-]+")) return List.of();
+        var file = claudeTranscript(claudeHome, sessionId);
+        if (file.isEmpty()) return List.of();
+        try {
+            return fromClaudeTranscript(Files.readAllLines(file.get(), StandardCharsets.UTF_8), since);
+        } catch (IOException ignored) {
+            // 讀不到就當沒有證據；不因此讓節點失敗。
+            return List.of();
+        }
+    }
+
+    /** Claude Code 把每個 session 存成 ~/.claude/projects/<工作目錄編碼>/<session id>.jsonl。 */
+    public static java.util.Optional<Path> claudeTranscript(Path claudeHome, String sessionId) {
+        if (sessionId == null || sessionId.isBlank() || !sessionId.matches("[0-9A-Za-z-]+")) return java.util.Optional.empty();
         Path projects = claudeHome.resolve("projects");
-        if (!Files.isDirectory(projects)) return List.of();
+        if (!Files.isDirectory(projects)) return java.util.Optional.empty();
         try (var dirs = Files.list(projects)) {
             for (Path dir : (Iterable<Path>) dirs::iterator) {
                 Path file = dir.resolve(sessionId + ".jsonl");
-                if (Files.isRegularFile(file)) return fromClaudeTranscript(Files.readAllLines(file, StandardCharsets.UTF_8), since);
+                if (Files.isRegularFile(file, java.nio.file.LinkOption.NOFOLLOW_LINKS)) return java.util.Optional.of(file);
             }
         } catch (IOException ignored) {
-            // 讀不到就當沒有證據；不因此讓節點失敗。
+            // 找不到就當沒有紀錄。
         }
-        return List.of();
+        return java.util.Optional.empty();
+    }
+
+    /** Codex 把每個 thread 存成 ~/.codex/sessions/年/月/日/rollout-<時間>-<thread id>.jsonl。 */
+    public static java.util.Optional<Path> codexTranscript(Path codexHome, String threadId) {
+        if (threadId == null || threadId.isBlank() || !threadId.matches("[0-9A-Za-z-]+")) return java.util.Optional.empty();
+        Path sessions = codexHome.resolve("sessions");
+        if (!Files.isDirectory(sessions)) return java.util.Optional.empty();
+        String suffix = "-" + threadId + ".jsonl";
+        try (var files = Files.walk(sessions, 4)) {
+            return files.filter(p -> p.getFileName().toString().startsWith("rollout-") && p.getFileName().toString().endsWith(suffix))
+                    .filter(p -> Files.isRegularFile(p, java.nio.file.LinkOption.NOFOLLOW_LINKS)).findFirst();
+        } catch (IOException | java.io.UncheckedIOException ignored) {
+            return java.util.Optional.empty();
+        }
     }
 
     /** Codex 把指令包成 /bin/bash -lc '…'；還原成 agent 實際下的指令。 */

@@ -176,6 +176,14 @@ public interface AgentRuntime {
         return List.of();
     }
 
+    /**
+     * 這個 session 由 CLI 自己寫的完整對話紀錄檔；不支援或找不到時回空。
+     * 檔案最後修改時間用來判斷閒置多久（提示快取是否已過期），長時間中斷改開新 session 時也複製給新 session 查閱。
+     */
+    default java.util.Optional<java.nio.file.Path> sessionTranscript(java.nio.file.Path home, String sessionId) {
+        return java.util.Optional.empty();
+    }
+
     class RuntimeExecutionException extends Exception {
         public RuntimeExecutionException(String message) { super(message); }
         public RuntimeExecutionException(String message, Throwable cause) { super(message, cause); }

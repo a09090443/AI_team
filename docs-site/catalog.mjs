@@ -231,7 +231,7 @@ export const docs = [
     status: 'current',
     summary: 'Claude／Codex 額度訊息解析、解禁時間推算、自動續跑排程與 Slack 呈現。',
     readWhen: '任務停在 WAITING_QUOTA，或處理額度相關訊息。',
-    code: ['orchestrator/src/main/java/com/zipe/aiteam/task/QuotaAutoResume.java', 'orchestrator/src/main/java/com/zipe/aiteam/task/QuotaRetryTime.java'],
+    code: ['orchestrator/src/main/java/com/zipe/aiteam/flow/ResumeFreshness.java', 'orchestrator/src/main/java/com/zipe/aiteam/task/QuotaAutoResume.java', 'orchestrator/src/main/java/com/zipe/aiteam/task/QuotaRetryTime.java'],
   },
 
   // Runtime 與沙箱契約

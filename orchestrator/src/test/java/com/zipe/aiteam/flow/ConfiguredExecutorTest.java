@@ -256,6 +256,39 @@ class ConfiguredExecutorTest {
                 .hasMessageContaining("禁止沿用錯誤目錄");
         verify(runtime, never()).execute(any(), any());
     }
+    private AgentRuntime.RuntimeRequest resumeIntakeAfterIdle(long idleMinutes) throws Exception {
+        flow.node = "intake";
+        var node = flow.snapshot.definition().nodes().get("intake");
+        var role = flow.snapshot.definition().roles().get(node.role());
+        when(workspace.refreshOrigin(any(), any()))
+                .thenReturn(new WorkspaceManager.Freshness(true, java.time.Instant.parse("2026-11-07T00:00:00Z")));
+        Path transcript = Files.writeString(tmp.resolve("old-session.jsonl"), "{\"type\":\"assistant\"}\n");
+        Files.setLastModifiedTime(transcript, java.nio.file.attribute.FileTime.from(
+                java.time.Instant.now().minus(java.time.Duration.ofMinutes(idleMinutes))));
+        when(runtime.sessionTranscript(any(), eq("old-session"))).thenReturn(java.util.Optional.of(transcript));
+        when(props.resumeIdleMinutes()).thenReturn(60);
+        var task = new Task("42", "c", "t", "u", "查核");
+        Path cwd = repo.toAbsolutePath().normalize();
+        task.continuation(new com.zipe.aiteam.task.Checkpoint("42", "intake", role.runtime(), java.util.Objects.toString(role.model(), ""),
+                "old-session", "\n工作目錄：" + cwd + "\n\n工作目錄：" + repo + "\n", null, null));
+        AtomicReference<AgentRuntime.RuntimeRequest> captured = new AtomicReference<>();
+        when(runtime.execute(any(), any())).thenAnswer(c -> { captured.set(c.getArgument(0)); return null; });
+        executor.execute(task, flow, node);
+        return captured.get();
+    }
+    @Test void longIdleSessionStartsFreshWithPreviousTranscriptAvailable() throws Exception {
+        var request = resumeIntakeAfterIdle(130);
+        assertThat(request.resumeSessionId()).isNull();
+        assertThat(request.prompt()).contains("長時間中斷後改開新 session", ".ai-team-context/previous-session-old-session.jsonl");
+        assertThat(repo.resolve(".ai-team-context/previous-session-old-session.jsonl")).exists();
+        assertThat(Files.readString(repo.resolve(".git/info/exclude"))).contains("/.ai-team-context/");
+    }
+    @Test void recentSessionIsStillResumed() throws Exception {
+        var request = resumeIntakeAfterIdle(20);
+        assertThat(request.resumeSessionId()).isEqualTo("old-session");
+        assertThat(request.prompt()).doesNotContain("長時間中斷後改開新 session");
+        assertThat(repo.resolve(".ai-team-context")).doesNotExist();
+    }
     @Test void qaUsesSnapshotModelAndReasoningEffort() throws Exception {
         flow = new FlowRun(TeamCatalog.load(Path.of("teams/maven-library.json"), key -> repo.toString()));
         flow.node = "plan";
