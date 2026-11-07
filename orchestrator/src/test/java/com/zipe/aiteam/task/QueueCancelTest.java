@@ -130,6 +130,20 @@ class QueueCancelTest {
         }
     }
 
+    @Test void jobThatAlreadyRanCannotBeCancelledUntilQueuedAgain() {
+        // 2026-11-07 Linux 完整建置：執行結束、active 清空後狀態仍是 QUEUED，取消曾被判成功。
+        Task task = saved("90", Task.State.QUEUED);
+        var ran = new java.util.concurrent.atomic.AtomicBoolean();
+        app.enqueue(new TaskOrchestrator.QueuedTask(task, () -> ran.set(true)));
+        app.executeQueued((TaskOrchestrator.QueuedTask) work().remove());
+        assertThat(ran).isTrue();
+        assertThat(app.cancelQueued(task, "u")).isFalse();
+        assertThat(store.find("90").orElseThrow().state()).isEqualTo(Task.State.QUEUED);
+        app.enqueue(new TaskOrchestrator.QueuedTask(task, () -> {}));
+        assertThat(app.cancelQueued(task, "u")).as("重新排隊後仍可取消").isTrue();
+        assertThat(store.find("90").orElseThrow().state()).isEqualTo(Task.State.ABORTED);
+    }
+
     @Test void nonQueuedStatesAreNotChanged() {
         Task waiting = saved("65", Task.State.AWAIT_HUMAN);
         assertThat(app.cancelQueued(waiting, "u")).isFalse();

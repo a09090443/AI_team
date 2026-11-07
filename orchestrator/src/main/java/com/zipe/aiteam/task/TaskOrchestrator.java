@@ -63,6 +63,11 @@ public class TaskOrchestrator {
     private final Object queueLock = new Object();
     private final java.util.ArrayList<QueuedTask> pending = new java.util.ArrayList<>();
     private QueuedTask active;
+    /**
+     * 排隊工作已被拿去執行的任務（自上次排隊起）。執行結束、active 清空後，狀態可能仍是排隊中
+     * （例如本輪沒有改變狀態），只看 active 會讓已執行過的工作又被「取消排隊」成功。重新排隊時移除。
+     */
+    private final java.util.Set<String> taken = new java.util.HashSet<>();
     /** Preserve task identity through FlowEngine callbacks without changing their Runnable contract. */
     public record QueuedTask(Task task, Runnable action) implements Runnable {
         @Override public void run() { action.run(); }
@@ -95,6 +100,7 @@ public class TaskOrchestrator {
             queueNotice(item.task(), message, offerCancel
                     ? com.zipe.aiteam.slack.SlackBlocks.queuedBlocks(item.task().id(), message) : null);
             pending.add(item);
+            taken.remove(item.task().id());
             work.offer(item);
         }
     }
@@ -122,6 +128,7 @@ public class TaskOrchestrator {
             pending.remove(item);
             skip = cancelled(item.task());
             active = skip ? null : item;
+            if (!skip) taken.add(item.task().id());
         }
         if (skip) return;
         try {
@@ -147,7 +154,8 @@ public class TaskOrchestrator {
         boolean started;
         synchronized (queueLock) {
             seen = store.find(task.id()).map(Task::state).orElse(task.state());
-            started = active != null && active.task().id().equals(task.id());
+            started = active != null && active.task().id().equals(task.id())
+                    || taken.contains(task.id()) && pending.stream().noneMatch(p -> p.task().id().equals(task.id()));
             if (!started && CANCELLABLE.contains(seen) && store.claimState(task.id(), seen, Task.State.ABORTED)) {
                 from = seen;
                 pending.removeIf(p -> p.task().id().equals(task.id()));
