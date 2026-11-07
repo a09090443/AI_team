@@ -279,7 +279,7 @@ true 啟用受控 rules 提案套用，false／省略維持改派。新欄位出
 | `baselineRevision` | String | 需求基準摘要。需求節點產出後建立；需求變更會清空並連帶清掉 `receipts`／`heads` |
 | `baselineHistory` | List | 歷次需求基準報告的深拷貝，不覆蓋 |
 | `receipts` | Map&lt;節點,報告&gt; | 各節點**通過**時的結構化報告；受阻報告不寫進來。例外：驗收負責人以「開 PR」放行的審查報告會寫進來，帶 `owner_waiver`（放行者、時間、原因），被放行的 finding 改列 `LOW` 並帶 `waived_from` 原等級（2026-10-06 起，見 [review-gate](review-gate.md#負責人命令開-pr-與放行提醒等級2026-10-06)）；放行未核實事項的驗收報告也會寫進來，`uncertainties` 清空、原項目移到 `waived_uncertainties`，帶 `owner_waiver`（2026-10-08 起） |
-| `blockedFindings` | Map&lt;節點,報告&gt; | 尚未解除的受阻發現，以來源節點為鍵。受阻時寫入，該節點自己通過時移除。**不受 `context` 長度上限影響**，必定注入下游節點提示；節點受阻證據與 issueInventory 問題清單分別保存。需求變更不清除，採 fail closed |
+| `blockedFindings` | Map&lt;節點,報告&gt; | 尚未解除的受阻發現，以來源節點為鍵。受阻時寫入，該節點自己通過時移除。**不受 `context` 長度上限影響**，必定注入下游節點提示（每筆注入時截至 8000 字元，快照內原文完整）；節點受阻證據與 issueInventory 問題清單分別保存。需求變更不清除，採 fail closed |
 | `heads` | Map&lt;節點,commit&gt; | 各節點結束時的 HEAD |
 | `issueInventory` | Map&lt;問題 ID,JSON&gt; | 新 v2 共用契約的完整問題清單，含 description／evidence／scope／reason／requirement_ids、系統 source_task／source_node；DECISION 額外保存 decision_supplements，防止未收到新回覆就自行決定。空更新不清除，承接完整深拷貝 |
 | `issueEvidence` | Map&lt;問題 ID,JSON&gt; | 通過驗收／審查／服務階段的逐項 id／status／evidence／head／node；承接只作歷史證據，不能取代新任務驗收。2026-10-23 起另有 `owner-decision:<問題 ID>` 鍵：負責人裁定移出範圍的紀錄（`previous` 原項目、`user`、`at`） |
