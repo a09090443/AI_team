@@ -246,7 +246,7 @@ agent_team/
 │   │   │   ├── SlackListener.java    # 事件入口：白名單、去重、指令解析、按鈕處理
 │   │   │   ├── SlackNotifier.java    # 所有對 Slack 的發言（主 App 或角色身分）、下載使用者附檔
 │   │   │   ├── InboundFiles.java     # 使用者 @訊息附檔：登錄、下載檢查、放進工作目錄 .ai-team-inbox/ 並 git exclude
-│   │   │   ├── DocumentMarkdown.java # 附檔 PDF／docx／xlsx／xls／pptx 轉 Markdown 輔助版本（PDFBox、POI）
+│   │   │   ├── DocumentMarkdown.java # 附檔 PDF／docx／xlsx／xls／pptx 轉 Markdown 輔助版本（pdf2md、PDFBox、POI）
 │   │   │   ├── SlackLinks.java       # 發言前把裸網址包成 <url>，避免全形標點被連進網址
 │   │   │   ├── SlackBlocks.java      # 訊息版面與按鈕 action_id
 │   │   │   ├── SlackReport.java      # 階段報告的 Slack 呈現

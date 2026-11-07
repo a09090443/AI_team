@@ -184,6 +184,10 @@ public class AiTeamProperties {
         return slackFilesConvert == null || !"off".equalsIgnoreCase(slackFilesConvert.trim());
     }
 
+    @Value("${AI_TEAM_SLACK_PDF2MD_PATH:}")
+    private String slackPdf2mdPath = "";
+    public String slackPdf2mdPath() { return slackPdf2mdPath; }
+
     /**
      * 已開 PR 的合併／關閉追蹤（PullRequestMonitor 每 10 分鐘）。預設 on：PR 已合併的任務轉 COMPLETED 並刪除工作區。
      * 與衝突同步（project.autonomy.pullRequestSyncRounds）分開；off 時只有開了衝突同步的配置才查 GitHub（舊行為）。

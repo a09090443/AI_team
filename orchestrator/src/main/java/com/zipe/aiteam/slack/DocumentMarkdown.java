@@ -1,5 +1,7 @@
 package com.zipe.aiteam.slack;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.io.IOUtils;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -8,6 +10,8 @@ import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xslf.usermodel.*;
 import org.apache.poi.xwpf.usermodel.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -18,7 +22,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 使用者附檔的 Markdown 輔助版本：PDF、docx、xlsx、xls、pptx 在 JVM 內轉成純文字 Markdown，
+ * 使用者附檔的 Markdown 輔助版本：PDF、docx、xlsx、xls、pptx 轉成 Markdown，
  * 讓不能直接讀 PDF／Office 的 runtime 也讀得到，並可用 grep 找段落。
  *
  * 轉換會失真（PDF 表格變散字、圖消失、掃描檔沒有文字層），所以只當輔助：原檔一律保留，
@@ -33,6 +37,9 @@ public final class DocumentMarkdown {
     static final int MAX_SHEET_ROWS = 5_000;
     static final int MAX_SHEET_COLUMNS = 100;
     static final long TIMEOUT_SECONDS = 120;
+    private static final int PDF2MD_MAX_OUTPUT_BYTES = 6 * MAX_CHARS + 65_536;
+    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final Logger log = LoggerFactory.getLogger(DocumentMarkdown.class);
     private static final Pattern HEADING = Pattern.compile("(?i)^(?:heading|標題)\\s*(\\d)$");
 
     public static boolean supports(String fileName) {
@@ -45,6 +52,10 @@ public final class DocumentMarkdown {
      * @return null 表示成功；否則是轉不出來的原因（不產生 target）
      */
     public static String convert(Path source, Path target, String displayName) {
+        return convert(source, target, displayName, "");
+    }
+
+    public static String convert(Path source, Path target, String displayName, String pdf2mdPath) {
         String ext = extension(source.getFileName().toString());
         if (ext == null || !SUPPORTED.contains(ext)) return "不支援轉換的格式";
         ExecutorService worker = Executors.newSingleThreadExecutor(r -> {
@@ -54,7 +65,7 @@ public final class DocumentMarkdown {
         });
         try {
             Future<String> body = worker.submit(() -> switch (ext) {
-                case "pdf" -> pdf(source);
+                case "pdf" -> pdf(source, pdf2mdPath);
                 case "docx" -> docx(source);
                 case "xlsx", "xls" -> sheets(source);
                 case "pptx" -> pptx(source);
@@ -99,10 +110,14 @@ public final class DocumentMarkdown {
 
     // ------------------------------------------------------------------ PDF
 
-    static String pdf(Path source) throws IOException {
+    private static String pdf(Path source, String pdf2mdPath) throws IOException {
         try (PDDocument doc = Loader.loadPDF(source.toFile(), IOUtils.createTempFileOnlyStreamCache())) {
             if (doc.isEncrypted() && !doc.getCurrentAccessPermission().canExtractContent())
                 throw new ConversionException("檔案設定為不可擷取文字");
+            if (!doc.isEncrypted() && pdf2mdPath != null && !pdf2mdPath.isBlank()) {
+                String markdown = inspectPdf(source, pdf2mdPath, doc.getNumberOfPages());
+                if (markdown != null) return markdown;
+            }
             PDFTextStripper stripper = new PDFTextStripper();
             stripper.setSortByPosition(true);
             int pages = doc.getNumberOfPages();
@@ -120,6 +135,80 @@ public final class DocumentMarkdown {
             if (visible < Math.max(20, 10L * pages)) throw new ConversionException("沒有文字層（可能是掃描檔或圖片）");
             return out.text();
         }
+    }
+
+    private static String inspectPdf(Path source, String executable, int pages) throws IOException {
+        Process process = null;
+        try {
+            if (!System.getProperty("os.name").equalsIgnoreCase("Linux")) return null;
+            Path binary = Path.of(executable);
+            if (!binary.isAbsolute() || !Files.isRegularFile(binary) || !Files.isExecutable(binary)) {
+                log.warn("pdf2md 路徑無效，使用 PDFBox");
+                return null;
+            }
+            var command = new ArrayList<>(List.of("/usr/bin/timeout", "--kill-after=2s", "30s",
+                    "/usr/bin/prlimit", "--as=1073741824", "--cpu=25", "--core=0",
+                    "/usr/bin/bwrap", "--unshare-all", "--die-with-parent", "--new-session", "--cap-drop", "ALL"));
+            for (String library : List.of("/lib", "/lib64", "/usr/lib"))
+                if (Files.isDirectory(Path.of(library))) Collections.addAll(command, "--ro-bind", library, library);
+            Collections.addAll(command, "--setenv", "RAYON_NUM_THREADS", "2",
+                    "--ro-bind", binary.toRealPath().toString(), "/pdf2md",
+                    "--ro-bind", source.toRealPath().toString(), "/input.pdf", "--remount-ro", "/",
+                    "--", "/pdf2md", "--json", "--pages", "/input.pdf");
+            var builder = new ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.DISCARD);
+            builder.environment().clear();
+            process = builder.start();
+            process.getOutputStream().close();
+            byte[] output = process.getInputStream().readNBytes(PDF2MD_MAX_OUTPUT_BYTES + 1);
+            if (output.length > PDF2MD_MAX_OUTPUT_BYTES) {
+                log.warn("pdf2md 輸出超過上限，使用 PDFBox");
+                return null;
+            }
+            if (process.waitFor() == 0) {
+                String markdown = inspectorMarkdown(output, pages);
+                if (markdown != null) return markdown;
+            }
+            log.warn("pdf2md 未產生可用的 Markdown，使用 PDFBox");
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ConversionException("轉換被中斷");
+        } catch (IOException | IllegalArgumentException e) {
+            log.warn("pdf2md 無法執行或解析輸出，使用 PDFBox");
+            return null;
+        } finally {
+            if (process != null && process.isAlive()) process.destroyForcibly();
+        }
+    }
+
+    static String inspectorMarkdown(byte[] output, int pages) throws IOException {
+        JsonNode result = JSON.readTree(output);
+        if (result == null || result.path("page_count").asInt() != pages || !result.path("has_text").asBoolean()
+                || !Set.of("text_based", "mixed").contains(result.path("pdf_type").asText())) return null;
+        JsonNode markdown = result.path("markdown");
+        if (!markdown.isTextual() || markdown.textValue().isBlank()) return null;
+        JsonNode missing = result.path("pages_needing_ocr");
+        if (!missing.isArray() || !result.path("has_encoding_issues").isBoolean()) return null;
+
+        var missingPages = new TreeSet<Integer>();
+        for (JsonNode page : missing) {
+            if (!page.isIntegralNumber() || !page.canConvertToInt() || page.intValue() < 1 || page.intValue() > pages)
+                return null;
+            missingPages.add(page.intValue());
+        }
+        if (missingPages.size() == pages) return null;
+        Output out = new Output();
+        if (!missingPages.isEmpty()) {
+            String pageList = String.join("、", missingPages.stream().limit(20).map(Object::toString).toList());
+            out.append("> 第 " + pageList + (missingPages.size() > 20 ? " 等" : "")
+                    + " 頁可能缺少可擷取文字，請核對原檔。\n\n");
+        }
+        else if ("mixed".equals(result.path("pdf_type").asText()))
+            out.append("> 這份 PDF 含有影像頁，可能有內容未轉出，請核對原檔。\n\n");
+        if (result.path("has_encoding_issues").booleanValue())
+            out.append("> 部分文字可能有編碼問題，請核對原檔。\n\n");
+        out.append(markdown.textValue());
+        return out.text();
     }
 
     // ------------------------------------------------------------------ Word

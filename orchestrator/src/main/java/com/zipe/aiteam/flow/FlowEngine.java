@@ -2901,7 +2901,9 @@ public class FlowEngine {
         try {
             Path dir = executor.workingDirectory(task, flow, node).toAbsolutePath().normalize();
             var staged = InboundFiles.stage(props.homePath(), task.slackChannel(), task.slackThreadTs(), dir,
-                    slack::downloadFile, props.slackFilesMaxBytes(), props.slackFilesConvert() ? DocumentMarkdown::convert : null);
+                    slack::downloadFile, props.slackFilesMaxBytes(), props.slackFilesConvert()
+                            ? (source, target, name) -> DocumentMarkdown.convert(source, target, name, props.slackPdf2mdPath())
+                            : null);
             if (!staged.copied().isEmpty())
                 audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "使用者附檔已放入工作目錄：" + String.join("、", staged.copied()));
             if (!staged.failed().isEmpty()) {

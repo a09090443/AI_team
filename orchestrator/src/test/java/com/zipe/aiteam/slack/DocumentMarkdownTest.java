@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -53,6 +54,27 @@ class DocumentMarkdownTest {
         }
         String md = convert(pdf);
         assertThat(md).contains("以原檔為準", "## 第 1 頁", "GET /orders/{id}", "## 第 2 頁", "POST /orders");
+        Path fallback = dir.resolve("fallback.md");
+        assertThat(DocumentMarkdown.convert(pdf, fallback, "api.pdf", dir.resolve("missing-pdf2md").toString())).isNull();
+        assertThat(Files.readString(fallback)).isEqualTo(md);
+    }
+
+    @Test void inspectorKeepsTablesAndWarnsAboutMissingPagesAndEncoding() throws Exception {
+        byte[] result = """
+                {"pdf_type":"mixed","page_count":2,"has_text":true,"pages_needing_ocr":[2],
+                 "has_encoding_issues":true,"markdown":"# 訂單 API\\n\\n| 欄位 | 必填 |\\n| --- | --- |\\n| id | 是 |"}
+                """.getBytes(StandardCharsets.UTF_8);
+        assertThat(DocumentMarkdown.inspectorMarkdown(result, 2))
+                .contains("第 2 頁", "編碼問題", "# 訂單 API", "| id | 是 |");
+        assertThat(DocumentMarkdown.inspectorMarkdown(result, 3)).isNull();
+    }
+
+    @Test void inspectorRejectsScannedPdfEvenIfItExtractedPageNumbers() throws Exception {
+        byte[] result = """
+                {"pdf_type":"scanned","page_count":2,"has_text":true,"pages_needing_ocr":[1,2],
+                 "has_encoding_issues":false,"markdown":"1\\n2"}
+                """.getBytes(StandardCharsets.UTF_8);
+        assertThat(DocumentMarkdown.inspectorMarkdown(result, 2)).isNull();
     }
 
     @Test void pdfWithoutTextLayerProducesNoFile() throws Exception {

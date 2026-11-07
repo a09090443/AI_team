@@ -176,6 +176,26 @@ opencode providers        # 別名 auth；本人操作，不要輸出 auth.json
 
 :::
 
+### 選用 PDF 轉換器
+
+Slack PDF 附檔預設由 PDFBox 擷取文字。若要改善 Markdown 表格、標題與多欄順序，
+可在 Linux orchestrator 主機安裝固定版本的 [pdf-inspector](https://github.com/firecrawl/pdf-inspector/releases/tag/v1.25.2)。
+使用 Rust 1.88 以上與系統 linker 建置，並確認主機有 `/usr/bin/bwrap`、`/usr/bin/prlimit` 與 `/usr/bin/timeout`。
+Ubuntu 若缺少 `bwrap`，安裝 `bubblewrap` 套件。執行服務的帳號須能建立 Bubblewrap 所需的使用者命名空間。
+
+```bash
+cargo install pdf-inspector --version 1.25.2 --locked --bin pdf2md --root "$HOME/.local/pdf-inspector-1.25.2"
+```
+
+在要啟用的各實例 `env.sh` 加入下列設定並重啟 orchestrator。
+
+```bash
+export AI_TEAM_SLACK_PDF2MD_PATH="$HOME/.local/pdf-inspector-1.25.2/bin/pdf2md"
+```
+
+以新上傳、含文字層和表格的 PDF 試跑，請 agent 依 `.pdf.md` 回報指定欄位，並和原檔比對。
+如服務紀錄出現 `pdf2md …使用 PDFBox`，該檔案已走備援。未設定時維持 PDFBox，既有轉換快取不會重轉。
+
 ## 4. 沙箱前置條件
 
 ```bash
