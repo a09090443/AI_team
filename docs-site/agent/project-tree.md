@@ -440,6 +440,7 @@ agent_team/
     │   ├── development.md            # 開發與文件維護
     │   ├── ai-guide.md               # 公開 AI 閱讀入口
     │   └── img/                      # 教學步驟用 Slack 截圖（已遮蔽專案名、人名、編號、路徑與 token）
+    │       ├── demo-task-flow.gif           # 真實任務從建立需求到 PR 核准卡的動畫
     │       ├── task-created-queued.png      # @主 App 後排隊並開始執行
     │       ├── stage-report-pm.png          # PM 階段回報
     │       ├── stage-handoff.png            # 角色完成後 @下一角色接手
