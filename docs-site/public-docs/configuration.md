@@ -9,10 +9,22 @@ JSON 只填 token 的環境變數名稱，不填 token 值。以下為設定索�
 
 ## 主 App 與角色 App
 
-1. 在 Slack App 管理介面使用 `deploy/slack-app-manifest.yaml` 建立主 App，安裝至 workspace。
-2. 取得 Bot Token 與具 `connections:write` 的 App-Level Token，分別設定 `SLACK_BOT_TOKEN`、`SLACK_APP_TOKEN`。
+1. 在 [Slack App 管理介面](https://api.slack.com/apps)按「Create New App」，選「Paste a manifest」，貼上 `deploy/slack-app-manifest.yaml` 的內容建立主 App，再安裝至 workspace。
+
+   ![Create new app 對話框：選 From scratch 下的 Paste a manifest](./img/slack-create-app.png)
+
+2. 取得兩種 token，分別設定 `SLACK_BOT_TOKEN`、`SLACK_APP_TOKEN`：
+   - Bot Token：左側選「OAuth & Permissions」，複製 `xoxb-` 開頭的「Bot User OAuth Token」。
+
+     ![OAuth & Permissions 頁的 Bot User OAuth Token（值已遮蔽）](./img/slack-bot-token.png)
+
+   - App-Level Token：左側選「Basic Information」，在「App-Level Tokens」按「Generate Token and Scopes」，加入 `connections:write` 後產生 `xapp-` 開頭的 token。
+
+     ![Basic Information 頁的 App-Level Tokens 區塊，scope 為 connections:write](./img/slack-app-level-token.png)
+
+   token 只放進 `env.sh`，不要截圖、貼到聊天或提交到 repo。
 3. 每個角色使用 `deploy/agent-manifests/` 對應 manifest 建立並安裝獨立 App，使用自己的兩種 token。
-4. 邀請主 App 與已建立的角色 App 進目標頻道；安裝到 workspace 不等於已加入頻道。
+4. 邀請主 App 與已建立的角色 App 進目標頻道（在頻道輸入 `/invite @App名稱`）；安裝到 workspace 不等於已加入頻道。
 5. 確認沒有執行中或排隊任務後重啟服務，逐一實際 @角色並驗證流程發言身分。
 
 預設角色的環境變數後綴為 `PM`、`ARCHITECTURE`、`BACKEND`、`QA`、`CODE_REVIEW`。

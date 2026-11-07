@@ -438,7 +438,18 @@ agent_team/
     │   ├── installation.md           # 安裝與分層驗證
     │   ├── configuration.md          # Slack 與團隊設定
     │   ├── development.md            # 開發與文件維護
-    │   └── ai-guide.md               # 公開 AI 閱讀入口
+    │   ├── ai-guide.md               # 公開 AI 閱讀入口
+    │   └── img/                      # 教學步驟用 Slack 截圖（已遮蔽專案名、人名、編號、路徑與 token）
+    │       ├── task-created-queued.png      # @主 App 後排隊並開始執行
+    │       ├── stage-report-pm.png          # PM 階段回報
+    │       ├── stage-handoff.png            # 角色完成後 @下一角色接手
+    │       ├── plan-auto-approved-qa.png    # 測試計畫自動核准與 QA 驗收
+    │       ├── pr-approve-to-merge.png      # PR 核准卡到合併結案
+    │       ├── task-stopped-await-human.png # 任務停住等人與恢復按鈕
+    │       ├── direct-role-question.png     # 直接 @角色提問
+    │       ├── slack-create-app.png         # 以 manifest 建立 Slack App
+    │       ├── slack-bot-token.png          # Bot User OAuth Token 位置
+    │       └── slack-app-level-token.png    # App-Level Token 位置
     ├── public-pages/
     │   └── index.js                  # 公開首頁橫幅與三欄特色插圖
     ├── public-theme/
