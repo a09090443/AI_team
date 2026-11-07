@@ -124,6 +124,59 @@ java -jar "$HOME/ai-team/orchestrator/target/ai-team-orchestrator-0.1.0.jar" --v
 
 範例中的模型名是撰寫時可用的名稱；你的帳號能用哪些模型、名稱是否改版，以各 CLI 當下支援為準。
 
+### 不同專案用不同的 CLI 與模型
+
+CLI 與模型寫在團隊 JSON 裡，而每個專案各自有一份團隊 JSON，所以**同一個角色在不同專案可以用不同的 CLI 與模型**。
+例如專案 A 與專案 B 都有 Backend、QA 與 API Guide 角色，但設定不同：
+
+`<project-a>.json`（實作用 Claude Code、驗收用 Codex）：
+
+```json
+"roles": {
+  "builder":   { "name": "Backend Agent",   "runtime": "claude-code", "model": "opus" },
+  "tester":    { "name": "QA Agent",        "runtime": "codex", "model": "gpt-5.6-sol", "reasoningEffort": "medium" },
+  "api_guide": { "name": "API Guide Agent", "runtime": "claude-code", "model": "sonnet" }
+}
+```
+
+`<project-b>.json`（反過來：實作用 Codex、驗收用 Claude Code，問答角色改用 opencode 接 OpenRouter 的模型）：
+
+```json
+"roles": {
+  "builder":   { "name": "Backend Agent",   "runtime": "codex", "model": "gpt-5.6-sol", "reasoningEffort": "high" },
+  "tester":    { "name": "QA Agent",        "runtime": "claude-code", "model": "sonnet" },
+  "api_guide": { "name": "API Guide Agent", "runtime": "opencode", "model": "openrouter/deepseek/deepseek-v4.1-flash" }
+}
+```
+
+| 角色 | 專案 A | 專案 B |
+|---|---|---|
+| Backend Agent | claude-code／opus | codex／gpt-5.6-sol／high |
+| QA Agent | codex／gpt-5.6-sol／medium | claude-code／sonnet |
+| API Guide Agent | claude-code／sonnet | opencode／openrouter/deepseek/deepseek-v4.1-flash |
+
+使用 opencode 時注意：
+
+- 模型名格式是 `provider/model`（例如 `openrouter/deepseek/deepseek-v4.1-flash`），`opus`、`gpt-5.6-sol` 這類名稱在 opencode 無效；名稱錯誤會明確報錯。
+- 該實例的 `env.sh` 要設定 `OPENCODE_BIN`，並由本人執行 `opencode auth login` 登入所用的供應商。
+  上線前可先用 `opencode run --format json -m <模型> -- "只回覆 OK"` 試呼叫，確認模型名與登入可用。
+- 目前只實測過**唯讀的直接 @ 對話角色**（如上例的 API Guide），寫入工作區的流程節點（實作、驗收等）尚未驗證，先不要用在這些角色。
+- opencode 是唯一會回報實際花費金額的 runtime，可用來比較不同模型的成本。
+
+一個服務只載入一個專案配置，所以「多個專案」就是在同一台主機安裝多個服務實例，每個實例各自有：
+
+| 各自一份 | 說明 |
+|---|---|
+| 安裝目錄 | 用 `install-app.sh` 安裝到不同目錄，各有自己的 `env.sh`、`team.env`、資料庫與工作區 |
+| 團隊配置 | `team.env` 的 `AI_TEAM_DEFINITION` 指向該專案的 JSON，角色的 `runtime`／`model` 就在裡面設定 |
+| `AI_TEAM_INSTANCE` | 同一台主機有多個實例時必填，且不可重複 |
+| 頻道與 Slack App | 每個實例只聽自己的 `AI_TEAM_CHANNEL_ID`，並使用自己的一組主 App 與角色 App，不可共用 token |
+
+- 專案自己的配置建議放在實例的 `team-overlay/`，部署時會合併進 `teams/`；不要直接改線上 `teams/`，下次部署會被擋下。
+- 工具鏈與 CLI 登入可以共用；共用登入時**額度也共用**：A 專案用完 Claude 額度，B 專案使用 Claude 的角色同樣會停在 `WAITING_QUOTA`。
+  把較耗額度的專案角色改用另一個 CLI，可以分散壓力。
+- 修改某個專案的配置只影響該實例，且只對新任務生效。
+
 | 欄位 | 必填 | 說明 |
 |---|---|---|
 | `runtime` | 是 | `claude-code`、`codex` 或 `opencode`；對應的 `CLAUDE_BIN`／`CODEX_BIN`／`OPENCODE_BIN` 必須可執行 |
