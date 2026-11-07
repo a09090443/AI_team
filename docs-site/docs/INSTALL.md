@@ -180,7 +180,9 @@ opencode providers        # 別名 auth；本人操作，不要輸出 auth.json
 
 Slack PDF 附檔預設由 PDFBox 擷取文字。若要改善 Markdown 表格、標題與多欄順序，
 可在 Linux orchestrator 主機安裝固定版本的 [pdf-inspector](https://github.com/firecrawl/pdf-inspector/releases/tag/v1.25.2)。
-使用 Rust 1.88 以上與系統 linker 建置，並確認主機有 `/usr/bin/bwrap`、`/usr/bin/prlimit` 與 `/usr/bin/timeout`。
+使用 Rust 1.88 以上與系統 linker 建置。Ubuntu 的 linker 與 C 執行期檔案來自 `build-essential`（gcc、libc6-dev），
+沒有時 `cargo install` 會報 `linker cc not found`；不想在服務主機裝編譯器時，可在相同架構與 glibc 版本的另一台 Linux 建置後複製 `pdf2md` 執行檔。
+另確認主機有 `/usr/bin/bwrap`、`/usr/bin/prlimit` 與 `/usr/bin/timeout`。
 Ubuntu 若缺少 `bwrap`，安裝 `bubblewrap` 套件。執行服務的帳號須能建立 Bubblewrap 所需的使用者命名空間。
 
 ```bash
