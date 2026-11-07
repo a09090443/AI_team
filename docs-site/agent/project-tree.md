@@ -197,6 +197,7 @@ agent_team/
 │   │   │   ├── CommandEvidence.java # 實作自陳成功與 CLI 指令紀錄的結束碼交叉核對
 │   │   │   ├── BaselineVerifier.java # 基準分支上先跑驗證指令：接入／部署時警告管理者並告訴任務
 │   │   │   ├── FileComparison.java # 指定舊檔比對的計畫契約、路徑驗證與能力說明
+│   │   │   ├── JsonAdditionsComparison.java # 依原任務 Git 基準驗證 JSON 只新增指定陣列項目
 │   │   │   ├── OperationJobs.java   # 跨專案持久作業日誌、檢查點與明確取消
 │   │   │   ├── ServiceDelivery.java # 服務建置目標、可用性檢查與完成契約
 │   │   │   ├── ServiceArtifacts.java # 交付成功的部署檔保存到實例目錄、下次部署還原

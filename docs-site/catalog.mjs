@@ -155,7 +155,7 @@ export const docs = [
     status: 'current',
     summary: 'QA 在實作前以需求設計情境（含反例與 operation_ids），實作後逐情境執行並附證據。',
     readWhen: '撰寫或審查測試計畫、理解 QA 能寫什麼不能寫什麼。',
-    code: ['orchestrator/teams/prompts/plan.md', 'orchestrator/teams/prompts/verify.md'],
+    code: ['orchestrator/teams/prompts/plan.md', 'orchestrator/teams/prompts/verify.md', 'orchestrator/src/main/java/com/zipe/aiteam/flow/JsonAdditionsComparison.java'],
   },
   {
     id: 'pm-triage',

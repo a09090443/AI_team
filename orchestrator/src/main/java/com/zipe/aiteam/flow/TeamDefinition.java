@@ -47,7 +47,15 @@ public record TeamDefinition(int version, String id, Project project, Map<String
                            * 計畫通過系統的機械檢查（覆蓋全部驗收項目、每條情境有反例、操作可執行）時自動核准，
                            * 不再等真人按。發布仍必須由真人核准，需求變更也仍要真人同意。
                            */
-                          boolean autoApprovePlanWhenValid, ServiceTarget serviceTarget, Autonomy autonomy) {
+                          boolean autoApprovePlanWhenValid, ServiceTarget serviceTarget, Autonomy autonomy,
+                          @JsonInclude(JsonInclude.Include.NON_NULL) Boolean jsonAdditionsComparison) {
+        public Project(String name, String repositoryEnv, String baseBranch, String buildInstructions,
+                       String testInstructions, List<String> protectedPaths, List<String> cachePaths,
+                       List<String> requiredTools, Verification verification, Map<String, Operation> operations,
+                       boolean requirePlanApproval, boolean autoApprovePlanWhenValid, ServiceTarget serviceTarget, Autonomy autonomy) {
+            this(name, repositoryEnv, baseBranch, buildInstructions, testInstructions, protectedPaths, cachePaths,
+                    requiredTools, verification, operations, requirePlanApproval, autoApprovePlanWhenValid, serviceTarget, autonomy, null);
+        }
         public Project(String name, String repositoryEnv, String baseBranch, String buildInstructions,
                        String testInstructions, List<String> protectedPaths, List<String> cachePaths,
                        List<String> requiredTools, Verification verification, Map<String, Operation> operations,

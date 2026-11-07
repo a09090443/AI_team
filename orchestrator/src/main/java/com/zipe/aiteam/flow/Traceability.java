@@ -54,6 +54,7 @@ public final class Traceability {
         if (invalid != null) return invalid;
         invalid = requirementsReason(baseline(flow));
         if (invalid == null) invalid = FileComparison.planReason(plan);
+        if (invalid == null) invalid = JsonAdditionsComparison.planReason(plan, flow.snapshot.definition());
         if (invalid == null) invalid = ProtectedPathFallback.planReason(plan);
         if (invalid != null) return invalid;
         if (flow.baselineRevision == null || !flow.baselineRevision.equals(plan.path("baseline_revision").asText()))
@@ -81,6 +82,7 @@ public final class Traceability {
                 allowedOperations.addAll(OperationContract.forNode(flow.snapshot.definition(), id).keySet());
                 if (OperationContract.inspectAvailable(flow.snapshot.definition())) allowedOperations.add(OperationContract.INSPECT_CONTENT);
                 if (OperationContract.inspectAvailable(flow.snapshot.definition())) allowedOperations.add(FileComparison.OPERATION);
+                if (JsonAdditionsComparison.enabled(flow.snapshot.definition())) allowedOperations.add(JsonAdditionsComparison.OPERATION);
             }
         });
         for (JsonNode scenario : plan.path("scenarios")) {

@@ -202,6 +202,9 @@ bash deploy/bootstrap/check-source.sh
 `Gate.SERVICE` 限 LIMITED 工作區，成功直接 end，不套用開發 QA／PR 閘門；完整欄位與證據限制見 [服務建置](/docs/service-delivery)。
 `project.operations.*.scriptSha256` 僅可配固定的 bash 相對腳本，內容必須吻合且執行時唯讀；見 [跨專案契約](/docs/cross-project-execution)。
 
+`project.jsonAdditionsComparison: true` 啟用 v2 的內建 `compare-json-additions`，預設關閉。可透過既有配置更新套用至舊任務，
+仍需重訂含此操作的測試計畫。見 [QA 情境流程](/docs/qa-scenario-workflow#允許新增-json-陣列項目)。
+
 
 ## 服務執行工具（2026-10-10）
 

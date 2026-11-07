@@ -15,7 +15,8 @@ public final class TeamMigration {
         ObjectNode left = MAPPER.valueToTree(before.definition()), right = MAPPER.valueToTree(after.definition());
         List<String> changes = new ArrayList<>();
         // autonomy 是管理者授權的恢復政策（次數有上限、不擴權），與能力設定一樣可原地套用（2026-10-22，#1053）。
-        for (String field : List.of("requiredTools", "cachePaths", "buildInstructions", "testInstructions", "operations", "serviceTarget", "autonomy")) {
+        for (String field : List.of("requiredTools", "cachePaths", "buildInstructions", "testInstructions", "operations",
+                "serviceTarget", "autonomy", "jsonAdditionsComparison")) {
             compareRemove((ObjectNode)left.get("project"), (ObjectNode)right.get("project"), field, "project.", changes);
         }
         if (!before.definition().roles().keySet().equals(after.definition().roles().keySet()))

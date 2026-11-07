@@ -1,7 +1,11 @@
 package com.zipe.aiteam.flow;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zipe.aiteam.config.AiTeamProperties;
 import com.zipe.aiteam.sandbox.*;
+import com.zipe.aiteam.store.TaskStore;
 import com.zipe.aiteam.task.Task;
 import com.zipe.aiteam.workspace.WorkspaceManager;
 import org.springframework.stereotype.Component;
@@ -32,7 +36,14 @@ public class IndependentVerifier {
      */
     public record Receipt(String head, String baseline, String configuration, String startedAt, String completedAt,
                           List<CommandResult> commands, List<String> docOnlyChanges, FileEvidence fileComparison,
-                          List<VerificationPlan.Decision> decisions, List<String> changedFiles, String taskId) {
+                          List<VerificationPlan.Decision> decisions, List<String> changedFiles, String taskId,
+                          @JsonInclude(JsonInclude.Include.NON_NULL) JsonAdditionsComparison.Evidence jsonAdditionsComparison) {
+        public Receipt(String head, String baseline, String configuration, String startedAt, String completedAt,
+                       List<CommandResult> commands, List<String> docOnlyChanges, FileEvidence fileComparison,
+                       List<VerificationPlan.Decision> decisions, List<String> changedFiles, String taskId) {
+            this(head, baseline, configuration, startedAt, completedAt, commands, docOnlyChanges, fileComparison,
+                    decisions, changedFiles, taskId, null);
+        }
         public Receipt(String head, String baseline, String configuration, String startedAt, String completedAt,
                        List<CommandResult> commands, List<String> docOnlyChanges, FileEvidence fileComparison) {
             this(head, baseline, configuration, startedAt, completedAt, commands, docOnlyChanges, fileComparison, null, null, null);
@@ -113,6 +124,8 @@ public class IndependentVerifier {
     private final WorkspaceManager workspaces;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     com.zipe.aiteam.workspace.WorkspaceReclaimer reclaimer;
+    @org.springframework.beans.factory.annotation.Autowired
+    TaskStore taskStore;
     public IndependentVerifier(AiTeamProperties props, ExecutionSandbox sandbox, WorkspaceManager workspaces) {
         this.props = props; this.sandbox = sandbox; this.workspaces = workspaces;
     }
@@ -124,6 +137,7 @@ public class IndependentVerifier {
         var spec = flow.snapshot.definition().project().verification();
         if (spec == null) throw new IllegalStateException("缺少管理者配置的驗證指令");
         FileEvidence fileEvidence = compareFiles(task, flow, head);
+        var jsonEvidence = compareJsonAdditions(task, flow, head);
         // 純文件變更：由系統查得的變更檔案判定，不採信 agent 自陳；判定不了（查不到基準等）就照常全跑。
         if (spec.docOnlyPaths() != null) {
             List<String> changed;
@@ -132,7 +146,8 @@ public class IndependentVerifier {
             if (DocOnlyChanges.qualifies(spec.docOnlyPaths(), changed)) {
                 String now = Instant.now().toString();
                 if (!head.equals(workspaces.headSha(task.id())) || !workspaces.clean(task.id())) throw new IllegalStateException("驗證期間來源工作區變更，收據作廢");
-                return new Receipt(head, flow.baselineRevision, flow.snapshot.revision(), now, now, List.of(), List.copyOf(changed), fileEvidence);
+                return new Receipt(head, flow.baselineRevision, flow.snapshot.revision(), now, now, List.of(), List.copyOf(changed), fileEvidence,
+                        null, null, jsonEvidence == null ? null : task.id(), jsonEvidence);
             }
         }
         // 依變更檔案決定每個指令要執行、略過或重用（VerificationPlan）；任何查不到的情況都全跑。
@@ -161,7 +176,7 @@ public class IndependentVerifier {
         if (decisions.stream().noneMatch(d -> d.action() == VerificationPlan.Action.RUN)) {
             if (!head.equals(workspaces.headSha(task.id())) || !workspaces.clean(task.id())) throw new IllegalStateException("驗證期間來源工作區變更，收據作廢");
             return new Receipt(head, flow.baselineRevision, flow.snapshot.revision(), started.toString(), Instant.now().toString(),
-                    List.of(), null, fileEvidence, List.copyOf(decisions), changedFiles, task.id());
+                    List.of(), null, fileEvidence, List.copyOf(decisions), changedFiles, task.id(), jsonEvidence);
         }
         Path root = props.homePath().resolve("verification-runs").resolve(task.id()).toAbsolutePath().normalize();
         Files.createDirectories(root);
@@ -209,7 +224,7 @@ public class IndependentVerifier {
         // 收據只依 log 雜湊核對；成功後 clone 與建置產物沒有用途，失敗時才保留給人查。
         VerificationScenes.discard(run);
         return new Receipt(head, flow.baselineRevision, flow.snapshot.revision(), started.toString(), Instant.now().toString(),
-                List.copyOf(results), null, fileEvidence, List.copyOf(decisions), changedFiles, task.id());
+                List.copyOf(results), null, fileEvidence, List.copyOf(decisions), changedFiles, task.id(), jsonEvidence);
     }
     /** 全新 checkout 只有版控檔；釘住每個檔案與 .git，避免測試指令先改產品／測試再回報成功。 */
     static List<Path> pinsFor(Path repo) throws java.io.IOException {
@@ -258,6 +273,35 @@ public class IndependentVerifier {
                 "指定舊檔與實作前版本不同，請恢復原檔後重驗，不要刪除驗收條件：" + changed);
         return new FileEvidence(flow.comparisonBase, head, FileComparison.planDigest(flow), files, log.toString(), hash(log));
     }
+
+    private record JsonCheckResult(JsonAdditionsComparison.Check check, boolean passed) {}
+
+    JsonAdditionsComparison.Evidence compareJsonAdditions(Task task, FlowRun flow, String head) throws Exception {
+        var checks = JsonAdditionsComparison.checks(flow);
+        if (checks.isEmpty()) return null;
+        var base = JsonAdditionsComparison.originalBase(task.id(), flow, taskStore);
+        workspaces.requireAncestor(task.id(), base.commit(), head);
+        var results = new ArrayList<JsonCheckResult>();
+        for (var check : checks) {
+            String before = workspaces.readCommittedText(task.id(), base.commit(), check.path(), JsonAdditionsComparison.MAX_BYTES);
+            String after = workspaces.readCommittedText(task.id(), head, check.path(), JsonAdditionsComparison.MAX_BYTES);
+            boolean passed;
+            try { passed = JsonAdditionsComparison.matches(check, before, after); }
+            catch (JsonProcessingException invalidJson) { passed = false; }
+            results.add(new JsonCheckResult(check, passed));
+        }
+        Path root = props.homePath().resolve("verification-runs").resolve(task.id());
+        Files.createDirectories(root);
+        Path log = Files.createTempFile(root, "json-additions-", ".json");
+        String plan = FileComparison.planDigest(flow);
+        Files.writeString(log, new ObjectMapper().writeValueAsString(Map.of(
+                "base", base, "head", head, "planDigest", plan, "results", results)));
+        var failed = results.stream().filter(r -> !r.passed()).map(r -> r.check().path()).distinct().toList();
+        if (!failed.isEmpty()) throw new CheckFailed(List.of(JsonAdditionsComparison.OPERATION), 1, log.toString(),
+                "JSON 內容與只允許指定陣列新增項目的驗收條件不符：" + failed);
+        return new JsonAdditionsComparison.Evidence(base, head, plan, checks, log.toString(), hash(log));
+    }
+
     public String blockingReason(FlowRun flow, String head) {
         Receipt receipt = flow.independentEvidence;
         var spec = flow.snapshot.definition().project().verification();
@@ -266,6 +310,8 @@ public class IndependentVerifier {
                 || !Objects.equals(flow.snapshot.revision(), receipt.configuration())) return "獨立驗證的 commit／需求／配置版本已失效";
         String fileBlock = fileComparisonReason(flow, receipt, head);
         if (fileBlock != null) return fileBlock;
+        String jsonBlock = jsonComparisonReason(flow, receipt, head);
+        if (jsonBlock != null) return jsonBlock;
         if (receipt.docOnly())
             return receipt.commands() != null && receipt.commands().isEmpty()
                     && DocOnlyChanges.qualifies(spec.docOnlyPaths(), receipt.docOnlyChanges())
@@ -327,6 +373,24 @@ public class IndependentVerifier {
                         .equals(new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(e.files()))) return "指定檔案比對紀錄遺失或內容不符";
             return null;
         } catch (Exception e) { return "無法核實指定檔案比對：" + e.getClass().getSimpleName(); }
+    }
+
+    private String jsonComparisonReason(FlowRun flow, Receipt receipt, String head) {
+        try {
+            var checks = JsonAdditionsComparison.checks(flow);
+            if (checks.isEmpty()) return null;
+            var evidence = receipt.jsonAdditionsComparison();
+            if (evidence == null || receipt.taskId() == null || !receipt.taskId().matches("[0-9]+")
+                    || !JsonAdditionsComparison.originalBase(receipt.taskId(), flow, taskStore).equals(evidence.base())
+                    || !Objects.equals(head, evidence.head()) || !FileComparison.planDigest(flow).equals(evidence.planDigest())
+                    || !checks.equals(evidence.checks())) return "缺少有效的 JSON 比對收據";
+            if (!logIntact(evidence.log(), evidence.sha256())) return "JSON 比對紀錄遺失或雜湊不符";
+            var mapper = new ObjectMapper();
+            var expected = Map.of("base", evidence.base(), "head", head, "planDigest", evidence.planDigest(),
+                    "results", checks.stream().map(check -> new JsonCheckResult(check, true)).toList());
+            return mapper.readTree(Files.readString(Path.of(evidence.log()))).equals(mapper.valueToTree(expected))
+                    ? null : "JSON 比對紀錄內容不符";
+        } catch (Exception e) { return "無法核實 JSON 比對：" + e.getClass().getSimpleName(); }
     }
     /**
      * 獨立驗證專用的相依套件下載快取（Gradle、npm、Maven），各實例一份，跨任務沿用。

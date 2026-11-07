@@ -446,6 +446,10 @@ public class WorkspaceManager {
 
     /** conflictExit=true 時結束碼 1 也接受：merge-tree 有衝突時仍會輸出合併結果的 tree。 */
     private String gitOutput(Path cwd, boolean conflictExit, String... args) throws WorkspaceException {
+        return gitOutput(cwd, conflictExit, false, args);
+    }
+
+    private String gitOutput(Path cwd, boolean conflictExit, boolean strictUtf8, String... args) throws WorkspaceException {
         List<String> cmd = new ArrayList<>();
         cmd.add("git");
         cmd.addAll(List.of(args));
@@ -459,8 +463,10 @@ public class WorkspaceManager {
 
             String out;
             try (var in = p.getInputStream()) {
-                out = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-                if (!List.of(args).contains("-z")) out = out.trim();
+                byte[] bytes = in.readAllBytes();
+                out = strictUtf8 ? StandardCharsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(bytes)).toString()
+                        : new String(bytes, StandardCharsets.UTF_8);
+                if (!strictUtf8 && !List.of(args).contains("-z")) out = out.trim();
             }
             if (!p.waitFor(props.gitTimeout().toSeconds(), TimeUnit.SECONDS)) {
                 p.destroyForcibly();
@@ -587,6 +593,28 @@ public class WorkspaceManager {
     public record FileIdentity(String path, String before, String after) {
         public boolean unchanged() { return before.equals(after); }
     }
+    public String readCommittedText(String taskId, String commit, String path, int maxBytes) throws WorkspaceException {
+        if (!commit.matches("[0-9a-f]{40}|[0-9a-f]{64}") || !com.zipe.aiteam.flow.FileComparison.safePath(path))
+            throw new WorkspaceException("無效的 Git commit 或檔案路徑");
+        Path ws = pathFor(taskId);
+        if (!"commit".equals(gitOutput(ws, "--no-replace-objects", "cat-file", "-t", commit)))
+            throw new WorkspaceException("比對版本不是 Git commit");
+        String entry = fileIdentity(ws, commit, path, true);
+        if (entry.isEmpty()) throw new WorkspaceException("指定版本沒有檔案：" + path);
+        String blob = entry.substring(entry.lastIndexOf(' ') + 1);
+        String size = gitOutput(ws, "--no-replace-objects", "cat-file", "-s", blob);
+        if (!size.matches("[0-9]{1,10}") || Long.parseLong(size) > maxBytes)
+            throw new WorkspaceException("檔案超過比對大小上限：" + path);
+        return gitOutput(ws, false, true, "--no-replace-objects", "cat-file", "blob", blob);
+    }
+
+    public void requireAncestor(String taskId, String base, String head) throws WorkspaceException {
+        if (!base.matches("[0-9a-f]{40}|[0-9a-f]{64}") || !head.matches("[0-9a-f]{40}|[0-9a-f]{64}"))
+            throw new WorkspaceException("無效的 Git 比對基準或最終版本");
+        String common = gitOutput(pathFor(taskId), "--no-replace-objects", "merge-base", base, head);
+        if (!base.equals(common)) throw new WorkspaceException("Git 比對基準不是最終版本的祖先");
+    }
+
     /** 只讀 Git 物件，不讀檔案內容、不執行 diff driver，路徑一律按字面值解讀。 */
     public List<FileIdentity> compareFiles(String taskId, String base, String head, List<String> paths) throws WorkspaceException {
         if (base == null || head == null || !base.matches("[0-9a-f]{40,64}") || !head.matches("[0-9a-f]{40,64}"))

@@ -105,6 +105,11 @@ final class PrReport {
         out.append("- 配置版本：").append(code(receipt.configuration())).append('\n');
         out.append("- 開始：").append(time(receipt.startedAt())).append('\n');
         out.append("- 完成：").append(time(receipt.completedAt())).append('\n');
+        if (receipt.jsonAdditionsComparison() != null) {
+            var json = receipt.jsonAdditionsComparison();
+            out.append("- JSON 新增比對：").append(json.checks().size()).append(" 項通過，原始 Git 基準 ")
+                    .append(code(json.base().commit())).append("，紀錄雜湊 ").append(code(json.sha256())).append('\n');
+        }
         if (receipt.docOnly()) {
             out.append("- **純文件變更，依配置略過建置與測試**（系統依 git diff 判定，").append(receipt.docOnlyChanges().size())
                .append(" 個檔案）：\n");

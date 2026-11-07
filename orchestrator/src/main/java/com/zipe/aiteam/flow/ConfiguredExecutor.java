@@ -119,6 +119,8 @@ public class ConfiguredExecutor {
                 : flow.snapshot.assets().get(node.schema());
         if (!flow.dialogue && node.gate() == Gate.TEST_PLAN && OperationContract.inspectAvailable(flow.snapshot.definition()))
             schema = FileComparison.extendSchema(schema);
+        if (!flow.dialogue && node.gate() == Gate.TEST_PLAN && JsonAdditionsComparison.enabled(flow.snapshot.definition()))
+            schema = JsonAdditionsComparison.extendSchema(schema);
         boolean deferUnverifiable = node.gate() == Gate.TEST_PLAN && DeferredAcceptance.enabled(flow);
         if (deferUnverifiable) schema = DeferredAcceptance.extendSchema(schema);
         StringBuilder context = new StringBuilder("配置版本：" + flow.snapshot.revision() + "\n專案：" + flow.snapshot.definition().project().name()
@@ -153,6 +155,7 @@ public class ConfiguredExecutor {
                 context.append(savedServiceEvidence(flow.parentId,target));
         }
         if (!flow.dialogue && OperationContract.inspectAvailable(flow.snapshot.definition())) context.append(FileComparison.notice());
+        if (!flow.dialogue && JsonAdditionsComparison.enabled(flow.snapshot.definition())) context.append(JsonAdditionsComparison.notice());
         Node defined = AgentDispatch.effective(flow, flow.node);
         if (!flow.dialogue && defined != null && defined.protectedPathFallback() != null) {
             var fb = defined.protectedPathFallback();

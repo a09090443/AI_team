@@ -65,6 +65,9 @@ QA 操作可在相同 argv 加 `--offline`，並將輸出目錄列入 `writes` �
 `compare-unchanged-files` 同樣為保留的 v2 內建操作，計畫以 `unchanged_paths` 宣告指定檔案，
 系統執行 Git 物件比對並產生收據，不授予模型新指令權限；語意與邊界見 [QA 情境流程](qa-scenario-workflow.md)。
 
+`compare-json-additions` 是由 `project.jsonAdditionsComparison` 啟用的保留操作。它只讀固定版本的 Git 檔案，由系統執行，
+可在計畫宣告允許新增的 JSON 陣列項目。不可在 `project.operations` 以同名自訂命令覆寫。
+
 ## 各階段預檢與證據
 
 `OperationPreflight` 在呼叫模型前：
@@ -120,7 +123,7 @@ Codex 沒有細粒度 CLI 工具白名單，不能把前置宣告當成命令限
 ```
 
 預覽比較任務快照與目前服務載入的配置，token 綁定來源、目標與完整目標內容。
-只允許工具、快取、建置／測試指引、operations、serviceTarget 與 autonomy（自主恢復政策，2026-10-22）的設定差異、節點的 `writablePaths`／`localTestNetwork`／`timeoutSeconds`
+只允許工具、快取、建置／測試指引、operations、serviceTarget、`jsonAdditionsComparison` 與 autonomy（自主恢復政策，2026-10-22）的設定差異、節點的 `writablePaths`／`localTestNetwork`／`timeoutSeconds`
 （逾時只是資源上限，2026-10-22 起可遷移），以及同一 runtime 內的角色模型
 （2026-09-25 起，例如 `roles.builder.model："sonnet" → "opus"`）；
 角色集合、runtime、路由、基準分支、repo、提示／schema、保護路徑與核准政策若改變，

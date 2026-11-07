@@ -36,6 +36,7 @@ public final class OperationContract {
             TeamCatalog.require(id.matches("[a-z][a-z0-9_-]*") && op != null, "無效操作 ID");
             TeamCatalog.require(!INSPECT_CONTENT.equals(id), "操作 ID " + INSPECT_CONTENT + " 為系統保留的內容檢視，不能宣告成指令");
             TeamCatalog.require(!FileComparison.OPERATION.equals(id), "操作 ID " + FileComparison.OPERATION + " 為系統保留的檔案比對");
+            TeamCatalog.require(!JsonAdditionsComparison.OPERATION.equals(id), "操作 ID " + JsonAdditionsComparison.OPERATION + " 為系統保留的 JSON 比對");
             relative(op.directory());
             TeamCatalog.require(op.argv() != null && !op.argv().isEmpty() && op.argv().size() <= 32
                     // ${teams} 在 TeamCatalog.load 展開成實際路徑；未展開的範本也要能通過靜態驗證。

@@ -104,6 +104,68 @@ class IndependentVerifierTest {
                 .thenReturn(List.of(new WorkspaceManager.FileIdentity("README.md", "100644 blob abc", "100644 blob def")));
         assertThatThrownBy(this::verifyNow).isInstanceOf(IndependentVerifier.CheckFailed.class);
     }
+
+    @Test void jsonComparisonUsesOriginalTaskAndBindsReceiptToItsPlanAndLog() throws Exception {
+        enableDocOnly("*.md");
+        var original = new FlowRun(flow.snapshot);
+        original.comparisonBase = "b".repeat(40);
+        original.successor = "42";
+        flow.continuationOf = "41";
+        flow.comparisonBase = head;
+        verifier.taskStore = mock(com.zipe.aiteam.store.TaskStore.class);
+        when(verifier.taskStore.flow("41")).thenReturn(Optional.of(original));
+
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var definition = mapper.valueToTree(flow.snapshot.definition());
+        ((com.fasterxml.jackson.databind.node.ObjectNode) definition.path("project")).put("jsonAdditionsComparison", true);
+        var snapshot = new TeamDefinition.Snapshot("json", mapper.treeToValue(definition, TeamDefinition.class),
+                flow.snapshot.repository(), flow.snapshot.assets());
+        assertThat(TeamMigration.preview(flow.snapshot, snapshot).changes()).singleElement()
+                .asString().contains("project.jsonAdditionsComparison");
+        flow.snapshot = snapshot;
+
+        String planId = flow.snapshot.definition().nodes().entrySet().stream()
+                .filter(e -> e.getValue().gate() == TeamDefinition.Gate.TEST_PLAN).findFirst().orElseThrow().getKey();
+        var plan = mapper.readTree("""
+                {"scenarios":[{"operation_ids":["compare-json-additions"],"json_additions":[
+                  {"path":"config.json","array_pointer":"/entries","identity_key":"id","additions":["new"]}
+                ]}]}
+                """);
+        assertThat(JsonAdditionsComparison.planReason(plan, original.snapshot.definition())).contains("已啟用");
+        assertThat(JsonAdditionsComparison.planReason(plan, snapshot.definition())).isNull();
+        flow.receipts.put(planId, plan);
+        when(workspace.changedPathsSinceBase("42")).thenReturn(List.of("other.md"));
+        int limit = JsonAdditionsComparison.MAX_BYTES;
+        when(workspace.readCommittedText("42", original.comparisonBase, "config.json", limit))
+                .thenReturn("{\"entries\":[{\"id\":\"old\",\"value\":1},{\"value\":2}],\"mode\":\"fixed\"}");
+        when(workspace.readCommittedText("42", head, "config.json", limit))
+                .thenReturn("{\"mode\":\"fixed\",\"entries\":[{\"id\":\"new\"},{\"value\":1,\"id\":\"old\"},{\"value\":2}]}");
+
+        verifyNow();
+        assertThat(calls).isEmpty();
+        verify(workspace).requireAncestor("42", original.comparisonBase, head);
+        var receipt = flow.independentEvidence;
+        assertThat(receipt.jsonAdditionsComparison().base().taskId()).isEqualTo("41");
+        assertThat(mapper.readValue(mapper.writeValueAsString(receipt), IndependentVerifier.Receipt.class)).isEqualTo(receipt);
+        assertThat(verifier.blockingReason(flow, head)).isNull();
+        original.successor = "43";
+        assertThat(verifier.blockingReason(flow, head)).contains("無法核實 JSON 比對");
+        original.successor = "42";
+        Files.writeString(Path.of(receipt.jsonAdditionsComparison().log()), "{}");
+        assertThat(verifier.blockingReason(flow, head)).contains("紀錄遺失或雜湊不符");
+
+        for (String bad : List.of(
+                "{\"mode\":\"fixed\",\"entries\":[{\"id\":\"new\"},{\"id\":\"old\",\"value\":3},{\"value\":2}]}",
+                "{\"mode\":\"fixed\",\"entries\":[{\"id\":\"new\"},{\"id\":\"old\",\"value\":1},{\"id\":\"new\"},{\"value\":2}]}",
+                "{\"mode\":\"fixed\",\"entries\":[{\"id\":\"new\"},{\"value\":2},{\"id\":\"old\",\"value\":1}]}",
+                "{\"mode\":\"fixed\",\"entries\":[{\"id\":\"new\"},{\"id\":\"old\",\"value\":1},{\"id\":\"extra\"},{\"value\":2}]}",
+                "{\"mode\":\"fixed\",\"entries\":[{\"id\":\"old\",\"value\":1},{\"value\":2}]}",
+                "{\"mode\":\"fixed\",\"mode\":\"fixed\",\"entries\":[{\"id\":\"new\"},{\"id\":\"old\",\"value\":1},{\"value\":2}]}")) {
+            when(workspace.readCommittedText("42", head, "config.json", limit)).thenReturn(bad);
+            assertThatThrownBy(this::verifyNow).isInstanceOf(IndependentVerifier.CheckFailed.class);
+        }
+        assertThat(calls).isEmpty();
+    }
     void enableAutonomy() throws Exception {
         var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
         var definition = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.valueToTree(flow.snapshot.definition());

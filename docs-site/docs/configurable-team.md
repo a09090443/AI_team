@@ -178,6 +178,7 @@ App-Level Token 留空**：發言與交接 tag 使用同一個角色身分，不
 | 自主派工 | 節點 `candidateRoles` |
 | 跨 runtime 改派 | 節點 `protectedPathFallback` |
 | rules 程式套用 | 節點 `protectedPathFallback.programRules`，僅原角色為 Claude Code；省略關閉，仍保留跨 runtime 改派備援 |
+| JSON 新增比對 | `project.jsonAdditionsComparison`，預設關閉；啟用後 v2 可在驗收情境引用 `compare-json-additions` |
 | 服務建置路線 | `service` 節點、`serviceTarget` |
 | 依變更範圍驗證 | `commandScopes` |
 | 文件略過產品建置 | `docOnlyPaths` |

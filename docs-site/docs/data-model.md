@@ -329,6 +329,10 @@ true 啟用受控 rules 提案套用，false／省略維持改派。新欄位出
 `log`（系統比較結果 JSON）及 `sha256`。未引用內建比對的舊計畫保持 null。
 計畫情境新增 `unchanged_paths` 字串陣列，配合 `operation_ids` 的 `compare-unchanged-files` 使用；舊計畫缺欄位仍可讀取。
 
+`snapshot.definition.project.jsonAdditionsComparison` 為選填 Boolean，省略時停用。
+`IndependentVerifier.Receipt.jsonAdditionsComparison` 包含 `base`（承接鏈最初任務 ID 與固定 Git commit）、`head`、
+`planDigest`、`checks`、`log` 及 `sha256`；未用此操作時省略。保存新設定或收據後，回滾前須核對舊 JAR 是否能讀取新欄位。
+
 :::danger
 
 **新版保存 `comparisonBase`／`fileComparison` 後不可直接換回不認識欄位的舊 JAR**；回滾須配合升級前 DB 備份評估，不覆蓋升級後任務。

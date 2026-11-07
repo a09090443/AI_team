@@ -154,6 +154,9 @@ QA 測試計畫必須引用 `baseline_revision`，每個情境的 `requirement_i
 通過才執行建置或依純文件規則略過建置。差異交回實作修正，查不到基準則停止；
 比對收據綁定完整計畫與固定 Git 基準，發布前重驗紀錄。詳見 [QA 情境流程](qa-scenario-workflow.md)。
 
+計畫引用 `compare-json-additions` 時，系統也在建置前比較 Git 中的 JSON。只移除計畫允許新增的陣列項目，
+既有結構不同就交回實作。承接任務沿保存的承接鏈取最初任務的 Git 比較基準，發布前核對計畫、版本與收據紀錄。
+
 在 Code Review **之前**，系統從工作區的最終 commit 建立另一個全新 clone，不重用 QA 的產物／node_modules。
 管理者在 `project.verification` 固定 argv 與整輪期限，例如：
 

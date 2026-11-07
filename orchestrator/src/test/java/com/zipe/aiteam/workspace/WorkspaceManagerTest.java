@@ -25,6 +25,22 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class WorkspaceManagerTest {
 
+    @Test void readsOnlyBoundedUtf8FromTheRequestedGitCommit() throws Exception {
+        Path ws = manager.provision(task("1001"));
+        String base = manager.headSha("1001");
+        String original = manager.readCommittedText("1001", base, "README.md", 1024);
+        assertThat(original).startsWith("初始內容");
+        Files.write(ws.resolve("README.md"), new byte[] {(byte) 0xC3});
+        run(ws, "git", "add", "README.md");
+        run(ws, "git", "commit", "--quiet", "-m", "invalid UTF-8");
+        String head = manager.headSha("1001");
+        manager.requireAncestor("1001", base, head);
+        assertThatThrownBy(() -> manager.requireAncestor("1001", head, base)).hasMessageContaining("祖先");
+        assertThatThrownBy(() -> manager.readCommittedText("1001", head, "README.md", 1024)).hasCauseInstanceOf(java.nio.charset.CharacterCodingException.class);
+        assertThatThrownBy(() -> manager.readCommittedText("1001", base, "README.md", 1)).hasMessageContaining("大小上限");
+        assertThat(manager.readCommittedText("1001", base, "README.md", 1024)).isEqualTo(original);
+    }
+
     @Test void comparesCommittedObjectsAndRejectsMissingBaselineOrUnsafePaths() throws Exception {
         Path ws = manager.provision(task("1001"));
         String base = manager.headSha("1001");

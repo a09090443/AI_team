@@ -191,6 +191,7 @@ public class TeamCatalog {
         d.project().protectedPaths().forEach(PathRules::validate);
         if (d.project().cachePaths() != null) d.project().cachePaths().forEach(ConfiguredExecutor::validateCache);
         OperationContract.validate(d);
+        if (JsonAdditionsComparison.enabled(d)) require(d.version() >= 2, "JSON 新增比對只支援 v2 驗收流程");
         ServiceDelivery.validate(d);
         AgentDispatch.validate(d);
         Consultation.validate(d);

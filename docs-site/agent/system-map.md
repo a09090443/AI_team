@@ -45,6 +45,7 @@ FlowEngine 的新任務承接、續跑、發布及角色請求均保留這個身
 
 指定舊檔保持不變時，`FileComparison` 處理測試計畫的路徑契約，`WorkspaceManager` 比較固定 Git 版本的檔案物件，
 `IndependentVerifier` 保存比對收據並於發布前查核；差異沿既有驗證失敗路線交回實作。這項能力不需要擴充 agent 的 shell 權限。
+`JsonAdditionsComparison` 沿用這條路線，沿承接鏈取得原始 Git 基準，再比較允許指定新增項目的 JSON。
 
 | 模式 | 啟用方式 | 狀態 |
 |---|---|---|

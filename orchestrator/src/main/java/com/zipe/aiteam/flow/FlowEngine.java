@@ -1555,8 +1555,10 @@ public class FlowEngine {
         if (targetId == null) return false;
         Node target = flow.snapshot.definition().nodes().get(targetId);
         String head = workspaces.headSha(task.id());
-        String reason = (failed.argv().equals(List.of(FileComparison.OPERATION))
-                ? "系統比對指定舊檔時發現修改（" : "系統在全新 clone 執行配置的驗證指令失敗（") + String.join(" ", failed.argv()) + "，exit=" + failed.exitCode()
+        String checkDescription = "系統在全新 clone 執行配置的驗證指令失敗";
+        if (failed.argv().equals(List.of(FileComparison.OPERATION))) checkDescription = "系統比對指定舊檔時發現修改";
+        if (failed.argv().equals(List.of(JsonAdditionsComparison.OPERATION))) checkDescription = "系統未能確認 JSON 僅包含允許的新增項目";
+        String reason = checkDescription + "（" + String.join(" ", failed.argv()) + "，exit=" + failed.exitCode()
                 + "，commit=" + head + "）。最常見的原因是程式或測試沒有通過，請先依失敗摘要找出根因。"
                 + "\n能在已核准範圍內修好就修正後提交，完成後會交回驗收重新驗證。不得刪除、停用、跳過失敗的測試或放寬斷言來讓它通過；"
                 + "若判定是測試本身不穩定（例如時間門檻過緊），要修成穩定且仍能驗到原需求，並在報告說明依據。"
