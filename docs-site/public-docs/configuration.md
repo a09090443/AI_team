@@ -75,3 +75,32 @@ java -jar "$HOME/ai-team/orchestrator/target/ai-team-orchestrator-0.1.0.jar" --v
 這只驗證配置，不代表目標 repo、工具或真實流程已驗收。確認後設定 AI_TEAM_DEFINITION 並重啟，新任務才載入新快照。
 舊任務使用受控遷移或承接，詳見[故障排查](troubleshooting.md)。
 
+## 每個角色各自選 AI CLI 與模型
+
+每個角色在 `roles` 中各自指定使用哪個 AI CLI（`runtime`）與模型，同一團隊可以混用。
+例如 PM 用 Claude Code 的 opus 拆解需求、Backend 用 sonnet 實作、QA 改用 Codex 驗收：
+
+```json
+"roles": {
+  "coordinator": { "name": "PM Agent",      "runtime": "claude-code", "model": "opus" },
+  "builder":     { "name": "Backend Agent", "runtime": "claude-code", "model": "sonnet" },
+  "tester":      { "name": "QA Agent",      "runtime": "codex",       "model": "<codex 模型名>", "reasoningEffort": "medium" }
+}
+```
+
+範例只列相關欄位；完整角色還需要 `prompt`、`tools` 與 token 變數名稱，可從 `orchestrator/teams/node-web.json` 複製後修改。
+
+| 欄位 | 必填 | 說明 |
+|---|---|---|
+| `runtime` | 是 | `claude-code`、`codex` 或 `opencode`；對應的 `CLAUDE_BIN`／`CODEX_BIN`／`OPENCODE_BIN` 必須可執行 |
+| `model` | 否 | 該 CLI 認得的模型名；留空交給 CLI 預設。三家格式不通用，opencode 為 `provider/model` |
+| `reasoningEffort` | 否 | 推理強度 `low`／`medium`／`high`／`xhigh`，目前只支援 `codex`；其他 runtime 填寫會驗證失敗 |
+
+- 選擇依據：拆解需求與審查適合推理較強的模型；照計畫實作與重複驗證可用較快、較省額度的模型；
+  驗收與實作用不同 runtime，可降低同一模型自己驗自己的盲點。
+- 各 CLI 的額度分開計算；某個 runtime 用盡時，輪到使用它的角色才會讓任務停在 `WAITING_QUOTA`。
+- opencode 目前只實測過唯讀角色對話，寫入工作區的正式階段尚未驗證，正式流程建議先用 Claude Code 或 Codex。
+- 名稱打錯時，Claude Code 會直接失敗；Codex 可能退回預設模型而不報錯，改完要看實際回報確認。
+- 討論串的階段進度訊息會顯示實際使用的角色、runtime、模型與推理強度，例如
+  `QA Agent／codex／模型：…／推理：medium`；未指定模型時顯示「CLI 預設」。
+- 修改後先用上方 `--validate-team` 驗證，再重啟服務；只有新任務會套用，既有任務沿用建立時的快照。
