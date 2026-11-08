@@ -61,6 +61,10 @@ public class FlowRun {
     /** 上游 agent 選擇的負責角色；同一輪續跑沿用，不借用 legacy fallback 欄位。 */
     public Map<String,AgentDispatch.Assignment> assignments = new LinkedHashMap<>();
     public List<AgentDispatch.Assignment> assignmentHistory = new ArrayList<>();
+    /** 實際交接的來源與目的節點；只供提示選取上一棒的報告。 */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public HandoffEdge incomingHandoff;
+    public record HandoffEdge(String source, String target) {}
     /**
      * 受保護路徑分段改派：節點 → 本輪改派段的結果。改派角色只改允許的受保護路徑，系統核對後代為提交，
      * 其餘工作接著由原角色完成。返工保留候選，以 inputDigest 與目標 Git 物件重新核實後才沿用。

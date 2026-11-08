@@ -105,6 +105,66 @@ class ConfiguredExecutorTest {
                 .contains("來源節點 review").contains("DeadlineSocketFactory 破壞隱式 TLS");
     }
 
+    @Test void focusedReassignmentKeepsContractsAndFindingsButMovesOldReportsOutOfThePrompt() throws Exception {
+        var loaded = TeamCatalog.load(Path.of("teams/gradle-fullstack.json"), key -> repo.toString());
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var definition = json.valueToTree(loaded.definition());
+        // 範例的漂移檢查需由產品提供腳本與雜湊，交接測試不執行產品操作。
+        ((com.fasterxml.jackson.databind.node.ObjectNode) definition.path("project").path("operations")).remove("drift-scan");
+        flow = new FlowRun(new TeamDefinition.Snapshot(loaded.revision(), json.treeToValue(definition, TeamDefinition.class),
+                loaded.repository(), loaded.assets()));
+        flow.workspacePath = repo.toString();
+        when(workspace.exists("42")).thenReturn(true);
+        flow.receipts.put("intake", json.createObjectNode().put("summary", "requirement contract"));
+        flow.receipts.put("design", json.createObjectNode().put("summary", "older design report"));
+        flow.receipts.put("plan", json.createObjectNode().put("summary", "acceptance plan"));
+        flow.receipts.put("triage", json.createObjectNode().put("summary", "triage report details"));
+        flow.blockedFindings.put("review", json.createObjectNode().put("summary", "open review finding"));
+        flow.context = FlowContext.append("", "使用者補充：保留目前的操作方式");
+        flow.context = FlowContext.append(flow.context, "節點 review 受阻：\n系統核對未過\n報告：old duplicate report");
+        flow.node = "triage";
+        HandoffContext.recordTransition(flow, "implementation");
+        flow.node = "implementation";
+        flow.assignments.put("implementation", new AgentDispatch.Assignment("triage", "implementation",
+                "builder", "修正審查發現", "補測試後重驗"));
+        var request = org.mockito.ArgumentCaptor.forClass(AgentRuntime.RuntimeRequest.class);
+
+        executor.execute(new Task("42", "c", "t", "u", "修正缺陷"), flow, flow.snapshot.definition().nodes().get(flow.node));
+
+        verify(runtime).execute(request.capture(), any());
+        String prompt = request.getValue().prompt();
+        Path reference = request.getValue().systemPromptFile().resolveSibling("implementation-handoff-reports.json");
+        assertThat(prompt).contains("補測試後重驗", "requirement contract", "acceptance plan", "open review finding",
+                        "保留目前的操作方式", "系統核對未過", reference.toAbsolutePath().toString())
+                .doesNotContain("older design report", "triage report details", "old duplicate report");
+        assertThat(prompt.indexOf("補測試後重驗")).isLessThan(prompt.indexOf("requirement contract"));
+        assertThat(Files.readString(reference)).contains("older design report", "triage report details", "open review finding");
+        assertThat(reference.startsWith(repo)).isFalse();
+
+        flow.receipts.keySet().removeAll(List.of("design", "triage"));
+        flow.blockedFindings.clear();
+        HandoffContext.appendReports(new StringBuilder(), flow, flow.snapshot.definition().nodes().get(flow.node), reference);
+        assertThat(reference).doesNotExist();
+    }
+
+    @Test void focusedFixedRouteKeepsPreviousReportAndReviewDependencies() throws Exception {
+        flow.node = "deploy";
+        HandoffContext.recordTransition(flow, "review");
+        flow.node = "review";
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        flow.receipts.put("implementation", json.createObjectNode().put("summary", "older backend details"));
+        flow.receipts.put("frontend", json.createObjectNode().put("summary", "frontend implementation"));
+        flow.receipts.put("verification", json.createObjectNode().put("summary", "verification results"));
+        flow.receipts.put("deploy", json.createObjectNode().put("summary", "previous stage deployment"));
+
+        StringBuilder prompt = new StringBuilder();
+        HandoffContext.appendReports(prompt, flow, flow.snapshot.definition().nodes().get(flow.node), tmp.resolve("reports.json"));
+
+        assertThat(prompt).contains("frontend implementation", "verification results", "previous stage deployment")
+                .doesNotContain("older backend details");
+        assertThat(Files.readString(tmp.resolve("reports.json"))).contains("older backend details");
+    }
+
     @Test void failedSystemCheckTellsDownstreamItIsAHardGate() throws Exception {
         var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
         StringBuilder review = new StringBuilder();

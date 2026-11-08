@@ -909,10 +909,23 @@ class FlowEngineTest {
         return file;
     }
 
-    @Test @org.junit.jupiter.api.condition.EnabledOnOs(org.junit.jupiter.api.condition.OS.LINUX)
-    void programRulesProposalIsAppliedAndPrimaryContinuesWithoutCodex() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    @org.junit.jupiter.api.condition.EnabledOnOs(org.junit.jupiter.api.condition.OS.LINUX)
+    void programRulesProposalIsAppliedAndPrimaryContinuesWithoutCodex(boolean requireApproval) throws Exception {
         Path file = enableProgramRules(); String path = ".claude/rules/api-endpoints.md";
+        var flow = store.flow(task.id()).orElseThrow();
+        ObjectNode definition = mapper.valueToTree(flow.snapshot.definition());
+        ((ObjectNode) definition.path("project")).put("requirePlanApproval", requireApproval)
+                .put("autoApprovePlanWhenValid", requireApproval);
+        flow.snapshot = new TeamDefinition.Snapshot(flow.snapshot.revision(), mapper.treeToValue(definition, TeamDefinition.class),
+                flow.snapshot.repository(), flow.snapshot.assets());
+        store.saveFlow(task.id(), flow);
         when(executor.proposeRules(any(), any(), any(), anyList())).thenAnswer(call -> {
+            if (requireApproval) {
+                assertThat(store.flow(task.id()).orElseThrow().planApprovals).containsKey("plan");
+                assertThat(PlanApproval.blockingReason(call.getArgument(1), "plan")).isNull();
+            }
             List<RulesProposal.Original> originals = call.getArgument(3);
             var proposal = mapper.createObjectNode();
             proposal.putArray("changes").addObject().put("path", path).put("sha256", originals.getFirst().sha256()).put("content", "new");

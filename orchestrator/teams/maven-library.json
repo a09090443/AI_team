@@ -2,6 +2,7 @@
   "version": 2,
   "id": "maven-library",
   "project": {
+    "focusedHandoffs": true,
     "requirePlanApproval": true,
     "autoApprovePlanWhenValid": true,
     "autonomy": {

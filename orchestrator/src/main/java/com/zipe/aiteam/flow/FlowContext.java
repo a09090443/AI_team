@@ -41,5 +41,20 @@ public final class FlowContext {
         return dropped ? DROPPED + merged : merged;
     }
 
+    static String withoutRepeatedFindings(String context) {
+        if (context == null || !context.contains("\n報告：")) return context;
+        List<String> entries = new ArrayList<>(Arrays.asList(context.split(Pattern.quote(MARK), -1)));
+        for (int i = 1; i < entries.size(); i++) {
+            String entry = entries.get(i);
+            int firstLine = entry.indexOf('\n');
+            int report = entry.indexOf("\n報告：");
+            // FlowEngine 已把目前的受阻報告另存；這裡只保留系統判定及其他補充文字。
+            if (firstLine > 0 && report > firstLine && entry.startsWith("節點 ")
+                    && entry.substring(0, firstLine).endsWith(" 受阻："))
+                entries.set(i, entry.substring(0, report));
+        }
+        return joined(entries);
+    }
+
     private static String joined(List<String> parts) { return String.join(MARK, parts); }
 }

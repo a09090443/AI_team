@@ -252,6 +252,9 @@ true 啟用受控 rules 提案套用，false／省略維持改派。新欄位出
 
 這些欄位為空時都不會寫進 JSON，所以沒有用到協作的任務，舊 JAR 仍然讀得到。只有用過協作的任務會受「舊 JAR 不能解析」的限制。
 
+`snapshot.definition.project.focusedHandoffs` 為選填 Boolean，省略時停用且維持原配置版本。啟用後新增的快照可含 `incomingHandoff`；
+舊 JAR 無法讀取含新欄位的快照，回滾需搭配部署前的資料庫備份。
+
 最關鍵的性質：`snapshot` 內含「任務開始時」的 teams 配置，
 磁碟上的配置改了不會影響進行中的任務。要換配置必須走 `TeamMigration`，
 而遷移會清掉 `planApprovals`、`executionContexts`、`recoveryGrants`
@@ -273,6 +276,7 @@ true 啟用受控 rules 提案套用，false／省略維持改派。新欄位出
 | `automaticHandoffExtensionKeys` | Set&lt;String&gt; | 已使用的人工延長授權碼；綁定配置、受阻證據與 HEAD，永久保留以防重放 |
 | `workspaceReady` / `workspacePath` | boolean / String | 工作區是否已備妥、路徑 |
 | `context` | String | 滾動交接紀錄，預設空字串。上限 20000 字元，單筆事件上限 6000 字元；**超量時淘汰最舊的段落而不是截斷新內容**，並在開頭標示已淘汰。舊版以留頭截尾的 `clip` 累加，context 一旦飽和就永久凍結，之後的受阻報告與使用者補充都會被靜默丟棄 |
+| `incomingHandoff` | `{source,target}` | 啟用 `project.focusedHandoffs` 時，記錄正常流程換手或沿用有效報告時的來源與目的節點。只在目的節點與本輪相符時用於挑選交接報告；沒有值時省略。僅影響提示內容，不參與報告、核准或權限判定 |
 | `lastBlockReason` | String | 上一次受阻原因，回報時附在訊息裡（截斷 4500 字元） |
 | `acceptanceOwner` | String | 需求／驗收負責人，來自 `task.requester_user_id`。所有核准都比對這個值 |
 | `ownerPublishBy` | String | 負責人以「開 PR」命令發布、但審查還沒跑時記下指令者；走到發布核准節點且檢查全過就直接發布。停下等人時清除。2026-10-08 起。null 也會寫出，所以新版存過的任務舊 JAR 都讀不了（回滾要注意） |

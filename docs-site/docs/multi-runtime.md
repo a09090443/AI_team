@@ -130,9 +130,13 @@ Codex 可寫 `.claude/rules/`、`.claude/skills/`，`.git` 與 `.git/hooks` 不�
 
 實作節點的 `protectedPathFallback.programRules: true` 啟用；省略或 `false` 維持既有改派。
 只適用原角色為 `claude-code`，仍須配置另一個 runtime 的 fallback 角色與 `paths`，不新增權限。
-Maven 與 Gradle 內附範例啟用；node-web 維持關閉，舊任務快照不自動啟用。
+Maven 與 Gradle 內附範例啟用；node-web 維持關閉。部署後，續跑或核准需求變更仍沿用原任務快照。
+`protectedPathFallback.programRules` 不在原地配置更新的允許清單。要讓既有成果使用這項設定，
+可在任務停下時由負責人選「改用新任務繼續」，以目前配置承接。詳見 [舊任務配置更新](cross-project-execution.md#舊任務配置更新)。
 
 - 先從前置 TEST_PLAN 的 `protected_path_changes` 取得明確路徑，核對既有計畫核准政策、fallback 白名單、專案 `protectedPaths` 與 LIMITED 節點寫入範圍。
+  專案啟用 `autoApprovePlanWhenValid` 時，系統在這裡先用既有機械檢查核准計畫，之後才嘗試唯讀提案。
+  若仍缺有效核准，會記錄原因並走原改派，QA 前仍會套用既有核准閘門。
   本次可改派清單必須全是 `.claude/rules/` 下已存在的 UTF-8 `.md`，最多 10 檔、單檔 64 KiB、原文與新文各合計最多 256 KiB；不支援新增、刪除、改名。
   有未提交目標、混有 skills／wrapper 等其他類型、已有續跑 checkpoint，或平台不支援安全目錄操作時，直接走既有改派。
 - 原實作角色開一次新的唯讀提案對話：外層唯讀沙箱、僅 Read／Grep／Glob、最多 10 回合及 300 秒（不超過原節點上限）。

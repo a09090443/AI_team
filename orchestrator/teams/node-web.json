@@ -2,6 +2,7 @@
   "version": 2,
   "id": "node-web",
   "project": {
+    "focusedHandoffs": true,
     "requirePlanApproval": true,
     "serviceTarget": null,
     "operations": {

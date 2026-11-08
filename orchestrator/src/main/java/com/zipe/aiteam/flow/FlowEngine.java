@@ -258,7 +258,7 @@ public class FlowEngine {
         audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE,
                 "測試計畫通過系統機械檢查，依配置自動核准：" + plan + "／" + digest
                         + "；未降低驗收標準，PR 仍需真人核准");
-        String text = "測試計畫已通過系統檢查（涵蓋全部驗收項目、每條情境都有反例、操作可執行），依設定自動核准並接著執行驗收。"
+        String text = "測試計畫已通過系統檢查（涵蓋全部驗收項目、每條情境都有反例、操作可執行），依設定自動核准。"
                 + "\n要看內容請按「檢視測試計畫」。發布仍然需要你核准。";
         if (slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), text,
                 HumanGate.single(task.id(), text, "檢視測試計畫", "檢視測試計畫")) == null)
@@ -442,6 +442,7 @@ public class FlowEngine {
                                 + " 前次結果（commit=" + reuseHead + "，需求基準未變或只刪減、沒有新問題），未重跑；接著 " + next);
                         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id() + "：「" + reusedNode
                                 + "」的前次結果仍然有效（同一個 commit，需求沒有新增或修改），直接沿用，不重跑。");
+                        HandoffContext.recordTransition(flow, next);
                         flow.node = next;
                         store.saveFlow(task.id(), flow);
                         continue;
@@ -921,6 +922,7 @@ public class FlowEngine {
                     target = AgentDispatch.effective(flow, next);
                 }
                 handoff(task, flow, node, target, block != null);
+                HandoffContext.recordTransition(flow, next);
                 flow.node = next; store.saveFlow(task.id(), flow);
             }
         } catch (Exception e) {
@@ -1303,8 +1305,14 @@ public class FlowEngine {
                 || (node.scope() == Scope.LIMITED && !PathRules.allows(node.writablePaths(), path)))) return false;
         for (String id : node.requires() == null ? List.<String>of() : node.requires()) {
             Node prerequisite = flow.snapshot.definition().nodes().get(id);
-            if (prerequisite != null && prerequisite.gate() == Gate.TEST_PLAN
-                    && PlanApproval.blockingReason(flow, id) != null) return false;
+            if (prerequisite == null || prerequisite.gate() != Gate.TEST_PLAN) continue;
+            // 程式套用發生在實作階段，早於 VERIFICATION 的自動核准入口。
+            autoApprovePlan(task, flow, id);
+            if (PlanApproval.blockingReason(flow, id) != null) {
+                audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE,
+                        "rules 程式套用缺少已核准的測試計畫，使用既有改派：" + id);
+                return false;
+            }
         }
         if (workspaces.uncommittedPaths(task.id()).stream().anyMatch(need.delegated()::contains)) return false;
         Path cwd = workspaces.pathFor(task.id());
