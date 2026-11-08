@@ -56,6 +56,7 @@ public final class HumanOptions {
     public static final String PLAN = "PLAN";
     public static final String REMEDIATE = "REMEDIATE";
     public static final String REQUIREMENT = "REQUIREMENT";
+    private static final String CONFIRM_REPAIR_SCOPE = "確認修復範圍";
     public static final String SUPPLEMENT = "SUPPLEMENT";
     public static final String SUCCESSOR = "SUCCESSOR";
     public static final String SUCCESSOR_COMMAND = "承接成新任務";
@@ -135,6 +136,15 @@ public final class HumanOptions {
         }
 
         boolean stuck = stuckAtLimit(flow);
+        boolean repairScopeBlocked = task.state() == Task.State.AWAIT_HUMAN && flow.changeTarget == null
+                && flow.baselineRevision != null && flow.acceptanceOwner != null && flow.snapshot != null && !flow.dialogue
+                && flow.lastBlockReason != null
+                && flow.lastBlockReason.startsWith("節點 " + flow.node + "：" + IssueTracker.DECISION_NEEDS_REQUIREMENTS)
+                && FlowEngine.requirementsNode(flow) != null;
+        if (repairScopeBlocked)
+            options.add(new Option(REQUIREMENT, CONFIRM_REPAIR_SCOPE,
+                    "請需求負責人填寫已選定的修法與原因。送出後會回到需求整理，確認修復範圍後再派工。",
+                    null));
 
         String recoverable = recoverableNode(flow);
         if (recoverable != null)
@@ -145,7 +155,7 @@ public final class HumanOptions {
             options.add(new Option(CONFIG_UPDATE, "檢視配置更新",
                     "管理者已經部署新的配置。按下去會列出差異，確認後才會套用。", "檢視配置更新"));
         // 卡在上限又沒有恢復方式：唯一的出路是管理者部署新配置，部署後要有地方重新檢查。
-        if (stuck && recoverable == null && !configUpdate)
+        if (stuck && recoverable == null && !configUpdate && !repairScopeBlocked)
             options.add(new Option(STATUS, "重新整理選項",
                     "管理者部署新配置後按這個，系統會重新檢查並列出可用的選項（例如「檢視配置更新」）；不會啟動 agent。",
                     STATUS_COMMAND));
@@ -191,7 +201,7 @@ public final class HumanOptions {
                     "只有需求負責人可以核准；核准後會回到需求節點重做，既有驗收證據會失效。",
                     null));
         // 停在測試計畫：需求本身有問題（例如有一條根本測不了）最常在這裡浮現，而此時沒有人會替你提出修改。
-        else if (current != null && current.gate() == Gate.TEST_PLAN && flow.baselineRevision != null)
+        else if (!repairScopeBlocked && current != null && current.gate() == Gate.TEST_PLAN && flow.baselineRevision != null)
             options.add(new Option(REQUIREMENT, "需求要改",
                     "如果是需求清單本身有問題（例如有一條需求根本無法測試），需求負責人可以直接核准修改。"
                             + "之後會重新整理需求，再重跑設計、測試計畫、實作、驗收與審查；PR 仍需要你核准。",
@@ -403,7 +413,10 @@ public final class HumanOptions {
         if (exhausted(flow)) return exhaustedNotice(task, flow, workspace, briefReports, typed);
         List<Option> options = options(task, flow, canSupplement, briefReports, extensionToken, workspace, configUpdate);
         StringBuilder out = new StringBuilder();
-        if (stuckAtLimit(flow)) {
+        if (options.stream().anyMatch(o -> CONFIRM_REPAIR_SCOPE.equals(o.label()))) {
+            out.append("\n\n*分流還無法派工*\n你的回覆會帶入流程，但待決問題必須由需求階段確認後才能派修。")
+               .append("請用「確認修復範圍」送出修法，讓任務回到需求整理。");
+        } else if (stuckAtLimit(flow)) {
             Node node = flow.snapshot.definition().nodes().get(flow.node);
             out.append("\n\n*這一步已經重試到上限*\n「").append(flow.node).append("」已經跑了 ")
                .append(flow.visits.getOrDefault(flow.node, 0)).append(" 次（上限 ").append(node.maxVisits())
@@ -440,7 +453,9 @@ public final class HumanOptions {
             if (typed) {
                 if (option.button()) out.append("\n　按下方按鈕，或輸入：補充 #").append(task.id())
                         .append(' ').append(option.command());
-                else out.append("\n　輸入：補充 #").append(task.id()).append(' ').append(commandHint(option.kind()));
+                else out.append("\n　輸入：補充 #").append(task.id()).append(' ')
+                        .append(CONFIRM_REPAIR_SCOPE.equals(option.label())
+                                ? "核准需求變更 <已選定的修法與原因>" : commandHint(option.kind()));
             } else if (option.input()) out.append("\n　按下方「").append(option.label()).append("」，在跳出的視窗填寫。");
             else if (PLAN.equals(option.kind())) out.append("\n　請用測試計畫卡上的按鈕。");
         }

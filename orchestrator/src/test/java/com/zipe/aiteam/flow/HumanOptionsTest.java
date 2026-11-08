@@ -49,6 +49,28 @@ class HumanOptionsTest {
                 .anyMatch(o -> o.label().equals("保存修改並改用新任務繼續") && o.command().equals("承接成新任務 保存 fp9"));
     }
 
+    @Test void rejectedTriageDecisionOffersTheOwnerAPathBackToRequirements() {
+        task.state(Task.State.AWAIT_HUMAN);
+        flow.node = "service_triage";
+        flow.baselineRevision = "baseline-1";
+        flow.acceptanceOwner = "u";
+        flow.lastBlockReason = "節點 service_triage：" + IssueTracker.DECISION_NEEDS_REQUIREMENTS + "SVC-1\n摘要";
+
+        assertThat(HumanOptions.options(task, flow, true, true, null))
+                .filteredOn(o -> HumanOptions.REQUIREMENT.equals(o.kind()))
+                .containsExactly(new HumanOptions.Option(HumanOptions.REQUIREMENT, "確認修復範圍",
+                        "請需求負責人填寫已選定的修法與原因。送出後會回到需求整理，確認修復範圍後再派工。", null));
+        assertThat(HumanOptions.render(task, flow, true, true, null, HumanOptions.Workspace.NONE, false, false))
+                .contains("分流還無法派工", "按下方「確認修復範圍」").doesNotContain("補充 #");
+        assertThat(text()).contains("補充 #1014 核准需求變更 <已選定的修法與原因>");
+
+        flow.node = "triage";
+        assertThat(text()).doesNotContain("確認修復範圍");
+        flow.node = "service_triage";
+        flow.baselineRevision = null;
+        assertThat(text()).doesNotContain("確認修復範圍");
+    }
+
     @Test void noRequirementChangeOptionBeforeThereIsABaseline() {
         flow.node = "plan"; flow.baselineRevision = null;
 

@@ -72,11 +72,11 @@ public final class HumanInput {
         String title, intro, label = null, placeholder = null;
         switch (s.kind()) {
             case "REQUIREMENT" -> {
-                title = "需求要改";
+                title = "確認需求變更";
                 intro = "*任務 #" + s.task() + "* 的需求變更。只有需求負責人可以核准；核准後會回到需求整理重做，"
                         + "之後的測試計畫、驗收與審查都會重跑，PR 仍需要你核准。";
                 label = "要怎麼改、為什麼";
-                placeholder = "例如：移除 REQ-2，規範掃描改由審查檢查";
+                placeholder = "填寫已選定的修法或需求變更，並說明原因";
             }
             case "SUPPLEMENT" -> {
                 title = "告訴它還缺什麼";

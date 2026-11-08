@@ -92,6 +92,7 @@ public final class IssueTracker {
     static final String STALE_REVISION = "問題完整性：回報使用過期問題清單版本";
     static final String MISSING_FIELDS = "問題完整性：缺少 issue_updates／issue_checks／issue_revision";
     static final String MAPPING_CHANGED = "既有問題需求對應只能由需求階段確認：";
+    static final String DECISION_NEEDS_REQUIREMENTS = "待決問題必須先收到真人回覆，再由需求階段確認：";
     /** systemRetries 的鍵尾碼：每個節點連續只自動修正一次格式。 */
     static final String FORMAT_RETRY = "#issue-format";
 
@@ -157,7 +158,7 @@ public final class IssueTracker {
                 return "不可把未解問題降為排除／唯讀項目：" + id;
             if (previous != null && "DECISION".equals(previous.path("scope").asText()) && !"DECISION".equals(scope)
                     && !authorizedChange && (node.gate() != Gate.REQUIREMENTS || flow.supplements <= previous.path("decision_supplements").asInt()))
-                return "待決問題必須先收到真人回覆，再由需求階段確認：" + id;
+                return DECISION_NEEDS_REQUIREMENTS + id;
             if (previous != null && node.gate() != Gate.REQUIREMENTS
                     && !previous.path("requirement_ids").equals(item.path("requirement_ids")))
                 return MAPPING_CHANGED + id;
