@@ -23,12 +23,24 @@ Java 路徑相對於 `orchestrator/src/main/java/com/zipe/aiteam/`。
 
 ## 一次請求如何流動
 
-```text
-真人 @Slack App → 事件入口與授權 → 任務與中央佇列
-  → 團隊快照的流程節點 → 執行器組裝提示與權限
-  → 外層沙箱呼叫 runtime CLI → 結構化結果與流程檢查
-  → 下一節點／返工／等待真人 → 版本綁定驗證 → 真人核准 PR
+```mermaid
+flowchart TD
+  user(["真人 @Slack App"]) --> listener["事件入口與授權<br/>SlackListener"]
+  listener --> queue["任務與中央佇列<br/>TaskOrchestrator"]
+  queue --> engine["團隊快照的流程節點<br/>FlowEngine"]
+  engine --> exec["組裝提示與權限<br/>ConfiguredExecutor"]
+  exec --> sandbox["外層沙箱<br/>ExecutionSandbox"]
+  sandbox --> cli["runtime CLI<br/>Claude Code／Codex／opencode"]
+  cli --> check["結構化結果與流程檢查<br/>FlowGates"]
+  check -->|下一節點／返工| engine
+  check -->|需要真人| wait["等待真人<br/>Slack 按鈕或補充"]
+  wait --> queue
+  check -->|審查通過| verify["版本綁定驗證"]
+  verify --> approve{"真人核准 PR"}
+  approve --> pr["推分支、開 PR"]
 ```
+
+每個節點都走同一條「組裝提示 → 沙箱執行 CLI → 系統檢查」的迴圈；agent 的輸出只決定要走哪條已宣告的路線，權限、核准與發布由系統強制。
 
 中央工作迴圈依序執行，對話、續跑與發布也共享佇列。單獨提高並行槽設定不會使 v2 任務平行。
 角色 App 的 mention 是可見交接，bot 事件不會自行建立新任務。

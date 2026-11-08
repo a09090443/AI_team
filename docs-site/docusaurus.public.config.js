@@ -12,8 +12,8 @@ export default {
     blog: false,
     theme: { customCss: './src/css/public.css' },
   }]],
-  plugins: ['./plugins/public-llms.mjs'],
-  themes: ['./public-theme'],
+  plugins: ['./plugins/mermaid-no-elk.mjs', './plugins/public-llms.mjs'],
+  themes: ['@docusaurus/theme-mermaid', './public-theme'],
   themeConfig: {
     navbar: { title: 'AI Team', items: [
       { to: '/intro/', label: '文件', position: 'left' },

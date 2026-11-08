@@ -73,14 +73,49 @@ Slack @主機器人 需求
   → intake        PM（coordinator）整理需求基準：需求 ID、原子驗收項目、範圍、待確認問題
   → design        Architecture（architect）設計
   → plan          QA（tester）撰寫測試計畫：每個情境引用 operation_ids 並提供反例
-  → [真人核准測試計畫]（或 autoApprovePlanWhenValid 通過機械檢查時自動核准）
   → implementation Backend（builder）在獨立 clone 實作並 commit
+  → [確認測試計畫已核准]（可依設定自動核准，rules 程式套用需要在提案前核准）
   → [系統獨立驗證：管理者固定的建置／測試指令，產生綁定 HEAD 的收據]
   → verification  QA（tester）逐情境執行並附證據
   → review        Code Reviewer（inspector）獨立審查
   → approval      [真人核准 PR] → 推分支、開 PR → 狀態 PR_CREATED
   （選用）PR 與基準衝突 → 回原任務 implementation 解衝突 → 驗證／驗收／審查 → 推回同一個 PR（PullRequestSync）
   PR 已合併 → COMPLETED 並刪除工作區（PullRequestMonitor → FlowEngine.checkPullRequest，AI_TEAM_PR_TRACKING，2026-11-06）；來自 GitHub issue 的任務同時關閉 issue
+```
+
+同一流程的圖示（虛線是受阻分流，粗框是真人閘門）。計畫核准由 `FlowEngine` 在進入 VERIFICATION 閘門節點前檢查，
+所以實作可以先跑：
+
+```mermaid
+flowchart TD
+  start(["Slack @主機器人 需求"]) --> intake["intake<br/>PM 需求基準"]
+  intake -->|question| answer(["回答後 end"])
+  intake -->|服務路線| service["service<br/>Infrastructure 建置服務"] --> svcEnd(["end，不開 PR"])
+  intake --> design["design<br/>Architecture"]
+  design --> plan["plan<br/>QA 測試計畫"]
+  plan --> impl["implementation<br/>Backend 實作並 commit"]
+  impl --> approved{"計畫已核准？<br/>PlanApproval"}
+  approved -->|否| waitPlan["AWAIT_HUMAN<br/>等提出者核准"]
+  waitPlan --> verify0
+  approved -->|"是（含自動核准）"| verify0["系統獨立驗證<br/>IndependentVerifier"]
+  verify0 --> verification["verification<br/>QA 逐情境驗收"]
+  verification --> review["review<br/>Code Reviewer"]
+  review --> prGate{"真人核准 PR"}
+  prGate --> pr["推分支、開 PR<br/>PR_CREATED"]
+  pr -.->|"選用：與基準衝突<br/>PullRequestSync"| impl
+  pr -->|"已合併<br/>PullRequestMonitor"| done(["COMPLETED"])
+
+  design -.->|blocked| triage["triage<br/>PM 分流"]
+  plan -.->|blocked| triage
+  impl -.->|blocked| triage
+  verification -.->|blocked| triage
+  review -.->|blocked| triage
+  triage -.->|"implementation／verification／plan／design"| impl
+  triage -.->|requirements| intake
+  triage -.->|human| human["AWAIT_HUMAN"]
+
+  classDef person stroke:#d97706,stroke-width:3px
+  class waitPlan,prGate,human person
 ```
 
 典型配置中，design、plan、implementation、verification、review 節點受阻（`blocked`）時交給 **triage**（PM 分流）；

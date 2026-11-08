@@ -480,6 +480,7 @@ agent_team/
     │   └── ai-tools.md               # 各 AI 工具的規則、skills、MCP 設定與同步
     ├── docs/                         # 所有原始文件（/docs/），清單見文件目錄
     ├── plugins/
+    │   ├── mermaid-no-elk.mjs         # 讓 Mermaid 流程圖不需安裝選用的 ELK 版面套件
     │   ├── public-llms.mjs            # 僅以公開來源產生 AI 索引與全文
     │   └── llms-txt.mjs              # build 後產生 llms.txt、llms-full.txt 與 .md 原文
     ├── scripts/

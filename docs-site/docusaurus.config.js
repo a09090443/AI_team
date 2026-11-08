@@ -12,6 +12,7 @@ const config = {
   onBrokenLinks: 'throw',
   markdown: {
     format: 'md',
+    mermaid: true,
     hooks: {
       onBrokenMarkdownLinks: 'warn',
     },
@@ -36,7 +37,9 @@ const config = {
       },
     ],
   ],
+  themes: ['@docusaurus/theme-mermaid'],
   plugins: [
+    './plugins/mermaid-no-elk.mjs',
     [
       '@docusaurus/plugin-content-docs',
       {

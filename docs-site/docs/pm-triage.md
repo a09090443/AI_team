@@ -5,6 +5,24 @@
 QA 受阻後會實際執行 `pm_triage`，沿用 PM 的 runtime、模型與 Slack 身分，
 讀取原始需求、架構、測試計畫、實作、QA 報告及阻礙證據；不只是 tag PM。
 
+```mermaid
+flowchart TD
+  blocked["節點回報受阻<br/>附原因與證據"] --> check{"配置有 blocked 路由<br/>且額度未用完？"}
+  check -->|否| human["AWAIT_HUMAN<br/>停止訊息列出可用選項"]
+  check -->|是| triage["PM 分流<br/>讀需求、計畫、報告、受阻發現"]
+  triage --> kind{"阻礙屬於哪一類？"}
+  kind -->|既定範圍的缺陷| impl["implementation 修正"]
+  kind -->|缺測試或證據| verify["verification 補驗證"]
+  kind -->|計畫或設計不足| plan["plan／design 補齊"]
+  kind -->|需求要改| req["requirements<br/>回 intake 改需求，需提出者核准"]
+  kind -->|產品取捨、權限、外部環境| human
+  impl --> again["後續節點重跑<br/>系統獨立驗證 → QA 驗收 → Code Review"]
+  verify --> again
+  plan --> again
+  again -->|通過| approval["等待真人核准 PR"]
+  again -.->|再次受阻| blocked
+```
+
 - 既定範圍的實作或文件缺陷：PM 派 Backend 修正，再執行 QA 與已啟用的 Code Review。
 - 原計畫缺少測試或證據：PM 派 QA 補驗證，再執行已啟用的 Code Review。
 - 產品取捨、權限或外部環境問題：PM 列出具體問題與建議，停在 `AWAIT_HUMAN`。

@@ -101,6 +101,8 @@ public-docs 是獨立公開手冊，不屬於內部 docs 文件目錄；其檔�
 入口在 `public-pages/index.js`，公開介紹位於 `/intro/`，架構與流程網址沿用原路徑。
 `sidebars-public.js` 提供左側文件分類，右側由標題產生章節目錄；頁尾與 GitHub 導覽由公開設定控制。
 `src/css/public.css` 僅影響公開站，內部站沿用 custom.css。
+內部站與公開站都載入 `@docusaurus/theme-mermaid`（`markdown.mermaid: true`），流程圖直接寫成 ` ```mermaid ` 程式碼區塊，
+不另存圖片；原始碼留在 Markdown，llms 輸出與 AI 閱讀時仍是可讀文字。圖中只放通用節點與角色，不放專案名或實例資料。
 `public-theme/theme/SearchBar/index.js` 搜尋公開清單中全部文件的標題與人工設定關鍵字，無全文索引或外部搜尋服務。
 新增公開頁時須同步補搜尋項目並人工審閱。手機導覽沿用 classic 的收合選單。
 
