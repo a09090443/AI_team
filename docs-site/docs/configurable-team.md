@@ -56,6 +56,8 @@ triage 的 `"service": "deploy"` 路線，四個操作的 `nodes` 為 `["service
 再在實例配置填 `serviceTarget`（`name` 為沙箱 target 名稱，`checks` 為 `{"prepare":"service-prepare","start":"service-start","health":"service-health"}`）。
 `gradle-fullstack.json` 另有只供直接 @ 對話的 `api_guide` 角色（共用 prompt `prompts/api-guide.md`，`references` 指向 OpenAPI 範例網址），沒有任何節點引用；其他兩份不含。
 node-web 的 infrastructure 用 claude-code（不新增 Codex 依賴），其他兩份用 codex。
+node-web 的 `frontend` 角色 2026-11-08 起使用 UI/UX prompt `prompts/frontend-uiux.md`，`frontend` 節點以 `instructions: prompts/implement.md` 保留實作規則
+（見下方 [Agent 自主派工](#agent-自主派工) 的 UI/UX 前端角色）。
 
 操作 argv、獨立驗證 commands 與角色工具可寫 `${teams}`，載入時展開成該配置所在的 teams 目錄（例如 `${teams}/skills/service-build/scripts/client.py`），
 實例安裝目錄不同也不必改配置；快照保存展開後的實際路徑。
@@ -347,6 +349,12 @@ IssueTracker 驗證穩定 ID、需求對應及逐項證據；FlowEngine 保存�
 - 例如設計候選設為 Architecture／Infrastructure、實作候選設為 Backend／Infrastructure 時，
   PM 可將環境設計交給 Infrastructure，測試計畫 agent 再選實作負責人；受阻後由分流 agent 重新選擇。
   第一版每次交接一位角色、中央佇列依序執行，不支援一份報告建立多個平行子工作。
+- **UI/UX 前端角色（2026-11-08）**：共用 prompt `prompts/frontend-uiux.md` 是角色背景（使用者流程、狀態處理、表單、
+  WCAG 2.1 AA、響應式、重用既有元件、與後端的界線及「建置通過不等於畫面已驗證」），在設計、實作與諮詢都會帶入；
+  各階段規則仍由節點 `instructions`（`design.md`、`implement.md`）提供，所以引用它的節點必須設 `instructions`。
+  要讓它參與自主派工時，把角色加進 `design`／`implementation` 的 `candidateRoles`，並放進 plan、verification、triage 的 `consultRoles`。
+  因 `validateAssignment` 要求候選角色能執行該節點**全部**固定操作，實作候選的工具須涵蓋實作節點的所有操作（含後端建置）；
+  只改前端的分工靠 `capabilities` 與 prompt 約束，不靠工具權限。同一節點不能諮詢自己的候選角色，前後端混合任務仍由單一角色承接。
 - 系統檢查候選資格、必要操作的工具權限，啟動時沿用沙箱預檢；階段的 scope、schema、requires、QA／Review／核准條件不變。
   實作候選與審查候選不得重疊。沒有適任角色時須說明缺少能力並受阻，不得自動擴權。
 - Slack 顯示實際負責角色、派工理由與交接工作；`assignments` 保存目前選擇，`assignmentHistory` 保存歷史。

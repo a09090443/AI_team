@@ -350,6 +350,7 @@ agent_team/
 │   │   │   ├── design.md             # 設計（Architecture）
 │   │   │   ├── plan.md               # 測試計畫（QA）
 │   │   │   ├── implement.md          # 實作（Backend）
+│   │   │   ├── frontend-uiux.md      # UI/UX Agent 角色背景：使用者流程、狀態、無障礙與前端界線
 │   │   │   ├── verify.md             # 驗收（QA）
 │   │   │   ├── review.md             # 審查（Code Reviewer）
 │   │   │   ├── infrastructure.md     # Infrastructure Agent：環境設定與核准目標的服務建置

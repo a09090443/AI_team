@@ -135,7 +135,7 @@
       "name": "Frontend Agent",
       "runtime": "claude-code",
       "model": "sonnet",
-      "prompt": "prompts/implement.md",
+      "prompt": "prompts/frontend-uiux.md",
       "botTokenEnv": "SLACK_BOT_TOKEN_FRONTEND",
       "appTokenEnv": "SLACK_APP_TOKEN_FRONTEND",
       "tools": [
@@ -336,7 +336,8 @@
       ],
       "maxVisits": 3,
       "timeoutSeconds": 1800,
-      "maxTurns": 80
+      "maxTurns": 80,
+      "instructions": "prompts/implement.md"
     },
     "service": {
       "kind": "AGENT",

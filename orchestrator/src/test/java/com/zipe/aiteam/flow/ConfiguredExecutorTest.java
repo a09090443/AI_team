@@ -446,8 +446,10 @@ class ConfiguredExecutorTest {
         assertThat(request.role()).isEqualTo("frontend"); assertThat(request.model()).isEqualTo("sonnet");
         assertThat(request.allowedTools()).contains("Bash(npm *)").doesNotContain("Bash(mvn *)");
         assertThat(request.prompt()).contains("Node Web", "TypeScript", "新增畫面");
-        assertThat(Files.readString(request.systemPromptFile())).isEqualTo(flow.snapshot.assets().get("prompts/implement.md")
+        // 角色背景是 UI/UX prompt，實作規則由節點 instructions 帶入（2026-11-08）。
+        assertThat(Files.readString(request.systemPromptFile())).isEqualTo(flow.snapshot.assets().get("prompts/frontend-uiux.md")
                 + "\n\n【團隊共用工作規則】\n" + flow.snapshot.assets().get("prompts/shared.md")
+                + "\n\n【本次階段指示，優先於角色的一般工作說明】\n" + flow.snapshot.assets().get("prompts/implement.md")
                 + "\n\n" + flow.snapshot.assets().get(IssueTracker.CONTRACT) + com.zipe.aiteam.runtime.OutputLanguage.RULE);
         verify(store).saveCheckpoint(argThat(cp -> cp.role().equals("frontend") && cp.runtime().equals("claude-code")));
     }
