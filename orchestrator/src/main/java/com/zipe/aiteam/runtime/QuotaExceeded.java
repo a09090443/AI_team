@@ -16,6 +16,7 @@ public final class QuotaExceeded extends AgentRuntime.RuntimeExecutionException 
                 || s.contains("you've hit your usage limit") || s.contains("you have hit your usage limit")
                 || s.contains("you've hit your limit") || s.contains("you have exceeded your current quota")
                 || s.contains("you've hit your session limit") || s.contains("you have hit your session limit")
+                || s.contains("you've hit your 5-hour limit")
                 || s.contains("已達用量上限") || s.contains("使用量已達上限");
     }
 

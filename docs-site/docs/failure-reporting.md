@@ -75,7 +75,7 @@ VM 供授權查核。格式檢查保證欄位存在，不保證 agent 自陳內�
     `organization_on_hold`、`claude_code_key_creator_not_member`、`ip_not_in_allowed_range`、`oauth_scope_insufficient` → 帳號／組織權限；
     `token_expired` 或 `api_error_status=401` → 登入；另比對 CLI 內建句（Not logged in、Please run /login、OAuth token revoked、Invalid API key 等）。
   - Codex（0.156.1 實查，0.166.0 重新核對）：refresh token 失效與要求重新 `codex login` 的錯誤句 → 登入。泛用的 `401 Unauthorized` 與沒有已知代碼的 403 不判定，照一般失敗處理。
-  - opencode 尚未接上（它連額度判定都還沒有）。
+  - opencode 尚未接上 `ProviderAccessDenied`；其 JSONL 錯誤事件已有共用額度判定，實際供應商的額度措辭仍待驗證。
 - 流程節點遇到時：還原本輪重跑次數、一次性受控恢復授權與自動處理額度，停在原節點等人；**不排自動續跑、不自動重試**（帳號何時恢復系統無從得知）。
 - `ErrorExplainer` 看到這類錯誤時不呼叫說明 agent，直接回固定中文說明：「AI 服務帳號無法使用」、發生位置、原因（組織停用或登入失效）、
   需要系統管理者處理、處理完再用原本的選項繼續。技術原文仍寫進 audit。角色對話、開 PR 等其他走 `ErrorExplainer` 的停止訊息一併適用。

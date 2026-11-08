@@ -14,6 +14,13 @@ class QuotaExceededTest {
         assertThatThrownBy(() -> QuotaExceeded.check("claude-code", "{\"is_error\":true,\"subtype\":\"success\",\"api_error_status\":429,\"result\":\"You've hit your session limit · resets 6:30pm (UTC)\"}", "log"))
                 .isInstanceOf(QuotaExceeded.class).hasMessageContaining("resets 6:30pm (UTC)");
     }
+    @Test void claude五小時限額保留重置原文() {
+        assertThatThrownBy(() -> QuotaExceeded.check("claude-code", """
+                {"type":"result","subtype":"success","is_error":true,"api_error_status":429,
+                 "result":"You've hit your 5-hour limit · resets 2:40pm (UTC)"}
+                """, "log"))
+                .isInstanceOf(QuotaExceeded.class).hasMessageContaining("resets 2:40pm (UTC)");
+    }
     /** codex-cli 0.156.1 原始碼寫的是彎引號「You’ve」；只比對直引號時額度停止會被當成一般失敗。 */
     @Test void codex彎引號措辭也辨識為額度停止() {
         assertThatThrownBy(() -> QuotaExceeded.check("codex",
@@ -41,6 +48,9 @@ class QuotaExceededTest {
             """, "log")).doesNotThrowAnyException();
         assertThatCode(() -> QuotaExceeded.check("claude-code",
                 "{\"is_error\":false,\"result\":\"usage_limit_reached\"}", "log"))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> QuotaExceeded.check("claude-code",
+                "{\"is_error\":false,\"result\":\"You've hit your 5-hour limit · resets 2:40pm (UTC)\"}", "log"))
                 .doesNotThrowAnyException();
     }
 

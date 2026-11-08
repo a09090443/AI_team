@@ -16,21 +16,21 @@ class QuotaAutoResumeTest {
         try (var connection = jdbc.getDataSource().getConnection()) {
             jdbc.execute("CREATE TABLE task(id TEXT PRIMARY KEY,state TEXT,updated_at TEXT)");
             jdbc.execute("CREATE TABLE quota_retry(task_id TEXT PRIMARY KEY,observed TEXT,next_at TEXT,attempts INTEGER)");
-            jdbc.update("INSERT INTO task VALUES('42','WAITING_QUOTA','2026-09-08T14:00:00Z')");
+            jdbc.update("INSERT INTO task VALUES('42','WAITING_QUOTA','2026-11-07T12:03:28Z')");
             var store = mock(TaskStore.class); var owner = mock(TaskOrchestrator.class);
             var props = mock(AiTeamProperties.class); var slack = mock(SlackNotifier.class);
             when(props.allowedUsers()).thenReturn(Set.of("u"));
             Task task = new Task("42","c","t","u","request"); task.state(Task.State.WAITING_QUOTA);
             when(store.find("42")).thenReturn(Optional.of(task));
-            when(store.checkpoint("42")).thenReturn(Optional.of(new Checkpoint("42","implementation","claude-code","sonnet","session","context","head","You've hit your session limit · resets 6:30pm (UTC)")));
+            when(store.checkpoint("42")).thenReturn(Optional.of(new Checkpoint("42","implementation","claude-code","sonnet","session","context","head","You've hit your 5-hour limit · resets 2:40pm (UTC)")));
             var scheduler = new QuotaAutoResume(jdbc,store,owner,props,slack);
-            scheduler.check(task,Instant.parse("2026-09-08T14:01:00Z")); scheduler.stop();
-            assertThat(jdbc.queryForObject("SELECT next_at FROM quota_retry",String.class)).isEqualTo("2026-09-08T18:32:00Z");
+            scheduler.check(task,Instant.parse("2026-11-07T12:04:00Z")); scheduler.stop();
+            assertThat(jdbc.queryForObject("SELECT next_at FROM quota_retry",String.class)).isEqualTo("2026-11-07T14:42:00Z");
             var restored = new QuotaAutoResume(jdbc,store,owner,props,slack);
-            restored.check(task,Instant.parse("2026-09-08T18:31:00Z")); verifyNoInteractions(owner);
-            restored.check(task,Instant.parse("2026-09-08T18:33:00Z"));
-            restored.check(task,Instant.parse("2026-09-08T18:33:01Z")); verify(owner,times(1)).continueTask(task,"u");
-            task.state(Task.State.ABORTED); restored.check(task,Instant.parse("2026-09-09T18:33:00Z"));
+            restored.check(task,Instant.parse("2026-11-07T14:41:59Z")); verifyNoInteractions(owner);
+            restored.check(task,Instant.parse("2026-11-07T14:42:00Z"));
+            restored.check(task,Instant.parse("2026-11-07T14:42:01Z")); verify(owner,times(1)).continueTask(task,"u");
+            task.state(Task.State.ABORTED); restored.check(task,Instant.parse("2026-11-08T14:42:00Z"));
             verifyNoMoreInteractions(owner); restored.stop();
         } catch (java.sql.SQLException e) { throw new RuntimeException(e); }
     }

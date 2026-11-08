@@ -163,7 +163,7 @@ PR 核准與結束訊息中的「團隊看板」段落，列出角色記錄、�
 | 核准，推分支並開 PR | `AWAIT_PR_APPROVAL` | 發布前重新檢查 commit、工作樹與分支，才推分支開 PR。按下後狀態立刻變成 `PUBLISH_RUNNING`，工作仍排進共用中央佇列。系統先確認收到核准，再由中央佇列列出實際執行中與前方排隊任務（含角色對話）；輪到時通知開始這一輪工作。狀態為發布中不代表推送已開始。失敗（例如 token 未設定）時留在 `AWAIT_PR_APPROVAL` 並貼出原因，修好後再按一次 |
 | 重新進入核准 PR | 停在發布核准（approval）節點的 `AWAIT_HUMAN` | 重新檢查證據、commit 與工作區，通過才重新貼出核准按鈕；不推送、不呼叫 agent（送出的指令同「續跑」） |
 
-額度用盡（`WAITING_QUOTA`）會依供應商給的解禁時間自動續跑，不需按鈕，見 [quota-continuation](/docs/quota-continuation)。
+額度用盡（`WAITING_QUOTA`）且符合自動續跑條件時，系統會在 Slack 原討論串貼出「下次自動嘗試」時間，到時將任務排回中央佇列。即使供應商提早恢復額度，系統仍等到排定時間才嘗試。排程條件與重試間隔見 [額度暫停與自動續跑](/docs/quota-continuation)。
 停止訊息標題為「AI 服務帳號無法使用」時，是 VM 上 Claude Code／Codex 的帳號被組織停用或登入失效，不是任務內容問題；
 由帳號擁有者在服務主機重新登入或請組織管理者開放權限後，再按原本的「繼續執行」。此情況不自動續跑，次數已還原（2026-10-14 已部署，見 [失敗回報](/docs/failure-reporting#帳號或登入被供應商拒絕provideraccessdenied)）。
 

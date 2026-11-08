@@ -2,8 +2,8 @@
 
 ## 什麼算額度用盡
 
-只有供應商的錯誤欄位明確出現 `usage_limit_reached`、`insufficient_quota`、session limit
-或其他已辨識的額度耗盡文字，才判定為額度問題。一般 429、逾時、網路錯誤，
+只有供應商的錯誤欄位明確出現 `usage_limit_reached`、`insufficient_quota`、session limit、
+Claude Code 的 `You've hit your 5-hour limit` 或其他已辨識的額度耗盡文字，才判定為額度問題。一般 429、逾時、網路錯誤，
 以及 agent／工具輸出中引用這些文字，都不據此認定額度耗盡。
 
 額度耗盡時任務轉為 `WAITING_QUOTA`：停止下游、釋放並行槽、保留原工作區與未提交修改，
@@ -31,7 +31,7 @@ triage 只跑 2 輪就花約 US$2。中斷又常是額度用完造成的，續�
 因此配置式流程（`ConfiguredExecutor`）續跑前，先找 runtime 自己寫的對話紀錄檔（`AgentRuntime.sessionTranscript`），
 以最後修改時間計算閒置多久，超過 `AI_TEAM_RESUME_IDLE_MINUTES`（預設 60，`0`＝停用）就不接回舊 session，改開新 session：
 
-- 需求、上游報告、交接紀錄、受阻發現本來每次都會重新附上，新 session 拿到的內容和續跑相同。
+- 需求、依任務配置挑選的上游報告、交接紀錄與受阻發現每次都會重新組裝，新 session 與續跑使用相同的提示選取規則。
 - 少掉的只有上一輪自己的推理與工具輸出：系統把舊對話紀錄複製到工作目錄的 `.ai-team-context/previous-session-<id>.jsonl`
   （寫入 `.git/info/exclude`，不會被 commit 或帶進 PR；目錄是符號連結時拒絕寫入），提示裡請 agent 先核實 git 現況，
   需要時用 grep 查舊紀錄，不要整份讀入。舊副本保留，連續多次長時間中斷也查得到更早的對話。複製失敗不阻擋續跑。
@@ -50,7 +50,7 @@ triage 只跑 2 輪就花約 US$2。中斷又常是額度用完造成的，續�
 
 | 供應商 | 原文 | 有時區？ | 排程 |
 |---|---|---|---|
-| Claude | `You've hit your session limit · resets 6:30pm (UTC)` | 有 | 以錯誤發生時間換算，該時刻加 2 分鐘 |
+| Claude | `You've hit your session limit · resets 6:30pm (UTC)` 或 `You've hit your 5-hour limit · resets 2:40pm (UTC)` | 有 | 以錯誤發生時間換算，該時刻加 2 分鐘 |
 | Codex | 不同天：`You’ve hit your usage limit. … try again at Sep 15th, 2026 1:09 PM.`；同一天只有時刻：`… Try again at 1:09 PM.` | 訊息沒寫，但固定為 UTC | 該時刻加 2 分鐘 |
 
 Codex 的訊息不標時區，但 Codex CLI 是以**執行它的機器的本地時區**輸出（codex-rs `protocol/src/error.rs` 的
@@ -61,7 +61,8 @@ Codex 的訊息不標時區，但 Codex CLI 是以**執行它的機器的本地�
 這種措辭會被當成一般失敗，不會進 `WAITING_QUOTA`）。
 
 解禁時間在 24 小時之後時（`farBeyondBackoff`），排在解禁之後試一次，中間不反覆重試。
-兩家都解析不出時間時，才用 30 分鐘起的退避（60、120、240，最長 360 分鐘）。
+解析不出時間時，第一次等 30 分鐘。自動嘗試後若再次撞到額度上限，依次延長為 60、120、240 分鐘，最長 360 分鐘。
+若能解析新錯誤的解禁時間，後續嘗試取「解禁後 2 分鐘」與「依退避間隔算出的時間」中較晚者。
 （2026-10-05 前 Codex 的時間視為時區未知，只取 UTC+14／UTC−12 的邊界，排程最多晚一天，Slack 原文照登。）
 
 :::info
@@ -100,5 +101,6 @@ Codex 的訊息不標時區，但 Codex CLI 是以**執行它的機器的本地�
 
 ## 限制
 
+- 修正前因 Claude Code 的五小時限額訊息而停在 `AWAIT_HUMAN` 的任務，需要在額度恢復後於原討論串手動繼續執行一次。新版的自動排程只處理進入 `WAITING_QUOTA` 的任務。
 - 沒有跨 runtime 接手：額度用盡不會自動改用另一個 CLI。
 - 自動化測試使用假子行程與額度正反例，**未刻意耗盡真實訂閱額度**；真實額度恢復後的完整續跑以實際觀察為準。
