@@ -41,6 +41,16 @@ class SlackLinksTest {
     }
 
     @Test
+    void inlineCodeNextToChineseIsFixed() {
+        // dynamic-api #1039：`url` 緊貼「，」時 Slack 不認得行內程式碼，連結含反引號與後文
+        assertThat(SlackLinks.wrap("直接在瀏覽器打開 `http://192.168.56.20:18080/dynamic-api/`，或先用指令確認："))
+                .isEqualTo("直接在瀏覽器打開 <http://192.168.56.20:18080/dynamic-api/>，或先用指令確認：");
+        assertThat(SlackLinks.wrap("執行`curl http://host/c`，確認"))
+                .isEqualTo("執行 `curl http://host/c` ，確認");
+        assertThat(SlackLinks.wrap("`http://host/a.`")).isEqualTo("`http://host/a.`");
+    }
+
+    @Test
     void wrapsMarkdownInBlocks() {
         List<LayoutBlock> blocks = new ArrayList<>(List.of(section(s -> s.text(markdownText("入口 http://host/x，請測")))));
         SlackLinks.wrapBlocks(blocks);

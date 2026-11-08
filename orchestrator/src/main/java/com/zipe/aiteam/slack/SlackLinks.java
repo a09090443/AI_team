@@ -19,7 +19,8 @@ import java.util.regex.Pattern;
  * 不依賴 agent 記得在網址後加空白，所以放在所有發言的出口統一處理。
  *
  * 網址遇到空白、非 ASCII 字元（全形標點、中文）或 {@code <>|`} 即結束，句尾的 ASCII 標點與
- * 未成對的右括號不算網址。已是 {@code <...>} 的連結與程式碼區塊、行內程式碼內的網址保持原樣。
+ * 未成對的右括號不算網址。已是 {@code <...>} 的連結與程式碼區塊內的網址保持原樣；
+ * 只含一個網址的行內程式碼改成 {@code <url>}，其他行內程式碼的內容不動（見 {@link #inlineCode}）。
  */
 final class SlackLinks {
     private SlackLinks() {}
@@ -33,10 +34,32 @@ final class SlackLinks {
         Matcher code = CODE.matcher(text);
         int at = 0;
         while (code.find()) {
-            out.append(wrapPlain(text.substring(at, code.start()))).append(code.group());
+            out.append(wrapPlain(text.substring(at, code.start()))).append(inlineCode(text, code));
             at = code.end();
         }
         return out.append(wrapPlain(text.substring(at))).toString();
+    }
+
+    /**
+     * 行內程式碼緊貼中文或全形標點時，Slack 不認得它是程式碼，反引號會留在字面上，
+     * 裡面的網址再被自動偵測連進「`，或先用指令…」（dynamic-api #1039）。
+     * 只含一個網址的行內程式碼直接改成 {@code <url>}；其他行內程式碼與相鄰的非 ASCII 字元間補一個空白。
+     */
+    private static String inlineCode(String text, Matcher code) {
+        String group = code.group();
+        if (group.startsWith("```")) return group;
+        String content = group.substring(1, group.length() - 1).strip();
+        if (URL.matcher(content).matches() && trimTail(content).equals(content)
+                && content.indexOf("://") + 3 < content.length()) {
+            return "<" + content + ">";
+        }
+        String before = code.start() > 0 && tight(text.charAt(code.start() - 1)) ? " " : "";
+        String after = code.end() < text.length() && tight(text.charAt(code.end())) ? " " : "";
+        return before + group + after;
+    }
+
+    private static boolean tight(char c) {
+        return c > 0x7F && !Character.isWhitespace(c);
     }
 
     private static String wrapPlain(String text) {
