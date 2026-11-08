@@ -36,10 +36,6 @@ public class PullRequestPublisher {
 
     private static final Logger log = LoggerFactory.getLogger(PullRequestPublisher.class);
 
-    /** 支援 https 與 ssh 兩種 origin 寫法，取出 owner/repo。 */
-    private static final Pattern REMOTE =
-            Pattern.compile("github[.]com[:/]([^/]+)/([^/.]+)(?:[.]git)?/?$");
-
     private final AiTeamProperties props;
     private final WorkspaceManager workspaces;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -82,7 +78,7 @@ public class PullRequestPublisher {
         String branch = approvedBranch;
         String base = readBaseBranch(ws);
         String origin = git(ws, "remote", "get-url", "origin");
-        Repo repo = parseRemote(origin);
+        GitHubRepo repo = parseRemote(origin);
 
         push(ws, branch);
         log.info("任務 {} 的分支 {} 已推送至 {}/{}", taskId, branch, repo.owner(), repo.name());
@@ -135,14 +131,10 @@ public class PullRequestPublisher {
         return base;
     }
 
-    private record Repo(String owner, String name) {}
-
-    private Repo parseRemote(String url) throws PublishException {
-        Matcher m = REMOTE.matcher(url.trim());
-        if (!m.find()) {
-            throw new PublishException("認不得的 origin 位址，只支援 GitHub：" + url);
-        }
-        return new Repo(m.group(1), m.group(2));
+    private GitHubRepo parseRemote(String url) throws PublishException {
+        GitHubRepo repo = GitHubRepo.parse(url);
+        if (repo == null) throw new PublishException("認不得的 origin 位址，只支援 GitHub：" + url);
+        return repo;
     }
 
     private String git(Path cwd, String... args) throws PublishException {
@@ -206,7 +198,7 @@ public class PullRequestPublisher {
 
     // ------------------------------------------------------------------ GitHub API
 
-    private Result openPullRequest(Repo repo, String head, String base, String title, String body)
+    private Result openPullRequest(GitHubRepo repo, String head, String base, String title, String body)
             throws PublishException {
 
         ObjectNode payload = mapper.createObjectNode();

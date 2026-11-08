@@ -55,6 +55,8 @@ public class SlackListener {
     private final SlackNotifier notifier;
     private final TaskStore store;
     private final AuditLog audit;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    com.zipe.aiteam.task.IssueCommands issueCommands;
 
     private SocketModeApp socketApp;
     private final java.util.List<SocketModeApp> roleSockets = new java.util.ArrayList<>();
@@ -243,6 +245,9 @@ public class SlackListener {
             orchestrator.checkPullRequest(existing, e.getUser());
             return;
         }
+        // GitHub issue：列出開啟中的 issue，或依 issue 建立任務（呼叫 GitHub 在 IssueCommands 自己的執行緒）。
+        if (role == SlackNotifier.Identity.SYSTEM && issueCommands != null
+                && issueCommands.handle(text, e.getChannel(), threadTs, e.getUser())) return;
         // 管理者確認配置的驗證指令在基準分支上能不能過；不建立任務，結果另開一則訊息。
         if (BASELINE.matcher(text).matches() && role == SlackNotifier.Identity.SYSTEM) {
             orchestrator.requestBaseline(e.getChannel(), e.getUser(), "由 <@" + e.getUser() + "> 手動要求");

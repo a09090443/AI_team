@@ -43,6 +43,13 @@ public class PullRequestMonitor {
                 catch (Exception e) { log.warn("PR 衝突檢查：任務 {} 失敗：{}", id, e.getClass().getSimpleName()); }
             }
         } catch (Exception e) { log.warn("PR 衝突檢查暫時無法查詢：{}", e.getClass().getSimpleName()); }
+        // 同一輪查在 GitHub issue 等提出者回覆的任務（只有 issue 連結且在等回覆的任務會呼叫 GitHub）。
+        try {
+            for (String id : store.awaitingHumanTaskIds()) {
+                try { store.find(id).ifPresent(orchestrator::checkIssueReply); }
+                catch (Exception e) { log.warn("issue 回覆檢查：任務 {} 失敗：{}", id, e.getClass().getSimpleName()); }
+            }
+        } catch (Exception e) { log.warn("issue 回覆檢查暫時無法查詢：{}", e.getClass().getSimpleName()); }
     }
     @PreDestroy public void stop() { timer.shutdownNow(); }
 }

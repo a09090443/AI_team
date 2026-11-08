@@ -512,6 +512,8 @@ public class WorkspaceManager {
     }
 
     public String origin(String taskId) throws WorkspaceException { return gitOutput(pathFor(taskId), "remote", "get-url", "origin"); }
+    /** 服務配置的主 repo 的 origin；GitHub issue 指令在建任務前用它找 owner/repo。 */
+    public String repositoryOrigin(Path repository) throws WorkspaceException { return gitOutput(repository, "remote", "get-url", "origin"); }
     public String currentBranch(String taskId) throws WorkspaceException { return gitOutput(pathFor(taskId), "branch", "--show-current"); }
     public boolean clean(String taskId) throws WorkspaceException { return gitOutput(pathFor(taskId), "status", "--porcelain").isBlank(); }
     public String baseBranch(String taskId) throws WorkspaceException { return gitOutput(pathFor(taskId), "config", "--get", BASE_BRANCH_CONFIG_KEY); }

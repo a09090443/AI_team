@@ -454,7 +454,7 @@ PR 是系統自己開的，分支與工作區都還在，因此改由原任務�
 
 | GitHub 狀態 | 處理 |
 |---|---|
-| 已合併 | `PR_CREATED → COMPLETED`（以 `claimState` 原子轉換），audit 記狀態變更與「PR 已合併，任務結案」，立即刪除工作區並在原討論串通知一次；刪除失敗留給下次清理（`COMPLETED` 本來就會被啟動清理與[工作區佔用控制](#工作區佔用控制2026-11-05)刪除） |
+| 已合併 | `PR_CREATED → COMPLETED`（以 `claimState` 原子轉換），audit 記狀態變更與「PR 已合併，任務結案」，立即刪除工作區並在原討論串通知一次；刪除失敗留給下次清理（`COMPLETED` 本來就會被啟動清理與[工作區佔用控制](#工作區佔用控制2026-11-05)刪除）。任務來自 GitHub issue 時再留言並關閉該 issue（2026-11-08，見 [GitHub issue 接單](/docs/github-issues)） |
 | 已關閉未合併 | 只記 `pullRequestClosed`，任務維持 `PR_CREATED`，保留 git 工作樹；建置產物照工作區佔用控制回收 |
 | 開啟中 | 沒開衝突同步時不處理、不發言；有開時照上一節 |
 

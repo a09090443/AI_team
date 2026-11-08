@@ -14,7 +14,18 @@ public record TeamDefinition(int version, String id, Project project, Map<String
                               */
                              @JsonInclude(JsonInclude.Include.NON_NULL) String sharedInstructions,
                              /** 選填：agent 宣告、系統驗證後上傳到討論串的檔案。未設定＝停用（舊快照一律如此），見 {@link Attachments}。 */
-                             @JsonInclude(JsonInclude.Include.NON_NULL) AttachmentPolicy attachments) {
+                             @JsonInclude(JsonInclude.Include.NON_NULL) AttachmentPolicy attachments,
+                             /** 選填：GitHub issue 接單、在 issue 提問釐清與合併後關單。未設定＝停用（舊快照一律如此），見 {@link GitHubIssueFlow}。 */
+                             @JsonInclude(JsonInclude.Include.NON_NULL) GithubIssues githubIssues) {
+    public TeamDefinition(int version, String id, Project project, Map<String, Role> roles,
+                          String entry, int maxTransitions, Map<String, Node> nodes, Collaboration collaboration,
+                          String sharedInstructions, AttachmentPolicy attachments) {
+        this(version, id, project, roles, entry, maxTransitions, nodes, collaboration, sharedInstructions, attachments, null);
+    }
+    /**
+     * @param clarifyRounds 同一任務最多在 issue 上提問幾輪（1..5）；提出者回覆後自動續跑需求整理，超過改停給 Slack 上的負責人
+     */
+    public record GithubIssues(int clarifyRounds) {}
     public TeamDefinition(int version, String id, Project project, Map<String, Role> roles,
                           String entry, int maxTransitions, Map<String, Node> nodes) {
         this(version, id, project, roles, entry, maxTransitions, nodes, null, null);

@@ -221,6 +221,16 @@ public class TaskStore {
         return jdbc.queryForList("SELECT id FROM task WHERE state = 'PR_CREATED' ORDER BY CAST(id AS INTEGER)", String.class);
     }
 
+    /** 停下等人的任務；排程從中找出在 GitHub issue 等回覆的任務。 */
+    public List<String> awaitingHumanTaskIds() {
+        return jdbc.queryForList("SELECT id FROM task WHERE state = 'AWAIT_HUMAN' ORDER BY CAST(id AS INTEGER)", String.class);
+    }
+
+    /** 還沒真正結束的任務（含 PR_CREATED：PR 未合併前來源 issue 仍由它負責）。 */
+    public List<String> unfinishedTaskIds() {
+        return jdbc.queryForList("SELECT id FROM task WHERE state NOT IN ('COMPLETED', 'ABORTED', 'FAILED') ORDER BY CAST(id AS INTEGER)", String.class);
+    }
+
     private void loadStages(Task t) {
         jdbc.query("SELECT * FROM stage_result WHERE task_id = ?", rs -> {
             JsonNode result = null;

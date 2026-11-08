@@ -191,6 +191,7 @@ agent_team/
 │   │   │   ├── VerificationRecovery.java # 配置核准後授予一次驗收重跑
 │   │   │   ├── Traceability.java     # 需求基準、原子驗收項目與覆蓋對照
 │   │   │   ├── IssueTracker.java     # 跨專案問題清單、需求對應、逐項驗證與承接完整性
+│   │   │   ├── GitHubIssueFlow.java  # GitHub issue 接單：需求文字、提問留言、回覆判定與承接連結
 │   │   │   ├── IndependentVerifier.java # 系統獨立驗證：全新 clone 執行固定指令並產生收據
 │   │   │   ├── VerificationScenes.java # 驗證現場回收：成功即刪 clone、失敗留最新一份、啟動整理與空間檢查
 │   │   │   ├── VerificationPlan.java # 依變更檔案決定獨立驗證指令要執行、略過或重用
@@ -222,6 +223,8 @@ agent_team/
 │   │   │   ├── ErrorExplainer.java   # 請 agent 把系統錯誤翻成白話
 │   │   │   └── PrReport.java         # PR 內文的驗收紀錄 Markdown
 │   │   ├── publish/
+│   │   │   ├── GitHubIssues.java     # 讀取 GitHub issue／留言、系統留言與關閉 issue（不給 agent）
+│   │   │   ├── GitHubRepo.java       # 由 origin 位址解析 GitHub owner/repo
 │   │   │   └── PullRequestPublisher.java # 推分支與開 PR、查詢 PR 狀態、推回既有 PR
 │   │   ├── runtime/                  # 各 agent CLI 的 adapter
 │   │   │   ├── AgentRuntime.java     # 廠商無關的執行介面與能力宣告
@@ -273,7 +276,8 @@ agent_team/
 │   │   │   ├── ReviewGate.java       # 發布前的審查硬性條件
 │   │   │   ├── TriageGate.java       # PM 分流報告的檢查
 │   │   │   ├── QuotaAutoResume.java  # 額度用盡後的自動續跑排程
-│   │   │   ├── PullRequestMonitor.java # 每 10 分鐘檢查已開 PR 是否與基準衝突
+│   │   │   ├── PullRequestMonitor.java # 每 10 分鐘檢查已開 PR 是否與基準衝突，並查 GitHub issue 是否已回覆
+│   │   │   ├── IssueCommands.java    # Slack 的 issues／處理 issue #N 指令：列出 issue、依 issue 建任務
 │   │   │   ├── QuotaMessage.java     # 額度訊息呈現
 │   │   │   ├── QuotaRetryTime.java   # 解析供應商解禁時間
 │   │   │   └── TaipeiTime.java       # 給人看的時間換算為台北時間

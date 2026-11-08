@@ -31,6 +31,8 @@ class PullRequestMonitorTest {
         assertThat(store.pullRequestTaskIds()).containsExactly("1044", "1055");
         verify(orchestrator).checkPullRequest(argThatId("1044"), org.mockito.ArgumentMatchers.isNull());
         verify(orchestrator).checkPullRequest(argThatId("1055"), org.mockito.ArgumentMatchers.isNull());
+        // 同一輪只對停下等人的任務查 GitHub issue 回覆（判斷在流程引擎）。
+        verify(orchestrator).checkIssueReply(argThatId("1056"));
         verifyNoMoreInteractions(orchestrator);
     }
 

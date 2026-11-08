@@ -33,6 +33,8 @@ FlowEngine 的新任務承接、續跑、發布及角色請求均保留這個身
 
 兩者都不會新增人工停止點，也不能擴權。詳見[角色諮詢與共享看板](/docs/configurable-team#角色諮詢與共享看板2026-10-17)。
 
+設定了 `githubIssues` 的團隊可在 Slack 以 `issues`／`處理 issue #N` 接 GitHub issue（`IssueCommands`）：需求不清時系統在 issue 留言提問，`PullRequestMonitor` 查到提出者回覆就自動續跑，PR 合併後關閉 issue（`GitHubIssues`、`GitHubIssueFlow`）。agent 不能自行留言或關單。詳見 [GitHub issue 接單](/docs/github-issues)。
+
 設定了 `attachments` 的團隊，agent 可在報告宣告要給使用者下載的檔案；`Attachments` 驗證路徑、機密檔與大小後，
 由 `SlackNotifier.uploadConfigured` 以角色身分上傳到討論串，失敗不影響流程。詳見[附件上傳到討論串](/docs/configurable-team#附件上傳到討論串2026-11-03)。
 反方向：使用者 @訊息的附檔由 `SlackListener` 經 `InboundFiles` 登錄（不連網），`FlowEngine.stageInbox` 在執行 agent 前以 `SlackNotifier.downloadFile` 下載並放進工作目錄的 `.ai-team-inbox/`（git exclude），PDF／Office 另由 `DocumentMarkdown` 轉出 `.md` 輔助版本。Linux 可讓 PDF 優先在隔離環境使用本機 `pdf2md`，失敗回退 PDFBox。詳見[接收使用者附檔](/docs/configurable-team#接收使用者附檔2026-11-06)。
@@ -78,7 +80,7 @@ Slack @主機器人 需求
   → review        Code Reviewer（inspector）獨立審查
   → approval      [真人核准 PR] → 推分支、開 PR → 狀態 PR_CREATED
   （選用）PR 與基準衝突 → 回原任務 implementation 解衝突 → 驗證／驗收／審查 → 推回同一個 PR（PullRequestSync）
-  PR 已合併 → COMPLETED 並刪除工作區（PullRequestMonitor → FlowEngine.checkPullRequest，AI_TEAM_PR_TRACKING，2026-11-06）
+  PR 已合併 → COMPLETED 並刪除工作區（PullRequestMonitor → FlowEngine.checkPullRequest，AI_TEAM_PR_TRACKING，2026-11-06）；來自 GitHub issue 的任務同時關閉 issue
 ```
 
 典型配置中，design、plan、implementation、verification、review 節點受阻（`blocked`）時交給 **triage**（PM 分流）；
@@ -139,7 +141,7 @@ agent 不能自行指定角色或跳到任意節點。
 | `slack/` | Slack 進入點、發言身分、按鈕、進度卡 | `SlackListener`、`SlackNotifier`、`SlackLinks`、`HumanGate`、`HumanInput`、`PlanReview`、`SpinoffButtons`、`StageProgress` |
 | `store/` | SQLite 存取與稽核 | `TaskStore`、`AuditLog` |
 | `workspace/` | 每任務獨立 clone；磁碟不足或閒置時回收建置產物 | `WorkspaceManager`、`WorkspaceReclaimer` |
-| `publish/` | 推分支與開 PR | `PullRequestPublisher` |
+| `publish/` | 推分支與開 PR；GitHub issue 讀取、留言與關閉 | `PullRequestPublisher`、`GitHubIssues`、`GitHubRepo` |
 | `agent/` | legacy 階段定義與執行 | `StageSpec`、`StageRunner` |
 | `config/` | 啟動設定驗證 | `AiTeamProperties` |
 

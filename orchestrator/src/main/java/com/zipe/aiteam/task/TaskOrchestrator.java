@@ -508,6 +508,9 @@ public class TaskOrchestrator {
     // ------------------------------------------------------------------ 入口
 
     public Task createAndSubmit(String channel, String threadTs, String userId, String text) {
+        return submit(channel, threadTs, userId, text, null);
+    }
+    private Task submit(String channel, String threadTs, String userId, String text, com.zipe.aiteam.flow.GitHubIssueFlow.Link issue) {
         if (flowEngine != null && flowEngine.enabled()) {
             Optional<Task> existing = store.inThread(channel, threadTs).stream()
                     .filter(t -> store.direct(t.id()).isEmpty() && store.flow(t.id()).map(f -> !f.dialogue).orElse(true)).findFirst();
@@ -524,6 +527,7 @@ public class TaskOrchestrator {
         }
         Task task = new Task(store.nextTaskId(), channel, threadTs, userId, text);
         if (flowEngine != null && flowEngine.enabled()) flowEngine.prepare(task);
+        if (issue != null && flowEngine != null && flowEngine.enabled()) flowEngine.linkIssue(task, issue);
         store.save(task);
         audit.record(task.id(), userId, AuditLog.ACTION_RECEIVED, text);
         log.info("{} 已排入佇列，來自 {}", task, userId);
@@ -1391,6 +1395,20 @@ public class TaskOrchestrator {
         if (flowEngine != null && flowEngine.owns(task.id())) { flowEngine.checkPullRequest(task, byUser, this::enqueue); return; }
         if (byUser != null) slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
                 "任務 #" + task.id() + " 是舊版管線任務，不支援 PR 衝突同步。");
+    }
+
+    /** 在 GitHub issue 等回覆的任務：排程呼叫，有回覆就自動續跑（判斷在流程引擎）。 */
+    public void checkIssueReply(Task task) {
+        if (flowEngine != null && flowEngine.owns(task.id())) flowEngine.checkIssueReply(task, this::enqueue);
+    }
+    /**
+     * 由 GitHub issue 建立任務並記錄來源；連結在排入佇列前寫好，需求整理第一次停下時就能在 issue 提問。
+     * 同討論串已有任務時沿用 createAndSubmit 的拒絕說明並回 null，不連結 issue。
+     */
+    public Task createFromIssue(String channel, String threadTs, String userId, String text, com.zipe.aiteam.flow.GitHubIssueFlow.Link link) {
+        Task task = submit(channel, threadTs, userId, text, link);
+        return task != null && link != null && flowEngine != null && flowEngine.owns(task.id())
+                && store.flow(task.id()).map(f -> f.githubIssue != null).orElse(false) ? task : null;
     }
 
     public void requestTriage(Task task, String feedback, String byUser) {

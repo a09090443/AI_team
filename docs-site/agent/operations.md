@@ -124,6 +124,8 @@ PR 核准與結束訊息中的「團隊看板」段落，列出角色記錄、�
 | `補充 #<id> 狀態` | 唯讀：重新貼出目前狀態與真的可用的選項，不啟動 agent |
 | `補充 #<id> 核准需求變更 <怎麼改與原因>` | 需求負責人核准需求變更，回到 intake 重訂基準，下游全部重跑 |
 | `處理 #<id>` | 讓等待人工的任務交由 PM 分流分析 |
+| `issues`（或 `列出 issue`） | 配置開啟 `githubIssues` 時，列出 repo 最新 20 張開啟中的 GitHub issue 與處理中的任務 |
+| `處理 issue #<編號> [補充]`（或 `處理 <issue 網址>`） | 讀取 GitHub issue 建立開發任務；需求不清時在 issue 留言提問、提出者回覆後自動續跑，PR 合併後關閉 issue（見 [GitHub issue 接單](/docs/github-issues)） |
 | `中斷 #<id>` | 只停下目前這一輪（任務轉 `AWAIT_HUMAN`，可續跑）；等同狀態卡上的「中斷這一輪」按鈕 |
 | `取消排隊 #<id>` | 只限任務提出者，在原討論串送出。任務仍在排隊（`QUEUED`／`RESUME_QUEUED`／`TRIAGE_QUEUED`）時直接轉 `ABORTED` 並移出中央佇列，不啟動任何 agent；已輪到執行時拒絕。等同排隊回覆上的「取消排隊」按鈕（2026-11-07 起） |
 | `同步 PR #<id>` | 只限需求負責人，在原討論串或同頻道頂層送出。任務已開 PR（`PR_CREATED`）且配置開啟 `project.autonomy.pullRequestSyncRounds` 時，立即檢查 PR；與基準衝突就回原任務解衝突、重驗並推回同一個 PR。系統每 10 分鐘也會自動檢查，平常不必手打。PR 沒衝突、已合併或被他人推過時，只回覆原因（見[已開 PR 的衝突同步](/docs/engineering-workflow#已開-pr-的衝突同步2026-10-23)）。PR 合併後系統自動把任務轉 `COMPLETED` 並刪除工作區，不需要這個指令（`AI_TEAM_PR_TRACKING`，見 [PR 合併後結案](/docs/engineering-workflow#pr-合併後結案2026-11-06)） |

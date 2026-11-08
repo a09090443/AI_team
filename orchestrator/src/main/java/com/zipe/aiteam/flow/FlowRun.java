@@ -50,6 +50,9 @@ public class FlowRun {
     public Map<Integer,String> spinoffs = new LinkedHashMap<>();
     /** 本任務由哪個任務的純詢問發現開立；不沿用該任務的任何核准或工作區。 */
     public String spinoffOf;
+    /** 由 GitHub issue 建立的任務：在 issue 提問釐清、PR 合併後關閉該 issue（{@link GitHubIssueFlow}）。舊快照為 null。 */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public GitHubIssueFlow.Link githubIssue;
     /**
      * 受保護路徑改派（2026-10-04 前的舊行為）：節點 → 實際執行的角色，整個節點交給改派角色。
      * 只保留給已經這樣決定的舊任務沿用；新決定改走 {@link #delegatedParts} 的分段改派。

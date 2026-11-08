@@ -113,6 +113,15 @@ export const docs = [
     code: ['orchestrator/src/main/java/com/zipe/aiteam/flow/Traceability.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/IssueTracker.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/OwnerIssueDecision.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/ReceiptReuse.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/DeferredAcceptance.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/PullRequestSync.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/BaseSync.java', 'orchestrator/src/main/java/com/zipe/aiteam/task/PullRequestMonitor.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/IndependentVerifier.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/VerificationScenes.java', 'orchestrator/src/main/java/com/zipe/aiteam/workspace/WorkspaceReclaimer.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/VerificationPlan.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/FileComparison.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/CommandEvidence.java', 'orchestrator/src/main/java/com/zipe/aiteam/runtime/CommandRuns.java'],
   },
   {
+    id: 'github-issues',
+    title: 'GitHub issue 接單、釐清與結案',
+    category: 'workflow',
+    status: 'current',
+    summary: 'githubIssues 開關、Slack 的 issues／處理 issue 指令、需求不清時在 issue 提問並於回覆後自動續跑、PR 合併後關閉 issue。',
+    readWhen: '要讓團隊處理 GitHub issue，或查 issue 任務為何提問、續跑或關單。',
+    code: ['orchestrator/src/main/java/com/zipe/aiteam/publish/GitHubIssues.java', 'orchestrator/src/main/java/com/zipe/aiteam/publish/GitHubRepo.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/GitHubIssueFlow.java', 'orchestrator/src/main/java/com/zipe/aiteam/task/IssueCommands.java', 'orchestrator/src/main/java/com/zipe/aiteam/task/PullRequestMonitor.java'],
+  },
+  {
     id: 'cross-project-execution',
     title: '跨專案執行契約',
     category: 'workflow',
