@@ -118,6 +118,49 @@ class IssueTrackerTest {
         assertThat(IssueTracker.reportReason(deploy, r, flow)).contains("I1");
         assertThat(IssueTracker.reportReason(deploy, r.deepCopy().put("service_status", "RUNNING"), flow)).isNull();
     }
+    @Test void intakeIssueOnlyDefersWithMatchingApprovedPlanAndDeploymentHealthEvidence() throws Exception {
+        ObjectNode definition = json.valueToTree(flow.snapshot.definition());
+        ((ObjectNode) definition.path("project")).putObject("autonomy").put("deferUnverifiable", true);
+        ((ObjectNode) definition.path("project")).putObject("serviceTarget").put("name", "test-host")
+                .putObject("checks").put("start", "service-start").put("health", "service-health");
+        flow.snapshot = new Snapshot("deployment", json.treeToValue(definition, TeamDefinition.class),
+                flow.snapshot.repository(), flow.snapshot.assets());
+        flow.node = "intake";
+        discover(1);
+        flow.receipts.put("intake", json.readTree("""
+                {"requirements":[{"id":"R1","acceptance_items":[{"id":"A-code"},{"id":"A-http"}]}]}
+                """));
+        flow.baselineRevision = Traceability.digest(flow.receipts.get("intake"));
+        flow.acceptanceOwner = "owner";
+        flow.receipts.put("plan", json.readTree("""
+                {"scenarios":[{"acceptance_ids":["A-code"]}],
+                 "deferred_acceptance":[{"acceptance_id":"A-http","reason":"No deployed server in QA","needs":"Sandbox HTTP"}]}
+                """));
+        Node verification = flow.snapshot.definition().nodes().get("verification");
+        Node deploy = flow.snapshot.definition().nodes().get("deploy");
+        ObjectNode qa = checks(1);
+        ((ObjectNode) qa.path("issue_checks").get(0)).put("status", "OPEN");
+        assertThat(IssueTracker.reportReason(verification, qa, flow)).contains("I1");
+        flow.planApprovals.put("plan", PlanApproval.approve(flow, "plan",
+                Traceability.digest(flow.receipts.get("plan")), "owner"));
+        assertThat(IssueTracker.reportReason(verification, qa, flow)).isNull();
+        assertThat(IssueTracker.deferredDeploy(flow, verification, qa)).isEqualTo("deploy");
+        assertThat(IssueTracker.reportReason(node(Gate.REVIEW), qa, flow)).contains("I1");
+        flow.receipts.put("verification", qa);
+        assertThat(IssueTracker.completionReason(flow)).isNotNull();
+        assertThat(IssueTracker.reportReason(deploy, qa.deepCopy().put("service_status", "RUNNING"), flow)).contains("I1");
+        ObjectNode deployment = (ObjectNode) json.readTree("""
+                {"target":"test-host","service_status":"RUNNING","product_code_changed":false,"uncertainties":[],
+                 "checks":[{"name":"start","operation_id":"service-start","status":"PASS","exit_code":0,"evidence":"start log","acceptance_ids":["A-http"]},
+                           {"name":"health","operation_id":"service-health","status":"PASS","exit_code":0,"evidence":"HTTP log","acceptance_ids":["A-code"]}]}
+                """);
+        assertThat(ServiceDelivery.blockingReason(deployment, flow, deploy)).contains("health", "A-http");
+        ((ObjectNode) deployment.path("checks").get(1)).putArray("acceptance_ids").add("A-http");
+        assertThat(ServiceDelivery.blockingReason(deployment, flow, deploy)).isNull();
+        ((ArrayNode) flow.issueInventory.get("I1").path("requirement_ids")).set(0, TextNode.valueOf("unrelated"));
+        qa.put("issue_revision", IssueTracker.revision(flow));
+        assertThat(IssueTracker.deferredDeploy(flow, verification, qa)).isNull();
+    }
     @Test void noSilentDeletionOrScopeDowngradeOrIdReuse() {
         discover(2);
         assertThat(IssueTracker.ingest(flow,node(Gate.REQUIREMENTS),report(),"42")).isNull();

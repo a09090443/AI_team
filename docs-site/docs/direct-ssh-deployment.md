@@ -93,9 +93,10 @@ Linux 精確 cgroup 清理、獨立 SSH health 與原收據對帳已實測；所
 ### 模型回合與部署作業分開
 
 1. client 在工作區的服務部署目錄（例如 `docs/docker/sit/.agent-service/`）保存請求；固定執行器另在實例 home 的 operation-jobs/&lt;task&gt;/&lt;id&gt;.json 寫入持久 journal。後者位於模型工作區外，由執行器保存，不能以模型自陳代替。
-2. client 預設最多等待 30 秒；未有終態結果就回 OPERATION_PENDING（通常工具 exit 0），保留原請求 ID。模型應立即以 BLOCKED 交回，說明系統仍在執行；不要長輪詢、從 prepare 重排或新建相同 start。
+2. client 預設最多等待 30 秒；未有終態結果就回 OPERATION_PENDING（通常工具 exit 0），保留原請求 ID。模型應立即以 BLOCKED 交回，並在失敗報告或檢查證據列出原 job ID；不要長輪詢、從 prepare 重排或新建相同 start。
 3. FlowEngine 讀取綁定 task、node、目前 HEAD 的 journal。等待原 job 時沒有模型程序，但仍保留中央執行槽，其他同實例工作繼續排隊；完成或到 journal deadline 後，帶檢查點續同一 activeNode，不新增節點造訪、重跑或 transition 計數。
 4. QUEUED/RUNNING/UNCERTAIN 都視為尚待對帳；到期不宣稱成功，也不自動重送 start。恢復以結果指紋限次，時間戳更新不產生新恢復機會；失敗／未知仍須診斷或沿既有受阻路由處理。
+5. 收據若先於模型回報轉為終態，協調器仍會依回報的原 job ID 與目標核對可信 journal。成功就接續未完成的步驟，失敗則以實際結束碼分流。
 
 模型逾時須為 RuntimeTimedOut、phase=MODEL 且 cleanup.status=CONFIRMED，FlowEngine 才啟動逾時對帳。清理只停止本次模型 sandbox unit 的整個 cgroup，保留 stdout／session，不會停止 Agent 獨立 executor 或遠端部署 job。
 

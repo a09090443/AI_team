@@ -47,6 +47,10 @@ public final class ServiceDelivery {
     }
 
     static String blockingReason(JsonNode report, FlowRun flow) {
+        return blockingReason(report, flow, flow.snapshot.definition().nodes().get(flow.node));
+    }
+
+    static String blockingReason(JsonNode report, FlowRun flow, Node node) {
         String missing = readiness(flow);
         if (missing != null) return missing;
         var target = flow.snapshot.definition().project().serviceTarget();
@@ -60,7 +64,7 @@ public final class ServiceDelivery {
         Set<String> expected = new HashSet<>(), covered = new HashSet<>();
         baseline.path("requirements").forEach(r -> r.path("acceptance_items").forEach(a -> expected.add(a.path("id").asText())));
         if (expected.isEmpty()) return "服務需求缺少可核對的驗收項目";
-        Set<String> seen = new HashSet<>();
+        Set<String> seen = new HashSet<>(), healthItems = new HashSet<>();
         for (JsonNode check : checks) {
             String name = check.path("name").asText();
             if (!seen.add(name) || !target.checks().containsKey(name)
@@ -72,12 +76,16 @@ public final class ServiceDelivery {
             for (JsonNode id : check.path("acceptance_ids")) {
                 if (!id.isTextual() || !expected.contains(id.asText())) return "服務檢查引用未知驗收項目";
                 covered.add(id.asText());
+                if ("health".equals(name)) healthItems.add(id.asText());
             }
         }
         if (!seen.equals(target.checks().keySet())) return "服務檢查未涵蓋全部核准項目";
         // 開發後部署只負責部署相關的驗收項目，其餘已由驗證節點涵蓋，全部是否完成由隨後的審查確認。
-        Node current = flow.snapshot.definition().nodes().get(flow.node);
-        if (!(current != null && postDevelopment(current)) && !covered.equals(expected)) return "服務檢查未涵蓋全部需求驗收項目";
+        if (node != null && postDevelopment(node)) {
+            Set<String> deferred = IssueTracker.deploymentItems(flow, node);
+            deferred.removeAll(healthItems);
+            if (!deferred.isEmpty()) return "部署 health 未涵蓋延後的驗收項目：" + deferred;
+        } else if (!covered.equals(expected)) return "服務檢查未涵蓋全部需求驗收項目";
         if (!report.path("uncertainties").isArray() || !report.path("uncertainties").isEmpty()) return "服務仍有未核實事項";
         return null;
     }
@@ -122,6 +130,11 @@ public final class ServiceDelivery {
                     : "允許路徑內的檔案由系統核對後代為提交，不需要自行 commit。");
         if (node.gate() == Gate.SERVICE) text += "\nchecks.operation_id只填配置中的原操作ID，不要附加冒號、job或請求ID；工作編號與收據ID放在evidence。"
                 + "持久作業回OPERATION_PENDING時先交回本輪模型，系統會等待後接續；不要把等待填成PASS，也不要重送已成功start。";
+        if (postDevelopment(node)) {
+            Set<String> deferred = IssueTracker.deploymentItems(flow, node);
+            if (!deferred.isEmpty())
+                text += "\n本次 health 必須實測並列出延後驗收項目：" + deferred;
+        }
         return text;
     }
 

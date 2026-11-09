@@ -480,6 +480,7 @@ FlowRun.systemRetries 沿用以下持久鍵：
 - operation-checkpoint:&lt;fingerprint&gt;：同一結果只續一次。
 - operation-timeout:&lt;fingerprint&gt;：同一逾時觀察只恢復一次。
 - operation-timeout-total:&lt;node&gt;：同節點模型逾時恢復總數，上限 SystemFailure.RETRY_LIMIT（2）。
+- deploy-verification:&lt;digest&gt;：部署前置驗收因同一問題清單原因受阻時，自動退回驗收一次。摘要包含部署、驗收節點、HEAD、需求基準、計畫與具體原因。
 
 fingerprint 由作業 id、state、sourceHead、errorKind 組合計算 SHA256，不含更新時間；不能靠 heartbeat／timestamp 變化取得新恢復額度。續原 activeNode 不新計次，原 visits／repeats／transitions 不歸零。
 

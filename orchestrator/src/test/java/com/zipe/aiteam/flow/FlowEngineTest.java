@@ -1267,17 +1267,17 @@ class FlowEngineTest {
         Path dir=tmp.resolve("operation-jobs/42");Files.createDirectories(dir);
         ObjectNode record=mapper.createObjectNode();
         record.put("version",1).put("id","a".repeat(32)).put("task","42").put("node",f.node)
-                .put("action","start").put("target","test-target").put("source_head","head1")
+                .put("action","start").put("target","test-host").put("source_head","head1")
                 .put("state",state).put("verified",true).put("updated",1).put("deadline",java.time.Instant.now().getEpochSecond()+60);
-        if (state.equals("SUCCEEDED")) record.putObject("result").put("id","a".repeat(32))
-                .put("action","start").put("target","test-target").put("exit_code",0);
+        if (Set.of("SUCCEEDED", "FAILED").contains(state)) record.putObject("result").put("id","a".repeat(32))
+                .put("action","start").put("target","test-host").put("exit_code",state.equals("SUCCEEDED") ? 0 : 1);
         Path file=dir.resolve("a".repeat(32)+".json");Files.writeString(file,record.toString());return file;
     }
     @Test void pendingOperationWaitsWithoutAnotherModelOrNodeCount() throws Exception {
         FlowRun f=new FlowRun(catalog.snapshot());operationJob(f,"RUNNING");f.transitions=8;
         task.state(Task.State.STAGE_RUNNING);store.save(task);store.saveFlow(task.id(),f);
         engine.operationPoll=()->{try{operationJob(f,"SUCCEEDED");}catch(Exception e){throw new RuntimeException(e);}};
-        assertThat(engine.reconcileOperations(task,f,f.snapshot.definition().nodes().get(f.node),false))
+        assertThat(engine.reconcileOperations(task,f,f.snapshot.definition().nodes().get(f.node),null,false))
                 .isEqualTo(FlowEngine.OperationDisposition.RESUME);
         assertThat(f.transitions).isEqualTo(8);assertThat(f.activeNode).isEqualTo(f.node);
         assertThat(f.context).contains("SUCCEEDED","只接續剩餘步驟");
@@ -1286,11 +1286,38 @@ class FlowEngineTest {
     @Test void modelTimeoutReconcilesLateSuccessOnceWithoutNewStart() throws Exception {
         FlowRun f=new FlowRun(catalog.snapshot());operationJob(f,"SUCCEEDED");
         task.state(Task.State.STAGE_RUNNING);store.save(task);store.saveFlow(task.id(),f);
-        assertThat(engine.reconcileOperations(task,f,f.snapshot.definition().nodes().get(f.node),true))
+        assertThat(engine.reconcileOperations(task,f,f.snapshot.definition().nodes().get(f.node),null,true))
                 .isEqualTo(FlowEngine.OperationDisposition.RESUME);
-        assertThat(engine.reconcileOperations(task,f,f.snapshot.definition().nodes().get(f.node),true))
+        assertThat(engine.reconcileOperations(task,f,f.snapshot.definition().nodes().get(f.node),null,true))
                 .isEqualTo(FlowEngine.OperationDisposition.NONE);
         verifyNoInteractions(executor,publisher);
+    }
+    @Test void completedJobReferencedByPendingReportResumesOnlyOnce() throws Exception {
+        enableService(true);
+        FlowRun f = store.flow(task.id()).orElseThrow(); f.node = "deploy";
+        operationJob(f, "SUCCEEDED");
+        task.state(Task.State.STAGE_RUNNING); store.save(task);
+        var node = f.snapshot.definition().nodes().get(f.node);
+        ObjectNode report = mapper.createObjectNode().put("execution_status", "BLOCKED");
+        ObjectNode failure = report.putObject("failure_report").put("observed_error", "OPERATION_PENDING");
+        failure.put("evidence", "job=" + "b".repeat(32));
+        assertThat(engine.reconcileOperations(task, f, node, report, false)).isEqualTo(FlowEngine.OperationDisposition.NONE);
+        failure.put("evidence", "job=" + "a".repeat(32));
+        assertThat(engine.reconcileOperations(task, f, node, report, false)).isEqualTo(FlowEngine.OperationDisposition.RESUME);
+        assertThat(engine.reconcileOperations(task, f, node, report, false)).isEqualTo(FlowEngine.OperationDisposition.NONE);
+        assertThat(f.context).contains("SUCCEEDED", "只接續剩餘步驟");
+        verifyNoInteractions(executor, publisher);
+    }
+    @Test void failedJobReferencedByPendingReportRoutesUsingRealExitCode() throws Exception {
+        enableService(true);
+        FlowRun f = store.flow(task.id()).orElseThrow(); f.node = "deploy";
+        operationJob(f, "FAILED");
+        task.state(Task.State.STAGE_RUNNING); store.save(task);
+        ObjectNode report = mapper.createObjectNode().put("execution_status", "BLOCKED");
+        report.putObject("failure_report").put("observed_error", "OPERATION_PENDING").put("evidence", "a".repeat(32));
+        assertThat(engine.reconcileOperations(task, f, f.snapshot.definition().nodes().get(f.node), report, false))
+                .isEqualTo(FlowEngine.OperationDisposition.FAILED);
+        assertThat(f.lastBlockReason).contains("固定執行器確認作業失敗", "exit=1");
     }
     @Test void restartWithTrustedOperationQueuesSameTaskAndSnapshot() throws Exception {
         FlowRun f=new FlowRun(catalog.snapshot());operationJob(f,"RUNNING");
@@ -1303,7 +1330,7 @@ class FlowEngineTest {
     @Test void abortedTaskNeverAutomaticallyResumesAnOperation() throws Exception {
         FlowRun f=new FlowRun(catalog.snapshot());operationJob(f,"RUNNING");
         task.state(Task.State.ABORTED);store.save(task);store.saveFlow(task.id(),f);
-        assertThat(engine.reconcileOperations(task,f,f.snapshot.definition().nodes().get(f.node),false))
+        assertThat(engine.reconcileOperations(task,f,f.snapshot.definition().nodes().get(f.node),null,false))
                 .isEqualTo(FlowEngine.OperationDisposition.STOP);
         verifyNoInteractions(executor,publisher);
     }
@@ -1625,6 +1652,21 @@ class FlowEngineTest {
                         ((ObjectNode) report).put("verdict", "REQUEST_CHANGES").withArray("blockers").add("真正的缺陷");
                 }
                 if (flow.node.equals("triage") && mode.equals("issueMissing")) tracked.put("route", "implementation");
+                if (mode.equals("issueDeferredDeploy")) {
+                    if (node.gate() == TeamDefinition.Gate.REQUIREMENTS)
+                        ((ObjectNode) tracked.path("requirements").get(0)).withArray("acceptance_items")
+                                .addObject().put("id", "R1-A2").put("criterion", "實機可用").put("dimension", "服務");
+                    if (node.gate() == TeamDefinition.Gate.TEST_PLAN)
+                        tracked.putArray("deferred_acceptance").addObject()
+                                .put("acceptance_id", "R1-A2").put("reason", "QA 無實機").put("needs", "部署健康檢查");
+                    if (node.gate() == TeamDefinition.Gate.SERVICE)
+                        ((ObjectNode) tracked.path("checks").get(1)).withArray("acceptance_ids").add("R1-A2");
+                }
+                if (mode.startsWith("issueBlockedDeploy") || mode.equals("issueDeferredDeploy")) {
+                    if (node.gate() == TeamDefinition.Gate.VERIFICATION)
+                        ((ObjectNode) tracked.path("issue_checks").get(0)).put("status", "OPEN");
+                    if (flow.node.equals("triage")) tracked.put("route", "service");
+                }
                 // #1055：分流停下前補充待決項目的說明（issueDecisionNotes），或改了待修項目的證據（issueDecisionRepairNote）。
                 if (flow.node.equals("triage") && Set.of("issueDecisionNotes", "issueDecisionRepairNote").contains(mode)) {
                     boolean decision = mode.equals("issueDecisionNotes");
@@ -2007,6 +2049,38 @@ class FlowEngineTest {
         verify(workspace).revertPaths("42", List.of("ai-team-sandbox/start.sh"));
         verify(workspace, never()).commitPaths(eq("42"), anyList(), contains("服務建置設定"));
         assertThat(store.flow(task.id()).orElseThrow().independentEvidence).isNotNull();
+    }
+    @Test void verificationWithPlannedDeploymentEvidenceRoutesDirectlyToDeployOnce() throws Exception {
+        enableService(true);
+        enableIssueTracking();
+        var flow = store.flow(task.id()).orElseThrow();
+        ObjectNode definition = mapper.valueToTree(flow.snapshot.definition());
+        ((ObjectNode) definition.path("project")).putObject("autonomy").put("deferUnverifiable", true);
+        flow.snapshot = new TeamDefinition.Snapshot("planned-deploy", mapper.treeToValue(definition, TeamDefinition.class),
+                flow.snapshot.repository(), flow.snapshot.assets());
+        store.saveFlow(task.id(), flow);
+        mode = "issueDeferredDeploy";
+
+        engine.run(task);
+
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        assertThat(calls.stream().filter(s -> s.startsWith("verification:") || s.startsWith("deploy:") || s.startsWith("triage:")))
+                .containsExactly("verification:tester", "deploy:infrastructure");
+        assertThat(store.flow(task.id()).orElseThrow().heads).containsEntry("deploy", "head1");
+        verifyNoInteractions(publisher);
+    }
+    @Test void sameUnresolvedIssueStopsDeployVerificationLoopAfterOneRedo() throws Exception {
+        enableService(true);
+        enableIssueTracking();
+        mode = "issueBlockedDeploy";
+
+        engine.run(task);
+
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        assertThat(calls.stream().filter(s -> s.startsWith("verification:"))).hasSize(2);
+        assertThat(calls).noneMatch(s -> s.startsWith("deploy:"));
+        assertThat(store.flow(task.id()).orElseThrow().lastBlockReason).contains("已停止重跑", "I1");
+        verifyNoInteractions(publisher);
     }
     @Test void serviceTypedTimeoutResumesSuccessfulJobWithoutAnotherVisit() throws Exception {
         enableService(true); mode="serviceOperationTimeout"; engine.run(task);

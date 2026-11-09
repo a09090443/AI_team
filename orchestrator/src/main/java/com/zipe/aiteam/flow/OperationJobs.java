@@ -91,6 +91,6 @@ public final class OperationJobs {
         }
     }
     public static String instruction() {
-        return "\n【持久長作業執行契約】工具回OPERATION_PENDING表示已受理、尚在背景執行，不是失敗。立即結束本輪模型並以BLOCKED說明系統作業仍在執行；系統會等待並自動續同節點。不要每隔幾秒輪詢、不要新建同一start、不要要求真人重新授權。已成功的同來源操作沿用系統檢查點，只補缺少驗證。\n";
+        return "\n【持久長作業執行契約】工具回OPERATION_PENDING表示已受理、尚在背景執行，不是失敗。立即結束本輪模型並以BLOCKED回報，在 failure_report.evidence 寫原 job ID，在 observed_error 寫 OPERATION_PENDING；系統會對帳後接續。不要每隔幾秒輪詢、不要新建同一start、不要要求真人重新授權。已成功的同來源操作沿用系統檢查點，只補缺少驗證。\n";
     }
 }

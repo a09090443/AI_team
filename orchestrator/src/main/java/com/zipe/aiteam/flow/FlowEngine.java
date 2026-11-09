@@ -416,7 +416,25 @@ public class FlowEngine {
                         throw new IllegalStateException("節點 " + flow.node + " 缺少有效前置契約 " + dependency + "：" + invalid);
                     }
                     if (redo != null) {
-                        String invalid = FlowGates.blockingReason(flow.snapshot.definition().nodes().get(redo), flow.receipts.get(redo), flow);
+                        Node dependency = flow.snapshot.definition().nodes().get(redo);
+                        String invalid = FlowGates.blockingReason(dependency, flow.receipts.get(redo), flow);
+                        JsonNode previous = flow.blockedFindings.get(redo);
+                        if (ServiceDelivery.postDevelopment(node) && dependency.gate() == Gate.VERIFICATION && previous != null) {
+                            String issueReason = IssueTracker.reportReason(dependency, previous, flow);
+                            if (issueReason != null && issueReason.startsWith("問題尚未解決或待必要決策：")) {
+                                invalid = issueReason;
+                                var inputs = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.arrayNode()
+                                        .add(flow.node).add(redo).add(workspaces.headSha(task.id())).add(flow.baselineRevision)
+                                        .add(Objects.toString(flow.receipts.get(dependency.plan()), "")).add(issueReason);
+                                String key = "deploy-verification:" + Traceability.digest(inputs);
+                                if (flow.systemRetries.putIfAbsent(key, 1) != null) {
+                                    flow.lastBlockReason = "分流後仍無法交部署，系統已停止重跑相同的驗收。請確認：" + issueReason;
+                                    audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_REJECTED, flow.lastBlockReason);
+                                    waitHuman(task, flow, flow.lastBlockReason);
+                                    return;
+                                }
+                            }
+                        }
                         String reason = "「" + flow.node + "」要開始前需要「" + redo + "」的有效結果，但目前沒有："
                                 + Diagnostics.clip(invalid, 800)
                                 + "\n系統自動回到「" + redo + "」把它完成；請依上述原因修正回報或成果，不要重複同樣的回報。";
@@ -640,7 +658,7 @@ public class FlowEngine {
                         flow.context = FlowContext.append(flow.context, evidence);
                     }
                 }
-                OperationDisposition operation = reconcileOperations(task, flow, node, false);
+                OperationDisposition operation = reconcileOperations(task, flow, node, report, false);
                 if (operation == OperationDisposition.STOP) return;
                 if (operation == OperationDisposition.RESUME) continue;
                 String consultBlock = null;
@@ -679,7 +697,8 @@ public class FlowEngine {
                 // 諮詢請求本身不是成果：不登錄問題清單，直接走受阻路線。
                 String issueBlock = consultBlock == null ? IssueTracker.ingest(flow, node, report, task.id()) : null;
                 if (issueBlock == null && consultBlock == null) flow.systemRetries.remove(flow.node + IssueTracker.FORMAT_RETRY);
-                String block = consultBlock != null ? consultBlock : issueBlock == null ? FlowGates.blockingReason(node, report, flow) : issueBlock;
+                String block = operation == OperationDisposition.FAILED ? flow.lastBlockReason
+                        : consultBlock != null ? consultBlock : issueBlock == null ? FlowGates.blockingReason(node, report, flow) : issueBlock;
                 if (block==null && node.gate()==Gate.SERVICE && ServiceSupport.configured(props.homePath(),flow.snapshot.definition().project().serviceTarget().name()))
                     block=ServiceSupport.deliveryReason(props.homePath(),task.id(),report);
                 else if (block==null && node.gate()==Gate.SERVICE) {
@@ -706,7 +725,9 @@ public class FlowEngine {
                 }
                 AgentDispatch.Assignment assignment = null;
                 String handoffCorrection = null;
-                if (block == null) {
+                String deferredDeployment = block == null && report.path("route").asText("").isBlank()
+                        ? IssueTracker.deferredDeploy(flow, node, report) : null;
+                if (block == null && deferredDeployment == null) {
                     String route = report.path("route").asText("");
                     String destination = route.isBlank() ? node.next() : node.routes() == null ? null : node.routes().get(route);
                     if (destination != null) {
@@ -814,12 +835,11 @@ public class FlowEngine {
                         next = node.routes().get(route);
                         leaveStandaloneService(task, flow, node, next);
                     } else next = node.next();
-                    // 驗收已過、只剩服務節點登記且須部署後才能確認的問題：直接交開發後部署，部署完再回審查。
-                    String deploy = IssueTracker.deferredDeploy(flow, node, report);
-                    if (deploy != null && route.isBlank()) {
-                        next = deploy;
+                    // 驗收已過，只剩可交部署確認的問題：直接交開發後部署，部署完再回審查。
+                    if (deferredDeployment != null) {
+                        next = deferredDeployment;
                         audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE,
-                                "節點 " + flow.node + " 通過；服務問題待部署確認，交開發後部署 " + deploy + "，部署後回審查");
+                                "節點 " + flow.node + " 通過；問題待部署確認，交開發後部署 " + next + "，部署後回審查");
                     }
                 } else {
                     // 裁定後的前進額度只給一路通過的情況；任何受阻都照常停下。
@@ -938,7 +958,7 @@ public class FlowEngine {
                 Node interrupted = AgentDispatch.effective(flow, flow.node);
                 if (interrupted != null) {
                     try {
-                        OperationDisposition operation = reconcileOperations(task, flow, interrupted, true);
+                        OperationDisposition operation = reconcileOperations(task, flow, interrupted, null, true);
                         if (operation == OperationDisposition.STOP) return;
                         if (operation == OperationDisposition.RESUME) { run(task); return; }
                     } catch (Exception reconciliationFailure) {
@@ -2832,7 +2852,7 @@ public class FlowEngine {
             throw new IllegalStateException("長作業工作區無法核對，保留現場", e);
         }
     }
-    enum OperationDisposition { NONE, RESUME, STOP }
+    enum OperationDisposition { NONE, RESUME, FAILED, STOP }
     /** Test hook only changes polling latency; production waits without holding a model process. */
     Runnable operationPoll = () -> {
         try { Thread.sleep(1000); }
@@ -2846,10 +2866,29 @@ public class FlowEngine {
             throw new IllegalStateException("長作業來源版本無法核對，保留現場", e);
         }
     }
-    OperationDisposition reconcileOperations(Task task, FlowRun flow, Node node, boolean timeout) {
+    OperationDisposition reconcileOperations(Task task, FlowRun flow, Node node, JsonNode report, boolean timeout) {
         if (flow.dialogue || !flow.node.equals(flow.activeNode)) return OperationDisposition.NONE;
         OperationJobs.Batch batch = operationBatch(task, flow);
-        if (batch.empty() || (!timeout && !batch.pending())) return OperationDisposition.NONE;
+        String reportedJob = null;
+        if (node.gate() == Gate.SERVICE && report != null && "BLOCKED".equals(report.path("execution_status").asText())) {
+            var target = flow.snapshot.definition().project().serviceTarget();
+            JsonNode failure = report.path("failure_report");
+            String evidence = failure.path("observed_error").asText() + "\n" + failure.path("evidence").asText()
+                    + "\n" + report.path("checks");
+            if (target != null && evidence.contains("OPERATION_PENDING")) {
+                Set<String> ids = java.util.regex.Pattern.compile("\\b[0-9a-f]{32}\\b").matcher(evidence)
+                        .results().map(java.util.regex.MatchResult::group).collect(java.util.stream.Collectors.toSet());
+                var matching = batch.jobs().stream()
+                        .filter(job -> target.name().equals(job.target()) && ids.contains(job.id()))
+                        .toList();
+                if (matching.size() == 1) {
+                    reportedJob = matching.getFirst().id();
+                    batch = new OperationJobs.Batch(matching);
+                }
+            }
+        }
+        if (batch.empty() || (!timeout && reportedJob == null && !batch.pending())) return OperationDisposition.NONE;
+        if (aborted(task) || stopForInterrupt(task, flow)) return OperationDisposition.STOP;
         String initial = batch.fingerprint();
         if (timeout && (flow.systemRetries.containsKey("operation-timeout:" + initial)
                 || flow.systemRetries.getOrDefault("operation-timeout-total:"+flow.node,0)>=SystemFailure.RETRY_LIMIT))
@@ -2866,6 +2905,10 @@ public class FlowEngine {
                     if (batch.deadline() <= now) break;
                     operationPoll.run();
                     OperationJobs.Batch next = operationBatch(task, flow);
+                    if (reportedJob != null) {
+                        String id = reportedJob;
+                        next = new OperationJobs.Batch(next.jobs().stream().filter(job -> id.equals(job.id())).toList());
+                    }
                     if (next.empty()) throw new IllegalStateException("已受理的長作業紀錄遺失，保留現場，不重送操作");
                     batch = next;
                 }
@@ -2878,6 +2921,16 @@ public class FlowEngine {
         if (timeout) {
             flow.systemRetries.put("operation-timeout:" + initial, 1);
             flow.systemRetries.merge("operation-timeout-total:"+flow.node,1,Integer::sum);
+        }
+        if (reportedJob != null && "FAILED".equals(batch.jobs().getFirst().state())) {
+            var failed = batch.jobs().getFirst();
+            flow.lastBlockReason = "固定執行器確認作業失敗：" + failed.action() + " job=" + failed.id()
+                    + " exit=" + failed.result().path("exit_code").asInt()
+                    + (failed.errorKind() == null ? "" : "；" + failed.errorKind());
+            flow.context = FlowContext.append(flow.context, flow.lastBlockReason + batch.notice());
+            store.saveFlow(task.id(), flow);
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_REJECTED, flow.lastBlockReason);
+            return OperationDisposition.FAILED;
         }
         flow.context = FlowContext.append(flow.context, "系統已核對長作業；模型本輪結束不代表工具失敗。只接續剩餘步驟。" + batch.notice());
         flow.lastBlockReason = "";

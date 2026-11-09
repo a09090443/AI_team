@@ -39,7 +39,7 @@
   **服務問題交部署確認（2026-11-02 起）**：服務建置節點（`Gate.SERVICE`）登記的 REPAIR 問題要實際部署後才能確認。
   流程有要求此驗收的開發後部署節點時，驗收可把這類問題填 OPEN，其餘條件通過就採用（`IssueTracker.deployAfter`），
   並直接交該部署節點（`IssueTracker.deferredDeploy`），部署完回審查。部署與審查仍要求全部 PASS，整體完成判斷不變；
-  其他節點登記的問題與 DECISION 在驗收時照樣必須 PASS。起因：部署要求驗收有效、驗收又要求服務問題 PASS，
+  其他節點登記的問題依下述例外處理，DECISION 仍須走決策流程。起因：部署要求驗收有效、驗收又要求服務問題 PASS，
   兩者互等，驗收與部署之間來回重做到上限。
 
   **擴及審查登記的問題（2026-11-03 起）**：審查節點（`Gate.REVIEW`）登記的 REPAIR 問題比照辦理。審查排在部署之後，
@@ -50,6 +50,8 @@
   **部署回 RUNNING 時同樣可留（2026-11-03 起）**：系統的交付網址實測在部署回報之後才跑，部署角色無從先填 PASS。
   開發後部署節點回報 `service_status=RUNNING` 時，服務或審查登記的 REPAIR 問題可留 OPEN（`IssueTracker.reportReason`），
   系統實測通過後交審查，由審查引用實測收據確認；審查仍要求全部 PASS。服務沒在跑時照舊擋下。
+
+  **需求階段登記的待修問題**：若有開發後部署目標，且有效計畫在 `deferred_acceptance` 列出問題所連結需求的項目，驗收通過計畫內情境後可保留 `OPEN`，直接交部署。部署的 `health` 必須涵蓋這些項目並逐項確認問題修復，發布核准會重查部署結果與 commit。若部署反覆收到同一 commit、需求與計畫下相同的問題清單阻擋原因，系統只自動退回驗收一次，避免分流原樣反覆重派。
 
 #### 負責人裁定待決問題（2026-10-23）
 
@@ -79,6 +81,7 @@
 - **延後驗收**（`project.autonomy.deferUnverifiable`，`DeferredAcceptance`）：開啟時測試計畫 schema 多必填陣列 `deferred_acceptance`
   （acceptance_id、reason、needs）。需要驗收節點操作契約沒有的能力才能驗的項目列入其中，`Traceability.planReason` 算作已涵蓋；
   ID 必須存在、reason／needs 不得空白、不得同時有情境。驗收提示說明它們不屬本次驗收、不列 uncertainties；核准 PR 訊息與 PR 說明逐項列出。未開啟的團隊不變。
+  延後的是計畫中的驗收項目。問題清單的 `issue_checks` 仍依上方規則獨立核對，驗收應分開記錄當階段已取得的修復證據與留待部署確認的實機項目。
 - **沿用前次結果**（`ReceiptReuse`，所有團隊）：`Traceability.invalidate` 與需求重訂清掉收據前先存進 `FlowRun.priorReceipts`。
   主線節點（entry 沿 next）要啟動時，配置版本相同、工作區乾淨且（工作區節點）HEAD 相同、前置結果（需求以外）摘要相同、報告重新通過閘門時，
   直接恢復收據、往下走，不呼叫 agent、不計換手。另外：設計（唯讀 REPORT）與實作要求需求基準相同或只刪減、沒有新增待處理問題；
@@ -319,6 +322,8 @@ PR_CREATED、等待真人、FAILED、負責人結案等保留中的工作區會�
 固定部署工具是模型回合之外的持久作業：executor 保存實例 home/operation-jobs 的 journal，遠端 root systemd job 以原請求 ID 執行、查詢結果。client 預設等待 30 秒後回 OPERATION_PENDING，模型應以 BLOCKED 結束本輪；此狀態表示待對帳，不表示部署失敗或需要重新核准。
 
 FlowEngine 在一般受阻路由前讀取同 task／activeNode／HEAD 的有效 journal，等待期間釋放模型但保留中央執行槽。結果就緒或到 deadline 後，注入系統檢查點續同 activeNode，不增加節點／重跑／transition 次數，也不重置既有計數或代造完成報告。真正模型 timeout 只有在 RuntimeTimedOut 的 MODEL 階段且 cgroup cleanup=CONFIRMED 時才可走相同恢復。結果／timeout 指紋限制重複恢復，避免無限重開模型。
+
+如果工具先回 `OPERATION_PENDING`，服務回報 `BLOCKED` 時應在失敗報告或檢查證據附上原 job ID。即使收據在模型回報前就已寫入，系統也會核對該 ID、目標、任務、節點與 HEAD，依成功收據接續剩餘步驟，或依失敗收據的結束碼分流。
 
 prepare/start 只有固定執行器 verified 的同 HEAD、同 task／node／target 成功結果可重用；health 仍須核對該 start release，不得把舊 HTTP200 當成新版本驗收。服務重啟可依有效 journal 排回原 task；舊 AWAIT_HUMAN 需管理者先核實原收據，再以單次 AI_TEAM_RESUME_OPERATION_TASK 指定恢復，不修改任務快照或核准。
 

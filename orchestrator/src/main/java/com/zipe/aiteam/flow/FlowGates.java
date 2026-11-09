@@ -14,7 +14,7 @@ public final class FlowGates {
         if (issues != null) return issues;
         return switch (node.gate()) {
             case REPORT -> null;
-            case SERVICE -> ServiceDelivery.blockingReason(result, flow);
+            case SERVICE -> ServiceDelivery.blockingReason(result, flow, node);
             case REQUIREMENTS -> java.util.Set.of("question", "human").contains(result.path("route").asText()) ? null : Traceability.requirementsReason(result);
             case IMPLEMENTATION -> FailureReport.implementationIncomplete(result) ? "實作品質契約未通過或有範圍衝突" : null;
             case TEST_PLAN -> flow.snapshot.definition().version() >= 2 ? Traceability.planReason(result, flow) : QaGate.planReason(result);
@@ -60,6 +60,13 @@ public final class FlowGates {
             if (block != null) return id + "：" + block;
             if ((node.gate() == Gate.REVIEW || node.gate() == Gate.VERIFICATION) && !head.equals(flow.heads.get(id)))
                 return "工作区版本與驗收／審查證據不一致：" + id;
+            if (node.gate() == Gate.VERIFICATION) {
+                String deploy = IssueTracker.deployAfter(flow, id);
+                Node deployment = deploy == null ? null : flow.snapshot.definition().nodes().get(deploy);
+                if (deployment != null && !IssueTracker.deploymentItems(flow, deployment).isEmpty()
+                        && (!head.equals(flow.heads.get(deploy)) || blockingReason(deployment, flow.receipts.get(deploy), flow) != null))
+                    return "缺少目前 commit 的延後驗收部署證據：" + deploy;
+            }
         }
         return null;
     }

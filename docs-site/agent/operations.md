@@ -318,6 +318,8 @@ Agent VM 的 systemd 固定部署執行器以 SSH 公鑰直連目標 VM；網路
 
 看到「工具仍在執行，系統會追蹤原作業並自動接續」時，不需重送任務、重啟 VM 或再核准。工具預設 30 秒交回 OPERATION_PENDING，模型以 BLOCKED 結束本輪，中央流程等待可信 journal 後續同 activeNode，不新計次；同實例後方任務仍排隊。未知／到期不表示成功，系統不能無限重開模型。
 
+服務回報的原 job ID 若已有同目標、同節點、同 HEAD 的可信終態收據，中央流程直接依收據接續或分流。查核進度時以執行器 journal 為準。
+
 模型 timeout 只有在本次 sandbox cgroup 已確認清理（RuntimeTimedOut、MODEL、cleanup=CONFIRMED）後才可自動對帳；獨立部署 executor 和遠端 job 不會因此被殺。真人按「中斷這一輪」會要求取消原 pending job，任務仍保留；明確中斷不是暫時釋放模型。取消未確認不宣稱遠端停止。
 
 服務本身重新啟動後，有同 HEAD 有效 journal 的原執行中／RESUME_QUEUED 任務可經中央佇列自動接回；沒有 journal 的任務仍依既有中斷規則等人。此為應用恢復邏輯，不表示 orchestrator 已設定開機自啟。
