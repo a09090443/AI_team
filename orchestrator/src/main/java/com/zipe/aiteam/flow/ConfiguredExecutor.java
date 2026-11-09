@@ -231,6 +231,7 @@ public class ConfiguredExecutor {
         // 對話也適用：上傳由系統讀檔，不需要 agent 的寫入權。
         schema = Attachments.schema(schema, flow);
         context.append(Attachments.notice(flow));
+        schema = GitHubIssueFlow.schema(schema, flow, node);
         context.append(GitHubIssueFlow.notice(flow, node));
         if (!flow.dialogue && AgentDispatch.enabled(node) && node.scope() == Scope.WORKSPACE && "codex".equals(role.runtime()))
             context.append("\n本次由系統核對變更後代為 commit；完成修改與品質檢查即可，不要因無法 commit 回報受阻。")

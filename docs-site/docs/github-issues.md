@@ -25,7 +25,7 @@
 
 | 指令 | 作用 |
 |---|---|
-| `issues`（或 `列出 issue`） | 列出 repo 最新 20 張開啟中的 issue，標示哪些已有任務在處理 |
+| `issues`（或 `列出 issue`） | 列出 repo 最新 20 張開啟中的 issue，標示哪些已有任務在處理；尚未處理的每張附「處理 #編號」按鈕 |
 | `處理 issue #12 [補充說明]` | 讀取 issue 與留言，建立一般開發任務；補充說明會一起交給需求整理 |
 | `處理 https://github.com/<owner>/<repo>/issues/12 [補充說明]` | 同上；網址必須屬於本實例的 repo |
 
@@ -33,10 +33,33 @@
 - 同一張 issue 已有尚未結束的任務（含已開 PR 但未合併）時拒絕重複建立，並指出是哪個任務；
   已被「改用新任務繼續」承接的舊任務不算。已關閉的 issue 不接。
 - 呼叫 GitHub 在獨立的執行緒（`IssueCommands`），不卡 Slack 事件入口。
-- 只認上表的固定格式（`IssueCommands` 的正規式，整則訊息須完全符合）。自然語句如「你可以取得 github issue 嗎？」
-  會當一般需求交給 intake。intake 沒有 GitHub 存取能力，所以配置開啟時，系統在需求整理節點與直接對話的提示中
-  加入本功能與上表指令的說明（`GitHubIssueFlow.notice`；由 issue 建立的任務不加），讓 agent 引導使用者改用指令，
-  而不是回答「看不到 issue」。（2026-11-09 起；之前的版本會回答無法取得）
+- 一個討論串只放一個工作任務：打字指令所在的討論串還沒有任務時，任務就建在該串；已有任務時，
+  系統在頻道開新討論串建任務，並在原串回報任務編號。
+
+### 清單按鈕
+
+清單上尚未有任務處理的 issue，每張附「處理 #編號」按鈕（action_id `ai_team_issue_handle_N`，value 只放 issue 編號，
+repo 由本實例配置決定）。按下的人須在白名單，且會成為任務負責人；任務一律開在新討論串，清單串可以繼續按別張。
+重複接單、已關閉 issue 的檢查與打字指令相同。要附補充說明時用打字指令，或建立後在任務串 `補充 #<id>`。
+
+### 用一般對話列出或接手
+
+固定格式之外的說法（例如「目前有哪些 issue？」「幫我處理 12」）會當一般需求交給需求整理（intake），
+或是直接 @ 角色的對話。配置開啟時，這兩種情境的提示會說明本功能，
+schema 多一個必填欄位 `github_issue_request`（`GitHubIssueFlow.offers`／`schema`；由 issue 建立的任務不加，
+未開啟的快照提示與 schema 不變）：
+
+| 欄位 | 說明 |
+|---|---|
+| `action` | `none`／`list`（列出清單）／`handle`（接手指定 issue） |
+| `number` | `handle` 時的 issue 編號，其餘為 0 |
+| `note` | 使用者對該 issue 的補充，沒有就空字串 |
+
+- agent 仍沒有 GitHub 存取能力，只表達意圖；階段通過檢查後，`FlowEngine.issueRequest` 以**任務提出者**身分交給
+  `IssueCommands` 執行（白名單、repo、重複接單與已關閉檢查與打字指令相同），並記 audit。
+- `list` 把清單（附按鈕）貼在原討論串；`handle` 在頻道開新討論串建任務，原串回報任務編號。
+- 編號不明確時 agent 應填 `list` 讓使用者從清單選，而不是猜編號。
+- 2026-11-09 之前的版本 intake 只會回答無法取得 issue。
 
 ## 任務內容與安全邊界
 
@@ -84,5 +107,5 @@
 
 ## 驗證狀態
 
-- 程式測試：`GitHubIssuesTest`、`GitHubIssueFlowTest`、`IssueCommandsTest` 與 `FlowEngineTest` 的 issue 案例（提問、只採用提出者回覆、Slack 補充取消等待、輪數上限、合併關單、未合併不關、intake 指令提示只在啟用時加入）。
+- 程式測試：`GitHubIssuesTest`、`GitHubIssueFlowTest`、`IssueCommandsTest` 與 `FlowEngineTest` 的 issue 案例（提問、只採用提出者回覆、Slack 補充取消等待、輪數上限、合併關單、未合併不關、intake 指令提示只在啟用時加入、`github_issue_request` 解析與 schema、清單按鈕、按鈕／agent 請求開新討論串）。
 - **尚未有真實 GitHub／Slack 端對端證據**；部署後需以測試 issue 實測列出、提問、回覆續跑與合併關單。

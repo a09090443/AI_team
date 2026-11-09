@@ -798,6 +798,7 @@ public class FlowEngine {
                 String next;
                 boolean resend = false;
                 if (block == null) {
+                    issueRequest(task, flow, node, report);
                     flow.receipts.put(flow.node, report);
                     flow.blockedFindings.remove(flow.node);
                     if (node.gate() == Gate.REQUIREMENTS && Traceability.requirementsReason(report) == null) {
@@ -3082,7 +3083,27 @@ public class FlowEngine {
         }
         slack.postConfigured(role, task.slackChannel(), task.slackThreadTs(), answer + "\n（原任務驗收與發布未改動；系統診斷或修復結果如上。）");
         attach(task, flow, node, role, result.structuredOutput());
+        issueRequest(task, flow, node, result.structuredOutput());
         state(task, Task.State.COMPLETED, "角色對話已完成");
+    }
+    /** 由 IssueCommands 啟動時註冊；未註冊時 agent 的 issue 請求只記稽核。 */
+    public volatile GitHubIssueFlow.Executor issueExecutor;
+    /**
+     * agent 在報告的 github_issue_request 請系統列出或接手 issue（見 GitHubIssueFlow.offers）。
+     * 以任務提出者的身分交給 IssueCommands；白名單、repo 檢查與防重複接單都在那裡，失敗不影響本階段結果。
+     */
+    private void issueRequest(Task task, FlowRun flow, Node node, JsonNode report) {
+        if (!GitHubIssueFlow.offers(flow, node)) return;
+        var request = GitHubIssueFlow.request(report);
+        if (request == null) return;
+        audit.record(task.id(), node.role(), AuditLog.ACTION_STATE,
+                request.list() ? "agent 請系統列出 GitHub issue" : "agent 請系統處理 GitHub issue #" + request.number());
+        var executor = issueExecutor;
+        if (executor == null) return;
+        try { executor.execute(request, task.slackChannel(), task.slackThreadTs(), task.requesterUserId()); }
+        catch (Exception e) {
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_ERROR, "GitHub issue 請求未送出：" + Diagnostics.describe(e));
+        }
     }
     /** 報告宣告的附件：系統驗證後上傳到討論串。任何失敗只留說明與稽核，不改變階段結果。 */
     private void attach(Task task, FlowRun flow, Node node, Role role, JsonNode report) {

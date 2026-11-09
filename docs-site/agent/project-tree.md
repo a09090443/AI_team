@@ -192,7 +192,7 @@ agent_team/
 │   │   │   ├── VerificationRecovery.java # 配置核准後授予一次驗收重跑
 │   │   │   ├── Traceability.java     # 需求基準、原子驗收項目與覆蓋對照
 │   │   │   ├── IssueTracker.java     # 跨專案問題清單、需求對應、逐項驗證與承接完整性
-│   │   │   ├── GitHubIssueFlow.java  # GitHub issue 接單：需求文字、intake 指令提示、提問留言、回覆判定與承接連結
+│   │   │   ├── GitHubIssueFlow.java  # GitHub issue 接單：需求文字、intake 提示與 github_issue_request、提問留言、回覆判定與承接連結
 │   │   │   ├── IndependentVerifier.java # 系統獨立驗證：全新 clone 執行固定指令並產生收據
 │   │   │   ├── VerificationScenes.java # 驗證現場回收：成功即刪 clone、失敗留最新一份、啟動整理與空間檢查
 │   │   │   ├── VerificationPlan.java # 依變更檔案決定獨立驗證指令要執行、略過或重用
@@ -278,7 +278,7 @@ agent_team/
 │   │   │   ├── TriageGate.java       # PM 分流報告的檢查
 │   │   │   ├── QuotaAutoResume.java  # 額度用盡後的自動續跑排程
 │   │   │   ├── PullRequestMonitor.java # 每 10 分鐘檢查已開 PR 是否與基準衝突，並查 GitHub issue 是否已回覆
-│   │   │   ├── IssueCommands.java    # Slack 的 issues／處理 issue #N 指令：列出 issue、依 issue 建任務
+│   │   │   ├── IssueCommands.java    # Slack 的 issues／處理 issue #N 指令與清單按鈕：列出 issue、依 issue 建任務；執行 agent 的 issue 請求
 │   │   │   ├── QuotaMessage.java     # 額度訊息呈現
 │   │   │   ├── QuotaRetryTime.java   # 解析供應商解禁時間
 │   │   │   └── TaipeiTime.java       # 給人看的時間換算為台北時間

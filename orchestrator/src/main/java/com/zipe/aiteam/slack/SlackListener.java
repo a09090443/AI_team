@@ -114,7 +114,8 @@ public class SlackListener {
         registerHumanGateActions(app);
         registerHumanInputActions(app);
         registerSpinoffActions(app);
-        socketApp = new SocketModeApp(props.slackAppToken(), app);
+        registerIssueActions(app);
+        socketApp =new SocketModeApp(props.slackAppToken(), app);
         log.info("Socket Mode 連線中…（白名單 {} 人，並行上限 {}）",
                 props.allowedUsers().size(), props.maxConcurrency());
         try {
@@ -472,6 +473,26 @@ public class SlackListener {
             });
             return ctx.ack();
         });
+    }
+    /** issue 清單的「處理 #N」按鈕：只有白名單使用者有效；建立任務與防重複在 IssueCommands。 */
+    private void registerIssueActions(App app) {
+        app.blockAction(com.zipe.aiteam.task.IssueCommands.ACTION_PATTERN, (req, ctx) -> {
+            var p = req.getPayload();
+            String user = p.getUser().getId(), value = p.getActions().getFirst().getValue();
+            String channel = p.getChannel() == null ? null : p.getChannel().getId();
+            String thread = p.getMessage() == null ? null
+                    : p.getMessage().getThreadTs() != null ? p.getMessage().getThreadTs() : p.getMessage().getTs();
+            ingress.execute(() -> {
+                try { handleIssueButton(user, value, channel, thread); }
+                catch (Exception e) { log.error("處理 issue 按鈕失敗：{}", com.zipe.aiteam.runtime.Diagnostics.describe(e)); }
+            });
+            return ctx.ack();
+        });
+    }
+    void handleIssueButton(String user, String value, String channel, String thread) {
+        if (!props.allowedUsers().contains(user) || issueCommands == null || channel == null) return;
+        audit.record(null, user, AuditLog.ACTION_BUTTON, "以 issue 清單按鈕要求處理 issue #" + value);
+        issueCommands.button(user, value, channel, thread);
     }
     void handleSpinoffButton(String user, String value, String channel, String thread) {
         if (!props.allowedUsers().contains(user)) return;

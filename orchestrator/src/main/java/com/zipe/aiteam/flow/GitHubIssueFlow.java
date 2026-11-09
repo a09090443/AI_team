@@ -53,21 +53,68 @@ public final class GitHubIssueFlow {
     }
 
     /**
-     * 讓需求整理與直接對話的角色知道本實例已開啟 issue 接單、使用者該下什麼指令。
-     * agent 本身沒有 GitHub 存取能力；被問到 issue 時要引導使用者用固定指令，而不是回答「看不到」。
+     * 需求整理與直接對話的角色在 githubIssues 開啟時可以請系統列出或接手 issue。
+     * agent 本身沒有 GitHub 存取能力，只在報告的 github_issue_request 表達意圖；呼叫 GitHub、白名單與防重複都由系統程式做。
+     * 由 issue 建立的任務不提供（避免在處理一張 issue 時又連鎖接單）；未開啟的快照提示與 schema 逐字不變。
      */
+    public static boolean offers(FlowRun flow, TeamDefinition.Node node) {
+        return maxRounds(flow) > 0 && flow.githubIssue == null
+                && (flow.dialogue || node != null && node.gate() == TeamDefinition.Gate.REQUIREMENTS);
+    }
+
     public static String notice(FlowRun flow, TeamDefinition.Node node) {
-        boolean applies = flow != null && (flow.dialogue || node != null && node.gate() == TeamDefinition.Gate.REQUIREMENTS);
-        return notice(maxRounds(flow), flow != null && flow.githubIssue != null, applies);
+        return notice(maxRounds(flow), flow != null && flow.githubIssue != null,
+                flow != null && (flow.dialogue || node != null && node.gate() == TeamDefinition.Gate.REQUIREMENTS));
     }
 
     static String notice(int rounds, boolean fromIssue, boolean applies) {
         if (rounds <= 0 || !applies || fromIssue) return "";
-        return "\n本實例已開啟 GitHub issue 接單（由系統程式呼叫 GitHub，你本身沒有 GitHub 存取能力，也不需要）。"
-                + "使用者在 Slack @主 App 下固定指令即可：「issues」列出開啟中的 issue；"
-                + "「處理 issue #<編號> [補充說明]」或「處理 <issue 網址>」讀取該 issue 建立開發任務，"
-                + "需要釐清時系統會在 issue 留言並在提出者回覆後自動續跑，PR 合併後系統關閉 issue。"
-                + "使用者詢問能否取得、列出或處理 GitHub issue 時，直接告訴對方上述指令（整則訊息只含指令才會被辨識），不要回答無法取得 issue。";
+        return "\n本實例已開啟 GitHub issue 接單。你本身沒有 GitHub 存取能力，也不需要：在 github_issue_request 表達意圖，由系統程式代為執行。"
+                + "使用者想看目前有哪些 issue／問題時填 action=list，系統會把開啟中的 issue 清單（每張附「處理」按鈕）貼到討論串；"
+                + "使用者明確指定要處理某一張 issue 時填 action=handle 與 number（note 放使用者對這張 issue 的補充，沒有就空字串），"
+                + "系統會讀取該 issue、在頻道開新討論串建立開發任務；編號不明確時不要猜，填 list 讓使用者從清單選。"
+                + "其他情況填 action=none、number=0、note 空字串。填 list 或 handle 時，本次只需簡短回覆已請系統處理，"
+                + "不要自行列出或臆測 issue 內容，route 依本節點配置選純詢問的分支（通常是 question）。"
+                + "使用者也可以直接 @主 App 輸入「issues」或「處理 issue #<編號> [補充說明]」。";
+    }
+
+    /** 加入 github_issue_request；必填且不允許額外欄位，與嚴格結構化輸出相容。 */
+    static String schema(String original, FlowRun flow, TeamDefinition.Node node) throws Exception {
+        return offers(flow, node) ? withRequest(original) : original;
+    }
+
+    static String withRequest(String original) throws Exception {
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var schema = (com.fasterxml.jackson.databind.node.ObjectNode) json.readTree(original);
+        ((com.fasterxml.jackson.databind.node.ObjectNode) schema.get("properties")).set(REQUEST_FIELD, json.readTree("""
+                {"type":"object","additionalProperties":false,"required":["action","number","note"],"properties":{
+                 "action":{"type":"string","enum":["none","list","handle"]},
+                 "number":{"type":"integer","minimum":0},
+                 "note":{"type":"string","maxLength":2000}}}
+                """));
+        schema.withArray("required").add(REQUEST_FIELD);
+        return json.writeValueAsString(schema);
+    }
+
+    public static final String REQUEST_FIELD = "github_issue_request";
+
+    /** agent 要求系統執行的 issue 動作；action=none 或欄位不合法時為 null。 */
+    public record Request(boolean list, int number, String note) {}
+
+    public static Request request(JsonNode report) {
+        JsonNode r = report == null ? null : report.path(REQUEST_FIELD);
+        if (r == null || !r.isObject()) return null;
+        String action = r.path("action").asText("");
+        if ("list".equals(action)) return new Request(true, 0, null);
+        int number = r.path("number").asInt(0);
+        if (!"handle".equals(action) || number <= 0) return null;
+        String note = r.path("note").asText("").trim();
+        return new Request(false, number, note.isEmpty() ? null : Diagnostics.clip(note, 2000));
+    }
+
+    /** 由 Slack 層（IssueCommands）實作；流程引擎只轉交，不直接呼叫 GitHub。 */
+    public interface Executor {
+        void execute(Request request, String channel, String threadTs, String user);
     }
 
     /** 由 issue 組成任務的需求文字。前兩行是給人看的目標；issue 原文放在資料區塊。 */

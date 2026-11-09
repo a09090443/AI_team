@@ -91,6 +91,7 @@
 - 只認任務原本的討論串；轉貼到別處的按鈕不會生效。
 - 另一種按鈕不在停止訊息上：純詢問結束時的「開成新需求 N：短標題」（`SpinoffButtons`，action_id `ai_team_spinoff_N`，
   value 只放 `任務編號|序號`，原文由系統從任務紀錄讀回）。行為見 `docs-site/agent/operations.md` 的「建立任務」。
+- GitHub issue 清單上的「處理 #編號」（`IssueCommands.ACTION`，action_id `ai_team_issue_handle_N`，value 只放 issue 編號），見 [GitHub issue 接單](/docs/github-issues#清單按鈕)。
 - 角色報告的顯示也同步白話化：`route` 翻成「交回工程實作修正（implementation）」這種形式，
   保留原鍵以便對照配置；`execution_status` 與 `verdict` 一併改為口語說法。
 

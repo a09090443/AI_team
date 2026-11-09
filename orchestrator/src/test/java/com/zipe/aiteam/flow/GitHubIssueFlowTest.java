@@ -51,9 +51,30 @@ class GitHubIssueFlowTest {
     }
 
     @Test void noticeTellsIntakeTheCommandsOnlyWhenEnabled() {
-        assertThat(GitHubIssueFlow.notice(3, false, true)).contains("「issues」").contains("處理 issue #<編號>").contains("不要回答無法取得 issue");
+        assertThat(GitHubIssueFlow.notice(3, false, true)).contains("「issues」").contains("處理 issue #<編號>").contains("github_issue_request").contains("action=list");
         assertThat(GitHubIssueFlow.notice(0, false, true)).isEmpty();
         assertThat(GitHubIssueFlow.notice(3, true, true)).isEmpty();
         assertThat(GitHubIssueFlow.notice(3, false, false)).isEmpty();
+    }
+
+    @Test void schemaAddsStrictRequiredRequestField() throws Exception {
+        var schema = new ObjectMapper().readTree(GitHubIssueFlow.withRequest("{\"type\":\"object\",\"properties\":{},\"required\":[]}"));
+        assertThat(schema.path("required").toString()).contains("github_issue_request");
+        var field = schema.path("properties").path("github_issue_request");
+        assertThat(field.path("additionalProperties").asBoolean(true)).isFalse();
+        assertThat(field.path("required").toString()).contains("action").contains("number").contains("note");
+    }
+
+    @Test void requestParsesListHandleAndIgnoresNoneOrInvalid() throws Exception {
+        var json = new ObjectMapper();
+        assertThat(GitHubIssueFlow.request(json.readTree("{\"github_issue_request\":{\"action\":\"list\",\"number\":0,\"note\":\"\"}}")).list()).isTrue();
+        var handle = GitHubIssueFlow.request(json.readTree("{\"github_issue_request\":{\"action\":\"handle\",\"number\":12,\"note\":\" 先看後端 \"}}"));
+        assertThat(handle.list()).isFalse();
+        assertThat(handle.number()).isEqualTo(12);
+        assertThat(handle.note()).isEqualTo("先看後端");
+        assertThat(GitHubIssueFlow.request(json.readTree("{\"github_issue_request\":{\"action\":\"handle\",\"number\":12,\"note\":\"\"}}")).note()).isNull();
+        assertThat(GitHubIssueFlow.request(json.readTree("{\"github_issue_request\":{\"action\":\"handle\",\"number\":0,\"note\":\"\"}}"))).isNull();
+        assertThat(GitHubIssueFlow.request(json.readTree("{\"github_issue_request\":{\"action\":\"none\",\"number\":0,\"note\":\"\"}}"))).isNull();
+        assertThat(GitHubIssueFlow.request(json.readTree("{}"))).isNull();
     }
 }
