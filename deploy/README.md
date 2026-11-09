@@ -11,7 +11,6 @@
 | `deploy-orchestrator.sh` | 既有 VM 的通用受控部署：換上隔離目錄建好的 JAR，以及來源 `teams` 疊上實例 `team-overlay/` 並通過驗證的合併結果（`bootstrap/stage-teams.sh`）；安裝目錄原本有 `src/main` 時才一併更新來源，前後比對任務資料與工作區（`bootstrap/workspace-check.sh`：已結束任務的工作區可被啟動清理刪除，其餘須不變），失敗自動回復 |
 | `deploy-jar-safe.sh` | 既有 VM 只換 JAR 的受控部署，啟動失敗自動回復 |
 | `service-context/` | 服務建置的管理者維運說明範本（`*.example.json`），核對後放到實例的 `service-context/` |
-| `test-maven-settings.xml` | 測試用空白 Maven settings |
 
 兩支部署腳本都要求沒有執行中或排隊的任務，候選 JAR 必須在隔離目錄建置，不可在服務的 `target/` 建置。
 不要再新增只為單次部署寫死任務編號或日期的腳本。

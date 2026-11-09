@@ -240,6 +240,9 @@ git -C ~/ai-team/<repo 目錄> rev-parse origin/<基準分支>
 ```
 
 安裝器在獨立暫存目錄建置並跑完整測試，失敗不安裝；成功不啟動、不覆蓋已有目的地。
+`check-source.sh` 會執行來源 `teams/` 內的 Python 測試。新安裝與完整升級複製來源 `teams/` 時，會排除
+`skills/service-build/scripts/` 下的 `test_*.py` 與 `service_fixture.py`，以及 `scripts/test_verify_gradle_jars.py` 和 Python 位元組碼快取。
+實例 overlay 另行合併。既有服務目錄內的舊檔依升級規則保留。
 目前 `install-app.sh` 成功與失敗都會保留 `mktemp` 建立的建置目錄；成功時另將建置日誌複製到安裝目錄。
 這些目錄目前沒有自動保留期限，不應把安裝成功解讀為暫存資料已清除。
 repo 不可 shallow；基準分支在 env.sh 指定。演練記錄基準 SHA。

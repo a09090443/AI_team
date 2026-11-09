@@ -14,7 +14,10 @@ mkdir -p "$test_root/app/prompts" "$test_root/app/workspaces/task-42/src/test"
 printf 'test prompt\n' > "$test_root/app/prompts/qa.md"
 printf 'uncommitted work\n' > "$test_root/app/workspaces/task-42/src/test/example"
 printf 'do-not-back-up-secret\n' > "$test_root/app/env.sh"
-sqlite3 "$test_root/app/ai-team.db" 'create table task(id text,state text,created_at text,updated_at text); insert into task values("42","WAITING_QUOTA","now","now");'
+sqlite3 "$test_root/app/ai-team.db" <<'SQL'
+create table task(id text,state text,created_at text,updated_at text);
+insert into task values('42','WAITING_QUOTA','now','now');
+SQL
 bash "$test_root/app/backup.sh" "$test_root/backup"
 test ! -e "$test_root/backup/env.sh"
 bash "$test_root/app/restore.sh" "$test_root/backup" "$test_root/restored"

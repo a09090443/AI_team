@@ -33,6 +33,21 @@ AI_TEAM_DEFINITION="$tmp/case/live/project.json" stage || fail '首次合併應�
 grep -q 'out/project.json' "$STAGE_TEST_LOG" && grep -q 'out/example.json' "$STAGE_TEST_LOG" || fail '未驗證全部配置'
 pass '來源 teams 與 overlay 合併，所有配置都經過驗證'
 
+fresh
+mkdir -p "$tmp/case/source/skills/service-build/scripts/__pycache__" "$tmp/case/source/scripts" "$tmp/case/overlay/skills/service-build/scripts"
+touch "$tmp/case/source/skills/service-build/scripts/"{client.py,test_direct_ssh.py,service_fixture.py}
+touch "$tmp/case/source/skills/service-build/scripts/__pycache__/test_direct_ssh.cpython-314.pyc"
+touch "$tmp/case/source/scripts/"{verify-gradle-jars.py,test_verify_gradle_jars.py,test_project.py}
+touch "$tmp/case/overlay/skills/service-build/scripts/test_overlay.py"
+AI_TEAM_DEFINITION= stage || fail '排除來源測試後仍應通過'
+runtime="$tmp/case/out/skills/service-build/scripts"
+[[ -f $runtime/client.py && -f $runtime/test_overlay.py && -f $tmp/case/out/scripts/verify-gradle-jars.py \
+   && -f $tmp/case/out/scripts/test_project.py && ! -e $runtime/test_direct_ssh.py && ! -e $runtime/service_fixture.py \
+   && ! -e $runtime/__pycache__ \
+   && ! -e $tmp/case/out/scripts/test_verify_gradle_jars.py && -f $tmp/case/source/scripts/test_verify_gradle_jars.py ]] \
+  || fail '來源測試排除範圍不正確'
+pass '只排除內附來源測試，保留執行腳本、來源檔與實例 overlay'
+
 fresh; cp "$tmp/case/overlay/project.json" "$tmp/case/live/project.json"
 AI_TEAM_DEFINITION="$tmp/case/live/project.json" stage || fail '線上與 overlay 一致時應通過'
 pass '線上檔與 overlay 一致時照常部署'

@@ -18,7 +18,8 @@
    （原列的 Reviewer bwrap/.agents 問題已於 2026-09-09 修正，見 [Codex 雙層沙箱](codex-nested-sandbox.md)。）
 7. 新 VM 還原與 session 接續演練；規劃加密憑證備份，不能混入一般 source tar。
 
-已知待修：`deploy/bootstrap/test-bootstrap.sh` 的 SQLite fixture 以雙引號寫字串值，在既有 VM 的 sqlite3 會中斷。
+2026-11-09 更新：`deploy/bootstrap/test-bootstrap.sh` 的 SQLite fixture 原以雙引號寫字串值，在既有 VM 的 sqlite3 會中斷。
+來源已改用 SQL 單引號字串，乾淨 VM 驗收仍待完成。
 
 ## bootstrap 工具的邊界
 

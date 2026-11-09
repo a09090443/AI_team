@@ -403,6 +403,7 @@ agent_team/
 │   │   ├── provision.sh              # 以已核實 checksum 的官方封存檔安裝工具鏈
 │   │   ├── toolchain.tsv.example     # 工具鏈 URL／checksum 範本
 │   │   ├── install-app.sh            # 隔離建置、測試並安裝應用
+│   │   ├── copy-runtime-teams.sh     # 複製來源 teams 的執行資產，排除來源專用測試
 │   │   ├── check-linux.sh            # Linux 能力檢查（tools／runtime）
 │   │   ├── linux-platform.sh         # 發行版辨識共用函式
 │   │   ├── check-source.sh           # 來源一致性檢查（角色、schema、manifest、Bash 語法）
@@ -428,8 +429,7 @@ agent_team/
 │   │   ├── Vagrantfile               # 沙箱 VM 定義：固定 box 版本、NAT＋host-only、停用主機共享、磁碟放管理目錄
 │   │   └── create-sandbox-vm.sh      # 建立／重建（--rebuild）VM、安裝 mode sandbox 受限入口並產生 known_hosts
 │   ├── deploy-orchestrator.sh        # 通用受控部署與六表逐列快照（隔離 JAR、src/main、teams＋實例 overlay），成功後輪替備份
-│   ├── deploy-jar-safe.sh            # 只換 JAR 的受控部署，失敗自動回復，成功後輪替備份
-│   └── test-maven-settings.xml       # 測試用空白 Maven settings
+│   └── deploy-jar-safe.sh            # 只換 JAR 的受控部署，失敗自動回復，成功後輪替備份
 └── docs-site/                        # 文件網站（Docusaurus），主要讀者為 AI agent
     ├── README.md                     # 網站結構與維護方式
     ├── .gitignore

@@ -32,8 +32,7 @@ if [[ -d $overlay ]]; then
   fi
 fi
 
-mkdir -p "$out"
-cp -a "$source_teams/." "$out/"
+bash "$(dirname "$0")/copy-runtime-teams.sh" "$source_teams" "$out"
 [[ ! -d $overlay ]] || cp -a "$overlay/." "$out/"
 
 for team in "$out"/*.json; do

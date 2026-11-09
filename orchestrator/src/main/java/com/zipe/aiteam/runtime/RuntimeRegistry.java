@@ -38,9 +38,4 @@ public class RuntimeRegistry {
         }
         return r;
     }
-
-    /** 供啟動時回報用。 */
-    public java.util.Set<String> availableIds() {
-        return byId.keySet();
-    }
 }

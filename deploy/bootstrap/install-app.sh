@@ -18,7 +18,8 @@ cp -a "$source_root/orchestrator/src" "$source_root/orchestrator/pom.xml" "$sour
 (cd "$build" && mvn -B package > build.log 2>&1) || { echo "建置失敗，見 $build/build.log；未安裝"; exit 1; }
 mkdir -p "$destination/orchestrator/target" "$destination/workspaces" "$destination/logs"
 cp "$build/target/ai-team-orchestrator-0.1.0.jar" "$destination/orchestrator/target/"
-cp -a "$build/prompts" "$build/schemas" "$build/teams" "$destination/"
+cp -a "$build/prompts" "$build/schemas" "$destination/"
+bash "$source_root/deploy/bootstrap/copy-runtime-teams.sh" "$build/teams" "$destination/teams"
 if [[ -n $overlay ]]; then
   cp -a "$overlay" "$destination/team-overlay"
   cp -a "$overlay/." "$destination/teams/"

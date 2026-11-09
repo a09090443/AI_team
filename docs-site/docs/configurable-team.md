@@ -66,7 +66,8 @@ node-web 的 `frontend` 角色 2026-11-08 起使用 UI/UX prompt `prompts/fronte
 `$AI_TEAM_HOME/team-overlay/`（可用 `AI_TEAM_TEAM_OVERLAY` 改位置），目錄結構與 `teams/` 相同。
 `AI_TEAM_DEFINITION` 仍指向 `$AI_TEAM_HOME/teams/<project>.json`：
 
-- `deploy-orchestrator.sh` 以 `deploy/bootstrap/stage-teams.sh` 把來源 teams 與 overlay 合併到暫存目錄，
+- `deploy-orchestrator.sh` 以 `deploy/bootstrap/stage-teams.sh` 把來源 teams 的執行資產與 overlay 合併到暫存目錄，
+  來源專用測試的排除清單見 [安裝步驟](INSTALL.md#5-安裝應用與目標-repo)。
   用候選 JAR 逐一 `--validate-team`，通過後才停服務並覆蓋線上 `teams/`。
 - **在停服務前中止**的情況：啟用中的配置不在來源也不在 overlay；任何合併後的配置驗證失敗；
   線上 `teams/` 裡的 overlay 檔與 overlay 內容不同（代表有人直接改了 `teams/`，覆蓋會遺失修改，須先把要保留的版本放回 overlay）。
@@ -697,4 +698,4 @@ SERVICE 節點的 `next` 只能是 `end`（只部署）或 REVIEW 節點（開�
 ## 配置式 skills
 
 AGENT 節點可設定 `skills`，最多八份不重複的 SKILL.md／references 相對路徑。TeamCatalog 在 teams 內讀取並防止路徑越界，內容寫入快照、參與 revision；ConfiguredExecutor 每次非對話派工注入相同內容，改派角色也保留。
-例如 service 與 service_triage 節點可使用 `service-build`；helpers 隨 teams 部署，操作與主機授權仍由既有契約及 broker 核對。參考 [服務建置](service-delivery.md)。
+例如 service 與 service_triage 節點可使用 `service-build`。helpers 隨 teams 部署，日常操作由 Agent VM 的固定 SSH 執行器核對任務授權，再經已登錄的 SSH 公鑰交給目標 VM 的受限入口。參考 [服務建置](service-delivery.md)。
