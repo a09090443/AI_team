@@ -49,4 +49,11 @@ class GitHubIssueFlowTest {
         assertThat(child.awaitingReply).isFalse();
         assertThat(child.askedCommentId).isZero();
     }
+
+    @Test void noticeTellsIntakeTheCommandsOnlyWhenEnabled() {
+        assertThat(GitHubIssueFlow.notice(3, false, true)).contains("「issues」").contains("處理 issue #<編號>").contains("不要回答無法取得 issue");
+        assertThat(GitHubIssueFlow.notice(0, false, true)).isEmpty();
+        assertThat(GitHubIssueFlow.notice(3, true, true)).isEmpty();
+        assertThat(GitHubIssueFlow.notice(3, false, false)).isEmpty();
+    }
 }

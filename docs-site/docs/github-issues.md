@@ -33,6 +33,10 @@
 - 同一張 issue 已有尚未結束的任務（含已開 PR 但未合併）時拒絕重複建立，並指出是哪個任務；
   已被「改用新任務繼續」承接的舊任務不算。已關閉的 issue 不接。
 - 呼叫 GitHub 在獨立的執行緒（`IssueCommands`），不卡 Slack 事件入口。
+- 只認上表的固定格式（`IssueCommands` 的正規式，整則訊息須完全符合）。自然語句如「你可以取得 github issue 嗎？」
+  會當一般需求交給 intake。intake 沒有 GitHub 存取能力，所以配置開啟時，系統在需求整理節點與直接對話的提示中
+  加入本功能與上表指令的說明（`GitHubIssueFlow.notice`；由 issue 建立的任務不加），讓 agent 引導使用者改用指令，
+  而不是回答「看不到 issue」。（2026-11-09 起；之前的版本會回答無法取得）
 
 ## 任務內容與安全邊界
 
@@ -80,5 +84,5 @@
 
 ## 驗證狀態
 
-- 程式測試：`GitHubIssuesTest`、`GitHubIssueFlowTest`、`IssueCommandsTest` 與 `FlowEngineTest` 的 issue 案例（提問、只採用提出者回覆、Slack 補充取消等待、輪數上限、合併關單、未合併不關）。
+- 程式測試：`GitHubIssuesTest`、`GitHubIssueFlowTest`、`IssueCommandsTest` 與 `FlowEngineTest` 的 issue 案例（提問、只採用提出者回覆、Slack 補充取消等待、輪數上限、合併關單、未合併不關、intake 指令提示只在啟用時加入）。
 - **尚未有真實 GitHub／Slack 端對端證據**；部署後需以測試 issue 實測列出、提問、回覆續跑與合併關單。

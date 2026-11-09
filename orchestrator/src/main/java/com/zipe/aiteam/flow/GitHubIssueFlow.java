@@ -52,6 +52,24 @@ public final class GitHubIssueFlow {
         return settings == null ? 0 : settings.clarifyRounds();
     }
 
+    /**
+     * 讓需求整理與直接對話的角色知道本實例已開啟 issue 接單、使用者該下什麼指令。
+     * agent 本身沒有 GitHub 存取能力；被問到 issue 時要引導使用者用固定指令，而不是回答「看不到」。
+     */
+    public static String notice(FlowRun flow, TeamDefinition.Node node) {
+        boolean applies = flow != null && (flow.dialogue || node != null && node.gate() == TeamDefinition.Gate.REQUIREMENTS);
+        return notice(maxRounds(flow), flow != null && flow.githubIssue != null, applies);
+    }
+
+    static String notice(int rounds, boolean fromIssue, boolean applies) {
+        if (rounds <= 0 || !applies || fromIssue) return "";
+        return "\n本實例已開啟 GitHub issue 接單（由系統程式呼叫 GitHub，你本身沒有 GitHub 存取能力，也不需要）。"
+                + "使用者在 Slack @主 App 下固定指令即可：「issues」列出開啟中的 issue；"
+                + "「處理 issue #<編號> [補充說明]」或「處理 <issue 網址>」讀取該 issue 建立開發任務，"
+                + "需要釐清時系統會在 issue 留言並在提出者回覆後自動續跑，PR 合併後系統關閉 issue。"
+                + "使用者詢問能否取得、列出或處理 GitHub issue 時，直接告訴對方上述指令（整則訊息只含指令才會被辨識），不要回答無法取得 issue。";
+    }
+
     /** 由 issue 組成任務的需求文字。前兩行是給人看的目標；issue 原文放在資料區塊。 */
     public static String requestText(String userNote, GitHubRepo repo, GitHubIssues.Issue issue, List<GitHubIssues.Comment> comments) {
         StringBuilder sb = new StringBuilder("處理 GitHub issue " + repo + "#" + issue.number() + "：" + oneLine(issue.title()));

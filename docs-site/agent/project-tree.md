@@ -192,7 +192,7 @@ agent_team/
 │   │   │   ├── VerificationRecovery.java # 配置核准後授予一次驗收重跑
 │   │   │   ├── Traceability.java     # 需求基準、原子驗收項目與覆蓋對照
 │   │   │   ├── IssueTracker.java     # 跨專案問題清單、需求對應、逐項驗證與承接完整性
-│   │   │   ├── GitHubIssueFlow.java  # GitHub issue 接單：需求文字、提問留言、回覆判定與承接連結
+│   │   │   ├── GitHubIssueFlow.java  # GitHub issue 接單：需求文字、intake 指令提示、提問留言、回覆判定與承接連結
 │   │   │   ├── IndependentVerifier.java # 系統獨立驗證：全新 clone 執行固定指令並產生收據
 │   │   │   ├── VerificationScenes.java # 驗證現場回收：成功即刪 clone、失敗留最新一份、啟動整理與空間檢查
 │   │   │   ├── VerificationPlan.java # 依變更檔案決定獨立驗證指令要執行、略過或重用
