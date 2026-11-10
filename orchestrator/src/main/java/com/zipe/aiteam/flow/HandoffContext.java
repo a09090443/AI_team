@@ -2,6 +2,7 @@ package com.zipe.aiteam.flow;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zipe.aiteam.runtime.AgentRuntime;
 import com.zipe.aiteam.runtime.Diagnostics;
 
 import java.io.IOException;
@@ -12,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 import static com.zipe.aiteam.flow.TeamDefinition.*;
 
@@ -23,6 +25,39 @@ final class HandoffContext {
 
     static boolean enabled(FlowRun flow) {
         return !flow.dialogue && Boolean.TRUE.equals(flow.snapshot.definition().project().focusedHandoffs());
+    }
+
+    /** 服務部署歷史只給會判斷或執行部署的階段；其餘階段靠需求基準與交接報告就足夠。 */
+    private static final Set<Gate> SERVICE_HISTORY = Set.of(Gate.REQUIREMENTS, Gate.REPORT, Gate.SERVICE);
+    /** 內建檔案比對的用法只給會規畫、執行或核對這些操作的階段。 */
+    private static final Set<Gate> COMPARISON = Set.of(Gate.TEST_PLAN, Gate.VERIFICATION, Gate.REVIEW, Gate.REPORT);
+    private static final Pattern IMPORTS_AGENTS = Pattern.compile("(?m)^\\s*@(\\./)?AGENTS\\.md\\s*$");
+
+    static boolean needsServiceHistory(FlowRun flow, Node node) {
+        return !enabled(flow) || SERVICE_HISTORY.contains(node.gate());
+    }
+
+    static boolean needsComparisonNotice(FlowRun flow, Node node) {
+        return !enabled(flow) || COMPARISON.contains(node.gate());
+    }
+
+    /**
+     * runtime 自己會載入專案規則檔時，提示不再重複附一次（每個階段、每一輪都會重讀）。
+     * Codex／opencode 原生讀 AGENTS.md；Claude Code 讀 CLAUDE.md，只有其中以獨立一行 `@AGENTS.md` 匯入時才算。
+     * 判斷不出來一律回 false，照舊附上：少省一點，但不會讓角色失去專案規則。
+     */
+    static boolean rulesFileLoadedByRuntime(FlowRun flow, AgentRuntime runtime, Path cwd) {
+        if (!enabled(flow)) return false;
+        Set<AgentRuntime.Capability> capabilities = runtime.capabilities();
+        if (capabilities != null && capabilities.contains(AgentRuntime.Capability.NATIVE_AGENTS_MAP)) return true;
+        if (!"claude-code".equals(runtime.id())) return false;
+        Path entry = cwd.resolve("CLAUDE.md");
+        try {
+            return Files.isRegularFile(entry) && Files.size(entry) <= 64000
+                    && IMPORTS_AGENTS.matcher(Files.readString(entry)).find();
+        } catch (IOException | RuntimeException e) {
+            return false;
+        }
     }
 
     static void recordTransition(FlowRun flow, String target) {

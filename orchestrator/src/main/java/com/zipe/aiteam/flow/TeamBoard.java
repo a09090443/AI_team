@@ -22,6 +22,8 @@ public final class TeamBoard {
     static final int MAX_REFS = 10;
     static final int NOTICE_LIMIT = 64000;
     static final int RECENT_CLOSED = 20;
+    /** 精簡交接時，決策以外的已結項目最多附幾筆。 */
+    static final int RECENT_CLOSED_OTHERS = 5;
 
     public record Entry(String id, String kind, String text, String to, List<String> refs, String author,
                         String node, String status, String resolution, String supersededBy, String origin) {
@@ -73,6 +75,12 @@ public final class TeamBoard {
             out.append(openText);
             List<Entry> closed = flow.board.values().stream().filter(e -> !"OPEN".equals(e.status())).toList();
             List<Entry> recent = closed.subList(Math.max(0, closed.size() - RECENT_CLOSED), closed.size());
+            // 精簡交接：已結的決策仍會影響後續判斷，全部保留；其餘種類只留最近幾筆，避免每個階段重讀已處理完的備註。
+            if (HandoffContext.enabled(flow)) {
+                long others = recent.stream().filter(e -> !"DECISION".equals(e.kind())).count();
+                long[] skip = { Math.max(0, others - RECENT_CLOSED_OTHERS) };
+                recent = recent.stream().filter(e -> "DECISION".equals(e.kind()) || skip[0]-- <= 0).toList();
+            }
             if (!recent.isEmpty()) {
                 StringBuilder closedText = new StringBuilder("\n最近已結項目：");
                 recent.forEach(e -> closedText.append("\n").append(line(e)));

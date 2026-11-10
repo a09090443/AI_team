@@ -148,8 +148,9 @@ public class ConfiguredExecutor {
         }
         if (flow.snapshot.definition().project().serviceTarget() != null) {
             String target = flow.snapshot.definition().project().serviceTarget().name();
-            context.append(ServiceDeploymentContext.notice(props.homePath(), target,
-                    store.serviceHistory(task.slackChannel(), target, task.id())));
+            if (HandoffContext.needsServiceHistory(flow, node))
+                context.append(ServiceDeploymentContext.notice(props.homePath(), target,
+                        store.serviceHistory(task.slackChannel(), target, task.id())));
             boolean serviceRole = flow.snapshot.definition().nodes().values().stream()
                     .anyMatch(n -> n.gate()==Gate.SERVICE && Objects.equals(n.role(),flow.dialogueRole));
             if (node.gate()==Gate.SERVICE || (flow.dialogue && flow.parentId!=null && serviceRole))
@@ -157,8 +158,9 @@ public class ConfiguredExecutor {
             if (flow.dialogue && flow.parentId!=null)
                 context.append(savedServiceEvidence(flow.parentId,target));
         }
-        if (!flow.dialogue && OperationContract.inspectAvailable(flow.snapshot.definition())) context.append(FileComparison.notice());
-        if (!flow.dialogue && JsonAdditionsComparison.enabled(flow.snapshot.definition())) context.append(JsonAdditionsComparison.notice());
+        boolean comparison = !flow.dialogue && HandoffContext.needsComparisonNotice(flow, node);
+        if (comparison && OperationContract.inspectAvailable(flow.snapshot.definition())) context.append(FileComparison.notice());
+        if (comparison && JsonAdditionsComparison.enabled(flow.snapshot.definition())) context.append(JsonAdditionsComparison.notice());
         Node defined = AgentDispatch.effective(flow, flow.node);
         if (!flow.dialogue && defined != null && defined.protectedPathFallback() != null) {
             var fb = defined.protectedPathFallback();
@@ -211,7 +213,11 @@ public class ConfiguredExecutor {
         if (node.plan() != null && flow.receipts.get(node.plan()) != null)
             context.append("\n系統固定測試計畫 plan_revision：").append(Traceability.digest(flow.receipts.get(node.plan())));
         Path agents = cwd.resolve("AGENTS.md");
-        if (Files.isReadable(agents)) context.append("\nAGENTS.md：\n").append(Diagnostics.clip(Files.readString(agents), 16000));
+        if (Files.isReadable(agents)) {
+            if (HandoffContext.rulesFileLoadedByRuntime(flow, runtime, cwd))
+                context.append("\n專案規則檔 AGENTS.md 已由執行環境自動載入，本提示不重複附上；其中的規範照常適用。");
+            else context.append("\nAGENTS.md：\n").append(Diagnostics.clip(Files.readString(agents), 16000));
+        }
         HandoffContext.appendReports(context, flow, node, root.resolve(flow.node + "-handoff-reports.json"));
         appendBlockedFindings(context, flow);
         if (!flow.dialogue && baseline != null) context.append(baseline.notice(flow.snapshot.definition()));

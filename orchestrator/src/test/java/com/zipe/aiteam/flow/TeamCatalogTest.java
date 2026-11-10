@@ -115,6 +115,11 @@ class TeamCatalogTest {
             var snapshot = TeamCatalog.load(Path.of("teams/" + team + ".json"), key -> tmp.toString());
             assertThat(snapshot.definition().sharedInstructions()).as(team).isEqualTo("prompts/shared.md");
             assertThat(snapshot.assets().get("prompts/shared.md")).as(team).contains("任務效率", "工作分類");
+            // PM 角色也負責分流：需求專用的規則掛在需求節點，分流不必每次重讀。
+            assertThat(snapshot.definition().roles().get("coordinator").prompt()).as(team).isEqualTo("prompts/coordinator.md");
+            assertThat(snapshot.definition().nodes().get("intake").instructions()).as(team).isEqualTo("prompts/intake.md");
+            assertThat(snapshot.assets().get("prompts/coordinator.md")).as(team).doesNotContain("acceptance_items");
+            assertThat(snapshot.assets().get("prompts/intake.md")).as(team).contains("acceptance_items");
         }
         var config = config(); config.remove("sharedInstructions");
         assertThat(mapper.writeValueAsString(mapper.treeToValue(config, TeamDefinition.class))).doesNotContain("sharedInstructions");

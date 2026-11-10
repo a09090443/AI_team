@@ -73,7 +73,7 @@
       "name": "PM Agent",
       "runtime": "claude-code",
       "model": "opus",
-      "prompt": "prompts/intake.md",
+      "prompt": "prompts/coordinator.md",
       "botTokenEnv": "SLACK_BOT_TOKEN_PM",
       "appTokenEnv": "SLACK_APP_TOKEN_PM",
       "tools": [
@@ -223,6 +223,7 @@
   "maxTransitions": 24,
   "nodes": {
     "intake": {
+      "instructions": "prompts/intake.md",
       "kind": "AGENT",
       "role": "coordinator",
       "schema": "schemas/requirements.json",

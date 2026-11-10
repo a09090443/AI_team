@@ -347,7 +347,8 @@ agent_team/
 │   │   ├── node-web.json             # Node 專案範例配置（功能開關全關，作為對照組）
 │   │   ├── prompts/                  # 節點提示
 │   │   │   ├── shared.md             # 所有角色共用的工作分類、任務效率與協作規則（sharedInstructions）
-│   │   │   ├── intake.md             # 需求整理（PM）
+│   │   │   ├── coordinator.md        # PM 協調角色的共用提示（需求、分流與直接對話共用）
+│   │   │   ├── intake.md             # 需求整理的階段指示（只掛在需求節點）
 │   │   │   ├── design.md             # 設計（Architecture）
 │   │   │   ├── plan.md               # 測試計畫（QA）
 │   │   │   ├── implement.md          # 實作（Backend）

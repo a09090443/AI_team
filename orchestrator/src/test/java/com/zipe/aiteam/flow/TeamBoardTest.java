@@ -90,6 +90,25 @@ class TeamBoardTest {
         assertThat(TeamBoard.notice(flow, "tester")).doesNotContain("★ 留給你");
     }
 
+    @Test void focusedNoticeKeepsClosedDecisionsButOnlyTheLatestOtherClosedItems() {
+        for (int i = 1; i <= 8; i++) flow.board.put("N-" + i, new TeamBoard.Entry("N-" + i, "NOTE", "備註" + i + "號", "",
+                java.util.List.of(), "tester", "plan", "RESOLVED", "完成", null, null));
+        flow.board.put("D-1", new TeamBoard.Entry("D-1", "DECISION", "決定用 REST", "",
+                java.util.List.of(), "tester", "plan", "RESOLVED", "定案", null, null));
+        assertThat(HandoffContext.enabled(flow)).isTrue();
+        assertThat(TeamBoard.notice(flow, "builder")).contains("決定用 REST", "備註4號", "備註8號")
+                .doesNotContain("備註1號", "備註3號");
+        // 沒有啟用精簡交接的配置維持原本的 20 筆。
+        flow.dialogue = false;
+        var tree = (ObjectNode) JSON.valueToTree(flow.snapshot.definition());
+        ((ObjectNode) tree.path("project")).put("focusedHandoffs", false);
+        try {
+            flow.snapshot = new TeamDefinition.Snapshot(flow.snapshot.revision(), JSON.treeToValue(tree, TeamDefinition.class),
+                    flow.snapshot.repository(), flow.snapshot.assets());
+        } catch (Exception e) { throw new IllegalStateException(e); }
+        assertThat(TeamBoard.notice(flow, "builder")).contains("備註1號", "備註8號", "決定用 REST");
+    }
+
     @Test void inheritCarriesOpenItemsAndDecisionsWithOrigin() throws Exception {
         TeamBoard.ingest(flow, node("plan"), report(op("ADD", "", "DECISION", "用 REST", ""),
                 op("ADD", "", "NOTE", "暫時備註", ""), op("ADD", "", "RISK", "相依過舊", "")));

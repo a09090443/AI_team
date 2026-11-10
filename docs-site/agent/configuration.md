@@ -120,7 +120,7 @@ repo 由主 repo 的 `origin` 判斷，token 需要 **Issues: Read and write**�
 |---|---|
 | `name`、`repositoryEnv`、`baseBranch` | 專案名稱、存放 repo 路徑的環境變數名、基準分支 |
 | `buildInstructions`、`testInstructions` | 注入角色的建置／測試規範；`testInstructions` 的每一步都要有對應 `operations` |
-| `focusedHandoffs` | 選填 Boolean。`true` 依本輪派工與階段前置契約挑選提示中的報告，較早的報告可按需查閱。省略或 `false` 沿用完整報告模式，三份內附配置已啟用。詳見 [配置式團隊](/docs/configurable-team) |
+| `focusedHandoffs` | 選填 Boolean。`true` 依本輪派工與階段前置契約挑選提示中的報告，較早的報告可按需查閱；並略過 runtime 會自行載入的 `AGENTS.md`，服務部署歷史、檔案比對用法與看板已結項目只附給用得到的階段。省略或 `false` 沿用完整報告模式，三份內附配置已啟用。詳見 [配置式團隊](/docs/configurable-team) |
 | `operations` | 操作契約：`{ "<id>": { nodes, directory, argv, writes } }`。`argv` 不支援管線，多步驟請拆開。執行檔不可為 `rm`（Codex 會拒絕，載入配置即失敗；清空目錄用 `find <目錄> -mindepth 1 -delete`）。`writes` 中沒有 git 追蹤檔的目錄會被系統自動寫進工作區 `.git/info/exclude`，不進寫入稽核或代為提交（見 [configurable-team](/docs/configurable-team)） |
 | `verification` | 系統獨立驗證：管理者固定的 `commands` 與 `timeoutSeconds`（最多 1800；超時不算測試失敗，交給真人；啟用 `project.autonomy.verificationContinuations` 時先在同一個 clone 自動續驗剩下的指令），在 QA 前於全新 clone 執行，依賴下載快取放在 `<安裝目錄>/verification-cache`；選填 `docOnlyPaths`（路徑 glob）：系統依 git diff 判定變更全部落在其中、且不含強制全跑檔時略過建置測試；同一份清單也會寫進實作節點的指示，要求純文件變更不要自行編譯（見 engineering-workflow）；選填 `commandScopes`（與 `commands` 一一對應的負責路徑，只跑範圍內有變更的指令）與 `qaOnlyPaths`（由 QA 驗證、系統不跑指令的路徑，須與 commandScopes 一起設定且不得重疊）；有不屬於任何範圍的變更就全跑。相同輸入指紋已通過的指令會重用（2026-10-17 起） |
 | `nodes.<實作>.protectedPathFallback` | 選填 `{"role", "paths"}`：前置計畫的 protected_path_changes 明列原實作角色 runtime 寫不了的路徑、且其中有落在 `paths`（目錄 `/**`）內的，就分段改派這些檔案（範圍外的不交出去，原角色要改時被拒而停下問人；2026-10-08 前要「全部」在範圍內才改派）：該角色只改 `paths` 內的檔案（系統核對全部在範圍內後代為提交），其餘工作仍由原角色完成；行為設定類路徑寫死禁止（見 multi-runtime） |

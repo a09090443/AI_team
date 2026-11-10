@@ -89,6 +89,45 @@ class ConfiguredExecutorTest {
         assertThat(captured.get().sandboxPolicy().writablePaths()).doesNotContain(taskRepo, repo);
         assertThat(captured.get().prompt()).contains("不是\u771f人核准紀錄", "獨立副本");
     }
+    @Test void focusedPromptDoesNotRepeatRulesTheRuntimeLoadsItself() throws Exception {
+        Path taskRepo = tmp.resolve("task-repo"); Files.createDirectories(taskRepo.resolve(".git"));
+        Files.writeString(taskRepo.resolve("AGENTS.md"), "只在規則檔出現的句子");
+        when(workspace.pathFor("42")).thenReturn(taskRepo); when(workspace.exists("42")).thenReturn(true);
+        flow.workspacePath = taskRepo.toString(); flow.node = "triage";
+        AtomicReference<AgentRuntime.RuntimeRequest> captured = new AtomicReference<>();
+        when(runtime.execute(any(), any())).thenAnswer(c -> { captured.set(c.getArgument(0)); return null; });
+        var triage = flow.snapshot.definition().nodes().get("triage");
+        // Claude Code 只讀 CLAUDE.md：沒有匯入就照舊附上，不讓角色失去專案規則。
+        executor.execute(new Task("42", "c", "t", "u", "查核"), flow, triage);
+        assertThat(captured.get().prompt()).contains("只在規則檔出現的句子");
+        Files.writeString(taskRepo.resolve("CLAUDE.md"), "請參考 `@AGENTS.md` 的說明\n");
+        assertThat(HandoffContext.rulesFileLoadedByRuntime(flow, runtime, taskRepo)).isFalse();
+
+        Files.writeString(taskRepo.resolve("CLAUDE.md"), "# 說明\n\n@AGENTS.md\n\n## 其他\n");
+        executor.execute(new Task("42", "c", "t", "u", "查核"), flow, triage);
+        assertThat(captured.get().prompt()).doesNotContain("只在規則檔出現的句子").contains("已由執行環境自動載入");
+
+        Files.delete(taskRepo.resolve("CLAUDE.md"));
+        when(runtime.capabilities()).thenReturn(java.util.Set.of(AgentRuntime.Capability.NATIVE_AGENTS_MAP));
+        assertThat(HandoffContext.rulesFileLoadedByRuntime(flow, runtime, taskRepo)).isTrue();
+        flow.dialogue = true;
+        assertThat(HandoffContext.rulesFileLoadedByRuntime(flow, runtime, taskRepo)).isFalse();
+    }
+    @Test void focusedStagesOnlyGetTheSystemNotesTheyUse() {
+        var nodes = flow.snapshot.definition().nodes();
+        for (String id : List.of("intake", "triage", "service", "service_triage"))
+            assertThat(HandoffContext.needsServiceHistory(flow, nodes.get(id))).as(id).isTrue();
+        for (String id : List.of("plan", "implementation", "verification", "review"))
+            assertThat(HandoffContext.needsServiceHistory(flow, nodes.get(id))).as(id).isFalse();
+        for (String id : List.of("plan", "verification", "review", "triage"))
+            assertThat(HandoffContext.needsComparisonNotice(flow, nodes.get(id))).as(id).isTrue();
+        for (String id : List.of("intake", "implementation", "service"))
+            assertThat(HandoffContext.needsComparisonNotice(flow, nodes.get(id))).as(id).isFalse();
+        // 直接對話不屬於精簡交接，維持原本的提示內容。
+        flow.dialogue = true;
+        assertThat(HandoffContext.needsServiceHistory(flow, nodes.get("implementation"))).isTrue();
+        assertThat(HandoffContext.needsComparisonNotice(flow, nodes.get("implementation"))).isTrue();
+    }
     @Test void openBlockedFindingsReachTheNextNodeRegardlessOfContextLength() throws Exception {
         Path taskRepo = tmp.resolve("task-repo"); Files.createDirectories(taskRepo.resolve(".git"));
         when(workspace.pathFor("42")).thenReturn(taskRepo); when(workspace.exists("42")).thenReturn(true);
