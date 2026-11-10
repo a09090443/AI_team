@@ -290,6 +290,22 @@ class IssueTrackerTest {
         assertThat(IssueTracker.ingest(flow,node(Gate.REQUIREMENTS),r,"42")).isNull();
         assertThat(flow.issueInventory.get("I1").path("scope").asText()).isEqualTo("EXCLUDED");
     }
+    /** #1035：原任務的計數是 2，新任務從 0 起算，負責人要回覆到第三次才放行。 */
+    @Test void inheritedDecisionWaitsForOneNewReplyInTheNewTaskNotThePreviousTaskCount() {
+        flow.supplements=2;
+        ObjectNode r=report();r.withArray("issue_updates").add(issue("I1","DECISION"));
+        assertThat(IssueTracker.ingest(flow,node(Gate.REQUIREMENTS),r,"42")).isNull();
+        FlowRun child=new FlowRun(flow.snapshot);IssueTracker.inherit(flow,child);
+        assertThat(flow.issueInventory.get("I1").path("decision_supplements").asInt()).isEqualTo(2);
+        assertThat(child.issueInventory.get("I1").path("decision_supplements").asInt()).isZero();
+        ObjectNode repair=json.createObjectNode().put("issue_revision",IssueTracker.revision(child));
+        repair.putArray("issue_checks");repair.putArray("issue_updates").add(issue("I1","REPAIR"));
+        // 承接後仍不沿用原任務的決定：沒有新回覆就不能自行改成已決定。
+        assertThat(IssueTracker.ingest(child,node(Gate.REQUIREMENTS),repair.deepCopy(),"43")).contains("真人回覆");
+        child.supplements++;
+        assertThat(IssueTracker.ingest(child,node(Gate.REQUIREMENTS),repair,"43")).isNull();
+        assertThat(child.issueInventory.get("I1").path("scope").asText()).isEqualTo("REPAIR");
+    }
     @Test void publishedOrTerminalPathsCannotBypassRegisteredOpenIssues() {
         discover(2);
         flow.node="approval";

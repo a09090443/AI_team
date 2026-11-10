@@ -97,6 +97,22 @@ public final class IssueTracker {
     static final String DECISION_NEEDS_REQUIREMENTS = "待決問題必須先收到真人回覆，再由需求階段確認：";
     /** systemRetries 的鍵尾碼：每個節點連續只自動修正一次格式。 */
     static final String FORMAT_RETRY = "#issue-format";
+    /** systemRetries 的鍵尾碼：需求草稿自行把待決問題改成已決定時，只說明一次該怎麼交給負責人。 */
+    static final String OWNER_REPLY_RETRY = "#owner-reply";
+
+    /** 這類退回不是草稿寫錯，重寫也過不了：要等負責人在本任務回覆。 */
+    static boolean needsOwnerReply(String reason) {
+        return reason != null && reason.startsWith(DECISION_NEEDS_REQUIREMENTS);
+    }
+
+    /** 給需求節點的說明：講清楚為什麼被退、什麼才算數、接下來該交出什麼，避免原樣重送到上限（#1035）。 */
+    static String ownerReplyCorrection(String reason) {
+        String id = reason.substring(DECISION_NEEDS_REQUIREMENTS.length()).strip();
+        return "這次退回不是格式問題：問題 " + id + " 仍待負責人決定，而本任務還沒有收到負責人針對它的新回覆；"
+                + "原任務或交接紀錄裡的決定不能代替本任務的回覆。請維持該問題為 DECISION、route=human，"
+                + "在 open_questions 用白話寫出要負責人決定的具體問題、可選的做法與各自的後果；"
+                + "交接紀錄已有負責人先前的傾向時一併寫出，請對方確認即可。不要再把它改成其他範圍重送。";
+    }
 
     /**
      * 只是記帳格式寫錯（改寫既有描述、清單版本過期、缺欄位、改了既有需求對應）時，回給同一個 agent 的修正說明；
@@ -429,7 +445,15 @@ public final class IssueTracker {
     public static void inherit(FlowRun parent, FlowRun child) {
         if (!parent.issueInventory.isEmpty() && !enabled(child))
             throw new IllegalArgumentException("承接配置不支援原問題清單，禁止遺失追蹤契約");
-        parent.issueInventory.forEach((id, item) -> child.issueInventory.put(id, item.deepCopy()));
+        // decision_supplements 記的是「登記為待決時，該任務已收到幾次真人補充」。新任務的 supplements 從頭起算，
+        // 沿用原任務的數字會要求真人多回覆同樣次數才放行（#1035：原值 2，負責人回覆到第三次才通過）。
+        // 改以新任務目前的次數為起點：承接後仍須收到一次新的真人回覆，不沿用原任務的決定。
+        parent.issueInventory.forEach((id, item) -> {
+            JsonNode copy = item.deepCopy();
+            if (copy instanceof ObjectNode object && object.has("decision_supplements"))
+                object.put("decision_supplements", child.supplements);
+            child.issueInventory.put(id, copy);
+        });
         parent.issueEvidence.forEach((id, item) -> child.issueEvidence.put(id, item.deepCopy()));
         child.issueContext = parent.issueContext;
     }

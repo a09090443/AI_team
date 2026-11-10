@@ -696,7 +696,10 @@ public class FlowEngine {
                 } else flow.systemRetries.remove(flow.node + Consultation.FORMAT_RETRY);
                 // 諮詢請求本身不是成果：不登錄問題清單，直接走受阻路線。
                 String issueBlock = consultBlock == null ? IssueTracker.ingest(flow, node, report, task.id()) : null;
-                if (issueBlock == null && consultBlock == null) flow.systemRetries.remove(flow.node + IssueTracker.FORMAT_RETRY);
+                if (issueBlock == null && consultBlock == null) {
+                    flow.systemRetries.remove(flow.node + IssueTracker.FORMAT_RETRY);
+                    flow.systemRetries.remove(flow.node + IssueTracker.OWNER_REPLY_RETRY);
+                }
                 String block = operation == OperationDisposition.FAILED ? flow.lastBlockReason
                         : consultBlock != null ? consultBlock : issueBlock == null ? FlowGates.blockingReason(node, report, flow) : issueBlock;
                 if (block==null && node.gate()==Gate.SERVICE && ServiceSupport.configured(props.homePath(),flow.snapshot.definition().project().serviceTarget().name()))
@@ -848,7 +851,12 @@ public class FlowEngine {
                             + "\n" + SlackReport.render(report), 4500);
                     flow.blockedFindings.put(flow.node, report);
                     flow.context = FlowContext.append(flow.context, "節點 " + flow.node + " 受阻：\n" + block + "\n報告：" + report);
+                    // 待決問題要等負責人回覆：重寫草稿過不了這道檢查。只說明一次該怎麼提問，仍不改就直接交真人，
+                    // 不讓需求節點原樣重送到上限（#1035 兩輪各重送三次）。
+                    boolean needsOwner = IssueTracker.needsOwnerReply(issueBlock);
+                    String ownerKey = flow.node + IssueTracker.OWNER_REPLY_RETRY;
                     boolean repairDraft = node.gate() == Gate.REQUIREMENTS && flow.baselineRevision == null
+                            && (!needsOwner || !flow.systemRetries.containsKey(ownerKey))
                             && FailureReport.blockingReason("generic", report) == null
                             && report.path("open_questions").isArray() && report.path("open_questions").isEmpty()
                             && (( !Set.of("question", "human").contains(report.path("route").asText())
@@ -895,7 +903,10 @@ public class FlowEngine {
                     }
                     resend = repairDraft || formatRetry;
                     next = resend ? flow.node : node.blocked();
-                    if (repairDraft) flow.context = FlowContext.append(flow.context,
+                    if (repairDraft && needsOwner) {
+                        flow.systemRetries.put(ownerKey, 1);
+                        flow.context = FlowContext.append(flow.context, IssueTracker.ownerReplyCorrection(issueBlock));
+                    } else if (repairDraft) flow.context = FlowContext.append(flow.context,
                             "需求草稿的結構不合格，尚未建立基準；請自行修正上方指出的 ID／欄位／對應錯誤，保留原使用者要求，不要請使用者核准你的編寫錯誤。");
                     if (!"human".equals(next) && !formatRetry) {
                         String head = flow.workspacePath == null ? "" : workspaces.headSha(task.id());

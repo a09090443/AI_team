@@ -2148,6 +2148,24 @@ class FlowEngineTest {
         assertThat(store.flow(task.id()).orElseThrow().receipts).containsKey("intake");
         assertThat(calls).anyMatch(s -> s.startsWith("implementation:"));
     }
+    /** #1035：草稿自行把待決問題改成要修，重寫也過不了；以前被當成格式錯誤重送到上限才交給人。 */
+    @Test void draftThatSettlesAPendingDecisionIsToldOnceHowToAskThenStopsForTheOwner() throws Exception {
+        enableIssueTracking();
+        var seeded = store.flow("42").orElseThrow();
+        ObjectNode pending = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode()
+                .put("id", "I9").put("description", "problem 9").put("scope", "DECISION").put("evidence", "file:9")
+                .put("reason", "待負責人決定").put("source_task", "41").put("source_node", "intake").put("decision_supplements", 0);
+        pending.putArray("requirement_ids").add("R1");
+        seeded.issueInventory.put("I9", pending);
+        store.saveFlow("42", seeded);
+        mode = "ownerReply"; engine.run(task);
+        assertThat(calls.stream().filter(s -> s.startsWith("intake:")).count()).isEqualTo(2);
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        var flow = store.flow("42").orElseThrow();
+        assertThat(flow.context).contains("不是格式問題").doesNotContain("需求草稿的結構不合格");
+        assertThat(flow.issueInventory.get("I9").path("scope").asText()).isEqualTo("DECISION");
+        assertThat(flow.baselineRevision).isNull();
+    }
 
     void enableCollaboration() throws Exception {
         FlowRun f = store.flow("42").orElseThrow();
