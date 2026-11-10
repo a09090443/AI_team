@@ -121,7 +121,7 @@ flowchart TD
 
 典型配置中，design、plan、implementation、verification、review 節點受阻（`blocked`）時交給 **triage**（PM 分流）；
 intake 與 triage 受阻則交真人。實際依任務保存的配置快照，舊快照的 design 可能直接交真人。
-設定 `sharedInstructions` 的團隊，所有角色共用同一份工作分類、任務效率與協作規則（內附配置都指向 `prompts/shared.md`）。分流只能回傳配置中既有的 route：
+設定 `sharedInstructions` 的團隊，所有角色共用同一份任務理解、工作分類、任務效率與協作規則（內附配置都指向 `prompts/shared.md`）。分流只能回傳配置中既有的 route：
 `implementation`、`verification`、`plan`、`design`、`requirements`（回到 intake 改需求）或 `human`。
 agent 不能自行指定角色或跳到任意節點。
 
