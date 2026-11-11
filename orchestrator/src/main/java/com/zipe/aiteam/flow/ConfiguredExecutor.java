@@ -123,6 +123,8 @@ public class ConfiguredExecutor {
             schema = JsonAdditionsComparison.extendSchema(schema);
         boolean deferUnverifiable = node.gate() == Gate.TEST_PLAN && DeferredAcceptance.enabled(flow);
         if (deferUnverifiable) schema = DeferredAcceptance.extendSchema(schema);
+        boolean skillProposals = !flow.dialogue && node.gate() == Gate.REVIEW && ProjectSkills.proposalsEnabled(flow);
+        if (skillProposals) schema = ProjectSkills.extendSchema(schema);
         boolean focused = HandoffContext.enabled(flow);
         StringBuilder context = new StringBuilder("配置版本：" + flow.snapshot.revision() + "\n專案：" + flow.snapshot.definition().project().name()
                 + "\n指定角色：" + role.name() + "\n工作目錄：" + cwd + "\n本階段契約：" + node.gate() + "；權限：" + node.scope() + "\n使用者需求：\n" + task.requestText()
@@ -218,6 +220,7 @@ public class ConfiguredExecutor {
                 context.append("\n專案規則檔 AGENTS.md 已由執行環境自動載入，本提示不重複附上；其中的規範照常適用。");
             else context.append("\nAGENTS.md：\n").append(Diagnostics.clip(Files.readString(agents), 16000));
         }
+        if (!flow.dialogue) context.append(ProjectSkills.index(cwd, ProjectSkills.policy(flow)));
         HandoffContext.appendReports(context, flow, node, root.resolve(flow.node + "-handoff-reports.json"));
         appendBlockedFindings(context, flow);
         if (!flow.dialogue && baseline != null) context.append(baseline.notice(flow.snapshot.definition()));
@@ -272,7 +275,8 @@ public class ConfiguredExecutor {
         boolean requirementChange = !flow.dialogue && AutonomousRecovery.requirementChangeOptions(flow);
         var request = new AgentRuntime.RuntimeRequest(task.id(), flow.node, cwd, prompt, context + FailureReport.INSTRUCTIONS
                         + (requirementChange ? FailureReport.REQUIREMENT_CHANGE_INSTRUCTIONS : "")
-                        + (deferUnverifiable ? DeferredAcceptance.INSTRUCTIONS : ""),
+                        + (deferUnverifiable ? DeferredAcceptance.INSTRUCTIONS : "")
+                        + (skillProposals ? ProjectSkills.PROPOSAL_INSTRUCTIONS : ""),
                 flow.dialogue ? List.of("Read", "Grep", "Glob") : role.tools(), FailureReport.extendSchema(schema, requirementChange), cp.sessionId(),
                 node.maxTurns(), Duration.ofSeconds(timeoutSeconds), selectedPolicy, cp.model(), role.reasoningEffort());
         java.time.Instant started = java.time.Instant.now();

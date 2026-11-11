@@ -59,6 +59,10 @@ public class TaskOrchestrator {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.zipe.aiteam.workspace.WorkspaceReclaimer reclaimer;
 
+    /** 讓配置流程能自行開立任務（審查的 skill 提案）；一般入口仍由各呼叫點傳入佇列。 */
+    @jakarta.annotation.PostConstruct
+    void bindFlowQueue() { if (flowEngine != null) flowEngine.taskQueue(this::enqueue); }
+
     private final LinkedBlockingQueue<Runnable> work = new LinkedBlockingQueue<>();
     private final Object queueLock = new Object();
     private final java.util.ArrayList<QueuedTask> pending = new java.util.ArrayList<>();

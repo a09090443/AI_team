@@ -60,7 +60,18 @@ public record TeamDefinition(int version, String id, Project project, Map<String
                            */
                           boolean autoApprovePlanWhenValid, ServiceTarget serviceTarget, Autonomy autonomy,
                           @JsonInclude(JsonInclude.Include.NON_NULL) Boolean jsonAdditionsComparison,
-                          @JsonInclude(JsonInclude.Include.NON_NULL) Boolean focusedHandoffs) {
+                          @JsonInclude(JsonInclude.Include.NON_NULL) Boolean focusedHandoffs,
+                          /** 選填：專案 repo 內的 skill 索引與提案。未設定＝停用（舊快照一律如此），見 {@link ProjectSkills}。 */
+                          @JsonInclude(JsonInclude.Include.NON_NULL) SkillPolicy projectSkills) {
+        public Project(String name, String repositoryEnv, String baseBranch, String buildInstructions,
+                       String testInstructions, List<String> protectedPaths, List<String> cachePaths,
+                       List<String> requiredTools, Verification verification, Map<String, Operation> operations,
+                       boolean requirePlanApproval, boolean autoApprovePlanWhenValid, ServiceTarget serviceTarget,
+                       Autonomy autonomy, Boolean jsonAdditionsComparison, Boolean focusedHandoffs) {
+            this(name, repositoryEnv, baseBranch, buildInstructions, testInstructions, protectedPaths, cachePaths,
+                    requiredTools, verification, operations, requirePlanApproval, autoApprovePlanWhenValid, serviceTarget,
+                    autonomy, jsonAdditionsComparison, focusedHandoffs, null);
+        }
         public Project(String name, String repositoryEnv, String baseBranch, String buildInstructions,
                        String testInstructions, List<String> protectedPaths, List<String> cachePaths,
                        List<String> requiredTools, Verification verification, Map<String, Operation> operations,
@@ -105,6 +116,13 @@ public record TeamDefinition(int version, String id, Project project, Map<String
                     cachePaths, requiredTools, verification, operations, requirePlanApproval, false);
         }
     }
+    /**
+     * 專案 repo 內的 skill（agent 可讀的專案作法）。有設定就在派工提示列出索引；內容不改變任何權限。
+     * @param directory        skill 根目錄，相對 repository；其下每個子目錄一份 SKILL.md
+     * @param proposals        審查角色可提出 skill 提案；系統核對後另開獨立任務，仍須走完整流程與 PR 真人核准
+     * @param maxOpenProposals 同時進行中的 skill 提案任務上限（proposals 開啟時 1..5）
+     */
+    public record SkillPolicy(String directory, boolean proposals, int maxOpenProposals) {}
     /** 管理者宣告各節點的必要操作；不接受模型新增權限。writes 相對於 repository 根目錄。 */
     public record Operation(List<String> nodes, String directory, List<String> argv, List<String> writes, String scriptSha256) {
         public Operation(List<String> nodes, String directory, List<String> argv, List<String> writes) {

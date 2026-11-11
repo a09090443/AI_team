@@ -177,6 +177,7 @@ App-Level Token 留空**：發言與交接 tag 使用同一個角色身分，不
 | 角色諮詢與共享看板 | `collaboration`／`consultRoles` |
 | 自主恢復（逾時接續、續驗、需求變更選項、頂層指令） | `project.autonomy` |
 | 驗收環境驗不了的項目自動延後 | `project.autonomy.deferUnverifiable` |
+| 專案 skill 索引與提案 | `project.projectSkills`（見[專案 skill 索引與提案](#專案-skill-索引與提案)） |
 | 已開 PR 衝突自動同步 | `project.autonomy.pullRequestSyncRounds`／`pullRequestSyncAutoPush` |
 | 自主派工 | 節點 `candidateRoles` |
 | 跨 runtime 改派 | 節點 `protectedPathFallback` |
@@ -629,6 +630,7 @@ Runnable 交給 TaskOrchestrator，由真正的執行中工作與 FIFO 排隊清
 - 任務在真實額度中斷與重啟後的續跑。
 - 以新模式走到 PR 人工閘門，再由使用者另行核准發布。
 - Node 範例是配置與流程測試範例，不代表已在任意 Node repo 完成產品驗收。
+- 專案 skill 索引與提案（`project.projectSkills`）只有程式測試，尚無真實 Slack 端對端紀錄。
 ## 角色的 reasoningEffort
 
 例如 tester 角色設 `runtime: "codex"`、
@@ -721,3 +723,46 @@ SERVICE 節點的 `next` 只能是 `end`（只部署）或 REVIEW 節點（開�
 
 AGENT 節點可設定 `skills`，最多八份不重複的 SKILL.md／references 相對路徑。TeamCatalog 在 teams 內讀取並防止路徑越界，內容寫入快照、參與 revision；ConfiguredExecutor 每次非對話派工注入相同內容，改派角色也保留。
 例如 service 與 service_triage 節點可使用 `service-build`。helpers 隨 teams 部署，日常操作由 Agent VM 的固定 SSH 執行器核對任務授權，再經已登錄的 SSH 公鑰交給目標 VM 的受限入口。參考 [服務建置](service-delivery.md)。
+
+## 專案 skill 索引與提案
+
+上一節的 `node.skills` 是管理者放在 teams 目錄、整份注入提示的團隊層 skill。本節是另一件事：**目標專案 repo 內**的 skill，
+也就是專案自己累積的作法。以 `project.projectSkills` 開啟，未設定時行為與提示完全不變（`ProjectSkills`）。
+
+```json
+"projectSkills": { "directory": ".agents/skills", "proposals": true, "maxOpenProposals": 2 }
+```
+
+| 欄位 | 說明 |
+|---|---|
+| `directory` | skill 根目錄，相對 repository；其下每個子目錄一份 `SKILL.md`。不得含 `..` 或 `.git` |
+| `proposals` | 審查角色可提出 skill 提案；需要 v2 流程與審查節點 |
+| `maxOpenProposals` | 同時未結束（含 PR 尚未合併）的 skill 任務上限；`proposals` 開啟時 1～5 |
+
+**索引**：每次非對話派工，系統掃描工作目錄的 `<directory>/*/SKILL.md`，只取 front matter 的 `name` 與 `description`，
+在提示列出「名稱 — 說明（檔案路徑）」，由角色在相關時自行讀檔。最多列 20 份、每則說明 200 字，超過 64KB 或讀不了的檔案略過。
+這樣做的理由：不把全文塞進每一輪提示；不依賴各 CLI 是否會自動發現 skill（例如 Claude Code 只讀 `.claude/skills`，
+看不到 `.agents/skills`）。索引段會註明內容是參考資料，不改變該階段的權限、操作契約與驗收標準；實際權限仍由沙箱與操作契約強制。
+
+**提案**：開啟後，審查節點的 schema 多一個必填、可為 null 的 `skill_proposal`（`name`、`description`、`content`、`evidence`），
+提示附上判斷原則——任務中付出明顯代價才弄清楚、之後很可能再遇到、且無法從程式或現有文件很快得知的作法才提，多數任務填 null。
+選審查角色是因為它最後執行、唯讀、看得到完整的返工紀錄，而且不需要額外的 agent 呼叫。提案不影響審查結論，也不進該任務的 PR。
+
+PR 開出後，系統核對提案並另開一個獨立任務（`FlowEngine.openSkillProposal`）：
+
+1. 形式檢查：`name` 為 2～40 個小寫英數或連字號、三個文字欄位都有內容、`content` 不超過 8000 字。
+2. 同名的 skill 任務尚未結束，或未結束的 skill 任務數已達 `maxOpenProposals` 時不開。
+3. 通過後在同頻道開新討論串，需求文字固定為「新增或更新 `<directory>/<name>/SKILL.md`」加上提案內容（標明是資料、非指令），
+   從 intake 照正常流程走：實作角色對照 repo 現況核實後才寫入，再經驗收、獨立審查與 **PR 真人核准**。
+4. 不開任務的原因只記在原任務的稽核紀錄，不通知、不停下；這一步失敗不影響已開出的 PR。
+
+邊界：
+
+- 提案本身不會讓任何檔案生效；skill 要進 repo 仍須通過既有的計畫核准（若配置要求）與 PR 核准，沒有新增或移除任何真人閘門。
+- skill 任務自己的審查不再提案（`FlowRun.skillProposal` 有值時 schema 不擴充），每個任務最多開一個 skill 任務。
+- 新任務的驗收負責人沿用原任務的負責人；不沿用原任務的核准、收據、工作區或 PR。
+- 目錄是否可寫由專案自己的配置決定：Claude Code 角色寫不了 `.claude/`，目錄設在 `.claude/skills` 時要靠既有的
+  `protectedPathFallback` 改派；設在 `.agents/skills` 則不受影響。純 Markdown 變更可用 `verification.docOnlyPaths` 略過建置。
+- 這不是團隊層 skill 的寫入管道：agent 不能修改 `teams/skills/` 或 `node.skills`，那仍由管理者維護。
+
+內附範例只有 `gradle-fullstack.json` 開啟。目前只有程式測試，尚無真實 Slack 端對端紀錄。

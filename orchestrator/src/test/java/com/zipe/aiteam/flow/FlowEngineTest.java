@@ -2732,6 +2732,114 @@ class FlowEngineTest {
         assertThat(task.state()).isEqualTo(Task.State.PR_CREATED);
     }
 
+    /** 走到等待核准 PR，並在審查收據放進 skill 提案（name 為 null 時不放）。 */
+    private void awaitingPrWithSkillProposal(String name) throws Exception {
+        var current = catalog.snapshot();
+        ObjectNode definition = mapper.valueToTree(current.definition());
+        ((ObjectNode) definition.path("project")).putObject("projectSkills")
+                .put("directory", ".agents/skills").put("proposals", true).put("maxOpenProposals", 2);
+        when(catalog.snapshot()).thenReturn(new TeamDefinition.Snapshot(current.revision(),
+                mapper.treeToValue(definition, TeamDefinition.class), current.repository(), current.assets()));
+        engine.run(task);
+        when(publisher.publish(eq("42"), any(), any(), eq("feature/task42"))).thenReturn(new PullRequestPublisher.Result("feature/task42", PR_URL, 1));
+        when(slack.post(any(), eq("c"), isNull(), anyString())).thenReturn("skill-thread");
+        // 任務快照在 setup 就建立了；這裡讓它與目前配置一致（同一版本、已開啟提案）。
+        var flow = store.flow(task.id()).orElseThrow();
+        flow.snapshot = catalog.snapshot();
+        if (name != null) ((ObjectNode) flow.receipts.get("review")).putObject("skill_proposal").put("name", name)
+                .put("description", "改資料表時使用").put("content", "先備份再執行").put("evidence", "驗收階段因漏備份返工兩次");
+        store.saveFlow(task.id(), flow);
+    }
+
+    @Test void reviewSkillProposalOpensASeparateTaskAfterThePullRequest() throws Exception {
+        awaitingPrWithSkillProposal("db-migration");
+        List<Runnable> jobs = new ArrayList<>(), opened = new ArrayList<>();
+        engine.taskQueue(opened::add);
+
+        engine.approve(task, "u", jobs::add); jobs.getFirst().run();
+
+        assertThat(task.state()).isEqualTo(Task.State.PR_CREATED);
+        var parent = store.flow(task.id()).orElseThrow();
+        String childId = parent.skillProposalTask;
+        assertThat(childId).isNotNull().isNotEqualTo(task.id());
+        var childTask = store.find(childId).orElseThrow();
+        var child = store.flow(childId).orElseThrow();
+        assertThat(childTask.slackThreadTs()).isEqualTo("skill-thread");
+        assertThat(childTask.requesterUserId()).isEqualTo("u");
+        assertThat(childTask.requestText()).startsWith("新增或更新專案 skill：.agents/skills/db-migration/SKILL.md").contains("先備份再執行");
+        assertThat(child.skillProposal).isEqualTo(new FlowRun.SkillProposalLink("42", "db-migration"));
+        assertThat(child.acceptanceOwner).isEqualTo("u");
+        assertThat(child.node).isEqualTo(child.snapshot.definition().entry());
+        // 不沿用原任務的核准、收據或 PR；提案任務自己不再提案。
+        assertThat(child.planApprovals).isEmpty();
+        assertThat(child.receipts).isEmpty();
+        assertThat(child.prUrl).isNull();
+        assertThat(ProjectSkills.proposalsEnabled(child)).isFalse();
+        assertThat(opened).hasSize(1);
+        assertThat(((com.zipe.aiteam.task.TaskOrchestrator.QueuedTask) opened.getFirst()).task().id()).isEqualTo(childId);
+        verify(slack).post(any(), eq("c"), eq("t"), argThat((String t) -> t.contains("任務 #" + childId) && t.contains("不影響本任務的 PR")));
+    }
+
+    @Test void noSkillTaskWithoutAProposalOrWhenTheProposalIsMalformed() throws Exception {
+        awaitingPrWithSkillProposal("../escape");
+        List<Runnable> jobs = new ArrayList<>(), opened = new ArrayList<>();
+        engine.taskQueue(opened::add);
+
+        engine.approve(task, "u", jobs::add); jobs.getFirst().run();
+
+        assertThat(task.state()).isEqualTo(Task.State.PR_CREATED);
+        assertThat(store.flow(task.id()).orElseThrow().skillProposalTask).isNull();
+        assertThat(opened).isEmpty();
+        verify(slack, never()).post(any(), eq("c"), isNull(), anyString());
+    }
+
+    /** 未設定 projectSkills 的配置：審查報告即使多寫了提案欄位也不開任務。 */
+    @Test void skillProposalIsIgnoredWhenTheConfigurationDoesNotEnableIt() throws Exception {
+        engine.run(task);
+        when(publisher.publish(eq("42"), any(), any(), eq("feature/task42"))).thenReturn(new PullRequestPublisher.Result("feature/task42", PR_URL, 1));
+        var flow = store.flow(task.id()).orElseThrow();
+        ((ObjectNode) flow.receipts.get("review")).putObject("skill_proposal").put("name", "db-migration")
+                .put("description", "d").put("content", "c").put("evidence", "e");
+        store.saveFlow(task.id(), flow);
+        List<Runnable> jobs = new ArrayList<>(), opened = new ArrayList<>();
+        engine.taskQueue(opened::add);
+
+        engine.approve(task, "u", jobs::add); jobs.getFirst().run();
+
+        assertThat(task.state()).isEqualTo(Task.State.PR_CREATED);
+        assertThat(opened).isEmpty();
+        assertThat(store.flow(task.id()).orElseThrow().skillProposalTask).isNull();
+    }
+
+    @Test void plainReviewOpensNoSkillTask() throws Exception {
+        awaitingPrWithSkillProposal(null);
+        List<Runnable> jobs = new ArrayList<>(), opened = new ArrayList<>();
+        engine.taskQueue(opened::add);
+
+        engine.approve(task, "u", jobs::add); jobs.getFirst().run();
+
+        assertThat(task.state()).isEqualTo(Task.State.PR_CREATED);
+        assertThat(opened).isEmpty();
+        assertThat(store.flow(task.id()).orElseThrow().skillProposalTask).isNull();
+    }
+
+    @Test void skillProposalIsHeldBackBySameNameOrTheOpenLimit() throws Exception {
+        awaitingPrWithSkillProposal("db-migration");
+        // 另一個尚未結束的任務已經在處理同名 skill。
+        var other = new Task("77", "c", "t77", "u", "skill"); store.save(other);
+        var otherFlow = new FlowRun(catalog.snapshot());
+        otherFlow.skillProposal = new FlowRun.SkillProposalLink("40", "db-migration");
+        store.saveFlow("77", otherFlow);
+        List<Runnable> jobs = new ArrayList<>(), opened = new ArrayList<>();
+        engine.taskQueue(opened::add);
+
+        engine.approve(task, "u", jobs::add); jobs.getFirst().run();
+
+        assertThat(task.state()).isEqualTo(Task.State.PR_CREATED);
+        assertThat(opened).isEmpty();
+        assertThat(store.flow(task.id()).orElseThrow().skillProposalTask).isNull();
+    }
+
     static final String PR_URL = "https://github.com/test/example/pull/1";
     static final String SYNC_BASE = "b".repeat(40);
     /** 先走到 PR_CREATED，再把目前配置改成開啟 PR 衝突同步（舊任務快照沒有這兩個欄位）。 */

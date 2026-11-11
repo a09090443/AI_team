@@ -89,6 +89,45 @@ class ConfiguredExecutorTest {
         assertThat(captured.get().sandboxPolicy().writablePaths()).doesNotContain(taskRepo, repo);
         assertThat(captured.get().prompt()).contains("不是\u771f人核准紀錄", "獨立副本");
     }
+    @Test void projectSkillsAreIndexedForEveryStageAndOnlyReviewMayPropose() throws Exception {
+        Path taskRepo = tmp.resolve("task-repo"); Files.createDirectories(taskRepo.resolve(".git"));
+        Files.createDirectories(taskRepo.resolve(".agents/skills/db-migration"));
+        Files.writeString(taskRepo.resolve(".agents/skills/db-migration/SKILL.md"), "---\nname: db-migration\ndescription: 改資料表時使用\n---\n只在 skill 本文出現的句子");
+        when(workspace.pathFor("42")).thenReturn(taskRepo); when(workspace.exists("42")).thenReturn(true);
+        AtomicReference<AgentRuntime.RuntimeRequest> captured = new AtomicReference<>();
+        when(runtime.execute(any(), any())).thenAnswer(c -> { captured.set(c.getArgument(0)); return null; });
+
+        // 未設定 projectSkills 的配置：目錄裡有 skill 也不列索引、審查 schema 不變。
+        flow.workspacePath = taskRepo.toString(); flow.node = "review";
+        executor.execute(new Task("42", "c", "t", "u", "查核"), flow, flow.snapshot.definition().nodes().get("review"));
+        assertThat(captured.get().prompt()).doesNotContain("專案 skill 清單", "skill_proposal");
+        assertThat(captured.get().jsonSchema()).doesNotContain("skill_proposal");
+
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var tree = (com.fasterxml.jackson.databind.node.ObjectNode) json.valueToTree(flow.snapshot.definition());
+        ((com.fasterxml.jackson.databind.node.ObjectNode) tree.path("project")).putObject("projectSkills")
+                .put("directory", ".agents/skills").put("proposals", true).put("maxOpenProposals", 2);
+        flow = new FlowRun(new TeamDefinition.Snapshot(flow.snapshot.revision(), json.treeToValue(tree, TeamDefinition.class),
+                flow.snapshot.repository(), flow.snapshot.assets()));
+        flow.workspacePath = taskRepo.toString();
+
+        flow.node = "triage";
+        executor.execute(new Task("42", "c", "t", "u", "查核"), flow, flow.snapshot.definition().nodes().get("triage"));
+        assertThat(captured.get().prompt()).contains("專案 skill 清單", "db-migration — 改資料表時使用")
+                .doesNotContain("只在 skill 本文出現的句子", "skill_proposal");
+        assertThat(captured.get().jsonSchema()).doesNotContain("skill_proposal");
+
+        flow.node = "review";
+        executor.execute(new Task("42", "c", "t", "u", "查核"), flow, flow.snapshot.definition().nodes().get("review"));
+        assertThat(captured.get().prompt()).contains("專案 skill 清單", "【專案 skill 提案：skill_proposal】");
+        assertThat(captured.get().jsonSchema()).contains("skill_proposal");
+
+        // skill 提案任務自己的審查不再提案。
+        flow.skillProposal = new FlowRun.SkillProposalLink("41", "db-migration");
+        executor.execute(new Task("42", "c", "t", "u", "查核"), flow, flow.snapshot.definition().nodes().get("review"));
+        assertThat(captured.get().jsonSchema()).doesNotContain("skill_proposal");
+        assertThat(captured.get().prompt()).contains("專案 skill 清單").doesNotContain("【專案 skill 提案");
+    }
     @Test void focusedPromptDoesNotRepeatRulesTheRuntimeLoadsItself() throws Exception {
         Path taskRepo = tmp.resolve("task-repo"); Files.createDirectories(taskRepo.resolve(".git"));
         Files.writeString(taskRepo.resolve("AGENTS.md"), "只在規則檔出現的句子");

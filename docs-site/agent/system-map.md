@@ -37,6 +37,10 @@ FlowEngine 的新任務承接、續跑、發布及角色請求均保留這個身
 設定了 `githubIssues` 的團隊可在 Slack 以 `issues`／`處理 issue #N`、清單上的「處理」按鈕，或由 intake／角色對話在報告的 `github_issue_request` 請系統代辦，接 GitHub issue（`IssueCommands`）：需求不清時系統在 issue 留言提問，`PullRequestMonitor` 查到提出者回覆就自動續跑，PR 合併後關閉 issue（`GitHubIssues`、`GitHubIssueFlow`）。agent 不能自行留言或關單。詳見 [GitHub issue 接單](/docs/github-issues)。
 
 設定了 `attachments` 的團隊，agent 可在報告宣告要給使用者下載的檔案；`Attachments` 驗證路徑、機密檔與大小後，
+
+設定了 `project.projectSkills` 的團隊，`ConfiguredExecutor` 派工時以 `ProjectSkills.index` 列出專案 repo 內 skill 的名稱與說明；
+開啟提案時審查報告多一欄 `skill_proposal`，PR 開出後 `FlowEngine.openSkillProposal` 另開獨立任務，照正常流程與 PR 真人核准處理。
+詳見[專案 skill 索引與提案](/docs/configurable-team#專案-skill-索引與提案)。
 由 `SlackNotifier.uploadConfigured` 以角色身分上傳到討論串，失敗不影響流程。詳見[附件上傳到討論串](/docs/configurable-team#附件上傳到討論串2026-11-03)。
 反方向：使用者 @訊息的附檔由 `SlackListener` 經 `InboundFiles` 登錄（不連網），`FlowEngine.stageInbox` 在執行 agent 前以 `SlackNotifier.downloadFile` 下載並放進工作目錄的 `.ai-team-inbox/`（git exclude），PDF／Office 另由 `DocumentMarkdown` 轉出 `.md` 輔助版本。Linux 可讓 PDF 優先在隔離環境使用本機 `pdf2md`，失敗回退 PDFBox。詳見[接收使用者附檔](/docs/configurable-team#接收使用者附檔2026-11-06)。
 

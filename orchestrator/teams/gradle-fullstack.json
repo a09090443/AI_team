@@ -3,6 +3,7 @@
   "id": "gradle-fullstack",
   "project": {
     "focusedHandoffs": true,
+    "projectSkills": {"directory": ".agents/skills", "proposals": true, "maxOpenProposals": 2},
     "requirePlanApproval": true,
     "autoApprovePlanWhenValid": true,
     "autonomy": {

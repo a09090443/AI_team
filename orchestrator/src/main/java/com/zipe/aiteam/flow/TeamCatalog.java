@@ -196,6 +196,7 @@ public class TeamCatalog {
         AgentDispatch.validate(d);
         Consultation.validate(d);
         Attachments.validate(d);
+        ProjectSkills.validate(d);
         if (d.githubIssues() != null)
             require(d.githubIssues().clarifyRounds() >= 1 && d.githubIssues().clarifyRounds() <= 5, "githubIssues.clarifyRounds 須為 1～5");
         for (String id : d.nodes().keySet()) dependencies(d, id, new HashSet<>());

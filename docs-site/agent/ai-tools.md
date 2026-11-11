@@ -127,3 +127,6 @@ Claude Code 鏡像由同步腳本產生。其餘工具沿用上表的原生 skil
 `service-build` 是可攜式系統建置 skill，單一來源 `.agents/skills/service-build/`；同步脚本同時產生 `.claude/skills/service-build/` 與 `orchestrator/teams/skills/service-build/`，不得手改產生檔。
 `node.skills` 指定要載入的 SKILL.md／references 相對路徑，TeamCatalog 固定內容到 snapshot.assets，ConfiguredExecutor 在非對話派工時注入提示。
 這不依賴 CLI 自動發現 skill，也不擴張工具與主機權限。換機只改獨立主機設定及必要的團隊目標，不重寫共用流程。
+
+以上是管理者維護的團隊層 skill。目標專案 repo 自己的 skill（例如 `<project>/.agents/skills/`）另由 `project.projectSkills`
+在派工提示列出索引，並可讓審查角色提案、另開任務經 PR 核准後加入，見[專案 skill 索引與提案](/docs/configurable-team#專案-skill-索引與提案)。

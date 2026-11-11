@@ -50,6 +50,13 @@ public class FlowRun {
     public Map<Integer,String> spinoffs = new LinkedHashMap<>();
     /** 本任務由哪個任務的純詢問發現開立；不沿用該任務的任何核准或工作區。 */
     public String spinoffOf;
+    /** 本任務是哪個任務的審查提案開立的 skill 任務（{@link ProjectSkills}）；有值時本任務不再提案。舊快照為 null。 */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public SkillProposalLink skillProposal;
+    public record SkillProposalLink(String sourceTask, String name) {}
+    /** 本任務的審查提案已開立的 skill 任務編號；防止重新發布時重複開立。舊快照為 null。 */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public String skillProposalTask;
     /** 由 GitHub issue 建立的任務：在 issue 提問釐清、PR 合併後關閉該 issue（{@link GitHubIssueFlow}）。舊快照為 null。 */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public GitHubIssueFlow.Link githubIssue;

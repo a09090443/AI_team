@@ -216,6 +216,7 @@ agent_team/
 │   │   │   ├── OwnerIssueDecision.java # 負責人裁定待決問題移出範圍，沿用驗收往 PR 核准走
 │   │   │   ├── ReceiptReuse.java     # 流程重走時沿用前次仍有效的設計、計畫、實作結果
 │   │   │   ├── DeferredAcceptance.java # 驗收環境驗不了的驗收項目在計畫延後、PR 列出
+│   │   │   ├── ProjectSkills.java    # 專案 repo 內 skill 的派工索引與審查提案（另開任務）
 │   │   │   ├── PullRequestSync.java  # 已開 PR 與基準衝突時回原任務解衝突、推回同一個 PR 的判斷與核對
 │   │   │   ├── BaseSync.java         # 實作節點每輪動手前併入最新基準：衝突交該輪角色解的紀錄與提示
 │   │   │   ├── NodeInput.java        # 節點輸入指紋（判斷是否為相同輸入重跑）
@@ -294,6 +295,7 @@ agent_team/
 │   │   ├── flow/
 │   │   │   ├── RulesProposalTest.java   # rules 提案路徑、原文雜湊、符號／硬連結與 Linux 套用測試
 │   │   │   ├── AttachmentsTest.java  # 附件路徑逃逸、機密檔、上限與舊快照不變
+│   │   │   ├── ProjectSkillsTest.java # skill 索引上限與目錄、提案 schema／形式檢查、配置驗證
 │   │   │   ├── OperationJobsTest.java # 跨專案作業日誌、來源綁定及取消
 │   │   │   ├── ServiceArtifactsTest.java # 部署檔保存排除機密、只補缺檔、竄改與超量
 │   │   │   └── ServiceSupportTest.java # 入口對應、對話回覆與交付閘門測試

@@ -313,6 +313,8 @@ true 啟用受控 rules 提案套用，false／省略維持改派。新欄位出
 | `spinoffs` | Map&lt;項目序號,任務編號&gt; | 純詢問結束後以「開成新需求」按鈕從最後報告的 `out_of_scope` 開立的任務（序號從 1 起，最多 5）。用來防止同一項重複開立（2026-10-03 新增） |
 | `spinoffOf` | String | 本任務由哪個任務的純詢問發現開立；不沿用該任務的核准、工作區或結論（2026-10-03 新增） |
 | `githubIssue` | object | 2026-11-08 新增，null 不寫入。來源 GitHub issue 與釐清狀態（`owner`、`repo`、`number`、`url`、`author`、`awaitingReply`、`askedCommentId`、`askedTransitions`、`clarifyRounds`、`closed`），見 [GitHub issue 接單](/docs/github-issues) |
+| `skillProposal` | object | 2026-11-11 新增，null 不寫入。本任務是由哪個任務的審查提案開立的 skill 任務（`sourceTask`、`name`）；有值時本任務的審查不再提案，並計入 `maxOpenProposals`，見 [專案 skill 索引與提案](configurable-team.md#專案-skill-索引與提案) |
+| `skillProposalTask` | String | 2026-11-11 新增，null 不寫入。本任務的審查提案已開立的 skill 任務編號，防止重複開立 |
 | `roleOverrides` | Map&lt;節點,角色&gt; | 整節點改派（舊行為）實際執行的角色；同一任務重跑沿用。分段改派上線後新任務不再寫入（2026-10-04 新增，回滾風險同上） |
 | `delegatedParts` | Map&lt;節點,DelegatedPart&gt; | 分段改派的候選收據：`role`、`startHead`、`head`、`files`、`summary`（最多 2000 字）、`inputDigest`（2026-11-06 新增，相關需求／配置／計畫／問題與真人補充的指紋）。返工保留收據，指紋相同且 Git 物件內容不變、目標無未提交變更才沿用。舊資料無指紋時維持同輪續跑行為。新版寫入此欄位後舊 JAR 無法解析，回滾須保存新增資料並成套處理備份 |
 | `prUrl` / `publishedHead` | String | 發布結果。PR 衝突同步推回後，`publishedHead` 改成推回的 commit |
@@ -499,6 +501,12 @@ dialogue-evidence/&lt;對話task&gt;/deployment-evidence.txt保存已結案來�
 ### 持久診斷檢查點
 
 新增非DB檔案service-support/<task>/job.json：version=1、task、parent、target、generation（transitions/visits/supplements，正式SERVICE另含來源HEAD及服務作業指紋）、started_at、deadline、updated_at、state（RUNNING/COMPLETED/FAILED）、phase。job.lock是Linux程序互斥；current.json新增task/generation，完成結果須匹配job身分與generation，進行中的舊結果不能當目前健康。repair-policy.json的fingerprint是diagnose證據SHA256，用於攔截相同證據下已失敗修復的原樣重試；原repair.json的ID/attempts仍是對帳與預算依據。沒有修改schema.sql或FlowRun序列化欄位。備份須包含以上檔案。
+
+## 2026-11-11：project.projectSkills
+
+TeamDefinition.Project 新增選填 `projectSkills`（`directory`、`proposals`、`maxOpenProposals`），寫在 flow_run 的 snapshot.definition；
+null 不寫入，未設定的配置 revision 與舊快照不變。設定後存回的快照帶 `"projectSkills"` 鍵，FlowRun 也可能帶 `skillProposal`／`skillProposalTask`，
+舊 JAR 讀到這些未知欄位會失敗，回滾須搭配部署前 DB 備份。審查收據（`receipts` 中 REVIEW 節點的報告）在開啟提案時多一個 `skill_proposal` 欄位。
 
 ## 2026-10-22：project.autonomy 與自主恢復記帳
 

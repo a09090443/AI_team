@@ -198,6 +198,12 @@ bash deploy/bootstrap/check-source.sh
 可原地配置遷移。PR 衝突同步的兩個欄位讀**目前**配置（舊任務快照沒有），見 [已開 PR 的衝突同步](/docs/engineering-workflow#已開-pr-的衝突同步2026-10-23)。
 行為與邊界見 [失敗回報](/docs/failure-reporting)「管理者授權的自主恢復」一節。
 
+## 專案 skill（project.projectSkills）
+
+選填，null＝停用。`directory`（repository 內相對目錄）、`proposals`（審查角色可提案）、`maxOpenProposals`（`proposals` 開啟時 1～5，否則 0～5）。
+有設定就在每次非對話派工列出該目錄下 skill 的名稱與說明；`proposals` 另讓審查報告多一欄 `skill_proposal`，PR 開出後由系統另開獨立任務處理。
+索引讀任務快照的設定；開立任務時還要**目前載入**的配置也開啟提案。詳見[專案 skill 索引與提案](/docs/configurable-team#專案-skill-索引與提案)。
+
 ## 服務建置與指定腳本
 
 `project.serviceTarget` 指定管理者核准的服務目標名稱及檢查操作 ID（至少 start、health）；null 時不能啟動 service runtime，intake 也會被告知不要選 service 路線。三份內附範例都帶沙箱版 service 節點，`serviceTarget` 預設 null（關閉），實例填入即啟用（[內附範例](/docs/configurable-team#內附範例與實例-overlay)）。
