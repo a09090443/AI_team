@@ -339,6 +339,8 @@ Slack 明示「尚未確認合併／發布／產品驗收」。它是本段自�
 :::
 
 重啟不重播發布；保留 PR_CREATED 工作區供後續查核。
+開啟 `project.projectSkills.proposals` 的團隊，首次開出 PR 後系統會把審查報告中的 skill 提案另開成獨立任務（推回既有 PR 時不會），
+不影響本任務的狀態與 PR，見[專案 skill 索引與提案](configurable-team.md#專案-skill-索引與提案)。
 推送或開 PR 本身失敗（token、權限、網路）時留在 `AWAIT_PR_APPROVAL` 並貼出錯誤原文，修好後再按核准即可；
 發布前證據或 Git 目標不符時才停給人，停在 approval 節點時可按「重新進入核准 PR」，詳見 [失敗回報](failure-reporting.md)。
 
