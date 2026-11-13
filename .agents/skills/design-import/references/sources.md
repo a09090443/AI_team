@@ -12,6 +12,8 @@
   - `data-props` 的 `$preview` 是畫板尺寸；畫板的 `expand: "fill"` 代表是流動版面的網頁，不是固定尺寸。
 - 保留原檔到 `screens/<畫板名>.dc.html`，並在 README 說明上述語法，agent 就能讀懂；不必手動展開成靜態 HTML。
 - 樣式都寫在 inline `style`，色碼與尺寸可直接抽成 tokens.json；有「樣式規格」類畫板時以它為 tokens 主要來源。
+- 畫板是靜態示意，常把互斥狀態並列（成功卡與失敗 alert）或用示意資料預設狀態（`sel: true` 讓批次列出現、toast 常駐）；
+  從 `renderVals()` 的條件找出這些狀態，寫進 README 的「畫面中同時出現的狀態」。
 - 畫布沒有截圖檔；需要截圖時請使用者從畫布匯出，或在 README 註明「無截圖，以 HTML 為準」。
 
 ## 一般網頁
