@@ -59,6 +59,10 @@ agent_team/
 │       │   │   └── compression_evaluator.py # 摘要品質評估工具
 │       │   └── tests/
 │       │       └── test_compression_evaluator.py # 上游評估工具回歸測試
+│       ├── design-import/            # 任何來源的設計稿整理成設計包，交給前端 agent 實作
+│       │   ├── SKILL.md              # 取得來源、設計包格式、提交目標 repo 與派工訊息
+│       │   └── references/
+│       │       └── sources.md        # 各來源（Design 畫布、網頁、截圖、Figma）的格式注意事項
 │       └── docs-sync/
 │           └── SKILL.md              # 文件優先核對流程
 │       ├── sandbox-setup/            # 共用沙箱 VM 建立、專案接入、重建與排錯步驟
@@ -109,6 +113,10 @@ agent_team/
 │       │   │   └── compression_evaluator.py # 摘要品質評估工具
 │       │   └── tests/
 │       │       └── test_compression_evaluator.py # 上游評估工具回歸測試
+│       ├── design-import/            # 設計稿匯入 skill 的同步鏡像
+│       │   ├── SKILL.md
+│       │   └── references/
+│       │       └── sources.md
 │       └── docs-sync/
 │           └── SKILL.md
 │       ├── sandbox-setup/            # 沙箱建立與接入 skill 的同步鏡像

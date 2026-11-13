@@ -596,6 +596,8 @@ node-web 範例配置維持未啟用，也作為測試的對照組。被諮詢�
   能直接讀 PDF 的 runtime（Claude Code）遇到表格或圖時仍可讀原檔。Codex 和 opencode 可讀轉出的表格，但仍須留意轉換遺漏。
 - **能讀到什麼**：檔案就在工作目錄內，各 runtime 都用原本的讀取工具；文字格式與轉出的 .md 都能讀。原檔 PDF 與 Office 能否看懂取決於 runtime、模型與沙箱內的工具（Claude Code 可直接讀 PDF；Codex／opencode 的沙箱內沒有 PDF 工具）。
 
+設計稿（圖片、HTML）不收；要交給前端 agent 實作時改用設計包放進目標 repo，見 [設計稿交給前端 agent](/agent/ai-tools#設計稿交給前端-agent)。
+
 需要 Slack App 有 `files:read`（manifest 已內含，既有 App 要補權限並重新安裝，見[建立 Slack App](slack-agent-apps.md#既有-app-補上傳檔案權限)）。
 `AI_TEAM_SLACK_FILES=off` 關閉。**目前證據等級：程式測試通過，尚未做真實 Slack 附檔的端對端驗證**（`app_mention` 事件是否帶 `files` 依 SDK 欄位與 Slack 文件判斷，待實測）。
 

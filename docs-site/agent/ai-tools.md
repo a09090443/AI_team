@@ -64,6 +64,7 @@ skill 是執行步驟，規則本文仍只寫在 `AGENTS.md`；兩者衝突時�
 | 名稱 | 用途 |
 |---|---|
 | `service-build` | Slack agent 可重用的環境準備、建置、啟動、檢查與修復流程，主機連線獨立配置 |
+| `design-import` | 把任何來源的設計稿（claude.ai 設計 artifact、網頁、Figma、截圖、HTML）整理成設計包放進目標 repo，再派工給前端 agent，見[設計稿交給前端 agent](#設計稿交給前端-agent) |
 | `docs-sync` | 依「文件優先」規則開工前找文件、發現缺漏或落差時修正、功能異動後核對文件並驗證 |
 | `context-compression` | 長任務的結構化摘要與交接，保留目標、決策、檔案異動、風險及下一步；附評估參考與工具 |
 | `sandbox-setup` | 建立／重建共用沙箱 VM、以 `sandbox-onboard.sh` 讓專案接上沙箱、驗證與排錯（本專案自建，見 [共用沙箱環境](/docs/sandbox-environment)） |
@@ -72,6 +73,22 @@ skill 是執行步驟，規則本文仍只寫在 `AGENTS.md`；兩者衝突時�
 2026-10-29 安裝 [a09090443/agent-skills](https://github.com/a09090443/agent-skills/tree/main/virtualbox-control) 的
 `virtualbox-control` 原版（上游 commit `3e24062`，只含文件、無腳本），單一來源為 `.agents/skills/virtualbox-control/`。
 它是給開發者在本機管理 VM 的工具 skill，不是 orchestrator 部署通道；Agent VM 日常部署仍依 `service-build` 走 SSH 直連。
+
+### 設計稿交給前端 agent
+
+2026-11-13 新增，本專案自建。使用情境：使用者手上有設計好的頁面，要 Slack 上的前端／UI agent 照著實作。
+開發用的 AI 工具（例如 Claude Code）依 `design-import` 取得設計來源，整理成目標 repo 的 `design/<slug>/`：
+`README.md`（範圍、視覺規格、各畫面的版面、互動、狀態與文案、與現況差異、未決事項）、`tokens.json`、
+`screens/` 下的原始 HTML 與截圖。使用者同意後提交並推到目標 repo，再在 Slack 派工「依 `design/<slug>/README.md` 實作」。
+
+設計理由：
+
+- Slack 附檔只收文件類檔案，圖片、HTML 與原始碼不收（見[接收使用者附檔](/docs/configurable-team#接收使用者附檔2026-11-06)），
+  所以設計稿不走附檔；agent 的工作區由 repo 建立，放進 repo 是任何 runtime 都讀得到的既有通道，不必改 orchestrator。
+- 設計包以文字為主、截圖為輔，因為 Codex／opencode 的沙箱看不到圖片。
+- 推到目標 repo 是對外動作，每次都要使用者同意；設計包要在 agent 建工作區的基準分支上才看得到。
+
+驗證狀態：skill 與設計包格式已用一份 claude.ai Design 畫布試做；尚未有前端 agent 依設計包實作的真實 Slack 端對端紀錄。
 
 ### 長任務的上下文整理
 

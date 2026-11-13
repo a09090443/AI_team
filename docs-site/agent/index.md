@@ -86,6 +86,7 @@ Orchestrator 不重寫 agent 框架，只做 CLI 不管的事：任務狀態機�
 | 測試計畫與 QA 行為 | [qa-scenario-workflow](/docs/qa-scenario-workflow) | `orchestrator/teams/prompts/plan.md`、`verify.md` |
 | 任務停住、要在 Slack 下指令 | [pm-triage](/docs/pm-triage)、[plan-approval-buttons](/docs/plan-approval-buttons) | `slack/SlackListener.java`、`slack/HumanGate.java` |
 | 直接問某個角色、派工給角色 | [direct-agent-requests](/docs/direct-agent-requests) | `task/DirectRequest.java` |
+| 把設計好的頁面交給前端 agent 實作 | [ai-tools 設計稿交給前端 agent](/agent/ai-tools#設計稿交給前端-agent) | `.agents/skills/design-import/`（不在 `orchestrator/` 下） |
 | 角色回報 BLOCKED 或矛盾結果 | [failure-reporting](/docs/failure-reporting) | `task/FailureReport.java` |
 | 為什麼沒進 PR 核准 | [review-gate](/docs/review-gate) | `task/ReviewGate.java` |
 | 任務卡在 `WAITING_QUOTA` | [quota-continuation](/docs/quota-continuation) | `task/QuotaAutoResume.java` |
