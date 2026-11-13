@@ -88,7 +88,9 @@ skill 是執行步驟，規則本文仍只寫在 `AGENTS.md`；兩者衝突時�
 - 設計包以文字為主、截圖為輔，因為 Codex／opencode 的沙箱看不到圖片。
 - 推到目標 repo 是對外動作，每次都要使用者同意；設計包要在 agent 建工作區的基準分支上才看得到。
 
-驗證狀態：skill 與設計包格式已用一份 claude.ai Design 畫布試做；尚未有前端 agent 依設計包實作的真實 Slack 端對端紀錄。
+驗證狀態：skill 與設計包格式已用一份 claude.ai Design 畫布試做；2026-11-13 讓無脈絡的 Claude Code 與
+opencode（DeepSeek v4.1 flash）只讀設計包回答 10 題實作問題，範圍、示意資料、具體數值、互斥狀態與 API 缺口都答對，
+指出的含糊處已改進 README 範本。尚未有前端 agent 依設計包實作的真實 Slack 端對端紀錄，Codex 未測。
 
 ### 長任務的上下文整理
 
