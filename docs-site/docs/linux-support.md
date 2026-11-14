@@ -44,6 +44,7 @@ os-release 當文字解析，不以 shell source 執行。未知 ID_LIKE 不會�
 每個發行版／版本分開驗證；不得把 Ubuntu 成功推論成 Rocky 已成功。
 發布、憑證與現有 VM 保護規則仍遵循 [INSTALL.md](INSTALL.md)。
 本機 fixture 的 16 項斷言驗證分類與拒絕邏輯，不驗證真實 Linux 的 kernel 或安全政策。
+選用的[瀏覽器 E2E](browser-e2e.md) 只在 Ubuntu 24.04 實測過沙箱內啟動；其他發行版的函式庫套件名稱不同，未驗證。
 
 ## Windows 主機上的 VirtualBox 停滯排查
 

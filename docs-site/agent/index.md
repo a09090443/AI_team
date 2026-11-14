@@ -84,6 +84,7 @@ Orchestrator 不重寫 agent 框架，只做 CLI 不管的事：任務狀態機�
 | 接入專案／部署配置後確認驗證指令能過 | [baseline-verification](/docs/baseline-verification) | `flow/BaselineVerifier.java` |
 | 需求 ID、驗收覆蓋、返工失效、PR 狀態 | [engineering-workflow](/docs/engineering-workflow) | `flow/Traceability.java`、`flow/IndependentVerifier.java` |
 | 測試計畫與 QA 行為 | [qa-scenario-workflow](/docs/qa-scenario-workflow) | `orchestrator/teams/prompts/plan.md`、`verify.md` |
+| 頁面瀏覽器 E2E 驗收 | [browser-e2e](/docs/browser-e2e) | `flow/IndependentVerifier.java`、專案配置 `operations` |
 | 任務停住、要在 Slack 下指令 | [pm-triage](/docs/pm-triage)、[plan-approval-buttons](/docs/plan-approval-buttons) | `slack/SlackListener.java`、`slack/HumanGate.java` |
 | 直接問某個角色、派工給角色 | [direct-agent-requests](/docs/direct-agent-requests) | `task/DirectRequest.java` |
 | 把設計好的頁面交給前端 agent 實作 | [ai-tools 設計稿交給前端 agent](/agent/ai-tools#設計稿交給前端-agent) | `.agents/skills/design-import/`（不在 `orchestrator/` 下） |

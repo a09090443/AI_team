@@ -34,6 +34,9 @@ Node 的 fetch 連 `localhost`／`127.0.0.1` 也會送進 proxy 而被拒（`Net
 
 呼叫模型前，以相同內外層設定測試 localhost TCP 往返、帶上述前綴以 fetch 連 localhost HTTP（2026-10-23 新增），以及可寫路徑（unit 最長 25 秒、客戶端最長 30 秒），
 失敗就停止，不略過不相容的 CLI、不退回無沙箱。於 Codex 0.153.4 實測；未宣稱所有 CLI／OS 版本都支援。
+
+headless Chromium 在這個 profile 內可啟動並連到同一指令啟動的 loopback 預覽伺服器，外部網站仍被拒（codex-cli 0.166.0 實測），
+配置方式見[瀏覽器 E2E 驗收](browser-e2e.md)。
 官方設定背景：[權限設定](https://learn.chatgpt.com/docs/permissions)。
 
 ## 文件副本建置

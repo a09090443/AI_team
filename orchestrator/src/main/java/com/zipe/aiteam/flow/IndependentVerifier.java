@@ -403,11 +403,16 @@ public class IndependentVerifier {
         if (!cache.toRealPath().equals(cache)) throw new IllegalStateException("獨立驗證快取路徑含 symlink，拒絕使用：" + cache);
         return cache;
     }
-    /** 驗證指令的快取環境變數；只在政策確實把快取設為可寫時加入，clone／checkout 不使用。 */
+    /**
+     * 驗證指令的快取環境變數；只在政策確實把快取設為可寫時加入，clone／checkout 不使用。
+     * PLAYWRIGHT_BROWSERS_PATH：私有 HOME 下找不到瀏覽器，專案的瀏覽器 E2E 指令每次都會失敗或重新下載；
+     * 放進同一份快取，首次下載後跨任務沿用。沒用 Playwright 的專案不受影響（見 browser-e2e.md）。
+     */
     static List<String> cacheEnvironment(Path cache, SandboxPolicy policy) {
         if (cache == null || !policy.writablePaths().contains(cache) || cache.toString().matches(".*[\\s\"'\\\\].*")) return List.of();
         return List.of("GRADLE_USER_HOME=" + cache.resolve("gradle"), "npm_config_cache=" + cache.resolve("npm"),
-                "MAVEN_OPTS=-Dmaven.repo.local=" + cache.resolve("m2/repository"));
+                "MAVEN_OPTS=-Dmaven.repo.local=" + cache.resolve("m2/repository"),
+                "PLAYWRIGHT_BROWSERS_PATH=" + cache.resolve("ms-playwright"));
     }
     void execute(List<String> argv, Path cwd, Path home, SandboxPolicy policy, Path log, long deadline) throws Exception {
         execute(null, argv, cwd, home, policy, log, deadline);

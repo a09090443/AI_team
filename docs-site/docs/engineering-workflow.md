@@ -177,6 +177,7 @@ Node 範例依序 `npm ci`、`npm test`、`npm run build`；需依實際 repo �
 - 必須通過既有沙箱自檢；使用受限 systemd user unit，2 核 CPU 配額、4 GB 記憶體與整輪最多 1800 秒。
 - **專用相依套件快取（2026-10-17 起）**：配置的檢查指令（不含 clone／checkout）共用 `<安裝目錄>/verification-cache`，
   以 `GRADLE_USER_HOME`、`npm_config_cache`、`MAVEN_OPTS=-Dmaven.repo.local=…` 指過去（`IndependentVerifier.dependencyCache`／`cacheEnvironment`）。
+  2026-11-14 起另設 `PLAYWRIGHT_BROWSERS_PATH=<快取>/ms-playwright`，讓瀏覽器 E2E 指令的瀏覽器跨任務沿用（見[瀏覽器 E2E 驗收](browser-e2e.md)）。
   HOME 仍是每輪全新的空目錄，原始碼仍釘成唯讀；只有下載快取跨任務沿用，agent 的沙箱碰不到這個目錄。
   已知取捨：被驗證的專案程式在執行期間仍可寫入快取。路徑含空白、引號或反斜線時不設定（退回不用快取）。
   起因：每輪都從空的 HOME 開始時，第一個 Gradle 指令就要 16～19 分鐘，每次驗證貼著上限。

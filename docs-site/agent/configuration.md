@@ -126,7 +126,7 @@ repo 由主 repo 的 `origin` 判斷，token 需要 **Issues: Read and write**�
 | `nodes.<實作>.protectedPathFallback` | 選填 `{"role", "paths"}`：前置計畫的 protected_path_changes 明列原實作角色 runtime 寫不了的路徑、且其中有落在 `paths`（目錄 `/**`）內的，就分段改派這些檔案（範圍外的不交出去，原角色要改時被拒而停下問人；2026-10-08 前要「全部」在範圍內才改派）：該角色只改 `paths` 內的檔案（系統核對全部在範圍內後代為提交），其餘工作仍由原角色完成；行為設定類路徑寫死禁止（見 multi-runtime） |
 | `nodes.<實作>.protectedPathFallback.programRules` | 選填布林值，省略／false＝既有改派；true 僅允許原角色為 claude-code。計畫與配置允許的清單全是已存在的 `.claude/rules/**/*.md` 時，先由原角色唯讀產生 path／sha256／content 提案、程式驗證套用；最多10檔、每檔64 KiB、總量256 KiB。提案不合或不支援安全目錄操作時回既有改派；開始寫入後的失敗停止流程。不得覆蓋專案 protectedPaths；仍須 fallback role／paths。詳見 [rules 程式套用](/docs/multi-runtime#rules-由程式套用2026-11-06) |
 | `requiredTools` | 啟動時沙箱工具鏈自檢逐一檢查，缺任一項服務不啟動 |
-| `protectedPaths`、`cachePaths` | 任何角色不可寫的路徑；允許的快取目錄（只限 `.m2/repository`、`.npm`、`.gradle/caches`、`.cache/<名稱>`） |
+| `protectedPaths`、`cachePaths` | 任何角色不可寫的路徑；允許的快取目錄（只限 `.m2/repository`、`.npm`、`.gradle/caches`、`.cache/<名稱>`；瀏覽器 E2E 用 `.cache/ms-playwright`，見 browser-e2e） |
 | `requirePlanApproval`、`autoApprovePlanWhenValid` | 測試計畫是否需真人核准；通過機械檢查時是否自動核准（預設 false） |
 
 ### `roles.<角色 ID>`

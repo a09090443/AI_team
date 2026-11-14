@@ -272,6 +272,15 @@ export const docs = [
     code: ['orchestrator/src/main/java/com/zipe/aiteam/runtime/CodexLocalTestPolicy.java'],
   },
   {
+    id: 'browser-e2e',
+    title: '瀏覽器 E2E 驗收',
+    category: 'runtime',
+    status: 'current',
+    summary: '以配置啟用 Playwright 等瀏覽器 E2E：同一指令內啟停預覽伺服器、共用瀏覽器快取、截圖附檔；不支援對已部署網址跑 E2E。',
+    readWhen: '要讓 QA 或獨立驗證實際開啟頁面驗收，或瀏覽器測試在沙箱內失敗。',
+    code: ['orchestrator/src/main/java/com/zipe/aiteam/flow/IndependentVerifier.java', 'orchestrator/teams/prompts/plan.md', 'orchestrator/teams/prompts/verify.md'],
+  },
+  {
     id: 'opencode-runtime-report',
     title: 'opencode Runtime 實測報告',
     category: 'runtime',

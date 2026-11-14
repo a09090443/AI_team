@@ -189,6 +189,28 @@ class TeamCatalogTest {
         assertThat(snapshot.definition().project().protectedPaths()).contains("src/**", "package.json").doesNotContain("**/pom.xml");
         assertThat(snapshot.assets()).containsKeys("prompts/plan.md", "prompts/triage.md");
     }
+    /** browser-e2e.md 的 node-web 配置片段必須能通過載入檢查，文件與驗證規則不能各說各話。 */
+    @Test void browserE2eSnippetFromDocsIsValid() throws Exception {
+        var config = config();
+        var project = (ObjectNode)config.path("project");
+        ((com.fasterxml.jackson.databind.node.ArrayNode)project.path("cachePaths")).add(".cache/ms-playwright");
+        var ops = (ObjectNode)project.path("operations");
+        ops.set("e2e-browsers", mapper.readTree("""
+                {"nodes":["implementation","frontend"],"directory":".","argv":["npm","exec","--","playwright","install","--only-shell","chromium"],"writes":[]}"""));
+        ops.set("e2e", mapper.readTree("""
+                {"nodes":["implementation","frontend","verification"],"directory":".","argv":["npm","run","test:e2e"],"writes":["test-results","playwright-report"]}"""));
+        ((com.fasterxml.jackson.databind.node.ArrayNode)config.path("nodes").path("verification").path("writablePaths"))
+                .add("test-results/**").add("playwright-report/**");
+        var commands = (com.fasterxml.jackson.databind.node.ArrayNode)project.path("verification").path("commands");
+        commands.add(mapper.readTree("[\"npm\",\"exec\",\"--\",\"playwright\",\"install\",\"--only-shell\",\"chromium\"]"));
+        commands.add(mapper.readTree("[\"npm\",\"run\",\"test:e2e\"]"));
+        config.set("attachments", mapper.readTree("""
+                {"maxFiles":10,"maxBytes":10485760,"allow":["test-results/**","playwright-report/**"],"deny":[]}"""));
+        validate(config);
+        // 沒有寫入範圍時應被擋下：驗收節點不能把產物寫到 writablePaths 以外。
+        ((ObjectNode)config.path("nodes").path("verification")).putArray("writablePaths").add("tests/**");
+        assertThatThrownBy(() -> validate(config)).isInstanceOf(IllegalArgumentException.class);
+    }
     @Test void missingRoleReferenceRejected() throws Exception {
         var config = config(); ((ObjectNode)config.path("roles")).remove("frontend");
         assertThatThrownBy(() -> validate(config)).hasMessageContaining("不存在角色");

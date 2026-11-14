@@ -198,6 +198,11 @@ export AI_TEAM_SLACK_PDF2MD_PATH="$HOME/.local/pdf-inspector-1.25.2/bin/pdf2md"
 以新上傳、含文字層和表格的 PDF 試跑，請 agent 依 `.pdf.md` 回報指定欄位，並和原檔比對。
 如服務紀錄出現 `pdf2md …使用 PDFBox`，該檔案已走備援。未設定時維持 PDFBox，既有轉換快取不會重轉。
 
+### 選用瀏覽器 E2E 函式庫
+
+只有團隊配置啟用瀏覽器 E2E（見[瀏覽器 E2E 驗收](browser-e2e.md)）時需要。headless Chromium 需要的系統函式庫由管理者以 apt 安裝，
+清單與實測證據寫在該文件；瀏覽器本身由實作階段下載進 `cachePaths` 的 `.cache/ms-playwright`，不需另外安裝。
+
 ## 4. 沙箱前置條件
 
 ```bash

@@ -222,7 +222,8 @@ class IndependentVerifierTest {
         Assumptions.assumeFalse(cache.toString().contains("\\"));
         assertThat(IndependentVerifier.cacheEnvironment(cache, policies.get(2)))
                 .containsExactly("GRADLE_USER_HOME=" + cache.resolve("gradle"), "npm_config_cache=" + cache.resolve("npm"),
-                        "MAVEN_OPTS=-Dmaven.repo.local=" + cache.resolve("m2/repository"));
+                        "MAVEN_OPTS=-Dmaven.repo.local=" + cache.resolve("m2/repository"),
+                        "PLAYWRIGHT_BROWSERS_PATH=" + cache.resolve("ms-playwright"));
         assertThat(IndependentVerifier.cacheEnvironment(Path.of("/a b/cache"),
                 new SandboxPolicy(List.of(Path.of("/a b/cache")), List.of(), 1, 1, 1))).isEmpty();
     }
