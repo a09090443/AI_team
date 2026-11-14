@@ -205,6 +205,19 @@ class TargetEntryTests(unittest.TestCase):
                 self.assertEqual(b"A = 1\n", (lib / "entry").read_bytes())
                 extra = payload([("ssh_target.py", b"A = 2\n"), ("guest.py", b"B = 2\n"), ("evil.py", b"x")])
                 self.assertEqual(1, target.upgrade_entry("a" * 32, hashlib.sha256(extra).hexdigest(), extra, c)["exit_code"])
+                crlf = payload([("ssh_target.py", b"#!/usr/bin/python3\r\nA = 2\r\n"), ("guest.py", b"B = 2\n")])
+                result = target.upgrade_entry("a" * 32, hashlib.sha256(crlf).hexdigest(), crlf, c)
+                self.assertEqual(1, result["exit_code"]); self.assertIn("CR line endings", result["evidence"][0])
+                self.assertEqual(b"A = 1\n", (lib / "entry").read_bytes())
+
+    def test_client_never_sends_crlf_entry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            here = Path(tmp)
+            (here / "ssh_target.py").write_bytes(b"#!/usr/bin/python3\r\nA = 1\r\n"); (here / "guest.py").write_bytes(b"B = 1\n")
+            with patch.object(executor.ssh_client.subprocess, "run") as run:
+                with self.assertRaisesRegex(ValueError, "ENTRY_CRLF"):
+                    executor.ssh_client.upgrade_entry({"target": "sit"}, here)
+                run.assert_not_called()
 
 
 class AgentSideTests(unittest.TestCase):

@@ -535,6 +535,46 @@ class MockProtocolTests(unittest.TestCase):
             saved=json.loads((home/"operation-jobs"/"123"/("a"*32+".json")).read_text())
             self.assertEqual("UNCERTAIN",saved["state"]);self.assertEqual("OPERATION_DEADLINE",saved["error_kind"])
 
+    def test_entry_reply_separates_broken_entry_from_lost_transport(self):
+        done=lambda rc,out=b"",err=b"":subprocess.CompletedProcess([],rc,out,err)
+        self.assertEqual({"exit_code":0},direct.entry_reply(done(0,b'{"exit_code":0}')))
+        self.assertIsNone(direct.entry_reply(done(255,b"",b"ssh: connect to host timed out")))
+        self.assertIsNone(direct.entry_reply(done(1,b'{"exit_code":1}')))
+        with self.assertRaisesRegex(direct.EntryUnavailable,"TARGET_ENTRY_UNAVAILABLE: exit=1; sudo: unable to execute"):
+            direct.entry_reply(done(1,b"",b"sudo: unable to execute /usr/local/sbin/ai-team-ssh-service: No such file or directory\n"))
+
+    def test_broken_entry_fails_unaccepted_job_after_grace(self):
+        import ssh_executor as executor
+        with tempfile.TemporaryDirectory() as tmp:
+            home,root,job=self.executor_fixture(tmp)
+            job["remote_accepted"]=False;executor.save(home,job)
+            broken=direct.EntryUnavailable("TARGET_ENTRY_UNAVAILABLE: exit=1; sudo: unable to execute")
+            path=home/"operation-jobs"/"123"/("a"*32+".json")
+            with patch.object(executor.ssh_client,"config",return_value={"target":"sit"}),patch.object(executor.client,"authorized",return_value=True),patch.object(executor.ssh_client,"execute_job",side_effect=broken):
+                executor.poll(home,None)
+                saved=json.loads(path.read_text())
+                self.assertEqual("UNCERTAIN",saved["state"]);self.assertEqual("TARGET_ENTRY_UNAVAILABLE",saved["error_kind"])
+                saved["entry_unavailable_since"]-=executor.ENTRY_GRACE_SECONDS;saved["next_poll_at"]=0
+                path.write_text(json.dumps(saved))
+                executor.poll(home,None)
+            saved=json.loads(path.read_text())
+            self.assertEqual("FAILED",saved["state"]);self.assertEqual(1,saved["result"]["exit_code"])
+            self.assertIn("never accepted",saved["result"]["evidence"][1])
+
+    def test_broken_entry_never_fails_accepted_or_legacy_job(self):
+        import ssh_executor as executor
+        for accepted in (True,None):
+            with tempfile.TemporaryDirectory() as tmp:
+                home,root,job=self.executor_fixture(tmp)
+                job["entry_unavailable_since"]=1
+                if accepted is not None:job["remote_accepted"]=accepted
+                executor.save(home,job)
+                broken=direct.EntryUnavailable("TARGET_ENTRY_UNAVAILABLE: exit=1")
+                with patch.object(executor.ssh_client,"config",return_value={"target":"sit"}),patch.object(executor.client,"authorized",return_value=True),patch.object(executor.ssh_client,"execute_job",side_effect=broken):
+                    executor.poll(home,None)
+                saved=json.loads((home/"operation-jobs"/"123"/("a"*32+".json")).read_text())
+                self.assertEqual("UNCERTAIN",saved["state"]);self.assertIsNone(saved["result"])
+
     def test_interrupt_marker_cancels_only_matching_job(self):
         import client
         import ssh_executor as executor

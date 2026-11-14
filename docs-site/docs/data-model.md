@@ -474,6 +474,7 @@ stage_attempt 現在也供 TaskStore.serviceHistory 查詢同頻道、同目標 
 | updated／deadline | Unix epoch 秒，與 SQLite 的 ISO-8601 TEXT 時間不同；executor 建立作業時 deadline 為當下加 7200 秒 |
 | result／verified／error_kind | 固定執行器的驗證結果、可信標記與結構化原因；SUCCEEDED 必須 verified=true，結果 id／action／target／digest 與 journal 一致，exit_code 為整數且為 0 |
 | launched／next_poll_at／cancel_requested | Python 執行器使用的提交、輪詢及取消追蹤欄位；不是新的 FlowRun 欄位 |
+| remote_accepted／entry_unavailable_since | 目標是否曾回過此 job 的收據（新建為 false；舊 journal 沒有此欄位視為未知）、入口持續無法執行的起始時間；目標從未受理且入口失效滿 60 秒時改 FAILED、error_kind=TARGET_ENTRY_UNAVAILABLE，見 [SSH 直連部署](direct-ssh-deployment.md#持久長作業恢復) |
 
 OperationJobs 只讀取同 task／node／目前 HEAD 的有效記錄，拒絕 journal 基底／任務目錄 symlink、非一般檔案、非預期檔名、單檔超過 65536 bytes；每次最多讀取排序後 256 個檔案。無法讀取時保留現場並拋錯，不猜測部署結果。FAILED 終態也須有對應且非零的整數 exit_code；UNCERTAIN 不等於已失敗。
 

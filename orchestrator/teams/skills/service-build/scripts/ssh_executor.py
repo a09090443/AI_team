@@ -11,6 +11,8 @@ import time
 import client
 import ssh_client
 
+ENTRY_GRACE_SECONDS = 60
+
 
 def save(home, job):
     result = job.get("result")
@@ -81,7 +83,7 @@ def poll(home, config):
                 job = dict(version=1,id=req["id"],task=task,node=flow.get("activeNode"),
                            action=req["action"],target=c["target"],source_head=head,source_sha256=None,
                            state="QUEUED",updated=int(time.time()),deadline=int(time.time())+7200,
-                           result=None,error_kind=None,verified=False)
+                           result=None,error_kind=None,verified=False,remote_accepted=False)
                 if req["action"] in client.SANDBOX_ACTIONS:
                     job["script"] = req["script"]
                 save(home, job)
@@ -127,6 +129,9 @@ def poll(home, config):
                 save(home, job)
                 result = ssh_client.execute_job(c, root, job,allow_launch=allow_launch and not expired and not cancel,
                                                 cancel=cancel)
+                job.pop("entry_unavailable_since", None)
+                if job.get("error_kind") == "TARGET_ENTRY_UNAVAILABLE":
+                    job["error_kind"] = None
                 if result is not None:
                     job["result"] = result
                     job["verified"] = True
@@ -136,6 +141,19 @@ def poll(home, config):
                 elif expired or cancel or task_state!="STAGE_RUNNING":
                     job.update(state="UNCERTAIN",result=None,
                                error_kind="CANCEL_UNCONFIRMED" if cancel else ("OPERATION_DEADLINE" if expired else "TASK_PAUSED"))
+            except ssh_client.EntryUnavailable as exc:
+                # A broken entry never answers; without this the job waits for its full deadline.
+                # Only a job the target never accepted can be closed as FAILED: nothing ran remotely.
+                now_int = int(time.time())
+                since = job.setdefault("entry_unavailable_since", now_int)
+                if job.get("remote_accepted") is False and now_int - since >= ENTRY_GRACE_SECONDS:
+                    job.update(state="FAILED",error_kind="TARGET_ENTRY_UNAVAILABLE",verified=False,
+                               result=dict(id=job["id"],action=job["action"],target=job["target"],
+                                           source_sha256=job.get("source_sha256"),exit_code=1,completed=now_int,
+                                           evidence=[str(exc),"The target never accepted this job; no remote operation ran"]))
+                    client.atomic_json(queue / (job["id"]+".json"),job["result"])
+                else:
+                    job.update(state="UNCERTAIN",error_kind="TARGET_ENTRY_UNAVAILABLE")
             except ssh_client.SourcePreflightError as exc:
                 kind = str(exc).split(":",1)[0]
                 job.update(state="FAILED",error_kind=kind,result=dict(id=job["id"],action=job["action"],
@@ -196,7 +214,7 @@ def maybe_upgrade(config, state):
         print("ENTRY_UPGRADE: " + (receipt["evidence"][0] if receipt and receipt.get("evidence") else "no confirmed reply; retry later"),
               flush=True)
     except (ValueError, OSError, KeyError, ssh_client.subprocess.SubprocessError) as exc:
-        print("ENTRY_UPGRADE: failed (" + type(exc).__name__ + "); retry later", flush=True)
+        print("ENTRY_UPGRADE: failed (" + (type(exc).__name__ + ": " + str(exc))[:300] + "); retry later", flush=True)
 
 
 def main():

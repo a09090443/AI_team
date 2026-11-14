@@ -61,6 +61,8 @@ def upgrade_entry(job, digest, data, config):
     if set(files) != {"ssh_target.py", "guest.py"}:
         return dict(result, exit_code=1, evidence=["Upgrade payload must hold ssh_target.py and guest.py"])
     for name, content in files.items():
+        if b"\r" in content:  # compile() accepts CRLF, but "python3\r" in the shebang cannot start
+            return dict(result, exit_code=1, evidence=["UPGRADE_REJECTED: " + name + " has CR line endings"])
         compile(content, name, "exec")  # never install an entry that cannot start
     installed = {"ssh_target.py": ENTRY, "guest.py": LIB / "guest.py"}
     if all(path.is_file() and path.read_bytes() == files[name] for name, path in installed.items()):

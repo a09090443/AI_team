@@ -3,6 +3,9 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$root"
 for file in deploy/bootstrap/*.sh deploy/sandbox-vm/*.sh; do bash -n "$file"; done
+# 會在 Linux 執行的腳本不得帶 CR：shebang 後的 \r 會讓目標入口整個無法啟動（sudo 回 No such file or directory）。
+crlf=$(grep -rlI $'\r' deploy/bootstrap deploy/sandbox-vm orchestrator/teams/skills orchestrator/teams/scripts --include='*.py' --include='*.sh' || true)
+if [ -n "$crlf" ]; then echo "下列腳本含 CRLF，請以 LF 重新打包（Windows 用 git -c core.autocrlf=false archive）："; echo "$crlf"; exit 1; fi
 python3 -m unittest discover -s orchestrator/teams/skills/service-build/scripts -p 'test_*.py'
 python3 -m unittest discover -s orchestrator/teams/scripts -p 'test_*.py'
 bash deploy/bootstrap/test-linux-platform.sh

@@ -59,6 +59,33 @@ def command(c, action, request_id, digest=None):
 class SourcePreflightError(ValueError):
     pass
 
+class EntryUnavailable(ValueError):
+    """SSH reached the target but its fixed entry produced no receipt (missing, unreadable, bad interpreter)."""
+
+def entry_reply(proc):
+    """Return the parsed receipt, None for an unconfirmed exchange, or raise when the entry itself cannot run.
+    ssh uses 255 for its own failures; any other exit without a JSON receipt came from the target side."""
+    if proc.stdout and len(proc.stdout) <= 65536:
+        try:
+            data = json.loads(proc.stdout)
+        except ValueError:
+            data = None
+        if isinstance(data, dict):
+            return data if proc.returncode == 0 else None
+    if proc.returncode not in (0, 255):
+        detail = (proc.stderr or b"").decode("utf-8", "replace").strip().splitlines()
+        raise EntryUnavailable("TARGET_ENTRY_UNAVAILABLE: exit=" + str(proc.returncode)
+                               + ("; " + detail[0][:200] if detail else "") + "; the target entry needs administrator repair")
+    return None
+
+def entry_files(here):
+    files = [(name, (here / name).read_bytes()) for name in ("ssh_target.py", "guest.py")]
+    for name, content in files:
+        if b"\r" in content:
+            # A CR after the shebang makes sudo report "No such file or directory" for every later call.
+            raise ValueError("ENTRY_CRLF: " + name + " has CR line endings; repackage with LF before upgrading")
+    return files
+
 def archive_source(root, c):
     if subprocess.check_output(["git", "-C", str(root), "status", "--porcelain"]).strip():
         raise SourcePreflightError("SOURCE_WORKSPACE_DIRTY: commit the approved deployment changes before start; SSH was not attempted")
@@ -134,12 +161,12 @@ def exec_payload(root, c, script):
 def upgrade_entry(c, here=None):
     """Send this skill's tested target entry to a sandbox target; the target replies UPGRADE_UNCHANGED when current."""
     here = here or Path(__file__).resolve().parent
-    data = pack([(name, (here / name).read_bytes(), False) for name in ("ssh_target.py", "guest.py")])
+    data = pack([(name, content, False) for name, content in entry_files(here)])
     digest, job = hashlib.sha256(data).hexdigest(), uuid.uuid4().hex
     proc = subprocess.run(command(c, "upgrade", job, digest), input=data, capture_output=True, timeout=60)
-    if proc.returncode or not proc.stdout or len(proc.stdout) > 65536:
+    receipt = entry_reply(proc)
+    if receipt is None:
         return None
-    receipt = json.loads(proc.stdout)
     if receipt.get("exit_code") == 75:
         return receipt
     validate_receipt(receipt, c, "upgrade", job, digest)
@@ -246,9 +273,9 @@ def validate_receipt(receipt, c, action, job_id, digest):
 
 def remote_query(c, action, job_id):
     proc = subprocess.run(command(c, action, job_id), capture_output=True, timeout=100 if action=="cancel" else 20)
-    if proc.returncode or not proc.stdout or len(proc.stdout)>65536:
+    data = entry_reply(proc)
+    if data is None:
         return None
-    data = json.loads(proc.stdout)
     if (not isinstance(data,dict) or data.get("id") != job_id or data.get("target") != c["target"]
             or type(data.get("exit_code")) is not int):
         raise ValueError("invalid remote status identity")
@@ -263,6 +290,8 @@ def execute_job(c, root, job, allow_launch=True, cancel=False):
     # UNKNOWN from a verified target is different from an unconfirmed SSH exchange.
     receipt = remote_result(c, job["id"])
     digest = job.get("source_sha256")
+    if receipt is not None and receipt.get("state") != "UNKNOWN":
+        job["remote_accepted"] = True
     if receipt is None:
         if job.get("launched") or not allow_launch:
             return None
@@ -298,9 +327,10 @@ def execute_job(c, root, job, allow_launch=True, cancel=False):
             return None
         proc = subprocess.run(command(c, job["action"], job["id"], digest),
                               input=data, capture_output=True, timeout=30)
-        if proc.returncode or not proc.stdout or len(proc.stdout)>65536:
+        receipt = entry_reply(proc)
+        if receipt is None:
             return None
-        receipt = json.loads(proc.stdout)
+        job["remote_accepted"] = True
         if receipt.get("exit_code") == 75:
             return None
     validate_receipt(receipt, c, job["action"], job["id"], digest)

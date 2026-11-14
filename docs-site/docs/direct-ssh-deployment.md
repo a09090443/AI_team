@@ -61,6 +61,10 @@ start 封裝前會預檢版控路徑：缺件回 `SOURCE_MISSING_PATHS`，未提
 - `upgrade`：Agent VM 直連設定也寫 `"mode": "sandbox"` 時，`ai-team-ssh-deploy.service` 啟動後與每 10 分鐘把本機 skill 的
   `ssh_target.py`、`guest.py` 送到目標。目標先編譯檢查，內容相同回 `UPGRADE_UNCHANGED`；有 unit 仍在執行的作業時延後（已停止的殘留標記不會擋升級）；否則原子替換固定入口與 guest。
   journal 會出現 `ENTRY_UPGRADE: …`。所以部署新版 orchestrator 並重啟 `ai-team-ssh-deploy.service` 後，沙箱目標的入口自動跟上，不需要再登入目標。
+- **CRLF 防護**：`compile()` 接受 CRLF，但 shebang 後的 `\r` 會讓 sudo 回 `No such file or directory`，入口從此無法執行，也就無法再自動升級修好自己。
+  所以送出端遇到 CR 直接拒送（journal：`ENTRY_UPGRADE: failed (ValueError: ENTRY_CRLF: …)`），目標端也拒收（`UPGRADE_REJECTED: … CR line endings`），
+  `check-source.sh` 另會擋下含 CR 的 `.py`／`.sh`。已被裝壞的入口只能由管理者在目標 VM 去掉 CR（先備份，再以 sha256 對照 Agent VM 的副本）或重跑 `install-ssh-target.sh`。
+- journal 持續出現 `ENTRY_UPGRADE: … no confirmed reply` 代表執行器拿不到入口的收據；`ENTRY_UPGRADE: failed (EntryUnavailable: TARGET_ENTRY_UNAVAILABLE: …)` 則是 SSH 連得上但入口本身無法執行，需管理者修入口。
 
 把既有目標轉成 sandbox：在服務配置加 `"mode": "sandbox"`（原 service 設定可保留，固定操作照舊可用），由管理者**最後一次**重跑
 `install-ssh-target.sh`；再在 Agent VM 直連設定加 `"mode": "sandbox"` 並重啟 `ai-team-ssh-deploy.service`。
@@ -96,6 +100,10 @@ Linux 精確 cgroup 清理、獨立 SSH health 與原收據對帳已實測；所
 2. client 預設最多等待 30 秒；未有終態結果就回 OPERATION_PENDING（通常工具 exit 0），保留原請求 ID。模型應立即以 BLOCKED 交回，並在失敗報告或檢查證據列出原 job ID；不要長輪詢、從 prepare 重排或新建相同 start。
 3. FlowEngine 讀取綁定 task、node、目前 HEAD 的 journal。等待原 job 時沒有模型程序，但仍保留中央執行槽，其他同實例工作繼續排隊；完成或到 journal deadline 後，帶檢查點續同一 activeNode，不新增節點造訪、重跑或 transition 計數。
 4. QUEUED/RUNNING/UNCERTAIN 都視為尚待對帳；到期不宣稱成功，也不自動重送 start。恢復以結果指紋限次，時間戳更新不產生新恢復機會；失敗／未知仍須診斷或沿既有受阻路由處理。
+   journal 的 deadline 是受理後 2 小時；入口一修好且未過期限，執行器會以同一 job ID 送出尚未被目標受理的作業。
+   - **入口失效快速結束**：SSH 連得上、但入口沒有回 JSON 收據且 ssh 結束碼不是 255（例如 sudo 找不到入口或直譯器）時，執行器把 job 標成 `UNCERTAIN`／`TARGET_ENTRY_UNAVAILABLE`。
+     若目標**從未受理**這個 job（journal 的 `remote_accepted` 為 false），持續 60 秒後改為 `FAILED`（exit 1，證據寫明沒有遠端作業執行），流程立即依失敗分流，不必等滿 2 小時。
+     目標已受理（曾回過收據），或舊版建立、沒有 `remote_accepted` 欄位的 job，仍保守等待對帳到 deadline。ssh 自身失敗（結束碼 255，例如網路中斷）也照舊等待。
 5. 收據若先於模型回報轉為終態，協調器仍會依回報的原 job ID 與目標核對可信 journal。成功就接續未完成的步驟，失敗則以實際結束碼分流。
 
 模型逾時須為 RuntimeTimedOut、phase=MODEL 且 cleanup.status=CONFIRMED，FlowEngine 才啟動逾時對帳。清理只停止本次模型 sandbox unit 的整個 cgroup，保留 stdout／session，不會停止 Agent 獨立 executor 或遠端部署 job。
