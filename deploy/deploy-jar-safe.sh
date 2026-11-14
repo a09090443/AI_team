@@ -25,7 +25,8 @@ prune_backups() {
 }
 if [[ -n $instance ]]; then patterns=("ai-team-$instance-*")
 else patterns=('ai-team-[0-9]*' 'ai-team-check-*' 'ai-team-selftest-*' 'ai-team-preflight-*' 'ai-team-codex-preflight-*'); fi
-if [[ -n $(systemctl --user list-units "${patterns[@]}" --no-legend) ]]; then echo "仍有本實例的 unit 在跑（${patterns[*]}），停止"; exit 1; fi
+# 常駐的 <實例>-ssh-deploy.service 部署執行器同字首但不是工作，排除。
+if [[ -n $(systemctl --user list-units "${patterns[@]}" --no-legend --plain | awk '$1 !~ /-ssh-deploy\.service$/') ]]; then echo "仍有本實例的 unit 在跑（${patterns[*]}），停止"; exit 1; fi
 snapshot() { sqlite3 -readonly ai-team.db "select group_concat(id||':'||state||':'||updated_at, ' ') from task where state not in ('COMPLETED','PR_CREATED','ABORTED','FAILED');"; }
 before=$(snapshot); echo "before=$before"
 backup=$(mktemp -d "$root/orchestrator-backup.XXXXXX")

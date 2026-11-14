@@ -5,7 +5,7 @@
 # 不指名任何任務、角色或專案。先前每一版部署腳本都寫死檢查 task-1014，
 # 換一台機器或沒有那個任務就直接失敗；而「任務停在哪個節點、剩幾次額度」這類
 # 會合法變動的值也不該當成前置斷言。真正的保證只有兩個：
-#   1. 部署時沒有任何任務在跑或排隊、沒有 agent 程序
+#   1. 部署時本實例沒有任何任務在跑或排隊、沒有本實例的 agent／驗證 unit
 #   2. 所有任務資料與所有任務工作區在部署前後完全一致，否則自動回復
 # 不修改任何任務狀態、不續跑、不調整額度或核准。
 set -euo pipefail
@@ -28,15 +28,38 @@ previous=$(sha256sum "$root/orchestrator/target/$jar" | cut -d' ' -f1)
 test "$expected" != "$previous" || { echo "候選版本與線上相同，不需部署"; exit 0; }
 echo "候選 $expected（$summary）；線上 $previous"
 
-# ---- 部署時不能有任何東西在跑 ----
-test -z "$(sqlite3 -readonly "$root/ai-team.db" \
-  "select id from task where state like '%RUNNING' or state in ('QUEUED','RESUME_QUEUED','TRIAGE_QUEUED');")"
-test -z "$(pgrep -f 'claude|codex|opencode' || true)"
-
-# ---- 來源 teams＋實例 overlay 合併後，所有團隊配置都要通過靜態驗證 ----
 instance_env() {
   bash -c 'set -a; . "$1/env.sh" >/dev/null 2>&1; [ -f "$1/team.env" ] && . "$1/team.env" >/dev/null 2>&1; printf %s "${!2:-}"' _ "$root" "$1"
 }
+
+# ---- 部署時本實例不能有任何東西在跑 ----
+running=$(sqlite3 -readonly "$root/ai-team.db" \
+  "select group_concat(id||':'||state, ' ') from task where state like '%RUNNING' or state in ('QUEUED','RESUME_QUEUED','TRIAGE_QUEUED');")
+test -z "$running" || { echo "仍有執行中或排隊的任務（$running），停止"; exit 1; }
+# 模型、基準驗證與預檢都在 AiTeamProperties.unitPrefix() 命名的 systemd unit 內執行。只看本實例的 unit：
+# 同一台 VM 另一個實例重啟後跑基準驗證，不該擋住這裡（舊版用全機 pgrep，會把別的實例甚至呼叫者自己的指令列當成本實例的工作）。
+instance=$(instance_env AI_TEAM_INSTANCE)
+if [[ -n $instance ]]; then unit_patterns=("ai-team-$instance-*")
+else unit_patterns=('ai-team-[0-9]*' 'ai-team-check-*' 'ai-team-selftest-*' 'ai-team-preflight-*' 'ai-team-codex-preflight-*'); fi
+# 常駐的 <實例>-ssh-deploy.service 部署執行器同字首但不是工作，排除。
+units=$(systemctl --user list-units "${unit_patterns[@]}" --no-legend --plain 2>/dev/null \
+  | awk '$1 !~ /-ssh-deploy\.service$/ {print $1}' | tr '\n' ' ')
+test -z "${units// /}" || { echo "仍有本實例的 unit 在跑（$units），停止"; exit 1; }
+# 未經 systemd 沙箱時模型是本實例服務的子程序：只檢查本實例 JAR 程序底下的 agent CLI。
+service_jar="$root/orchestrator/target/$jar"
+agents=$(ps -eo pid=,ppid=,args= | awk -v jar="$service_jar" '
+  { pid[NR]=$1; parent[$1]=$2; line[$1]=$0 }
+  index($0, " " jar) { root_pid[$1]=1 }
+  END {
+    for (i = 1; i <= NR; i++) {
+      p = pid[i]; q = parent[p]; hops = 0
+      while (q != "" && q != 0 && !(q in root_pid) && hops++ < 64) q = parent[q]
+      if ((q in root_pid) && line[p] ~ /(claude|codex|opencode)/) printf "%s ", p
+    }
+  }')
+test -z "$agents" || { echo "仍有本實例服務底下的 agent 程序（PID $agents），停止"; exit 1; }
+
+# ---- 來源 teams＋實例 overlay 合併後，所有團隊配置都要通過靜態驗證 ----
 repo_path=$(instance_env AI_TEAM_REPO)
 definition=$(instance_env AI_TEAM_DEFINITION)
 overlay=$(instance_env AI_TEAM_TEAM_OVERLAY); overlay=${overlay:-$root/team-overlay}
