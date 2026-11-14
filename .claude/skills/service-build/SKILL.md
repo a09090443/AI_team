@@ -72,7 +72,7 @@ start 若回 SOURCE_MISSING_PATHS，表示目前HEAD缺少必要的版控部署�
 
 ## 持久作業與接續
 
-固定工具等待最多30秒；OPERATION_PENDING表示原job已受理。本輪立即回BLOCKED等待系統接續，不要持續輪詢或重送start。系統在模型以外追蹤原job，沿用activeNode、來源與節點次數。模型逾時不代表遠端失敗；系統核對已保存結果後續剩餘步驟，不要求真人重啟執行器。
+固定工具每次最多等待100秒；OPERATION_PENDING表示原job已受理。回應的next=call_again時，直接再執行同一個指令接著等同一job（不會重送）；next=handback才結束本輪回BLOCKED等待系統接續。不要用sleep自行輪詢或重送start。系統在模型以外追蹤原job，沿用activeNode、來源與節點次數。模型逾時不代表遠端失敗；系統核對已保存結果後續剩餘步驟，不要求真人重啟執行器。
 同一任務、來源HEAD與目標已有verified prepare/start時沿用檢查點，只補缺少的health。存在未取回的pending action時先呼叫該action收取結果。checks.operation_id仍填配置操作ID，job ID寫在evidence，不加到operation_id尾端。
 SSH回覆遺失時查原job的result/status；固定工具可安全用同ID重新送達，不能另建ID重複部署。遠端job由獨立systemd unit執行，與SSH/模型程序分開。只有使用者明確中斷或中止才取消原job；AWAIT_HUMAN與模型逾時不代表取消。
 失敗先讀固定diagnose的原job錯誤與資源/服務狀態，依具體原因修復。新版本啟動或健康失敗時固定工具嘗試回復上一個有效程式版本，保留資料與機密；回復成功也不能把原部署填成成功。沒有可用上一版或回復失敗時如實回報。

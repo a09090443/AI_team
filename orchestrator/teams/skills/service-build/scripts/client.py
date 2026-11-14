@@ -15,6 +15,22 @@ ACTIONS = {"prepare", "start", "health", "diagnose"}
 # Only targets the administrator declared sandbox accept exec; the target VM enforces that, not this client.
 SANDBOX_ACTIONS = {"exec"}
 SCRIPT_LIMIT = 256 * 1024
+# One call stays under every runtime's default command timeout (Claude Code Bash: 120 s).
+WAIT_PER_CALL = 100
+# Repeat calls for the same job may keep waiting this long after the request was created; after that
+# the role hands back BLOCKED so a slow job never pins a model turn. Most build/start jobs finish within it.
+WAIT_PER_JOB = 300
+
+
+def pending_view(request):
+    """OPERATION_PENDING output; next says whether calling the same command again may still wait."""
+    view = dict(status="OPERATION_PENDING", execution_state="RUNNING", id=request["id"],
+                action=request["action"], task=request["task"])
+    if request.get("script"):
+        view["script"] = request["script"]
+    created = request.get("created")
+    view["next"] = "call_again" if isinstance(created, int) and time.time() < created + WAIT_PER_JOB else "handback"
+    return view
 
 
 def workspace():
@@ -131,7 +147,7 @@ def cancellation_requested(home, job):
         return False
 
 
-def submit(action, timeout=30, script=None):
+def submit(action, timeout=WAIT_PER_CALL, script=None):
     if action not in ACTIONS | SANDBOX_ACTIONS or (action in SANDBOX_ACTIONS) != (script is not None):
         raise ValueError("unsupported service action")
     root = workspace()
@@ -154,11 +170,7 @@ def submit(action, timeout=30, script=None):
         if request.get("action") != action or request.get("script") != script:
             old = queue / (request["id"] + ".json")
             if not old.exists() or json.loads(old.read_text()).get("exit_code") == 75:
-                pending_view = dict(status="OPERATION_PENDING",execution_state="RUNNING",
-                                    id=request["id"],action=request["action"],task=request["task"])
-                if request.get("script"):
-                    pending_view["script"] = request["script"]
-                print(json.dumps(pending_view))
+                print(json.dumps(pending_view(request)))
                 return 0
             pending.unlink()
     if not pending.exists():
@@ -184,7 +196,8 @@ def submit(action, timeout=30, script=None):
         if script is not None:
             request["script"] = script
         atomic_json(pending, request)
-    deadline = time.monotonic() + timeout
+    created = request.get("created") if isinstance(request.get("created"), int) else int(time.time())
+    deadline = time.monotonic() + max(0, min(timeout, created + WAIT_PER_JOB - time.time()))
     while True:
         result = queue / (request["id"] + ".json")
         if result.exists():
@@ -196,7 +209,7 @@ def submit(action, timeout=30, script=None):
                 pending.unlink(missing_ok=True)
                 return int(data["exit_code"])
         if result.exists() and data["exit_code"] == 75:
-            print(json.dumps({"status":"OPERATION_PENDING","execution_state":"RUNNING","id":request["id"],"action":action,"task":request["task"]}))
+            print(json.dumps(pending_view(request)))
             return 0
         accepted = queue / (request["id"] + ".accepted")
         trusted_job = root.parent.parent / "operation-jobs" / request["task"] / (request["id"]+".json")
@@ -209,8 +222,7 @@ def submit(action, timeout=30, script=None):
                 print("SERVICE_EXECUTOR_OFFLINE: request retained")
                 return 75
         if time.monotonic() >= deadline:
-            print(json.dumps({"status": "OPERATION_PENDING", "execution_state": "RUNNING", "id": request["id"],
-                              "action": action, "task": request["task"]}))
+            print(json.dumps(pending_view(request)))
             return 0
         time.sleep(min(2, max(0, deadline - time.monotonic())))
 

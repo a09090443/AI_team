@@ -281,6 +281,41 @@ class AgentSideTests(unittest.TestCase):
             shown = json.loads(output.call_args[0][0])
             self.assertEqual(("OPERATION_PENDING", "deploy/sit/a.sh"), (shown["status"], shown["script"]))
             self.assertEqual(request, json.loads((queue / "request.json").read_text()))
+            self.assertEqual("handback", shown["next"])  # created long ago: the per-job wait is used up
+
+    def test_same_job_may_wait_again_only_within_job_window(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = fx.workspace(tmp)
+            queue = fx.queue(root)
+            (root / "deploy/sit/a.sh").write_text("true")
+            (queue / ("a" * 32 + ".accepted")).touch()
+            for age, expected in ((10, "call_again"), (client.WAIT_PER_JOB + 1, "handback")):
+                request = dict(id="a" * 32, action="exec", task="123", created=int(time.time()) - age,
+                               script="deploy/sit/a.sh")
+                (queue / "request.json").write_text(json.dumps(request))
+                started = time.monotonic()
+                with self.subTest(age=age), patch.object(client, "workspace", return_value=root), \
+                        patch("builtins.print") as output:
+                    self.assertEqual(0, client.submit("exec", timeout=0, script="deploy/sit/a.sh"))
+                    shown = json.loads(output.call_args[0][0])
+                    self.assertEqual(("a" * 32, expected), (shown["id"], shown["next"]))
+                self.assertLess(time.monotonic() - started, 5)
+                self.assertTrue((queue / "request.json").exists())
+
+    def test_wait_never_exceeds_job_window(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = fx.workspace(tmp)
+            queue = fx.queue(root)
+            (root / "deploy/sit/a.sh").write_text("true")
+            (queue / ("a" * 32 + ".accepted")).touch()
+            request = dict(id="a" * 32, action="exec", task="123", created=int(time.time()) - client.WAIT_PER_JOB,
+                           script="deploy/sit/a.sh")
+            (queue / "request.json").write_text(json.dumps(request))
+            started = time.monotonic()
+            with patch.object(client, "workspace", return_value=root), patch("builtins.print") as output:
+                self.assertEqual(0, client.submit("exec", script="deploy/sit/a.sh"))
+            self.assertLess(time.monotonic() - started, 5)
+            self.assertEqual("handback", json.loads(output.call_args[0][0])["next"])
 
     def test_new_exec_request_records_script(self):
         with tempfile.TemporaryDirectory() as tmp:

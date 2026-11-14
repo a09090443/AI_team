@@ -128,7 +128,7 @@ Gate.SERVICE 不能以設定檔產出宣稱完成；啟動或健康檢查失敗�
 
 舊版曾先因模型逾時轉 AWAIT_HUMAN，之後遠端才產生 start 成功收據；未接單的 health 又被誤稱執行器離線。不能從模型逾時推論部署失敗，見[SSH 直連部署](direct-ssh-deployment.md)。
 
-1. 工具等待預設 30 秒後回 OPERATION_PENDING，模型以 BLOCKED 交回。FlowEngine 以工作區外的可信 journal 判定是否等待，不只比對模型文字；保留中央執行槽，沒有模型長輪詢。
+1. 工具每次最多等待 100 秒後回 OPERATION_PENDING；`next=call_again` 時模型再執行同一指令接著等，同一 job 滿 300 秒（`next=handback`）才以 BLOCKED 交回（見 [SSH 直連部署](direct-ssh-deployment.md#持久長作業恢復)）。FlowEngine 以工作區外的可信 journal 判定是否等待，不只比對模型文字；保留中央執行槽，沒有模型長輪詢。
 2. 真正模型逾時拋 RuntimeTimedOut extends AgentRuntime.RuntimeExecutionException，可由 RuntimeTimedOut.find(Throwable) 取得。只有 phase=MODEL 且 cleanup=CONFIRMED 才先對帳；PREFLIGHT、清理 FAILED／UNKNOWN 或沒有有效 journal 不走此自動恢復。
 3. 對帳綁 task、node、HEAD 及已驗證結果；執行中查原 job，成功只補缺少步驟，失敗先診斷，UNCERTAIN 不改稱成功或另送 start。續同 activeNode 不新計次，不拿部分模型輸出當完成報告。
 4. 結果指紋限制同一檢查點只恢復一次；timeout 恢復另受 SystemFailure.RETRY_LIMIT（2）限制，避免未知作業造成無限模型重開。

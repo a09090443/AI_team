@@ -238,7 +238,7 @@ Agent VM 的 systemd 固定部署執行器以 SSH 公鑰直連目標 VM；網路
 
 client → Agent VM 固定 executor → SSH root 固定入口 → 獨立 systemd job／持久 result。角色仍只呼叫四個固定業務操作；result/status/cancel 由執行器管理，不給模型任意 SSH。Agent journal 與遠端 root 收據分開保存，SQLite 連線明確關閉，heartbeat 獨立於工作區。
 
-OperationJobs 驗證 task／node／HEAD 與結果綁定；ConfiguredExecutor 注入系統檢查點。client 預設等待 30 秒後交回 OPERATION_PENDING，模型立即 BLOCKED；FlowEngine 在一般受阻路由之前等待 journal，沒有模型程序但保留中央執行槽，續同 activeNode 不新計次。RuntimeTimedOut 的 MODEL 階段須 cleanup=CONFIRMED 才可走逾時對帳；精確模型 unit 的 cgroup 清理不波及獨立 executor／遠端 job。
+OperationJobs 驗證 task／node／HEAD 與結果綁定；ConfiguredExecutor 注入系統檢查點。client 每次最多等待 100 秒後交回 OPERATION_PENDING（附 next），同一 job 300 秒內模型再呼叫接著等，之後才 BLOCKED；FlowEngine 在一般受阻路由之前等待 journal，沒有模型程序但保留中央執行槽，續同 activeNode 不新計次。RuntimeTimedOut 的 MODEL 階段須 cleanup=CONFIRMED 才可走逾時對帳；精確模型 unit 的 cgroup 清理不波及獨立 executor／遠端 job。
 
 重啟恢復由 TaskOrchestrator.recoverOnStartup → FlowEngine.recover 經中央佇列排原 task；只涵蓋原執行中／RESUME_QUEUED、node=activeNode 且有有效同 HEAD journal 的配置任務。舊 AWAIT_HUMAN 另需管理者先核實收據，再以一次 AI_TEAM_RESUME_OPERATION_TASK 指定。真人中斷產生精確 job 取消要求，模型 timeout／SSH 斷線本身不取消。
 

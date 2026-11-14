@@ -97,7 +97,11 @@ Linux 精確 cgroup 清理、獨立 SSH health 與原收據對帳已實測；所
 ### 模型回合與部署作業分開
 
 1. client 在工作區的服務部署目錄（例如 `docs/docker/sit/.agent-service/`）保存請求；固定執行器另在實例 home 的 operation-jobs/&lt;task&gt;/&lt;id&gt;.json 寫入持久 journal。後者位於模型工作區外，由執行器保存，不能以模型自陳代替。
-2. client 預設最多等待 30 秒；未有終態結果就回 OPERATION_PENDING（通常工具 exit 0），保留原請求 ID。模型應立即以 BLOCKED 交回，並在失敗報告或檢查證據列出原 job ID；不要長輪詢、從 prepare 重排或新建相同 start。
+2. client 每次呼叫最多等待 100 秒（低於 Claude Code Bash 預設的 120 秒指令逾時）；未有終態結果就回 OPERATION_PENDING（通常工具 exit 0），保留原請求 ID，並附 `next`：
+   - `call_again`：同一 job 自請求建立起未滿 300 秒。模型直接再執行同一個指令，client 接著等同一 job，不會重送；
+   - `handback`：已滿 300 秒。模型以 BLOCKED 交回，並在失敗報告或檢查證據列出原 job ID，由系統在模型外等待後接續。
+   每次呼叫的等待也不會超過 300 秒的上限，所以單一 job 最多讓模型多等約 5 分鐘。Codex 0.166 已實測單一指令可阻塞 250 秒；opencode 的指令逾時未實測，若它先中斷指令，job 仍在背景執行，再呼叫同一指令即可接回。不要用 sleep 自行輪詢、從 prepare 重排或新建相同 start。
+   （2026-11-15 前是固定等待 30 秒就交回，建置／啟動類作業常需 2～4 分鐘，每個作業都要重開一輪模型。）
 3. FlowEngine 讀取綁定 task、node、目前 HEAD 的 journal。等待原 job 時沒有模型程序，但仍保留中央執行槽，其他同實例工作繼續排隊；完成或到 journal deadline 後，帶檢查點續同一 activeNode，不新增節點造訪、重跑或 transition 計數。
 4. QUEUED/RUNNING/UNCERTAIN 都視為尚待對帳；到期不宣稱成功，也不自動重送 start。恢復以結果指紋限次，時間戳更新不產生新恢復機會；失敗／未知仍須診斷或沿既有受阻路由處理。
    journal 的 deadline 是受理後 2 小時；入口一修好且未過期限，執行器會以同一 job ID 送出尚未被目標受理的作業。

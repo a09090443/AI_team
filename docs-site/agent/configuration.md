@@ -249,7 +249,7 @@ Agent VM 的 systemd 固定部署執行器以 SSH 公鑰直連目標 VM；網路
 
 AI_TEAM_RESUME_OPERATION_TASK 在一般 recoverOnStartup 之後讀取，只接受單一數字任務編號；限定配置流程、非角色對話、AWAIT_HUMAN、node=activeNode、乾淨工作區與有效同 HEAD journal。由中央佇列排 RESUME_QUEUED；不是套用新快照、重新核准計畫或核准 PR。管理者應先以固定 executor --reconcile 驗證原成功收據，用後清除變數；程式不會自動修改你的 env 檔。
 
-沒有新增團隊 JSON 的 operation timeout 設定。client 等待預設 30 秒後交回 OPERATION_PENDING；executor journal deadline 建立時為 7200 秒；遠端 root job 的 RuntimeMaxSec 為 7000 秒、TimeoutStopSec 為 30 秒；模型 sandbox 的 TimeoutStopSec 為 3 秒。這些是不同層的來源常數，不能用調高節點 timeoutSeconds 取代結果對帳。
+沒有新增團隊 JSON 的 operation timeout 設定。client 每次最多等待 100 秒（`WAIT_PER_CALL`）後交回 OPERATION_PENDING，同一 job 在 300 秒內（`WAIT_PER_JOB`）可再呼叫接著等；executor journal deadline 建立時為 7200 秒；遠端 root job 的 RuntimeMaxSec 為 7000 秒、TimeoutStopSec 為 30 秒；模型 sandbox 的 TimeoutStopSec 為 3 秒。這些是不同層的來源常數，不能用調高節點 timeoutSeconds 取代結果對帳。
 
 標準佈局下，Java 依 AI_TEAM_HOME、Python 依 workspace 的 home 定位 operation-jobs、operation-cancellations、operation-executor-heartbeat。journal 不在模型工作區；自訂 workspaces 位置時須核對兩者是否指向同一實例 home，不可假稱任意佈局已實測。可信 prepare/start 只在 task／activeNode／target／HEAD 相符時重用，health 仍須核對 start release。詳見[直連部署](/docs/direct-ssh-deployment)。
 

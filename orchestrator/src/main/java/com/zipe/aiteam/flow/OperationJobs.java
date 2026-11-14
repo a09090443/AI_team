@@ -40,7 +40,7 @@ public final class OperationJobs {
                 out.append('\n');
             }
             out.append("若工具已有未取回的pending action，先呼叫該action收取原結果，不能從prepare重新排。已成功操作不可重送或重建；依同一來源檢查點只補缺少步驟。FAILED先診斷並在既有授權內修復；RUNNING/UNCERTAIN查原job結果，不新增重複操作。\n")
-                    .append("固定工具若回OPERATION_PENDING，這不是失敗；本輪立即交回BLOCKED並說明等待系統作業即可，不要長時間輪詢、不要請使用者重啟。系統等待完成後會自動接續，不消耗新節點重跑次數。\n");
+                    .append("固定工具若回OPERATION_PENDING，這不是失敗；next=call_again時再執行同一指令接著等原job，next=handback才交回BLOCKED並說明等待系統作業，不要用sleep自行輪詢、不要請使用者重啟。系統等待完成後會自動接續，不消耗新節點重跑次數。\n");
             return Diagnostics.safe(Diagnostics.clip(out.toString(), 12000));
         }
     }
@@ -91,6 +91,6 @@ public final class OperationJobs {
         }
     }
     public static String instruction() {
-        return "\n【持久長作業執行契約】工具回OPERATION_PENDING表示已受理、尚在背景執行，不是失敗。立即結束本輪模型並以BLOCKED回報，在 failure_report.evidence 寫原 job ID，在 observed_error 寫 OPERATION_PENDING；系統會對帳後接續。不要每隔幾秒輪詢、不要新建同一start、不要要求真人重新授權。已成功的同來源操作沿用系統檢查點，只補缺少驗證。\n";
+        return "\n【持久長作業執行契約】工具回OPERATION_PENDING表示已受理、尚在背景執行，不是失敗。回應next=call_again時再執行同一指令接著等原job（不會重送）；next=handback才結束本輪模型並以BLOCKED回報，在 failure_report.evidence 寫原 job ID，在 observed_error 寫 OPERATION_PENDING；系統會對帳後接續。不要每隔幾秒輪詢、不要新建同一start、不要要求真人重新授權。已成功的同來源操作沿用系統檢查點，只補缺少驗證。\n";
     }
 }

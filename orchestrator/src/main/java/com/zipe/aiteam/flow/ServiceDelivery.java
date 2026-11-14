@@ -129,7 +129,7 @@ public final class ServiceDelivery {
                       + "但不提交、不進 PR，本階段結束後會從工作區移除。checks 的 acceptance_ids 只填部署相關的驗收項目；完成後回審查確認。"
                     : "允許路徑內的檔案由系統核對後代為提交，不需要自行 commit。");
         if (node.gate() == Gate.SERVICE) text += "\nchecks.operation_id只填配置中的原操作ID，不要附加冒號、job或請求ID；工作編號與收據ID放在evidence。"
-                + "持久作業回OPERATION_PENDING時先交回本輪模型，系統會等待後接續；不要把等待填成PASS，也不要重送已成功start。";
+                + "持久作業回OPERATION_PENDING且next=call_again時再執行同一指令接著等；next=handback才交回本輪模型，系統會等待後接續；不要把等待填成PASS，也不要重送已成功start。";
         if (postDevelopment(node)) {
             Set<String> deferred = IssueTracker.deploymentItems(flow, node);
             if (!deferred.isEmpty())
