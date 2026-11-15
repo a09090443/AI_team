@@ -161,6 +161,19 @@ public final class BrowserE2e {
         };
     }
 
+    /**
+     * 讀主 repo 遠端基準（origin/&lt;基準&gt;）已提交的檔案：計畫階段與「啟用瀏覽器 E2E」按鈕用。
+     * 主 repo 工作樹沒快轉時（有修改或分歧），讀工作樹會把已合併的 Playwright 判成未就緒，誤問、甚至重開安裝任務。
+     * 配置沒寫基準分支時退回讀工作樹。
+     */
+    static Function<String, String> baseReader(com.zipe.aiteam.workspace.WorkspaceManager workspaces, Path repository, String baseBranch) {
+        if (baseBranch == null || baseBranch.isBlank()) return directoryReader(repository);
+        return relative -> {
+            try { return workspaces.readBaseText(repository, baseBranch, relative, 1_000_000); }
+            catch (Exception missing) { return null; }
+        };
+    }
+
     /** 系統獨立驗證追加的指令（在 repository 根目錄執行）；先下載瀏覽器，再跑專案的 test:e2e。 */
     static List<List<String>> verificationCommands(BrowserE2ePolicy policy) {
         List<String> head = ".".equals(policy.directory()) ? List.of("npm") : List.of("npm", "--prefix", policy.directory());

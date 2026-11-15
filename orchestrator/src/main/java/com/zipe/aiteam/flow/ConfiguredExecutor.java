@@ -128,7 +128,11 @@ public class ConfiguredExecutor {
         // 瀏覽器 E2E：計畫與驗收階段告知專案是否已就緒；未就緒時計畫可提出詢問（BrowserE2e）。
         var browserE2e = BrowserE2e.policy(flow);
         boolean browserE2eStage = browserE2e != null && (node.gate() == Gate.TEST_PLAN || node.gate() == Gate.VERIFICATION);
-        boolean browserE2eReady = browserE2eStage && BrowserE2e.ready(browserE2e, BrowserE2e.directoryReader(cwd));
+        // 在主 repo 執行（計畫通常還沒有工作區）時讀 origin/<基準>，不讀可能沒快轉的工作樹；任務工作區則讀工作區本身。
+        boolean onMainRepository = cwd.toAbsolutePath().normalize().equals(Path.of(flow.snapshot.repository()).toAbsolutePath().normalize());
+        boolean browserE2eReady = browserE2eStage && BrowserE2e.ready(browserE2e, onMainRepository
+                ? BrowserE2e.baseReader(workspaces, cwd, flow.snapshot.definition().project().baseBranch())
+                : BrowserE2e.directoryReader(cwd));
         boolean browserE2eOffer = browserE2eStage && node.gate() == Gate.TEST_PLAN && BrowserE2e.offerEnabled(flow, browserE2eReady);
         if (browserE2eOffer) schema = BrowserE2e.extendSchema(schema);
         boolean focused = HandoffContext.enabled(flow);

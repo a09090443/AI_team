@@ -36,7 +36,9 @@
 3. **專案就緒後自動生效**：前端目錄有 `playwright.config.{ts,js,mjs,cjs}`，且 `package.json` 有 `test:e2e` script，就算就緒。就緒後：
    - 計畫提示改為引用 `e2e` 操作；
    - 系統獨立驗證在配置指令後追加下載瀏覽器與 `test:e2e` 兩個指令。這兩個指令不佔 `verification.commands` 的 5 個上限；配置有 `commandScopes` 時，只在前端目錄有變更時才跑。
-   - 就緒判定讀 HEAD 已提交的檔案，執行與發布前核對用同一個判定。安裝任務本身也會在它自己的 HEAD 就緒後跑到 E2E。
+   - 獨立驗證的就緒判定讀任務 HEAD 已提交的檔案，執行與發布前核對用同一個判定。安裝任務本身也會在它自己的 HEAD 就緒後跑到 E2E。
+   - 計畫階段（在主 repo 執行、尚無任務工作區）與「啟用瀏覽器 E2E」按鈕讀 `origin/<基準>` 已提交的檔案，不讀主 repo 工作樹；
+     工作樹因有修改或分歧而沒快轉時，才不會把已合併的 Playwright 判成未就緒、重複詢問或重開安裝任務（2026-11-15）。
 
 不要詢問時設 `"offer": false`（展開與自動生效照舊）。基準驗證（`BaselineVerifier`）不追加 E2E。
 需要 `npm`；Codex 驗收節點仍需 `localTestNetwork` 才能連本機預覽伺服器（見下方）。

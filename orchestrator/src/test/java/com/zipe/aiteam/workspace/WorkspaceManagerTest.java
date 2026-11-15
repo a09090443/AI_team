@@ -407,6 +407,22 @@ class WorkspaceManagerTest {
         assertThat(manager.refreshOrigin(ahead, "").syncedHead()).isNull();
     }
 
+    /** 主 repo 工作樹有修改而沒快轉時，讀 origin/基準 仍看得到已合併的新檔（瀏覽器 E2E 就緒判定用）。 */
+    @Test
+    void 讀遠端基準檔案不受未快轉的工作樹影響() throws Exception {
+        Path dirty = tmp.resolve("dirty-base");
+        run(tmp, "git", "clone", "--quiet", origin.toString(), dirty.toString());
+        Files.writeString(dirty.resolve("README.md"), "本機修改\n", StandardCharsets.UTF_8);
+        advanceBase("playwright.config.ts", "export default {}\n");
+        assertThat(manager.refreshOrigin(dirty, "master").syncedHead()).isNull();
+        assertThat(dirty.resolve("playwright.config.ts")).doesNotExist();
+
+        assertThat(manager.readBaseText(dirty, "master", "playwright.config.ts", 1000)).isEqualTo("export default {}\n");
+        assertThatThrownBy(() -> manager.readBaseText(dirty, "master", "web/missing.ts", 1000)).isInstanceOf(WorkspaceManager.WorkspaceException.class);
+        assertThatThrownBy(() -> manager.readBaseText(dirty, "../master", "README.md", 1000)).isInstanceOf(WorkspaceManager.WorkspaceException.class);
+        assertThatThrownBy(() -> manager.readBaseText(dirty, "master", "../outside", 1000)).isInstanceOf(WorkspaceManager.WorkspaceException.class);
+    }
+
     @Test
     void provision_應建立獨立的_clone_並切到任務分支() throws Exception {
         Path ws = manager.provision(task("1001"));

@@ -596,9 +596,24 @@ public class WorkspaceManager {
         public boolean unchanged() { return before.equals(after); }
     }
     public String readCommittedText(String taskId, String commit, String path, int maxBytes) throws WorkspaceException {
+        return readCommittedText(pathFor(taskId), commit, path, maxBytes);
+    }
+
+    /**
+     * 讀主 repo 遠端基準（refs/remotes/origin/&lt;基準&gt;）已提交的檔案，不看工作樹。
+     * 主 repo 的工作樹可能因為有修改或分歧而沒快轉，用它判斷「專案目前有什麼」會落後（例如 PR 已合併卻判成未就緒）。
+     * 檔案不存在時拋 WorkspaceException。
+     */
+    public String readBaseText(Path repository, String baseBranch, String path, int maxBytes) throws WorkspaceException {
+        if (baseBranch == null || !baseBranch.matches("[A-Za-z0-9._/-]{1,200}") || baseBranch.contains(".."))
+            throw new WorkspaceException("無效的基準分支：" + baseBranch);
+        String commit = gitOutput(repository, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/" + baseBranch + "^{commit}");
+        return readCommittedText(repository, commit, path, maxBytes);
+    }
+
+    private String readCommittedText(Path ws, String commit, String path, int maxBytes) throws WorkspaceException {
         if (!commit.matches("[0-9a-f]{40}|[0-9a-f]{64}") || !com.zipe.aiteam.flow.FileComparison.safePath(path))
             throw new WorkspaceException("無效的 Git commit 或檔案路徑");
-        Path ws = pathFor(taskId);
         if (!"commit".equals(gitOutput(ws, "--no-replace-objects", "cat-file", "-t", commit)))
             throw new WorkspaceException("比對版本不是 Git commit");
         String entry = fileIdentity(ws, commit, path, true);

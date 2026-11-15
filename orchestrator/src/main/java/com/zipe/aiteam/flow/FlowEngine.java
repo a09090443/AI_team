@@ -2783,7 +2783,7 @@ public class FlowEngine {
         else if (flow.browserE2eSetup != null) reply = "本任務就是瀏覽器 E2E 安裝任務，不再另開。";
         else if (!catalog.enabled() || (policy = BrowserE2e.policy((next = catalog.snapshot()).definition())) == null)
             reply = "目前載入的配置沒有開啟瀏覽器 E2E（project.browserE2e），請管理者設定後再試。";
-        else if (BrowserE2e.ready(policy, BrowserE2e.directoryReader(Path.of(next.repository()))))
+        else if (BrowserE2e.ready(policy, BrowserE2e.baseReader(workspaces, Path.of(next.repository()), next.definition().project().baseBranch())))
             reply = "專案已經有瀏覽器 E2E（playwright.config 與 test:e2e），新任務會直接使用，不需要再安裝。";
         else for (String id : store.unfinishedTaskIds()) {
             String source;
