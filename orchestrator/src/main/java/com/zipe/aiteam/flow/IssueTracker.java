@@ -144,6 +144,17 @@ public final class IssueTracker {
         if (reason.equals(STALE_REVISION) || reason.equals(MISSING_FIELDS))
             return "【系統格式修正，不計重跑次數】上一份回報的問題追蹤欄位不合格（" + reason + "），整份未被採用。"
                     + "請重送完整回報，issue_revision=" + revision(flow) + rule;
+        if (reason.startsWith(DECISION_NEEDS_REQUIREMENTS)) {
+            // 負責人已在本任務回覆，非需求節點卻自己把待決問題結案（#1051）：缺的只是交給需求階段確認，不需要再問人。
+            String id = reason.substring(DECISION_NEEDS_REQUIREMENTS.length()).strip();
+            JsonNode stored = flow.issueInventory == null ? null : flow.issueInventory.get(id);
+            String requirements = FlowEngine.requirementsNode(flow);
+            if (stored == null || requirements == null || flow.supplements <= stored.path("decision_supplements").asInt()) return null;
+            return "【系統格式修正，不計重跑次數】負責人已在本任務回覆待決問題 " + id + "，但只有需求階段能依回覆把它結案，"
+                    + "上一份回報自行改掉了它的範圍，整份未被採用。請重送完整回報：" + id + " 維持原本的 scope=DECISION 與 description，"
+                    + "把負責人的決定寫進 evidence／reason，route 填需求節點 " + requirements
+                    + "，由它確認需求後再交給下游；不要再請負責人決定同一件事。issue_revision=" + revision(flow) + "。";
+        }
         return null;
     }
 

@@ -290,6 +290,23 @@ class IssueTrackerTest {
         assertThat(IssueTracker.ingest(flow,node(Gate.REQUIREMENTS),r,"42")).isNull();
         assertThat(flow.issueInventory.get("I1").path("scope").asText()).isEqualTo("EXCLUDED");
     }
+    /** #1051：負責人已按按鈕回覆，分流節點卻自己把待決問題結案；只差交回需求階段確認，系統改請它修正一次，不再問人。 */
+    @Test void ownerAlreadyRepliedSoANonRequirementsNodeIsToldToRouteBackInsteadOfAskingAgain() {
+        ObjectNode r = report(); r.withArray("issue_updates").add(issue("I1", "DECISION"));
+        assertThat(IssueTracker.ingest(flow, node(Gate.REQUIREMENTS), r, "42")).isNull();
+        Node report = node(Gate.REPORT);
+        r = report(); r.withArray("issue_updates").add(issue("I1", "REPAIR"));
+        String reason = IssueTracker.ingest(flow, report, r, "42");
+        assertThat(reason).startsWith(IssueTracker.DECISION_NEEDS_REQUIREMENTS);
+        // 還沒有新回覆：維持原本的等人處理。
+        assertThat(IssueTracker.formatCorrection(flow, reason)).isNull();
+
+        flow.supplements++;
+        assertThat(IssueTracker.ingest(flow, report, r.deepCopy(), "42")).startsWith(IssueTracker.DECISION_NEEDS_REQUIREMENTS);
+        assertThat(IssueTracker.formatCorrection(flow, reason)).contains("負責人已在本任務回覆").contains("scope=DECISION")
+                .contains("route 填需求節點 " + FlowEngine.requirementsNode(flow));
+    }
+
     /** #1035：原任務的計數是 2，新任務從 0 起算，負責人要回覆到第三次才放行。 */
     @Test void inheritedDecisionWaitsForOneNewReplyInTheNewTaskNotThePreviousTaskCount() {
         flow.supplements=2;
