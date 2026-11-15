@@ -117,6 +117,10 @@ final class PrReport {
             if (receipt.docOnlyChanges().size() > 30) out.append("  - …等共 ").append(receipt.docOnlyChanges().size()).append(" 個\n");
             return out.toString();
         }
+        if (receipt.e2eScreenshots() != null)
+            out.append("- 瀏覽器 E2E 截圖：").append(receipt.e2eScreenshots() > 0
+                    ? receipt.e2eScreenshots() + " 張，已由系統貼在 Slack 任務討論串（GitHub 沒有上傳圖片的 API，無法放進 PR）"
+                    : "測試沒有留下截圖（專案 playwright.config 的 use 未設 screenshot: 'on'）").append('\n');
         if (receipt.decisions() != null) {
             out.append("- 指令決定（").append(VerificationPlan.summary(receipt.decisions())).append("，系統依變更檔案判定）：\n");
             for (var d : receipt.decisions()) {

@@ -50,6 +50,19 @@
    - 計畫階段（在主 repo 執行、尚無任務工作區）與「啟用瀏覽器 E2E」按鈕讀 `origin/<基準>` 已提交的檔案，不讀主 repo 工作樹；
      工作樹因有修改或分歧而沒快轉時，才不會把已合併的 Playwright 判成未就緒、重複詢問或重開安裝任務（2026-11-15）。
 
+### 截圖（2026-11-15 起）
+
+系統獨立驗證本輪實際跑了 `test:e2e`（略過或重用都不算）時：
+
+1. clone 刪除前，系統把 `<前端目錄>/test-results` 下的 PNG 複製到 `verification-runs/<任務>/e2e-screenshots/<commit>/`，
+   只收一般檔案、不跟隨 symlink，張數與單檔大小沿用 `attachments` 上限（最多 10 張、10 MB）。
+2. 以主 App 貼到任務討論串，檔名是 Playwright 以測試標題命名的子目錄。沒有截圖時改貼一行說明，指出專案要開啟截圖。
+3. PR 說明「系統獨立驗證」段寫截圖張數與「已貼在 Slack 討論串」。GitHub 沒有上傳圖片的 API，所以圖片不放進 PR。
+4. 截圖只給人看，判定仍以測試斷言與 log 雜湊為準；複製或上傳失敗只留稽核與說明，不影響收據與流程。
+
+專案的 `playwright.config` 要在 `use` 設 `screenshot: 'on'`，通過的測試才會留下畫面（Playwright 預設 `off`）。
+安裝任務的固定需求已包含這一項；先前已裝好 Playwright 的專案要另外加上。
+
 ### 怎麼確認任務真的跑了 E2E
 
 agent 自陳不算數，以系統紀錄為準：
@@ -57,7 +70,7 @@ agent 自陳不算數，以系統紀錄為準：
 | 位置 | 看什麼 |
 |---|---|
 | PR 說明「系統獨立驗證」段 | 指令清單有 `npm --prefix <前端目錄> exec -- playwright install --only-shell chromium` 與 `npm --prefix <前端目錄> run test:e2e`，標 ✅ 執行（exit 0）並附紀錄雜湊；標 ⏭️ 略過時後面寫原因（例如變更不在前端目錄） |
-| Slack 討論串 | 「系統獨立驗證」進度卡；有指令被略過或重用時，系統另貼一則「依變更檔案判定」說明 |
+| Slack 討論串 | 「系統獨立驗證」進度卡；跑了 E2E 時系統貼一則「瀏覽器 E2E 已通過」與截圖；有指令被略過或重用時，系統另貼一則「依變更檔案判定」說明 |
 | 稽核紀錄（`audit_log`） | `獨立驗證收據：` 開頭的一筆，內含每個指令的 argv、exit code 與雜湊 |
 | QA 驗收紀錄（PR 說明「驗收紀錄」段） | 頁面驗收項目引用 `e2e` 操作或獨立驗證收據；有附檔時是 `test-results`／`playwright-report` 下的截圖 |
 | 計畫階段提示 | 寫「瀏覽器 E2E 已就緒」；若寫「尚未加入」代表系統判定未就緒，這個任務不會追加 E2E |
@@ -119,6 +132,7 @@ QA 與獨立驗證都不能下載時，快取缺件代表實作階段沒有跑 `
 專案端的 `playwright.config`：
 
 - `webServer` 啟動預覽伺服器並綁 `127.0.0.1`，`reuseExistingServer: false`。
+- `use: { screenshot: 'on' }`，系統才有截圖可以貼到討論串。
 - 不需要額外的 Chromium 參數：Playwright 預設 `chromiumSandbox: false`，實測在雙層沙箱內可啟動。
 - `workers` 從 1 開始；agent 節點 `TasksMax=512`、獨立驗證 `TasksMax=256`，多 worker 前先觀察。
 

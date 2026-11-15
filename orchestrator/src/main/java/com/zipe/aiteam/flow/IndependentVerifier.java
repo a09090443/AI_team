@@ -37,7 +37,16 @@ public class IndependentVerifier {
     public record Receipt(String head, String baseline, String configuration, String startedAt, String completedAt,
                           List<CommandResult> commands, List<String> docOnlyChanges, FileEvidence fileComparison,
                           List<VerificationPlan.Decision> decisions, List<String> changedFiles, String taskId,
-                          @JsonInclude(JsonInclude.Include.NON_NULL) JsonAdditionsComparison.Evidence jsonAdditionsComparison) {
+                          @JsonInclude(JsonInclude.Include.NON_NULL) JsonAdditionsComparison.Evidence jsonAdditionsComparison,
+                          @JsonInclude(JsonInclude.Include.NON_NULL) Integer e2eScreenshots) {
+        /** e2eScreenshots：本輪跑了瀏覽器 E2E 時保留下來的截圖張數（{@link BrowserE2e#collectScreenshots}）；沒跑時為 null。 */
+        public Receipt(String head, String baseline, String configuration, String startedAt, String completedAt,
+                       List<CommandResult> commands, List<String> docOnlyChanges, FileEvidence fileComparison,
+                       List<VerificationPlan.Decision> decisions, List<String> changedFiles, String taskId,
+                       JsonAdditionsComparison.Evidence jsonAdditionsComparison) {
+            this(head, baseline, configuration, startedAt, completedAt, commands, docOnlyChanges, fileComparison,
+                    decisions, changedFiles, taskId, jsonAdditionsComparison, null);
+        }
         public Receipt(String head, String baseline, String configuration, String startedAt, String completedAt,
                        List<CommandResult> commands, List<String> docOnlyChanges, FileEvidence fileComparison,
                        List<VerificationPlan.Decision> decisions, List<String> changedFiles, String taskId) {
@@ -221,10 +230,36 @@ public class IndependentVerifier {
             remember(flow, new VerificationPlan.HistoryEntry(decision.argv(), decision.fingerprint(), flow.snapshot.revision(), head, result.log(), result.sha256()));
         }
         if (!head.equals(workspaces.headSha(task.id())) || !workspaces.clean(task.id())) throw new IllegalStateException("驗證期間來源工作區變更，收據作廢");
+        Integer screenshots = saveScreenshots(task.id(), flow, head, repo, decisions);
         // 收據只依 log 雜湊核對；成功後 clone 與建置產物沒有用途，失敗時才保留給人查。
         VerificationScenes.discard(run);
         return new Receipt(head, flow.baselineRevision, flow.snapshot.revision(), started.toString(), Instant.now().toString(),
-                List.copyOf(results), null, fileEvidence, List.copyOf(decisions), changedFiles, task.id(), jsonEvidence);
+                List.copyOf(results), null, fileEvidence, List.copyOf(decisions), changedFiles, task.id(), jsonEvidence, screenshots);
+    }
+    /** 本輪截圖的保留位置：verification-runs/&lt;task&gt;/e2e-screenshots/&lt;head&gt;；不是驗證現場，clone 回收時不會被刪。 */
+    Path screenshotDirectory(String taskId, String head) {
+        return props.homePath().resolve("verification-runs").resolve(taskId).resolve(BrowserE2e.SCREENSHOTS).resolve(head).toAbsolutePath().normalize();
+    }
+    /**
+     * 本輪實際跑了瀏覽器 E2E 時，在 clone 刪除前把截圖複製出來給人看；沒跑時回 null。
+     * 截圖不是判定依據（判定只看指令結束碼與 log 雜湊），任何失敗只記 warn、回 0，不影響收據。
+     */
+    Integer saveScreenshots(String taskId, FlowRun flow, String head, Path repo, List<VerificationPlan.Decision> decisions) {
+        var policy = BrowserE2e.policy(flow.snapshot.definition());
+        if (policy == null || !BrowserE2e.ran(decisions, policy)) return null;
+        try {
+            Path target = screenshotDirectory(taskId, head);
+            if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) VerificationScenes.deleteTree(target);
+            return BrowserE2e.collectScreenshots(repo, policy, target, flow.snapshot.definition().attachments()).size();
+        } catch (Exception e) {
+            org.slf4j.LoggerFactory.getLogger(IndependentVerifier.class).warn("[{}] 保留 E2E 截圖失敗：{}", taskId, e.toString());
+            return 0;
+        }
+    }
+    /** 已保留的 E2E 截圖（依路徑排序），給系統上傳到討論串；沒有時回空清單。 */
+    public List<Attachments.Candidate> e2eScreenshots(String taskId, String head) {
+        if (taskId == null || !taskId.matches("[0-9]+") || head == null || !head.matches("[0-9a-f]{40,64}")) return List.of();
+        return BrowserE2e.screenshotCandidates(screenshotDirectory(taskId, head));
     }
     /**
      * 實際採用的驗證指令：配置指令，加上專案已就緒時系統追加的瀏覽器 E2E（{@link BrowserE2e#effective}）。

@@ -184,6 +184,11 @@ public class SlackNotifier {
         return upload(token.isBlank() ? clients.get(Identity.SYSTEM) : slack.methods(token), channel, thread, files);
     }
 
+    /** 以主 App 上傳系統產生的檔案（例如獨立驗證的 E2E 截圖）；回傳值同 {@link #uploadConfigured}。 */
+    public String uploadSystem(String channel, String thread, List<com.zipe.aiteam.flow.Attachments.Candidate> files) {
+        return upload(clients.get(Identity.SYSTEM), channel, thread, files);
+    }
+
     /**
      * 下載使用者附檔（InboundFiles.stage 呼叫）。用接收那則訊息的 App token；角色沒有專屬 token 時用主 App。
      * 需要 files:read。只送 token 到 files.slack.com、不跟隨轉址；Slack 回 HTML 代表沒有讀取權限。

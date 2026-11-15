@@ -591,6 +591,7 @@ public class FlowEngine {
                         }
                         store.saveFlow(task.id(), flow);
                         audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE, "獨立驗證收據：" + flow.independentEvidence);
+                        shareE2eScreenshots(task, flow);
                         if (flow.independentEvidence.docOnly())
                             slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "任務 #" + task.id()
                                     + " 只改了文件（系統依 git diff 判定 " + flow.independentEvidence.docOnlyChanges().size()
@@ -3319,6 +3320,26 @@ public class FlowEngine {
         try { executor.execute(request, task.slackChannel(), task.slackThreadTs(), task.requesterUserId()); }
         catch (Exception e) {
             audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_ERROR, "GitHub issue 請求未送出：" + Diagnostics.describe(e));
+        }
+    }
+    /**
+     * 獨立驗證本輪跑了瀏覽器 E2E 時，把保留的截圖以主 App 貼到討論串給人看（2026-11-15）。
+     * 截圖不是判定依據；任何失敗只留說明與稽核，不改變收據與流程。
+     */
+    private void shareE2eScreenshots(Task task, FlowRun flow) {
+        var receipt = flow.independentEvidence;
+        if (receipt == null || receipt.e2eScreenshots() == null) return;
+        try {
+            var shots = verifier.e2eScreenshots(task.id(), receipt.head());
+            slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), BrowserE2e.screenshotNote(task.id(), receipt.head(), shots.size()));
+            if (shots.isEmpty()) return;
+            String error = slack.uploadSystem(task.slackChannel(), task.slackThreadTs(), shots);
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, error == null ? AuditLog.ACTION_STATE : AuditLog.ACTION_ERROR,
+                    "瀏覽器 E2E 截圖" + (error == null ? "已上傳 " + shots.size() + " 張" : "上傳失敗（" + error + "）"));
+            if (error != null) slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                    Attachments.note(new Attachments.Selection(shots, List.of()), error));
+        } catch (Exception e) {
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_ERROR, "瀏覽器 E2E 截圖處理失敗：" + Diagnostics.describe(e));
         }
     }
     /** 報告宣告的附件：系統驗證後上傳到討論串。任何失敗只留說明與稽核，不改變階段結果。 */

@@ -224,6 +224,67 @@ public final class BrowserE2e {
                 scopes == null ? null : List.copyOf(scopes), spec.qaOnlyPaths());
     }
 
+    /** 獨立驗證本輪是否實際執行了 test:e2e（略過或重用都不算）。 */
+    static boolean ran(List<VerificationPlan.Decision> decisions, BrowserE2ePolicy policy) {
+        if (decisions == null || policy == null) return false;
+        List<String> e2e = verificationCommands(policy).get(1);
+        return decisions.stream().anyMatch(d -> d.action() == VerificationPlan.Action.RUN && e2e.equals(d.argv()));
+    }
+
+    static final String SCREENSHOTS = "e2e-screenshots";
+    private static final int SHOT_FILES = 10;
+    private static final long SHOT_BYTES = 10L * 1024 * 1024;
+
+    /**
+     * 從 clone 的 &lt;前端目錄&gt;/test-results 複製 PNG 截圖到 target，保留相對路徑（Playwright 以測試名稱命名子目錄）。
+     * 只收一般檔案、不跟隨 symlink；張數與單檔大小沿用 attachments 政策（沒有時 10 張、10 MB）。
+     */
+    static List<Path> collectScreenshots(Path repo, BrowserE2ePolicy policy, Path target, AttachmentPolicy limits) throws java.io.IOException {
+        Path source = repo.resolve(prefix(policy.directory()) + OUTPUTS.getFirst()).normalize();
+        if (!source.startsWith(repo) || !Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS)) return List.of();
+        int maxFiles = limits == null ? SHOT_FILES : Math.min(limits.maxFiles(), SHOT_FILES);
+        long maxBytes = limits == null ? SHOT_BYTES : Math.min(limits.maxBytes(), SHOT_BYTES);
+        List<Path> shots;
+        try (Stream<Path> walk = Files.walk(source)) {
+            shots = walk.filter(p -> Files.isRegularFile(p, LinkOption.NOFOLLOW_LINKS))
+                    .filter(p -> p.getFileName().toString().toLowerCase(java.util.Locale.ROOT).endsWith(".png"))
+                    .filter(p -> { try { long size = Files.size(p); return size > 0 && size <= maxBytes; } catch (Exception e) { return false; } })
+                    .sorted().limit(maxFiles).toList();
+        }
+        List<Path> copied = new ArrayList<>();
+        for (Path shot : shots) {
+            Path relative = source.relativize(shot);
+            Path out = target.resolve(relative.toString()).normalize();
+            if (!out.startsWith(target)) continue;
+            Files.createDirectories(out.getParent());
+            Files.copy(shot, out, java.nio.file.StandardCopyOption.REPLACE_EXISTING, LinkOption.NOFOLLOW_LINKS);
+            copied.add(out);
+        }
+        return List.copyOf(copied);
+    }
+
+    /** 保留目錄中的截圖，轉成上傳候選：檔名用測試子目錄名稱（Playwright 以測試標題命名），標題附原檔名。 */
+    static List<Attachments.Candidate> screenshotCandidates(Path directory) {
+        if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) return List.of();
+        try (Stream<Path> walk = Files.walk(directory)) {
+            return walk.filter(p -> Files.isRegularFile(p, LinkOption.NOFOLLOW_LINKS)).sorted().limit(SHOT_FILES).map(p -> {
+                Path relative = directory.relativize(p);
+                String test = relative.getNameCount() > 1 ? relative.getName(0).toString() : "";
+                String file = p.getFileName().toString();
+                return new Attachments.Candidate(p, test.isEmpty() ? file : test + ".png", test.isEmpty() ? file : test + "（" + file + "）");
+            }).toList();
+        } catch (Exception e) { return List.of(); }
+    }
+
+    /** 獨立驗證跑完 E2E 後給討論串的說明；沒有截圖時指出原因，讓專案知道要開啟截圖。 */
+    static String screenshotNote(String taskId, String head, int count) {
+        String commit = head == null ? "" : head.substring(0, Math.min(7, head.length()));
+        if (count > 0) return "任務 #" + taskId + " 系統獨立驗證的瀏覽器 E2E 已通過（commit " + commit + "），以下是測試留下的 "
+                + count + " 張截圖，供人檢視；判定以測試斷言為準。";
+        return "任務 #" + taskId + " 系統獨立驗證的瀏覽器 E2E 已通過（commit " + commit + "），但測試沒有留下截圖："
+                + "專案的 playwright.config 要在 use 設 screenshot: 'on'，通過的測試才會留下畫面。";
+    }
+
     /** 測試計畫的系統事實；未設定時回空字串，舊快照提示不變。 */
     static String planNotice(BrowserE2ePolicy policy, boolean ready) {
         if (policy == null) return "";
@@ -266,7 +327,8 @@ public final class BrowserE2e {
         return "為前端目錄 " + dir + " 加入 Playwright 瀏覽器 E2E 測試（使本專案的頁面驗收可以實際開啟頁面驗證）：\n"
                 + "1. " + (p.isEmpty() ? "" : dir + "/") + "package.json 的 devDependencies 加入 @playwright/test，scripts 加入 \"test:e2e\": \"playwright test\"。\n"
                 + "2. 新增 " + p + "playwright.config.ts：只用 chromium；workers 設 1；用 webServer 啟動前端的預覽或開發伺服器，"
-                + "綁定 127.0.0.1 的固定埠，reuseExistingServer 設 false；失敗時保留截圖。\n"
+                + "綁定 127.0.0.1 的固定埠，reuseExistingServer 設 false；use 設 screenshot: 'on'，通過的測試也留下畫面，"
+                + "系統會把截圖貼到任務討論串給人檢視。\n"
                 + "3. 測試不得連到真正的後端、資料庫或外部網站：前端呼叫的 API 一律用 page.route 攔截並回傳固定的假資料。\n"
                 + "4. 為主要頁面寫基本 E2E 測試：頁面能開啟、主要資料能顯示，以及一個主要操作的成功與失敗情況。\n"
                 + "5. " + p + "test-results 與 " + p + "playwright-report 加進 .gitignore。\n"

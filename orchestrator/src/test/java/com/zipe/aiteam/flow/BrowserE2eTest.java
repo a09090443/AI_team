@@ -144,6 +144,41 @@ class BrowserE2eTest {
         assertThat(untouched.resolve(".cache")).doesNotExist();
     }
 
+    @Test void keepsOnlyRegularPngScreenshotsWithinTheLimitsAndNamesThemByTest() throws Exception {
+        Path repo = Files.createDirectories(tmp.resolve("repo"));
+        Path results = Files.createDirectories(repo.resolve("web/test-results"));
+        for (String test : List.of("form-blank-chromium", "form-valid-chromium", "list-chromium")) {
+            Path dir = Files.createDirectories(results.resolve(test));
+            Files.writeString(dir.resolve("test-finished-1.png"), "png");
+            Files.writeString(dir.resolve("trace.zip"), "zip");
+        }
+        Files.write(results.resolve("empty.png"), new byte[0]);
+        try { Files.createSymbolicLink(results.resolve("linked.png"), results.resolve("list-chromium/test-finished-1.png")); }
+        catch (UnsupportedOperationException | java.io.IOException noSymlinks) { /* Windows 無權限時略過這一項 */ }
+        Path target = tmp.resolve("kept");
+        var limits = new AttachmentPolicy(2, 1024, List.of(), List.of());
+
+        List<Path> kept = BrowserE2e.collectScreenshots(repo, new BrowserE2ePolicy("web", null), target, limits);
+        assertThat(kept).containsExactly(target.resolve("form-blank-chromium/test-finished-1.png"),
+                target.resolve("form-valid-chromium/test-finished-1.png"));
+
+        var candidates = BrowserE2e.screenshotCandidates(target);
+        assertThat(candidates).extracting(Attachments.Candidate::name).containsExactly("form-blank-chromium.png", "form-valid-chromium.png");
+        assertThat(candidates.getFirst().title()).isEqualTo("form-blank-chromium（test-finished-1.png）");
+        assertThat(BrowserE2e.collectScreenshots(tmp.resolve("missing"), new BrowserE2ePolicy("web", null), target, null)).isEmpty();
+        assertThat(BrowserE2e.screenshotNote("7", "629f00c5088", 0)).contains("screenshot: 'on'");
+    }
+
+    @Test void onlyARunOfTheE2eCommandCounts() {
+        var policy = new BrowserE2ePolicy("web", null);
+        List<String> e2e = List.of("npm", "--prefix", "web", "run", "test:e2e");
+        var run = new VerificationPlan.Decision(0, e2e, VerificationPlan.Action.RUN, "r", List.of(), "f", null, null, null);
+        var skip = new VerificationPlan.Decision(0, e2e, VerificationPlan.Action.SKIP, "r", List.of(), "f", null, null, null);
+        assertThat(BrowserE2e.ran(List.of(run), policy)).isTrue();
+        assertThat(BrowserE2e.ran(List.of(skip), policy)).isFalse();
+        assertThat(BrowserE2e.ran(null, policy)).isFalse();
+    }
+
     @Test void directoryReaderStaysInsideTheRoot() throws Exception {
         Files.createDirectories(tmp.resolve("web"));
         Files.writeString(tmp.resolve("web/playwright.config.ts"), "x");

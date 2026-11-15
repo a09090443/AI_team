@@ -93,7 +93,7 @@ public final class VerificationScenes {
     }
 
     /** 依賴快取與 .git 物件有唯讀檔與唯讀目錄：先全部設成可寫（Windows 唯讀檔刪不掉），再由深到淺刪除；不跟隨 symlink。 */
-    private static void deleteTree(Path dir) throws IOException {
+    static void deleteTree(Path dir) throws IOException {
         try (Stream<Path> walk = Files.walk(dir)) {
             for (Path p : walk.toList())
                 if (!Files.isSymbolicLink(p)) p.toFile().setWritable(true);

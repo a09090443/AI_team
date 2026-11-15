@@ -299,7 +299,7 @@ true 啟用受控 rules 提案套用，false／省略維持改派。新欄位出
 | `planApprovals` | Map&lt;節點,`PlanApproval`&gt; | 真人核准收據：`plan`、`planRevision`、`baseline`、`configuration`、`user`、`at`。**只由已授權真人指令建立**，不接受 agent 報告裡的 `approved` 欄位 |
 | `approvalHead` | String | 核准當下的 HEAD |
 | `executionContexts` | Map&lt;節點,`OperationPreflight.Evidence`&gt; | 沙箱預檢證據：`workspace`、`head`、`configuration`、`checkedAt`、`log`、`sha256` |
-| `independentEvidence` | `IndependentVerifier.Receipt` | 獨立驗證收據：`head`、`baseline`、`configuration`、`startedAt`、`completedAt`、`commands[]`（每項含 `argv`、`exitCode`、`log`、`sha256`）；`docOnlyChanges`（2026-10-03 新增）非 null 表示純文件變更、依配置略過建置測試，此時 `commands` 為空並列出判定依據的變更檔案。**回滾到舊 JAR 會讀不了含此欄位的任務** |
+| `independentEvidence` | `IndependentVerifier.Receipt` | 獨立驗證收據：`head`、`baseline`、`configuration`、`startedAt`、`completedAt`、`commands[]`（每項含 `argv`、`exitCode`、`log`、`sha256`）；`docOnlyChanges`（2026-10-03 新增）非 null 表示純文件變更、依配置略過建置測試，此時 `commands` 為空並列出判定依據的變更檔案。**回滾到舊 JAR 會讀不了含此欄位的任務**。`e2eScreenshots`（2026-11-15 新增，Integer，null 時不序列化）：本輪實際跑了瀏覽器 E2E 時保留的截圖張數，檔案在 `verification-runs/<task>/e2e-screenshots/<head>/`，不是判定依據；舊 JAR 讀到此欄位同樣會失敗 |
 | `recoveryGrants` | Map&lt;節點,配置版本&gt; | 一次性的 verification 恢復授權 |
 | `recoveryRevisions` | Set&lt;配置版本&gt; | 已用掉恢復授權的配置版本，同一版本不給第二次 |
 | `remediationRecoveryGrants` | Map&lt;節點,commit&gt; | 人工修復後尚待使用的一次性 verification 授權；同時以 `recoveryGrants` 綁定配置版本 |

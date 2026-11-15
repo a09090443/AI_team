@@ -134,6 +134,23 @@ class FlowEngineTest {
         assertThat(flow.blockedFindings).doesNotContainKey("intake").containsKey("triage");
     }
 
+    @Test void browserE2eScreenshotsFromTheIndependentCheckArePostedToTheThread() throws Exception {
+        // #1049：E2E 通過但 PR 與討論串都看不到畫面；截圖要由系統貼到討論串，失敗不影響流程。
+        doAnswer(c -> {
+            FlowRun f = c.getArgument(1);
+            return new IndependentVerifier.Receipt(workspaceHead, f.baselineRevision, f.snapshot.revision(), "start", "end",
+                    List.of(), null, null, null, null, task.id(), null, 1);
+        }).when(verifier).verify(any(), any());
+        Path shot = Files.writeString(tmp.resolve("shot.png"), "png");
+        var candidate = new Attachments.Candidate(shot, "表單空白.png", "表單空白（test-finished-1.png）");
+        when(verifier.e2eScreenshots(any(), any())).thenReturn(List.of(candidate));
+        engine.run(task);
+
+        verify(slack).post(any(), any(), any(), argThat((String t) -> t.contains("瀏覽器 E2E 已通過") && t.contains("1 張截圖")));
+        verify(slack).uploadSystem(any(), any(), eq(List.of(candidate)));
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+    }
+
     @Test void agentExplainsTheDecisionItselfAndTheStopMessageOffersTheChoicesAsButtons() throws Exception {
         // #1014：triage 把三件事寫在 4000 字的 summary 裡，Slack 只露出前 500 字，
         // 最後變成使用者要另外去問。需要人決定的事必須由角色本人完整說清楚，並能一鍵選擇。
