@@ -30,6 +30,8 @@ public class TeamCatalog {
         JsonNode tree = mapper.readTree(Files.readString(file));
         // 操作 argv 只接受簡單字元，Windows 開發機的反斜線改成斜線。
         expandTeamsDir(tree, root.toString().replace('\\', '/'));
+        // project.browserE2e：一行設定展開成固定操作，之後照常經 validate 檢查。
+        BrowserE2e.expand(tree);
         TeamDefinition definition = mapper.treeToValue(tree, TeamDefinition.class);
         validate(definition);
         Map<String,String> assets = new TreeMap<>();
@@ -197,6 +199,7 @@ public class TeamCatalog {
         Consultation.validate(d);
         Attachments.validate(d);
         ProjectSkills.validate(d);
+        BrowserE2e.validate(d);
         if (d.githubIssues() != null)
             require(d.githubIssues().clarifyRounds() >= 1 && d.githubIssues().clarifyRounds() <= 5, "githubIssues.clarifyRounds 須為 1～5");
         for (String id : d.nodes().keySet()) dependencies(d, id, new HashSet<>());

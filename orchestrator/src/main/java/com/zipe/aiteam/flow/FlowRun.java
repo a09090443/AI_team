@@ -57,6 +57,13 @@ public class FlowRun {
     /** 本任務的審查提案已開立的 skill 任務編號；防止重新發布時重複開立。舊快照為 null。 */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public String skillProposalTask;
+    /** 本任務是由哪個任務的瀏覽器 E2E 詢問開立的安裝任務（{@link BrowserE2e}）；有值時不再詢問。舊快照為 null。 */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public String browserE2eSetup;
+    /** 測試計畫提出的瀏覽器 E2E 詢問；setupTask 有值代表負責人已同意並開出安裝任務。舊快照為 null。 */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public BrowserE2eOffer browserE2eOffer;
+    public record BrowserE2eOffer(String reason, String setupTask) {}
     /** 由 GitHub issue 建立的任務：在 issue 提問釐清、PR 合併後關閉該 issue（{@link GitHubIssueFlow}）。舊快照為 null。 */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public GitHubIssueFlow.Link githubIssue;

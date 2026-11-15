@@ -62,7 +62,18 @@ public record TeamDefinition(int version, String id, Project project, Map<String
                           @JsonInclude(JsonInclude.Include.NON_NULL) Boolean jsonAdditionsComparison,
                           @JsonInclude(JsonInclude.Include.NON_NULL) Boolean focusedHandoffs,
                           /** 選填：專案 repo 內的 skill 索引與提案。未設定＝停用（舊快照一律如此），見 {@link ProjectSkills}。 */
-                          @JsonInclude(JsonInclude.Include.NON_NULL) SkillPolicy projectSkills) {
+                          @JsonInclude(JsonInclude.Include.NON_NULL) SkillPolicy projectSkills,
+                          /** 選填：瀏覽器 E2E 預設能力；載入時展開成固定操作，專案就緒才生效。未設定＝停用，見 {@link BrowserE2e}。 */
+                          @JsonInclude(JsonInclude.Include.NON_NULL) BrowserE2ePolicy browserE2e) {
+        public Project(String name, String repositoryEnv, String baseBranch, String buildInstructions,
+                       String testInstructions, List<String> protectedPaths, List<String> cachePaths,
+                       List<String> requiredTools, Verification verification, Map<String, Operation> operations,
+                       boolean requirePlanApproval, boolean autoApprovePlanWhenValid, ServiceTarget serviceTarget,
+                       Autonomy autonomy, Boolean jsonAdditionsComparison, Boolean focusedHandoffs, SkillPolicy projectSkills) {
+            this(name, repositoryEnv, baseBranch, buildInstructions, testInstructions, protectedPaths, cachePaths,
+                    requiredTools, verification, operations, requirePlanApproval, autoApprovePlanWhenValid, serviceTarget,
+                    autonomy, jsonAdditionsComparison, focusedHandoffs, projectSkills, null);
+        }
         public Project(String name, String repositoryEnv, String baseBranch, String buildInstructions,
                        String testInstructions, List<String> protectedPaths, List<String> cachePaths,
                        List<String> requiredTools, Verification verification, Map<String, Operation> operations,
@@ -123,6 +134,14 @@ public record TeamDefinition(int version, String id, Project project, Map<String
      * @param maxOpenProposals 同時進行中的 skill 提案任務上限（proposals 開啟時 1..5）
      */
     public record SkillPolicy(String directory, boolean proposals, int maxOpenProposals) {}
+    /**
+     * 瀏覽器 E2E 預設能力（管理者一行啟用）。
+     * @param directory 前端目錄，相對 repository（可為 "."）
+     * @param offer     專案尚未就緒時，QA 可提出詢問、負責人按鈕同意後由系統開安裝任務；null 視為 true
+     */
+    public record BrowserE2ePolicy(String directory, Boolean offer) {
+        public boolean offers() { return offer == null || offer; }
+    }
     /** 管理者宣告各節點的必要操作；不接受模型新增權限。writes 相對於 repository 根目錄。 */
     public record Operation(List<String> nodes, String directory, List<String> argv, List<String> writes, String scriptSha256) {
         public Operation(List<String> nodes, String directory, List<String> argv, List<String> writes) {

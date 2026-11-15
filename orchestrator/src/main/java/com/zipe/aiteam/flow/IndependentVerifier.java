@@ -134,7 +134,7 @@ public class IndependentVerifier {
         if (!task.id().matches("[0-9]+")) throw new IllegalStateException("無效任務 ID");
         String head = workspaces.headSha(task.id());
         if (!head.matches("[0-9a-f]{40,64}") || !workspaces.clean(task.id())) throw new IllegalStateException("獨立驗證需要已提交且乾淨的最終版本");
-        var spec = flow.snapshot.definition().project().verification();
+        var spec = effectiveSpec(flow, task.id(), head);
         if (spec == null) throw new IllegalStateException("缺少管理者配置的驗證指令");
         FileEvidence fileEvidence = compareFiles(task, flow, head);
         var jsonEvidence = compareJsonAdditions(task, flow, head);
@@ -226,6 +226,20 @@ public class IndependentVerifier {
         return new Receipt(head, flow.baselineRevision, flow.snapshot.revision(), started.toString(), Instant.now().toString(),
                 List.copyOf(results), null, fileEvidence, List.copyOf(decisions), changedFiles, task.id(), jsonEvidence);
     }
+    /**
+     * 實際採用的驗證指令：配置指令，加上專案已就緒時系統追加的瀏覽器 E2E（{@link BrowserE2e#effective}）。
+     * 就緒與否讀 HEAD 已提交的檔案，執行與發布前核對用同一個判定；查不到時視為未就緒。
+     */
+    TeamDefinition.Verification effectiveSpec(FlowRun flow, String taskId, String head) {
+        var spec = flow.snapshot.definition().project().verification();
+        var policy = BrowserE2e.policy(flow.snapshot.definition());
+        if (spec == null || policy == null || taskId == null || !taskId.matches("[0-9]+") || head == null) return spec;
+        boolean ready = BrowserE2e.ready(policy, path -> {
+            try { return workspaces.readCommittedText(taskId, head, path, 1_000_000); }
+            catch (Exception missing) { return null; }
+        });
+        return BrowserE2e.effective(spec, policy, ready);
+    }
     /** 全新 checkout 只有版控檔；釘住每個檔案與 .git，避免測試指令先改產品／測試再回報成功。 */
     static List<Path> pinsFor(Path repo) throws java.io.IOException {
         List<Path> pins = new ArrayList<>(); pins.add(repo.resolve(".git"));
@@ -304,7 +318,7 @@ public class IndependentVerifier {
 
     public String blockingReason(FlowRun flow, String head) {
         Receipt receipt = flow.independentEvidence;
-        var spec = flow.snapshot.definition().project().verification();
+        var spec = receipt == null ? null : effectiveSpec(flow, receipt.taskId(), head);
         if (receipt == null || spec == null) return "缺少系統獨立驗證收據";
         if (!Objects.equals(head, receipt.head()) || !Objects.equals(flow.baselineRevision, receipt.baseline())
                 || !Objects.equals(flow.snapshot.revision(), receipt.configuration())) return "獨立驗證的 commit／需求／配置版本已失效";

@@ -2840,6 +2840,75 @@ class FlowEngineTest {
         assertThat(store.flow(task.id()).orElseThrow().skillProposalTask).isNull();
     }
 
+    /** 目前載入的配置開啟 project.browserE2e（前端目錄 web），並在任務留下測試計畫的詢問。 */
+    private void awaitingWithBrowserE2eOffer() throws Exception {
+        engine.run(task);
+        var current = catalog.snapshot();
+        ObjectNode definition = mapper.valueToTree(current.definition());
+        ((ObjectNode) definition.path("project")).putObject("browserE2e").put("directory", "web");
+        when(catalog.snapshot()).thenReturn(new TeamDefinition.Snapshot(current.revision(),
+                mapper.treeToValue(definition, TeamDefinition.class), current.repository(), current.assets()));
+        when(slack.post(any(), eq("c"), isNull(), anyString())).thenReturn("e2e-thread");
+        var flow = store.flow(task.id()).orElseThrow();
+        flow.browserE2eOffer = new FlowRun.BrowserE2eOffer("列表頁要實際顯示資料", null);
+        store.saveFlow(task.id(), flow);
+    }
+
+    @Test void ownerAgreesToBrowserE2eAndTheSystemOpensOneSetupTask() throws Exception {
+        awaitingWithBrowserE2eOffer();
+        Task.State before = store.find(task.id()).orElseThrow().state();
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(store.find(task.id()).orElseThrow(), BrowserE2e.COMMAND, "u", jobs::add);
+
+        String childId = store.flow(task.id()).orElseThrow().browserE2eOffer.setupTask();
+        assertThat(childId).isNotNull().isNotEqualTo(task.id());
+        var child = store.flow(childId).orElseThrow();
+        assertThat(child.browserE2eSetup).isEqualTo(task.id());
+        assertThat(child.acceptanceOwner).isEqualTo("u");
+        assertThat(child.receipts).isEmpty();
+        assertThat(store.find(childId).orElseThrow().requestText())
+                .contains("web/playwright.config.ts").contains("page.route").contains("列表頁要實際顯示資料");
+        assertThat(store.find(childId).orElseThrow().slackThreadTs()).isEqualTo("e2e-thread");
+        assertThat(jobs).hasSize(1);
+        // 不改本任務的狀態，也不啟動本任務的 agent。
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(before);
+
+        engine.resume(store.find(task.id()).orElseThrow(), BrowserE2e.COMMAND, "u", jobs::add);
+        assertThat(jobs).hasSize(1);
+    }
+
+    @Test void onlyTheOwnerCanEnableBrowserE2eAndAnOpenSetupTaskIsNotDuplicated() throws Exception {
+        awaitingWithBrowserE2eOffer();
+        when(props.allowedUsers()).thenReturn(Set.of("u", "someone-else"));
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(store.find(task.id()).orElseThrow(), BrowserE2e.COMMAND, "someone-else", jobs::add);
+        assertThat(jobs).isEmpty();
+        assertThat(store.flow(task.id()).orElseThrow().browserE2eOffer.setupTask()).isNull();
+
+        var other = new Task("77", "c", "t77", "u", "e2e"); store.save(other);
+        var otherFlow = new FlowRun(catalog.snapshot());
+        otherFlow.browserE2eSetup = "40";
+        store.saveFlow("77", otherFlow);
+        engine.resume(store.find(task.id()).orElseThrow(), BrowserE2e.COMMAND, "u", jobs::add);
+        assertThat(jobs).isEmpty();
+        verify(slack).post(any(), eq("c"), eq("t"), argThat((String t) -> t.contains("安裝任務 #77 尚未結束")));
+    }
+
+    @Test void browserE2eButtonIsRefusedWhenTheConfigurationDoesNotEnableIt() throws Exception {
+        engine.run(task);
+        var flow = store.flow(task.id()).orElseThrow();
+        flow.browserE2eOffer = new FlowRun.BrowserE2eOffer("頁面", null);
+        store.saveFlow(task.id(), flow);
+        List<Runnable> jobs = new ArrayList<>();
+
+        engine.resume(store.find(task.id()).orElseThrow(), BrowserE2e.COMMAND, "u", jobs::add);
+
+        assertThat(jobs).isEmpty();
+        verify(slack).post(any(), eq("c"), eq("t"), argThat((String t) -> t.contains("project.browserE2e")));
+    }
+
     static final String PR_URL = "https://github.com/test/example/pull/1";
     static final String SYNC_BASE = "b".repeat(40);
     /** 先走到 PR_CREATED，再把目前配置改成開啟 PR 衝突同步（舊任務快照沒有這兩個欄位）。 */

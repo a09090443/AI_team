@@ -125,6 +125,12 @@ public class ConfiguredExecutor {
         if (deferUnverifiable) schema = DeferredAcceptance.extendSchema(schema);
         boolean skillProposals = !flow.dialogue && node.gate() == Gate.REVIEW && ProjectSkills.proposalsEnabled(flow);
         if (skillProposals) schema = ProjectSkills.extendSchema(schema);
+        // 瀏覽器 E2E：計畫與驗收階段告知專案是否已就緒；未就緒時計畫可提出詢問（BrowserE2e）。
+        var browserE2e = BrowserE2e.policy(flow);
+        boolean browserE2eStage = browserE2e != null && (node.gate() == Gate.TEST_PLAN || node.gate() == Gate.VERIFICATION);
+        boolean browserE2eReady = browserE2eStage && BrowserE2e.ready(browserE2e, BrowserE2e.directoryReader(cwd));
+        boolean browserE2eOffer = browserE2eStage && node.gate() == Gate.TEST_PLAN && BrowserE2e.offerEnabled(flow, browserE2eReady);
+        if (browserE2eOffer) schema = BrowserE2e.extendSchema(schema);
         boolean focused = HandoffContext.enabled(flow);
         StringBuilder context = new StringBuilder("配置版本：" + flow.snapshot.revision() + "\n專案：" + flow.snapshot.definition().project().name()
                 + "\n指定角色：" + role.name() + "\n工作目錄：" + cwd + "\n本階段契約：" + node.gate() + "；權限：" + node.scope() + "\n使用者需求：\n" + task.requestText()
@@ -196,6 +202,7 @@ public class ConfiguredExecutor {
         if (!flow.dialogue && node.gate() == Gate.TEST_PLAN)
             context.append("\n本階段是訂定測試計畫：plan_revision 由系統在計畫完成後依計畫內容計算，")
                     .append("不是本階段的輸入，不得因為沒有收到 plan_revision 而回報受阻。");
+        if (browserE2eStage) context.append(BrowserE2e.planNotice(browserE2e, browserE2eReady));
         context.append("\n系統固定需求基準 baseline_revision：").append(flow.baselineRevision)
                 .append("\n真人需求／驗收負責人：").append(flow.acceptanceOwner)
                 .append("\n系統獨立驗證收據（不是模型自陳）：").append(receiptView(flow, node))
@@ -276,7 +283,8 @@ public class ConfiguredExecutor {
         var request = new AgentRuntime.RuntimeRequest(task.id(), flow.node, cwd, prompt, context + FailureReport.INSTRUCTIONS
                         + (requirementChange ? FailureReport.REQUIREMENT_CHANGE_INSTRUCTIONS : "")
                         + (deferUnverifiable ? DeferredAcceptance.INSTRUCTIONS : "")
-                        + (skillProposals ? ProjectSkills.PROPOSAL_INSTRUCTIONS : ""),
+                        + (skillProposals ? ProjectSkills.PROPOSAL_INSTRUCTIONS : "")
+                        + (browserE2eOffer ? BrowserE2e.OFFER_INSTRUCTIONS : ""),
                 flow.dialogue ? List.of("Read", "Grep", "Glob") : role.tools(), FailureReport.extendSchema(schema, requirementChange), cp.sessionId(),
                 node.maxTurns(), Duration.ofSeconds(timeoutSeconds), selectedPolicy, cp.model(), role.reasoningEffort());
         java.time.Instant started = java.time.Instant.now();

@@ -41,6 +41,9 @@ FlowEngine 的新任務承接、續跑、發布及角色請求均保留這個身
 設定了 `project.projectSkills` 的團隊，`ConfiguredExecutor` 派工時以 `ProjectSkills.index` 列出專案 repo 內 skill 的名稱與說明；
 開啟提案時審查報告多一欄 `skill_proposal`，PR 開出後 `FlowEngine.openSkillProposal` 另開獨立任務，照正常流程與 PR 真人核准處理。
 詳見[專案 skill 索引與提案](/docs/configurable-team#專案-skill-索引與提案)。
+設定了 `project.browserE2e` 的團隊，`TeamCatalog.load` 以 `BrowserE2e.expand` 展開固定操作；`IndependentVerifier.effectiveSpec`
+在 HEAD 已有 Playwright 設定時追加 E2E 指令；測試計畫未就緒時可填 `browser_e2e_offer`，`FlowEngine.offerBrowserE2e` 貼詢問按鈕，
+負責人按下由 `enableBrowserE2e` 經 `openSystemTask` 另開安裝任務。詳見[瀏覽器 E2E 驗收](/docs/browser-e2e)。
 由 `SlackNotifier.uploadConfigured` 以角色身分上傳到討論串，失敗不影響流程。詳見[附件上傳到討論串](/docs/configurable-team#附件上傳到討論串2026-11-03)。
 反方向：使用者 @訊息的附檔由 `SlackListener` 經 `InboundFiles` 登錄（不連網），`FlowEngine.stageInbox` 在執行 agent 前以 `SlackNotifier.downloadFile` 下載並放進工作目錄的 `.ai-team-inbox/`（git exclude），PDF／Office 另由 `DocumentMarkdown` 轉出 `.md` 輔助版本。Linux 可讓 PDF 優先在隔離環境使用本機 `pdf2md`，失敗回退 PDFBox。詳見[接收使用者附檔](/docs/configurable-team#接收使用者附檔2026-11-06)。
 

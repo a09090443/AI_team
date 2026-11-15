@@ -1,14 +1,45 @@
 # 瀏覽器 E2E 驗收
 
 讓 QA 與系統獨立驗證可以實際開啟頁面、操作並斷言結果，而不是只看建置或單元測試。
-能力完全由配置啟用，不新增節點、不放寬沙箱；以 Playwright 為例，其他工具只要符合下列條件也能用同樣方式配置。
+能力完全由配置啟用，不新增節點、不放寬沙箱；以 Playwright 為例。
 
 :::warning
 
 **目前證據等級**：ubuntu-dev 上以最小專案實測三種沙箱包裝都通過（見下方），程式測試通過；
-**尚未有真實 Slack 任務的端對端證據**，也還沒有任何實例啟用。
+**尚未有真實 Slack 任務的端對端證據**（含詢問按鈕與安裝任務）。
 
 :::
+
+## 一行啟用（2026-11-15 起，建議）
+
+管理者在實例配置加一行，填前端目錄（repository 相對路徑，前端在根目錄時填 `.`）：
+
+```json
+"project": { "browserE2e": { "directory": "<前端目錄>" } }
+```
+
+之後流程如下，不需要再改配置或重新部署：
+
+1. **載入時展開**：`BrowserE2e.expand` 把固定的一組設定加進配置，再照常經全部安全檢查：
+   - `e2e-browsers` 操作（`npm exec -- playwright install --only-shell chromium`，給實作類節點）；
+   - `e2e` 操作（`npm run test:e2e`，給實作類與驗收節點）；
+   - `.cache/ms-playwright` 快取、`<前端目錄>/test-results`、`playwright-report` 可寫路徑與附檔允許路徑。
+
+   管理者已寫同名操作時以管理者為準；`attachments` 已有 `allow` 時合併，沒有 `allow`（全允許）時不動。
+2. **專案還沒有 Playwright 時**：
+   - 計畫與驗收階段的提示會告知「尚未加入」，頁面驗收項目照延後驗收或受阻處理。
+   - 測試計畫判斷需求有頁面驗收時，在 `browser_e2e_offer` 填理由，討論串會貼一則詢問與「啟用瀏覽器 E2E」按鈕。
+   - 這則詢問不擋本任務，只有驗收負責人能按，任何任務狀態都能按。
+   - 按下後系統在頻道另開**安裝任務**：加入 `@playwright/test`、`playwright.config.ts`（`webServer` 綁 127.0.0.1）、`test:e2e` script、用 `page.route` 攔截 API 的基本測試。
+   - 安裝任務照常走計畫、實作、驗收、審查，PR 由負責人核准。
+   - 同時只會有一個進行中的安裝任務；配置已關閉或專案已就緒時按鈕只回覆原因。
+3. **專案就緒後自動生效**：前端目錄有 `playwright.config.{ts,js,mjs,cjs}`，且 `package.json` 有 `test:e2e` script，就算就緒。就緒後：
+   - 計畫提示改為引用 `e2e` 操作；
+   - 系統獨立驗證在配置指令後追加下載瀏覽器與 `test:e2e` 兩個指令。這兩個指令不佔 `verification.commands` 的 5 個上限；配置有 `commandScopes` 時，只在前端目錄有變更時才跑。
+   - 就緒判定讀 HEAD 已提交的檔案，執行與發布前核對用同一個判定。安裝任務本身也會在它自己的 HEAD 就緒後跑到 E2E。
+
+不要詢問時設 `"offer": false`（展開與自動生效照舊）。基準驗證（`BaselineVerifier`）不追加 E2E。
+需要 `npm`；Codex 驗收節點仍需 `localTestNetwork` 才能連本機預覽伺服器（見下方）。
 
 ## 範圍
 
@@ -30,9 +61,9 @@
 QA 與獨立驗證都不能下載時，快取缺件代表實作階段沒有跑 `e2e-browsers`，與其他依賴快取一樣交回實作補跑。
 系統獨立驗證的收據綁定 HEAD，QA 可直接引用，不必在沙箱重跑同一組 E2E。
 
-## 配置片段（node-web）
+## 手寫配置片段（進階）
 
-以下片段經 `TeamCatalogTest.browserE2eSnippetFromDocsIsValid` 驗證可載入。專案的 `package.json` 需有 `test:e2e` 腳本（例如 `playwright test`）。
+要自訂指令或節點分配時可以不用 `browserE2e`，直接手寫。手寫時系統不做就緒判定，指令一律執行，所以要等專案已有 Playwright 再加。以下片段經 `TeamCatalogTest.browserE2eSnippetFromDocsIsValid` 驗證可載入。專案的 `package.json` 需有 `test:e2e` 腳本（例如 `playwright test`）。
 
 ```json
 "project": {

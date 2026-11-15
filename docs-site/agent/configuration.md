@@ -204,6 +204,13 @@ bash deploy/bootstrap/check-source.sh
 有設定就在每次非對話派工列出該目錄下 skill 的名稱與說明；`proposals` 另讓審查報告多一欄 `skill_proposal`，PR 開出後由系統另開獨立任務處理。
 索引讀任務快照的設定；開立任務時還要**目前載入**的配置也開啟提案。詳見[專案 skill 索引與提案](/docs/configurable-team#專案-skill-索引與提案)。
 
+## 瀏覽器 E2E（project.browserE2e，2026-11-15）
+
+選填，null＝停用。`directory`（前端目錄，repository 內相對路徑，可為 `.`）、`offer`（缺欄位為 true）。
+載入時由 `BrowserE2e.expand` 展開成固定的 `e2e-browsers`／`e2e` 操作、`.cache/ms-playwright` 快取、測試產物可寫路徑與附檔允許路徑，
+再照常經 `TeamCatalog.validate` 檢查；管理者已寫同名操作時不覆蓋。專案有 `playwright.config.*` 與 `test:e2e` script 才生效；
+`offer` 開啟且未就緒時，測試計畫可詢問負責人是否另開安裝任務。詳見[瀏覽器 E2E 驗收](/docs/browser-e2e)。
+
 ## 服務建置與指定腳本
 
 `project.serviceTarget` 指定管理者核准的服務目標名稱及檢查操作 ID（至少 start、health）；null 時不能啟動 service runtime，intake 也會被告知不要選 service 路線。三份內附範例都帶沙箱版 service 節點，`serviceTarget` 預設 null（關閉），實例填入即啟用（[內附範例](/docs/configurable-team#內附範例與實例-overlay)）。

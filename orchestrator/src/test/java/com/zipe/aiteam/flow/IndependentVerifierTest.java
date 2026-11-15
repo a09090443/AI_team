@@ -62,6 +62,41 @@ class IndependentVerifierTest {
         when(workspace.compareFiles("42", flow.comparisonBase, head, List.of("README.md")))
                 .thenReturn(List.of(new WorkspaceManager.FileIdentity("README.md", "100644 blob abc", "100644 blob abc")));
     }
+    /** project.browserE2e：專案未就緒時不追加；HEAD 有 playwright.config 與 test:e2e 時追加，發布前核對用同一個判定。 */
+    @Test void browserE2eCommandsRunOnlyOnceTheProjectIsReady() throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var tree = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.valueToTree(flow.snapshot.definition());
+        ((com.fasterxml.jackson.databind.node.ObjectNode) tree.path("project")).putObject("browserE2e").put("directory", ".");
+        BrowserE2e.expand(tree);
+        flow.snapshot = new TeamDefinition.Snapshot(flow.snapshot.revision(), mapper.treeToValue(tree, TeamDefinition.class),
+                flow.snapshot.repository(), flow.snapshot.assets());
+        when(workspace.readCommittedText(eq("42"), eq(head), anyString(), anyInt())).thenThrow(new WorkspaceManager.WorkspaceException("missing"));
+        verifyNow();
+        assertThat(calls).doesNotContain(List.of("npm", "exec", "--", "playwright", "install", "--only-shell", "chromium"));
+        int configured = flow.snapshot.definition().project().verification().commands().size();
+        assertThat(flow.independentEvidence.commands()).hasSize(configured);
+        assertThat(verifier.blockingReason(flow, head)).isNull();
+
+        reset(workspace);
+        when(workspace.headSha("42")).thenReturn(head); when(workspace.clean("42")).thenReturn(true);
+        when(workspace.pathFor("42")).thenReturn(tmp.resolve("source"));
+        when(workspace.readCommittedText(eq("42"), eq(head), anyString(), anyInt())).thenAnswer(inv -> switch ((String) inv.getArgument(2)) {
+            case "playwright.config.ts" -> "export default {}";
+            case "package.json" -> "{\"scripts\":{\"test:e2e\":\"playwright test\"}}";
+            default -> throw new WorkspaceManager.WorkspaceException("missing");
+        });
+        calls.clear();
+        verifyNow();
+        assertThat(calls).contains(List.of("npm", "exec", "--", "playwright", "install", "--only-shell", "chromium"));
+        assertThat(flow.independentEvidence.commands().stream().map(IndependentVerifier.CommandResult::argv))
+                .contains(List.of("npm", "exec", "--", "playwright", "install", "--only-shell", "chromium"));
+        assertThat(verifier.blockingReason(flow, head)).isNull();
+
+        // 就緒後的收據若改用未就緒的判定核對，指令數不符而擋下。
+        reset(workspace);
+        when(workspace.readCommittedText(eq("42"), eq(head), anyString(), anyInt())).thenThrow(new WorkspaceManager.WorkspaceException("missing"));
+        assertThat(verifier.blockingReason(flow, head)).isNotNull();
+    }
     @Test void comparisonIsSystemEvidenceBoundToPlanBaseAndPersistedLog() throws Exception {
         comparisonPlan(); verifyNow();
         assertThat(verifier.blockingReason(flow, head)).isNull();

@@ -225,6 +225,7 @@ agent_team/
 │   │   │   ├── ReceiptReuse.java     # 流程重走時沿用前次仍有效的設計、計畫、實作結果
 │   │   │   ├── DeferredAcceptance.java # 驗收環境驗不了的驗收項目在計畫延後、PR 列出
 │   │   │   ├── ProjectSkills.java    # 專案 repo 內 skill 的派工索引與審查提案（另開任務）
+│   │   │   ├── BrowserE2e.java       # project.browserE2e：展開固定 E2E 操作、就緒判定、計畫詢問與安裝任務文字
 │   │   │   ├── PullRequestSync.java  # 已開 PR 與基準衝突時回原任務解衝突、推回同一個 PR 的判斷與核對
 │   │   │   ├── BaseSync.java         # 實作節點每輪動手前併入最新基準：衝突交該輪角色解的紀錄與提示
 │   │   │   ├── NodeInput.java        # 節點輸入指紋（判斷是否為相同輸入重跑）

@@ -178,6 +178,7 @@ App-Level Token 留空**：發言與交接 tag 使用同一個角色身分，不
 | 自主恢復（逾時接續、續驗、需求變更選項、頂層指令） | `project.autonomy` |
 | 驗收環境驗不了的項目自動延後 | `project.autonomy.deferUnverifiable` |
 | 專案 skill 索引與提案 | `project.projectSkills`（見[專案 skill 索引與提案](#專案-skill-索引與提案)） |
+| 瀏覽器 E2E（一行啟用、詢問安裝、就緒自動生效） | `project.browserE2e`（見[瀏覽器 E2E 驗收](browser-e2e.md)） |
 | 已開 PR 衝突自動同步 | `project.autonomy.pullRequestSyncRounds`／`pullRequestSyncAutoPush` |
 | 自主派工 | 節點 `candidateRoles` |
 | 跨 runtime 改派 | 節點 `protectedPathFallback` |
@@ -633,6 +634,7 @@ Runnable 交給 TaskOrchestrator，由真正的執行中工作與 FIFO 排隊清
 - 以新模式走到 PR 人工閘門，再由使用者另行核准發布。
 - Node 範例是配置與流程測試範例，不代表已在任意 Node repo 完成產品驗收。
 - 專案 skill 索引與提案（`project.projectSkills`）只有程式測試，尚無真實 Slack 端對端紀錄。
+- 瀏覽器 E2E（`project.browserE2e`）的詢問按鈕、安裝任務與就緒後自動生效只有程式測試，尚無真實 Slack 端對端紀錄。
 ## 角色的 reasoningEffort
 
 例如 tester 角色設 `runtime: "codex"`、
