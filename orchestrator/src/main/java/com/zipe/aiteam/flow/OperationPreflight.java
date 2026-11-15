@@ -47,6 +47,7 @@ public class OperationPreflight {
         for (String tool : flow.snapshot.definition().project().requiredTools()) { args.add("tool"); args.add(tool); }
         if (!operations.isEmpty() && node.scope() != TeamDefinition.Scope.READ_ONLY
                 && flow.snapshot.definition().project().cachePaths() != null) {
+            BrowserE2e.ensureCache(props.userHome(), flow.snapshot.definition());
             for (String cache : flow.snapshot.definition().project().cachePaths()) {
                 Path path = props.userHome().resolve(cache).toAbsolutePath().normalize();
                 if (!Files.isDirectory(path) || !path.toRealPath().equals(path))

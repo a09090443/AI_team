@@ -63,7 +63,10 @@ class BrowserE2eTest {
         TeamDefinition d = expandAndValidate(tree);
 
         assertThat(d.project().operations().get(BrowserE2e.OP_E2E).argv()).containsExactly("npm", "run", "e2e:ci");
-        assertThat(d.project().operations().get(BrowserE2e.OP_BROWSERS).directory()).isEqualTo("frontend");
+        // 在 repository 根目錄以 npm --prefix 執行，Bash(npm --prefix frontend *) 這類角色權限才涵蓋得到。
+        var browsers = d.project().operations().get(BrowserE2e.OP_BROWSERS);
+        assertThat(browsers.directory()).isEqualTo(".");
+        assertThat(browsers.argv()).containsExactly("npm", "--prefix", "frontend", "exec", "--", "playwright", "install", "--only-shell", "chromium");
         d.nodes().values().stream().filter(n -> n.kind() == Kind.AGENT && n.gate() == Gate.VERIFICATION
                         && n.writablePaths() != null && !n.writablePaths().isEmpty())
                 .forEach(n -> assertThat(n.writablePaths()).contains("frontend/test-results/**", "frontend/playwright-report/**"));
@@ -107,6 +110,38 @@ class BrowserE2eTest {
         assertThat(BrowserE2e.ready(policy, files::get)).isFalse();
         files.put("web/package.json", "not json");
         assertThat(BrowserE2e.ready(policy, files::get)).isFalse();
+    }
+
+    @Test void prefixScopedRolePermissionCoversTheExpandedOperations() throws Exception {
+        ObjectNode tree = team("gradle-fullstack");
+        ((ObjectNode) tree.path("project")).putObject("browserE2e").put("directory", "web");
+        TeamDefinition d = expandAndValidate(tree);
+        var runtime = new com.zipe.aiteam.runtime.ClaudeCodeRuntime(null, null);
+        List<String> tools = List.of("Bash(npm --prefix web *)");
+        assertThat(runtime.permitsCommand(tools, d.project().operations().get(BrowserE2e.OP_BROWSERS).argv())).isTrue();
+        assertThat(runtime.permitsCommand(tools, d.project().operations().get(BrowserE2e.OP_E2E).argv())).isTrue();
+    }
+
+    @Test void createsOnlyItsOwnBrowserCacheAndNeverThroughASymlink() throws Exception {
+        ObjectNode tree = team("node-web");
+        ((ObjectNode) tree.path("project")).putObject("browserE2e").put("directory", ".");
+        TeamDefinition d = expandAndValidate(tree);
+        Path home = Files.createDirectories(tmp.resolve("home"));
+        BrowserE2e.ensureCache(home, d);
+        assertThat(home.resolve(".cache/ms-playwright")).isDirectory();
+        assertThat(home.resolve(".npm")).doesNotExist();
+
+        Path other = Files.createDirectories(tmp.resolve("other"));
+        Path linked = Files.createDirectories(tmp.resolve("linked"));
+        try { Files.createSymbolicLink(linked.resolve(".cache"), other); }
+        catch (UnsupportedOperationException | java.io.IOException noSymlinks) { return; }
+        BrowserE2e.ensureCache(linked, d);
+        assertThat(other.resolve("ms-playwright")).doesNotExist();
+
+        TeamDefinition plain = mapper.treeToValue(team("node-web"), TeamDefinition.class);
+        Path untouched = Files.createDirectories(tmp.resolve("untouched"));
+        BrowserE2e.ensureCache(untouched, plain);
+        assertThat(untouched.resolve(".cache")).doesNotExist();
     }
 
     @Test void directoryReaderStaysInsideTheRoot() throws Exception {

@@ -208,7 +208,8 @@ bash deploy/bootstrap/check-source.sh
 
 選填，null＝停用。`directory`（前端目錄，repository 內相對路徑，可為 `.`）、`offer`（缺欄位為 true）。
 載入時由 `BrowserE2e.expand` 展開成固定的 `e2e-browsers`／`e2e` 操作、`.cache/ms-playwright` 快取、測試產物可寫路徑與附檔允許路徑，
-再照常經 `TeamCatalog.validate` 檢查；管理者已寫同名操作時不覆蓋。專案有 `playwright.config.*` 與 `test:e2e` script 才生效；
+再照常經 `TeamCatalog.validate` 檢查；管理者已寫同名操作時不覆蓋。操作在 repository 根目錄以 `npm --prefix <directory>` 執行，
+claude-code 角色要有 `Bash(npm --prefix <directory> *)` 之類的權限；快取目錄由系統在派工前建立。專案有 `playwright.config.*` 與 `test:e2e` script 才生效；
 `offer` 開啟且未就緒時，測試計畫可詢問負責人是否另開安裝任務。詳見[瀏覽器 E2E 驗收](/docs/browser-e2e)。
 
 ## 服務建置與指定腳本

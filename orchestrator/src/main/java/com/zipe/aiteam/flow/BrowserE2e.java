@@ -89,12 +89,15 @@ public final class BrowserE2e {
         ArrayNode caches = project.path("cachePaths") instanceof ArrayNode existing ? existing : project.putArray("cachePaths");
         addMissing(caches, CACHE);
         ObjectNode ops = project.path("operations") instanceof ObjectNode existing ? existing : project.putObject("operations");
+        // 與獨立驗證同一組 argv（在 repository 根目錄以 npm --prefix 執行）：角色權限常寫成 Bash(npm --prefix <前端目錄> *)，
+        // 若改在前端目錄跑 npm exec／npm run，這類角色會在派工前被判成缺少工具權限（2026-11-15 實測）。
+        List<List<String>> commands = verificationCommands(new BrowserE2ePolicy(dir, null));
         if (!ops.has(OP_BROWSERS) && !implementation.isEmpty())
-            ops.set(OP_BROWSERS, operation(implementation, dir, BROWSERS_ARGV, List.of()));
+            ops.set(OP_BROWSERS, operation(implementation, commands.get(0), List.of()));
         List<String> e2eNodes = new ArrayList<>(implementation);
         e2eNodes.addAll(verification);
         if (!ops.has(OP_E2E) && !e2eNodes.isEmpty())
-            ops.set(OP_E2E, operation(e2eNodes, dir, E2E_ARGV, OUTPUTS.stream().map(out -> p + out).toList()));
+            ops.set(OP_E2E, operation(e2eNodes, commands.get(1), OUTPUTS.stream().map(out -> p + out).toList()));
         if (tree instanceof ObjectNode root) {
             if (!(root.path("attachments") instanceof ObjectNode attachments)) {
                 ObjectNode created = root.putObject("attachments");
@@ -108,12 +111,32 @@ public final class BrowserE2e {
         }
     }
 
-    private static ObjectNode operation(List<String> nodes, String dir, List<String> argv, List<String> writes) {
+    /**
+     * 建立系統自己展開的瀏覽器快取目錄（只限 {@link #CACHE}）。管理者宣告 browserE2e 就等於宣告了這個快取，
+     * 不必再手動建立；路徑上任何一段是 symlink 時不建立，交給派工前檢查照常拒絕。其他 cachePaths 仍由管理者建立。
+     */
+    static void ensureCache(Path home, TeamDefinition d) {
+        if (policy(d) == null || d.project().cachePaths() == null || !d.project().cachePaths().contains(CACHE)) return;
+        try {
+            Path base = home.toAbsolutePath().normalize();
+            Path current = base;
+            if (!Files.isDirectory(base, LinkOption.NOFOLLOW_LINKS)) return;
+            for (Path part : Path.of(CACHE)) {
+                current = current.resolve(part);
+                if (Files.isSymbolicLink(current)) return;
+                if (!Files.exists(current, LinkOption.NOFOLLOW_LINKS)) Files.createDirectory(current);
+                else if (!Files.isDirectory(current, LinkOption.NOFOLLOW_LINKS)) return;
+            }
+        } catch (Exception ignored) {
+            // 建不了就維持原狀，由派工前檢查回報缺失。
+        }
+    }
+
+    private static ObjectNode operation(List<String> nodes, List<String> argv, List<String> writes) {
         ObjectNode op = JSON.createObjectNode();
         nodes.forEach(op.putArray("nodes")::add);
-        op.put("directory", dir);
+        op.put("directory", ".");
         ArrayNode command = op.putArray("argv");
-        command.add("npm");
         argv.forEach(command::add);
         writes.forEach(op.putArray("writes")::add);
         return op;

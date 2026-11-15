@@ -21,9 +21,15 @@
 之後流程如下，不需要再改配置或重新部署：
 
 1. **載入時展開**：`BrowserE2e.expand` 把固定的一組設定加進配置，再照常經全部安全檢查：
-   - `e2e-browsers` 操作（`npm exec -- playwright install --only-shell chromium`，給實作類節點）；
-   - `e2e` 操作（`npm run test:e2e`，給實作類與驗收節點）；
+   - `e2e-browsers` 操作（`npm --prefix <前端目錄> exec -- playwright install --only-shell chromium`，給實作類節點）；
+   - `e2e` 操作（`npm --prefix <前端目錄> run test:e2e`，給實作類與驗收節點）；
    - `.cache/ms-playwright` 快取、`<前端目錄>/test-results`、`playwright-report` 可寫路徑與附檔允許路徑。
+
+   兩個操作都在 repository 根目錄執行，與系統獨立驗證追加的指令完全相同（前端在根目錄時沒有 `--prefix`）。
+   claude-code 角色的權限要涵蓋它們，例如 `Bash(npm --prefix <前端目錄> *)` 或 `Bash(npm *)`；
+   涵蓋不到時，派工前檢查會拒絕把實作派給該角色。2026-11-15 之前的版本是在前端目錄跑 `npm exec`／`npm run`，
+   只寫 `npm --prefix` 權限的角色因此被拒，已改正。
+   `~/.cache/ms-playwright` 不存在時由系統在派工前檢查建立（只限這一個路徑，路徑上有 symlink 時不建立）；其他 `cachePaths` 仍由管理者建立。
 
    管理者已寫同名操作時以管理者為準；`attachments` 已有 `allow` 時合併，沒有 `allow`（全允許）時不動。
 2. **專案還沒有 Playwright 時**：
