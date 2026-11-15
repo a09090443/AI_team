@@ -289,7 +289,10 @@ public final class BrowserE2e {
     static String planNotice(BrowserE2ePolicy policy, boolean ready) {
         if (policy == null) return "";
         if (ready) return "\n瀏覽器 E2E（系統查得）：已就緒。頁面上看到或操作的驗收項目，情境引用操作 `" + OP_E2E
-                + "`（前端目錄 " + policy.directory() + "，會啟動本機預覽伺服器並以斷言判定）；系統獨立驗證也會執行。";
+                + "`（前端目錄 " + policy.directory() + "，會啟動本機預覽伺服器並以斷言判定）；系統獨立驗證也會執行。"
+                + "獨立驗證跑完 E2E 後，系統會保留 " + prefix(policy.directory()) + OUTPUTS.getFirst() + " 下的 PNG 截圖（最多 "
+                + SHOT_FILES + " 張）並貼到討論串，收據的 e2eScreenshots 是保留的張數（專案未開 screenshot 時為 0）；"
+                + "截圖有沒有產生可引用這個收據欄位，不需要另外的檢查操作。截圖只是給人看的佐證，頁面行為仍以測試斷言判定。";
         return "\n瀏覽器 E2E（系統查得）：前端目錄 " + policy.directory() + " 尚未加入 Playwright（沒有 playwright.config 或 test:e2e script），"
                 + "目前無法實際開啟頁面驗證；這類驗收項目依延後驗收或受阻的規則處理，不要引用 `" + OP_E2E + "`。";
     }

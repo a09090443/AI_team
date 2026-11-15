@@ -222,7 +222,9 @@ class BrowserE2eTest {
         assertThat(policy.offers()).isFalse();
         assertThat(new BrowserE2ePolicy("web", null).offers()).isTrue();
         assertThat(BrowserE2e.planNotice(null, true)).isEmpty();
-        assertThat(BrowserE2e.planNotice(policy, true)).contains("已就緒").contains("`e2e`");
+        assertThat(BrowserE2e.planNotice(policy, true)).contains("已就緒").contains("`e2e`")
+                // #1050：QA 不知道截圖由系統保留，把「每個測試都有截圖」判成無法驗收。
+                .contains("e2eScreenshots").contains("不需要另外的檢查操作");
         assertThat(BrowserE2e.planNotice(policy, false)).contains("尚未加入 Playwright").contains("不要引用");
         assertThat(BrowserE2e.requestText(policy, "42", "列表頁"))
                 .contains("web/package.json").contains("web/playwright.config.ts").contains("page.route")
