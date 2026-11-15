@@ -159,6 +159,9 @@ public class ConfiguredExecutor {
             if (HandoffContext.needsServiceHistory(flow, node))
                 context.append(ServiceDeploymentContext.notice(props.homePath(), target,
                         store.serviceHistory(task.slackChannel(), target, task.id())));
+            else if (!flow.dialogue && (node.gate() == Gate.TEST_PLAN || node.gate() == Gate.VERIFICATION || node.gate() == Gate.REVIEW))
+                context.append(ServiceDeploymentContext.testStageNotice(props.homePath(), target,
+                        store.serviceHistory(task.slackChannel(), target, task.id())));
             boolean serviceRole = flow.snapshot.definition().nodes().values().stream()
                     .anyMatch(n -> n.gate()==Gate.SERVICE && Objects.equals(n.role(),flow.dialogueRole));
             if (node.gate()==Gate.SERVICE || (flow.dialogue && flow.parentId!=null && serviceRole))

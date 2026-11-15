@@ -230,7 +230,8 @@ service 節點通過完成閘門時（`ServiceArtifacts`），系統把本任務
 只給 agent 本任務脈絡時，它可能把「本次未執行」誤寫成服務從未部署，因此系統另外注入部署歷史：
 
 `TaskStore.serviceHistory` 讀取同實例資料庫、同頻道、同目標的最近 12 筆 SERVICE 階段報告，排除本任務與分流敘述。
-`ConfiguredExecutor` 在有 serviceTarget 的正式節點注入任務編號、時間、角色回報的狀態與檢查結束碼；
+`ConfiguredExecutor` 在有 serviceTarget 的正式節點注入任務編號、時間、角色回報的狀態與檢查結束碼
+（啟用 `focusedHandoffs` 時，計畫、驗收、審查改附只含最近一次部署與登錄入口的精簡現況，見[配置式團隊](configurable-team.md)）；
 
 :::warning
 

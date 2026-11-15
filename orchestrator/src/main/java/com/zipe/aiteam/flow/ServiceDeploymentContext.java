@@ -60,6 +60,43 @@ public final class ServiceDeploymentContext {
         }
         return out.append("\n尚無完整的管理者恢復入口；請明說缺宿主機、程式、設定檔或啟動方式，不能只叫使用者找維運者。\n").toString();
     }
+    /**
+     * 計畫、驗收、審查階段的精簡現況（只在完整部署歷史沒附上時用）：告知目標上已有部署過的服務與登錄入口，
+     * 並講清楚那是先前版本、本階段連不到、不能當本次證據。
+     * 否則這些階段會以為「沒有測試環境」，或反過來拿舊部署當本次 commit 的驗收證據。
+     * 沒有任何部署紀錄也沒有登錄入口時回空字串，不增加提示。
+     */
+    public static String testStageNotice(Path home, String target, List<ServiceHistory> history) {
+        String latest = null;
+        if (history != null) for (ServiceHistory h : history) {
+            try {
+                JsonNode d = JSON.readTree(h.report());
+                latest = "任務 #" + h.taskId() + "（" + h.completedAt() + "，角色回報 service_status=" + safe(d, "service_status") + "）";
+                break;
+            } catch (Exception ignored) { /* 下一筆 */ }
+        }
+        StringBuilder urls = new StringBuilder();
+        if (home != null && target != null && target.matches("[a-zA-Z0-9_-]{1,100}")) {
+            Path file = home.resolve("service-context").resolve(target + ".json");
+            try {
+                if (Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) && Files.size(file) <= 32768) {
+                    JsonNode data = JSON.readTree(file.toFile());
+                    if (target.equals(data.path("target").asText()))
+                        for (JsonNode e : data.path("access_endpoints"))
+                            if (e.path("url").isTextual())
+                                urls.append(urls.isEmpty() ? "" : "、").append(safe(e, "url"))
+                                        .append(e.path("audience").isTextual() ? "（" + safe(e, "audience") + "）" : "");
+                }
+            } catch (Exception ignored) { /* 讀不到就不列入口 */ }
+        }
+        if (latest == null && urls.isEmpty()) return "";
+        return "\n沙箱測試環境現況（系統查得，背景資訊）：部署目標 " + target + " 上已有部署過的服務"
+                + (latest == null ? "" : "，最近一次為" + latest)
+                + (urls.isEmpty() ? "" : "；管理者登錄的入口：" + urls)
+                + "。那是先前部署的版本，不是本任務的 commit；本階段的操作連不到它，也不能拿它當本次驗收證據。"
+                + "需要在部署後實機驗證的項目依延後驗收處理（PR 會列出），由部署流程與負責人另行確認；"
+                + "不要因此回報「沒有測試環境」，也不要要求另建環境。";
+    }
     private static String safe(JsonNode node, String key) {
         String value=node.path(key).asText("未記錄");
         return value.length()>1500 ? value.substring(0,1500)+"…" : value;

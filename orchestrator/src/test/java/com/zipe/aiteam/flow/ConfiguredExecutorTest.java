@@ -69,6 +69,27 @@ class ConfiguredExecutorTest {
         executor.execute(new Task("42","c","t","u","部署"),flow,flow.snapshot.definition().nodes().get("intake"));
         assertThat(captured.get().prompt()).contains("服務部署歷史與恢復入口", "1036", "2026-10-11", "目前未核實");
     }
+    /** 精簡交接下計畫階段不附完整部署歷史，改附一段沙箱現況，避免以為沒有測試環境或拿舊部署當證據。 */
+    @Test void testPlanGetsTheShortSandboxNoticeInsteadOfTheFullHistory() throws Exception {
+        var loaded = TeamCatalog.load(Path.of("teams/gradle-fullstack.json"), key -> repo.toString());
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var tree = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.valueToTree(loaded.definition());
+        ((com.fasterxml.jackson.databind.node.ObjectNode) tree.path("project")).set("serviceTarget", mapper.readTree(
+                "{\"name\":\"example-dev\",\"checks\":{\"prepare\":\"service-prepare\",\"start\":\"service-start\",\"health\":\"service-health\"}}"));
+        String plan = loaded.definition().nodes().entrySet().stream()
+                .filter(e -> e.getValue().gate() == TeamDefinition.Gate.TEST_PLAN).findFirst().orElseThrow().getKey();
+        // 測試只備有 claude-code runtime。
+        ((com.fasterxml.jackson.databind.node.ObjectNode) tree.path("roles").path(loaded.definition().nodes().get(plan).role())).put("runtime", "claude-code");
+        flow = new FlowRun(new TeamDefinition.Snapshot(loaded.revision(), mapper.treeToValue(tree, TeamDefinition.class), loaded.repository(), loaded.assets()));
+        flow.node = plan;
+        when(store.serviceHistory("c", "example-dev", "42")).thenReturn(List.of(
+                new TaskStore.ServiceHistory("1036", "2026-10-11", "{\"service_status\":\"RUNNING\",\"checks\":[]}")));
+        AtomicReference<AgentRuntime.RuntimeRequest> captured = new AtomicReference<>();
+        when(runtime.execute(any(), any())).thenAnswer(c -> { captured.set(c.getArgument(0)); return null; });
+        executor.execute(new Task("42","c","t","u","頁面"),flow,flow.snapshot.definition().nodes().get(plan));
+        assertThat(captured.get().prompt()).contains("沙箱測試環境現況", "example-dev", "任務 #1036", "不是本任務的 commit")
+                .doesNotContain("服務部署歷史與恢復入口");
+    }
     @Test void preflightFailurePreventsAnyModelCall() throws Exception {
         flow.node = "triage";
         doThrow(new IllegalStateException("missing tool: unavailable")).when(preflight).check(anyString(), any(), any(), any(), any(), any());

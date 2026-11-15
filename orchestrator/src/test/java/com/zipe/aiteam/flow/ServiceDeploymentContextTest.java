@@ -34,6 +34,22 @@ class ServiceDeploymentContextTest {
                 .contains("使用者電腦連這台沙箱的位址：192.0.2.20","http://192.0.2.20:<實際對外埠><應用路徑>","不需要等人登錄入口",
                         "在沙箱內連不上不代表服務失敗","系統只送 GET");
     }
+    @Test void testStageNoticeListsLatestDeploymentAndRegisteredUrlsOnly() throws Exception {
+        assertThat(ServiceDeploymentContext.testStageNotice(tmp,"sandbox",List.of())).isEmpty();
+        Path dir=Files.createDirectories(tmp.resolve("service-context"));
+        Files.writeString(dir.resolve("sandbox.json"),"""
+                {"target":"sandbox","config_file":"/private/ssh.json",
+                 "access_endpoints":[{"audience":"Windows 瀏覽器","url":"http://192.0.2.20:18080/app/","probe_url":"http://10.0.0.5:18080/app/"}]}
+                """);
+        String text=ServiceDeploymentContext.testStageNotice(tmp,"sandbox",List.of(
+                new TaskStore.ServiceHistory("1046","2026-11-14","{\"service_status\":\"RUNNING\"}"),
+                new TaskStore.ServiceHistory("1024","2026-11-05","{\"service_status\":\"RUNNING\"}")));
+        assertThat(text).contains("sandbox","任務 #1046","RUNNING","http://192.0.2.20:18080/app/（Windows 瀏覽器）",
+                        "不是本任務的 commit","不能拿它當本次驗收證據","延後驗收")
+                .doesNotContain("1024","10.0.0.5","/private/ssh.json");
+        Files.writeString(dir.resolve("sandbox.json"),"{\"target\":\"other\",\"access_endpoints\":[{\"url\":\"http://x/\"}]}");
+        assertThat(ServiceDeploymentContext.testStageNotice(tmp,"sandbox",List.of())).isEmpty();
+    }
     @Test void absentInvalidAndMismatchedContextNeverInventRecovery() throws Exception {
         assertThat(ServiceDeploymentContext.notice(tmp,"sit",List.of())).contains("不代表從未部署","尚無完整");
         Path dir=Files.createDirectories(tmp.resolve("service-context"));
