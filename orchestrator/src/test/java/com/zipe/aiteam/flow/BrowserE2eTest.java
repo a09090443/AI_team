@@ -169,6 +169,18 @@ class BrowserE2eTest {
         assertThat(BrowserE2e.screenshotNote("7", "629f00c5088", 0)).contains("screenshot: 'on'");
     }
 
+    @Test void attachmentPromptLeavesE2eScreenshotsToTheSystem() throws Exception {
+        // #1052：實作與 QA 各自附了同一批截圖，加上系統貼的共三份。
+        ObjectNode tree = team("gradle-fullstack");
+        ((ObjectNode) tree.path("project")).putObject("browserE2e").put("directory", "web");
+        TeamDefinition d = expandAndValidate(tree);
+        FlowRun flow = new FlowRun(new Snapshot("rev", d, tmp.toString(), Map.of()));
+        assertThat(Attachments.notice(flow)).contains("web/test-results").contains("由系統統一貼到討論串").contains("不要再把它們列進 attachments");
+
+        flow.dialogue = true;
+        assertThat(Attachments.e2eScreenshotNotice(flow)).isEmpty();
+    }
+
     @Test void onlyARunOfTheE2eCommandCounts() {
         var policy = new BrowserE2ePolicy("web", null);
         List<String> e2e = List.of("npm", "--prefix", "web", "run", "test:e2e");

@@ -68,7 +68,19 @@ public final class Attachments {
                 + "title 是給使用者看的簡短說明；系統驗證後會上傳到討論串。最多 " + p.maxFiles() + " 個、單檔 "
                 + (p.maxBytes() / 1024) + " KB 以內"
                 + (p.allow() == null || p.allow().isEmpty() ? "" : "，只接受符合 " + p.allow() + " 的路徑")
-                + "。不要附原始碼、log 全文或任何含憑證的檔案；沒有要附的檔案就填空陣列。";
+                + "。不要附原始碼、log 全文或任何含憑證的檔案；沒有要附的檔案就填空陣列。"
+                + e2eScreenshotNotice(flow);
+    }
+
+    /**
+     * 瀏覽器 E2E 的截圖由系統獨立驗證統一貼到討論串（{@link BrowserE2e#collectScreenshots}）；
+     * #1052 實作與 QA 又各自附了同一批截圖，討論串出現三份。只說明分工，不改附檔政策。
+     */
+    static String e2eScreenshotNotice(FlowRun flow) {
+        var policy = BrowserE2e.policy(flow);
+        if (policy == null) return "";
+        return "瀏覽器 E2E 的截圖（" + BrowserE2e.prefix(policy.directory()) + BrowserE2e.OUTPUTS.getFirst()
+                + "）會在系統獨立驗證跑完後由系統統一貼到討論串，不要再把它們列進 attachments，避免同一批畫面重複出現。";
     }
 
     /** 逐一檢查 agent 宣告的檔案；不通過的列出原因，不影響階段結果。 */
