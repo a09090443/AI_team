@@ -50,6 +50,20 @@ class ServiceDeploymentContextTest {
         Files.writeString(dir.resolve("sandbox.json"),"{\"target\":\"other\",\"access_endpoints\":[{\"url\":\"http://x/\"}]}");
         assertThat(ServiceDeploymentContext.testStageNotice(tmp,"sandbox",List.of())).isEmpty();
     }
+    /** 沒有登錄入口的專案：從最近一次 RUNNING 部署摘要取 user_host 的網址並當場實測，所有接沙箱的專案都適用。 */
+    @Test void testStageNoticeDerivesUrlsFromTheLastRunningDeploymentWithoutRegistration() throws Exception {
+        Path dir=Files.createDirectories(tmp.resolve("service-context"));
+        Files.writeString(dir.resolve("sandbox.json"),"{\"target\":\"sandbox\",\"user_host\":\"192.0.2.20\"}");
+        List<String> probed=new ArrayList<>();
+        String text=ServiceDeploymentContext.testStageNotice(tmp,"sandbox",List.of(
+                new TaskStore.ServiceHistory("1050","2026-11-15","{\"service_status\":\"FAILED\",\"summary\":\"http://192.0.2.20:9/bad/\"}"),
+                new TaskStore.ServiceHistory("1046","2026-11-14","{\"service_status\":\"RUNNING\",\"summary\":"
+                        + "\"入口 http://192.0.2.20:18080/app/ 與 http://127.0.0.1:8080/x、http://192.0.2.20:18080/app/api/a、http://192.0.2.20:18080/app/api/b\"}")),
+                url -> { probed.add(url); return url.endsWith("/a") ? null : 206; });
+        assertThat(probed).containsExactly("http://192.0.2.20:18080/app/","http://192.0.2.20:18080/app/api/a");
+        assertThat(text).contains("任務 #1050","http://192.0.2.20:18080/app/（取自最近一次 RUNNING","HTTP 206","/app/api/a（","連不上")
+                .doesNotContain("127.0.0.1","/bad/","/api/b");
+    }
     @Test void absentInvalidAndMismatchedContextNeverInventRecovery() throws Exception {
         assertThat(ServiceDeploymentContext.notice(tmp,"sit",List.of())).contains("不代表從未部署","尚無完整");
         Path dir=Files.createDirectories(tmp.resolve("service-context"));

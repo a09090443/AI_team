@@ -151,12 +151,7 @@ public final class ServiceSupport {
     public static Delivery derivedDelivery(String host,JsonNode report,java.util.function.Function<String,Integer> status) {
         if(!"RUNNING".equals(report.path("service_status").asText()))return new Delivery(null,"");
         String hint="沙箱使用者位址是 "+host+"（系統接沙箱時登錄），交付摘要要寫完整網址 http://"+host+":<實際對外埠><應用路徑>，系統會從 Agent VM 實測";
-        Set<String> urls=new LinkedHashSet<>();
-        var matcher=URL.matcher(report.path("summary").asText());
-        while(matcher.find()&&urls.size()<4) {
-            String url=matcher.group();
-            if(java.net.URI.create(url).getHost().equalsIgnoreCase(host))urls.add(url);
-        }
+        Set<String> urls=userUrls(host,report);
         if(urls.isEmpty())return new Delivery("服務摘要缺少使用者入口；"+hint,"");
         StringBuilder evidence=new StringBuilder();
         for(String url:urls) {
@@ -166,6 +161,18 @@ public final class ServiceSupport {
                 return new Delivery("系統從 Agent VM 實測交付網址未通過："+evidence+"先確認對外埠、應用路徑與容器埠對應後修正；"+hint,evidence.toString());
         }
         return new Delivery(null,evidence.toString());
+    }
+    /** 服務報告摘要中主機等於 user_host 的網址（最多 4 個）；交付實測與測試階段的沙箱現況共用。 */
+    static Set<String> userUrls(String host,JsonNode report) {
+        Set<String> urls=new LinkedHashSet<>();
+        if(host==null||report==null)return urls;
+        var matcher=URL.matcher(report.path("summary").asText());
+        while(matcher.find()&&urls.size()<4) {
+            String url=matcher.group();
+            try { if(host.equalsIgnoreCase(java.net.URI.create(url).getHost()))urls.add(url); }
+            catch(IllegalArgumentException ignored) { /* 不是合法網址就略過 */ }
+        }
+        return urls;
     }
     /** 交給後續節點的系統實測收據；agent 沙箱通常連不出去，只能引用這份，不能拿自己連不上當成網址失效。 */
     public static String deliveryReceipt(String evidence) {

@@ -67,12 +67,23 @@ public final class ServiceDeploymentContext {
      * 沒有任何部署紀錄也沒有登錄入口時回空字串，不增加提示。
      */
     public static String testStageNotice(Path home, String target, List<ServiceHistory> history) {
+        return testStageNotice(home, target, history, ServiceSupport::httpStatus);
+    }
+    /**
+     * 入口來源依序：管理者登錄的 access_endpoints；沒有時，取最近一次回報 RUNNING 的部署摘要中主機等於接沙箱時登錄的
+     * user_host 的網址（每個接沙箱的專案都有，不需逐一登錄），並由系統當場從 Agent VM 實測一次（最多 2 個、不跟隨轉址）。
+     */
+    static String testStageNotice(Path home, String target, List<ServiceHistory> history,
+                                  java.util.function.Function<String, Integer> status) {
         String latest = null;
+        JsonNode running = null;
         if (history != null) for (ServiceHistory h : history) {
             try {
                 JsonNode d = JSON.readTree(h.report());
-                latest = "任務 #" + h.taskId() + "（" + h.completedAt() + "，角色回報 service_status=" + safe(d, "service_status") + "）";
-                break;
+                if (latest == null)
+                    latest = "任務 #" + h.taskId() + "（" + h.completedAt() + "，角色回報 service_status=" + safe(d, "service_status") + "）";
+                if (running == null && "RUNNING".equals(d.path("service_status").asText())) running = d;
+                if (running != null) break;
             } catch (Exception ignored) { /* 下一筆 */ }
         }
         StringBuilder urls = new StringBuilder();
@@ -89,10 +100,19 @@ public final class ServiceDeploymentContext {
                 }
             } catch (Exception ignored) { /* 讀不到就不列入口 */ }
         }
+        if (urls.isEmpty() && running != null) {
+            int probed = 0;
+            for (String url : ServiceSupport.userUrls(ServiceSupport.userHost(home, target), running)) {
+                if (++probed > 2) break;
+                Integer code = status.apply(url);
+                urls.append(urls.isEmpty() ? "" : "、").append(url)
+                        .append("（取自最近一次 RUNNING 的部署摘要；系統剛從 Agent VM 實測：").append(code == null ? "連不上" : "HTTP " + code).append("）");
+            }
+        }
         if (latest == null && urls.isEmpty()) return "";
         return "\n沙箱測試環境現況（系統查得，背景資訊）：部署目標 " + target + " 上已有部署過的服務"
                 + (latest == null ? "" : "，最近一次為" + latest)
-                + (urls.isEmpty() ? "" : "；管理者登錄的入口：" + urls)
+                + (urls.isEmpty() ? "" : "；入口：" + urls)
                 + "。那是先前部署的版本，不是本任務的 commit；本階段的操作連不到它，也不能拿它當本次驗收證據。"
                 + "需要在部署後實機驗證的項目依延後驗收處理（PR 會列出），由部署流程與負責人另行確認；"
                 + "不要因此回報「沒有測試環境」，也不要要求另建環境。";
