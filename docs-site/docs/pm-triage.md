@@ -86,9 +86,11 @@ Slack 會區分「已排隊」、「PM 處理中」、「已派工」與「等�
 - 新任務：測試計畫受阻會先交給分流（`plan.blocked = "triage"`）。分流判定是需求問題時用 route=requirements，
   並附 `human_decision`。分流報告通過檢查、系統進入等待需求變更核准後，停止訊息會提供「核准：…」按鈕，
   負責人按下即核准該變更。
-- 分流（其他節點受阻時的去處）回報 `BLOCKED`、但 route 指向已配置的非真人路線、沒有填 `human_decision`、
-  失敗回報格式完整時，系統視為「被分流的工作仍受阻、分流本身已完成」，依 route 派工並記稽核
-  （`FlowGates.dispatchesBlockedWork`，2026-11-16 起；先前一律依節點 `blocked` 交真人，訊息卻寫不需使用者）。
+- 分流（其他節點受阻時的去處）附上完整的 `failure_report`（`execution_status` 為 `BLOCKED` 或 `COMPLETED` 皆同）、
+  route 指向已配置的非真人路線、沒有填 `human_decision` 時，系統視為「被分流的工作仍受阻、分流本身已完成」，
+  依 route 派工並記稽核（`FlowGates.dispatchesBlockedWork`，2026-11-16 起；先前一律依節點 `blocked` 交真人，訊息卻寫不需使用者）。
+  共用契約要求分流填 `COMPLETED` 並把受阻寫進 failure_report，而共用判定把「COMPLETED＋failure_report」也視為受阻，
+  所以 2026-11-17 起兩種狀態都放行（先前只放行 `BLOCKED`，照契約填 `COMPLETED` 的分流反而停下等真人）。
   route=human、有 `human_decision` 或格式不完整時照舊停下；節點次數與總轉換上限不變。
   需求節點的 route 仍會先經「已有需求基準時須負責人核准」的檢查。
 - 若停給真人且選項是一般 `decide`，即使按鈕文字寫「核准」，按下仍只記成「負責人決定」並重跑分流，需求清單不會更新。

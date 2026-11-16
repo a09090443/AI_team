@@ -34,8 +34,9 @@ public final class FlowGates {
     /**
      * 分流節點（其他節點受阻時的去處）已選定交回某個非真人路線，只是把「被分流的工作仍受阻」寫成 BLOCKED：
      * 分流本身已完成，依它的 route 派工。#1056 service_triage 寫 route=service、摘要說不需使用者，
-     * 卻因 BLOCKED 被一律交真人。格式不完整、要真人決定（human_decision）或選 human 時照舊停下；
-     * 次數與總轉換上限不受影響。
+     * 卻因 BLOCKED 被一律交真人。契約要求分流填 COMPLETED 並把被分流工作的受阻寫進 failure_report，
+     * 共用判定會把「COMPLETED＋failure_report」也當受阻（#1057），所以兩種狀態都依 route 派工。
+     * 格式不完整、要真人決定（human_decision）或選 human 時照舊停下；次數與總轉換上限不受影響。
      */
     static boolean dispatchesBlockedWork(Node node, JsonNode result, FlowRun flow) {
         if (result == null || !result.isObject()) return false;
@@ -44,7 +45,7 @@ public final class FlowGates {
         String target = node.routes().get(route);
         if (target == null || "human".equals(target) || result.path("human_decision").isObject()) return false;
         boolean triage = flow.snapshot.definition().nodes().values().stream().anyMatch(n -> flow.node.equals(n.blocked()));
-        return triage && "BLOCKED".equals(result.path("execution_status").asText()) && FailureReport.wellFormed(result);
+        return triage && result.path("failure_report").isObject() && FailureReport.wellFormed(result);
     }
     /**
      * 建議性報告（REPORT，例如設計）在本流程從未執行、也沒有結果或受阻報告：是需求節點選了跳過它的路線（精簡路線），

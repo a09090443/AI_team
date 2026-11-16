@@ -1575,7 +1575,7 @@ class FlowEngineTest {
                 ((ObjectNode)report).put("route", mode.equals("serviceToDevelopment") ? "implementation" : "service");
             // #1056：分流已決定交回 service，卻把「被分流的工作仍受阻」寫成 BLOCKED。
             if (mode.startsWith("serviceTriageBlocked") && flow.node.equals("service_triage")) {
-                ((ObjectNode)report).put("execution_status", "BLOCKED");
+                ((ObjectNode)report).put("execution_status", mode.equals("serviceTriageBlockedCompleted") ? "COMPLETED" : "BLOCKED");
                 var failure = ((ObjectNode)report).putObject("failure_report");
                 for (String k : List.of("operation", "observed_error", "evidence", "impact", "cause", "next_action", "owner")) failure.put(k, "x");
                 failure.put("cause_status", "CONFIRMED");
@@ -2144,6 +2144,12 @@ class FlowEngineTest {
     }
     @Test void triageRouteIsFollowedWhenItReportsTheRoutedWorkAsBlocked() throws Exception {
         enableService(true); mode = "serviceTriageBlocked"; engine.run(task);
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.COMPLETED);
+        assertThat(calls).containsExactly("intake:coordinator", "service:builder", "service_triage:coordinator", "service:builder");
+    }
+    @Test void triageCompletedWithFailureReportFollowsItsRoute() throws Exception {
+        // 契約要分流填 COMPLETED、被分流工作的受阻寫進 failure_report（#1057）；不得因此交真人。
+        enableService(true); mode = "serviceTriageBlockedCompleted"; engine.run(task);
         assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.COMPLETED);
         assertThat(calls).containsExactly("intake:coordinator", "service:builder", "service_triage:coordinator", "service:builder");
     }

@@ -25,7 +25,7 @@ agent 自陳與 runtime 實際事件分開標示，不強迫模型杜撰未知�
 共用驗證會攔下 BLOCKED、缺漏的失敗回報，以及宣稱 COMPLETED 卻仍有
 FAILED/PARTIAL/FAIL/LOW、建置未過、越界或 reviewer 阻擋的矛盾結果。
 先保留 stage_result，再停止下游、保留現場並向 PM／需求提出者回報。2026-10-20 來源新增的持久長作業例外：若有有效 pending journal，先由中央流程等待及對帳，再續同節點，不把 OPERATION_PENDING 的 BLOCKED 立即當成須人工處理。
-另一例外（2026-11-16）：分流節點以 BLOCKED 描述被分流的工作、但已指定非真人 route 且未要求真人決定時，依 route 派工，見 [PM 分流](pm-triage.md)。共用回報契約也提示分流角色：已決定交回誰就填 COMPLETED。
+另一例外（2026-11-16，2026-11-17 擴及 COMPLETED）：分流節點附完整 failure_report 描述被分流的工作（不論填 BLOCKED 或 COMPLETED）、但已指定非真人 route 且未要求真人決定時，依 route 派工，見 [PM 分流](pm-triage.md)。共用回報契約也提示分流角色：已決定交回誰就填 COMPLETED。注意一般節點填 COMPLETED 但 failure_report 非 null 仍視為受阻。
 核准及真正發布前也會檢查各階段報告；舊報告缺欄位需重新核實。
 
 執行例外以底層原因優先呈現並保留證據目錄、影響與處理者。

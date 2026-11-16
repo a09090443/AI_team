@@ -705,7 +705,7 @@ public class FlowEngine {
                         : consultBlock != null ? consultBlock : issueBlock == null ? FlowGates.currentNodeReason(node, report, flow) : issueBlock;
                 if (block == null && consultBlock == null && issueBlock == null && FlowGates.dispatchesBlockedWork(node, report, flow))
                     audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY, "分流節點 " + flow.node
-                            + " 回報 BLOCKED 但已指定 route=" + report.path("route").asText() + "，依其分流派工（受阻的是被分流的工作）");
+                            + " 附受阻報告（" + report.path("execution_status").asText() + "）但已指定 route=" + report.path("route").asText() + "，依其分流派工（受阻的是被分流的工作）");
                 if (block==null && node.gate()==Gate.SERVICE && ServiceSupport.configured(props.homePath(),flow.snapshot.definition().project().serviceTarget().name()))
                     block=ServiceSupport.deliveryReason(props.homePath(),task.id(),report);
                 else if (block==null && node.gate()==Gate.SERVICE) {
