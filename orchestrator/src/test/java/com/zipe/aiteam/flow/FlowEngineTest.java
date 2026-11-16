@@ -1278,17 +1278,18 @@ class FlowEngineTest {
         assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
         verifyNoInteractions(publisher);
     }
-    private Path operationJob(FlowRun f, String state) throws Exception {
+    private Path operationJob(FlowRun f, String state) throws Exception { return operationJob(f, state, "a".repeat(32), 1); }
+    private Path operationJob(FlowRun f, String state, String id, long updated) throws Exception {
         when(props.homePath()).thenReturn(tmp);
         f.workspaceReady=true; f.activeNode=f.node;
         Path dir=tmp.resolve("operation-jobs/42");Files.createDirectories(dir);
         ObjectNode record=mapper.createObjectNode();
-        record.put("version",1).put("id","a".repeat(32)).put("task","42").put("node",f.node)
+        record.put("version",1).put("id",id).put("task","42").put("node",f.node)
                 .put("action","start").put("target","test-host").put("source_head","head1")
-                .put("state",state).put("verified",true).put("updated",1).put("deadline",java.time.Instant.now().getEpochSecond()+60);
-        if (Set.of("SUCCEEDED", "FAILED").contains(state)) record.putObject("result").put("id","a".repeat(32))
+                .put("state",state).put("verified",true).put("updated",updated).put("deadline",java.time.Instant.now().getEpochSecond()+60);
+        if (Set.of("SUCCEEDED", "FAILED").contains(state)) record.putObject("result").put("id",id)
                 .put("action","start").put("target","test-host").put("exit_code",state.equals("SUCCEEDED") ? 0 : 1);
-        Path file=dir.resolve("a".repeat(32)+".json");Files.writeString(file,record.toString());return file;
+        Path file=dir.resolve(id+".json");Files.writeString(file,record.toString());return file;
     }
     @Test void pendingOperationWaitsWithoutAnotherModelOrNodeCount() throws Exception {
         FlowRun f=new FlowRun(catalog.snapshot());operationJob(f,"RUNNING");f.transitions=8;
@@ -1335,6 +1336,21 @@ class FlowEngineTest {
         assertThat(engine.reconcileOperations(task, f, f.snapshot.definition().nodes().get(f.node), report, false))
                 .isEqualTo(FlowEngine.OperationDisposition.FAILED);
         assertThat(f.lastBlockReason).contains("固定執行器確認作業失敗", "exit=1");
+    }
+    @Test void pendingReportCitingSeveralJobsReconcilesTheOneNamedInFailureReport() throws Exception {
+        // #1056：checks 同時引用已成功的 prepare 與前一次失敗的 job，真正回報「還在跑」的那個已經失敗。
+        enableService(true);
+        FlowRun f = store.flow(task.id()).orElseThrow(); f.node = "deploy";
+        operationJob(f, "SUCCEEDED", "b".repeat(32), 1);
+        operationJob(f, "FAILED", "c".repeat(32), 2);
+        operationJob(f, "FAILED", "a".repeat(32), 3);
+        task.state(Task.State.STAGE_RUNNING); store.save(task);
+        ObjectNode report = mapper.createObjectNode().put("execution_status", "BLOCKED");
+        report.putObject("failure_report").put("observed_error", "OPERATION_PENDING").put("evidence", "遠端 job ID：" + "c".repeat(32) + "。");
+        report.putArray("checks").addObject().put("evidence", "prepare " + "b".repeat(32) + "；前一次 " + "a".repeat(32));
+        assertThat(engine.reconcileOperations(task, f, f.snapshot.definition().nodes().get(f.node), report, false))
+                .isEqualTo(FlowEngine.OperationDisposition.FAILED);
+        assertThat(f.lastBlockReason).contains("固定執行器確認作業失敗", "c".repeat(32));
     }
     @Test void restartWithTrustedOperationQueuesSameTaskAndSnapshot() throws Exception {
         FlowRun f=new FlowRun(catalog.snapshot());operationJob(f,"RUNNING");
@@ -1552,11 +1568,19 @@ class FlowEngineTest {
             if (mode.equals("draftRepair") && flow.node.equals("intake")
                     && calls.stream().filter(s -> s.startsWith("intake:")).count() == 1)
                 ((ObjectNode)report.path("requirements").get(0)).putArray("acceptance_items");
-            if ((mode.equals("serviceRepair") || mode.equals("serviceToDevelopment")) && flow.node.equals("service")
+            if ((mode.equals("serviceRepair") || mode.startsWith("serviceTriageBlocked") || mode.equals("serviceToDevelopment")) && flow.node.equals("service")
                     && calls.stream().filter(s -> s.startsWith("service:")).count() == 1)
                 ((ObjectNode)report.path("checks").get(1)).put("exit_code", 1);
             if (mode.startsWith("service") && flow.node.equals("service_triage"))
                 ((ObjectNode)report).put("route", mode.equals("serviceToDevelopment") ? "implementation" : "service");
+            // #1056：分流已決定交回 service，卻把「被分流的工作仍受阻」寫成 BLOCKED。
+            if (mode.startsWith("serviceTriageBlocked") && flow.node.equals("service_triage")) {
+                ((ObjectNode)report).put("execution_status", "BLOCKED");
+                var failure = ((ObjectNode)report).putObject("failure_report");
+                for (String k : List.of("operation", "observed_error", "evidence", "impact", "cause", "next_action", "owner")) failure.put(k, "x");
+                failure.put("cause_status", "CONFIRMED");
+                if (mode.equals("serviceTriageBlockedHuman")) ((ObjectNode)report).putObject("human_decision").put("headline", "h");
+            }
             if (node.gate() == TeamDefinition.Gate.TEST_PLAN && mode.equals("inspect")) {
                 ((ObjectNode) report.path("scenarios").get(0)).putArray("operation_ids").add(OperationContract.INSPECT_CONTENT);
             } else if (node.gate() == TeamDefinition.Gate.TEST_PLAN
@@ -2117,6 +2141,16 @@ class FlowEngineTest {
         assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.COMPLETED);
         assertThat(calls).containsExactly("intake:coordinator", "service:builder", "service_triage:coordinator", "service:builder");
         verifyNoInteractions(verifier, publisher);
+    }
+    @Test void triageRouteIsFollowedWhenItReportsTheRoutedWorkAsBlocked() throws Exception {
+        enableService(true); mode = "serviceTriageBlocked"; engine.run(task);
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.COMPLETED);
+        assertThat(calls).containsExactly("intake:coordinator", "service:builder", "service_triage:coordinator", "service:builder");
+    }
+    @Test void triageAskingForHumanDecisionStillStops() throws Exception {
+        enableService(true); mode = "serviceTriageBlockedHuman"; engine.run(task);
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        assertThat(calls).containsExactly("intake:coordinator", "service:builder", "service_triage:coordinator");
     }
     @Test void serviceFindingProductDefectRoutesToDevelopmentAndRemovesDeploymentFiles() throws Exception {
         // #1007：只部署的路線查出產品程式問題，分流只能派 service 或真人，任務停下等人改程式。

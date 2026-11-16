@@ -42,6 +42,8 @@ public final class FailureReport {
         建置或測試失敗、或沒有執行，一律填 false；不論原因是否與本次修改有關，都不得回報成功。
         「無法核實」是驗收角色對單一情境的判定，不是實作成功的理由；環境或配置使必要檢查無法通過時要回報受阻並附原始錯誤。
         BLOCKED 會停止正常下游與 PR 發布、保留現場；配置有受阻路線時先自動分流修正。
+        分流角色的 execution_status 指自己的分流判定有沒有完成：已決定交回哪個角色（route）就是 COMPLETED，
+        被分流的工作仍受阻寫在 summary 與 failure_report；只有需要真人時才 route=human。
         證據只能寫你本次實際執行成功的工具輸出。工具被拒時要如實說明，不得改寫成已完成的查核，
         也不得把其他報告裡的指令輸出當成自己執行的結果。
         提示中的「尚未解除的受阻發現」是系統保存的開放缺陷，優先於其他報告的通過結論；
@@ -202,8 +204,15 @@ public final class FailureReport {
                 || !r.path("verify_passed").asBoolean(false);
     }
 
+    private static final String INVALID = "已確認：回報契約不完整或矛盾：";
+    /** 欄位齊全（不論 COMPLETED 或 BLOCKED）；只用來區分「格式不完整」與「如實回報受阻」。 */
+    public static boolean wellFormed(JsonNode r) {
+        String reason = blockingReason("generic", r);
+        return reason == null || !reason.startsWith(INVALID);
+    }
+
     private static String invalid(String error) {
-        return "已確認：回報契約不完整或矛盾：" + error
+        return INVALID + error
                 + "。\n原任務的失敗根因：尚未確認，缺少可追查的回報證據。"
                 + "\n下一步：由該角色補齊失敗操作、錯誤、證據、影響、原因狀態與處理者後重跑。";
     }

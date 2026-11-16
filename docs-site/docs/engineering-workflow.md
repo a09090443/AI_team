@@ -324,7 +324,7 @@ PR_CREATED、等待真人、FAILED、負責人結案等保留中的工作區會�
 
 FlowEngine 在一般受阻路由前讀取同 task／activeNode／HEAD 的有效 journal，等待期間釋放模型但保留中央執行槽。結果就緒或到 deadline 後，注入系統檢查點續同 activeNode，不增加節點／重跑／transition 次數，也不重置既有計數或代造完成報告。真正模型 timeout 只有在 RuntimeTimedOut 的 MODEL 階段且 cgroup cleanup=CONFIRMED 時才可走相同恢復。結果／timeout 指紋限制重複恢復，避免無限重開模型。
 
-如果工具先回 `OPERATION_PENDING`，服務回報 `BLOCKED` 時應在失敗報告或檢查證據附上原 job ID。即使收據在模型回報前就已寫入，系統也會核對該 ID、目標、任務、節點與 HEAD，依成功收據接續剩餘步驟，或依失敗收據的結束碼分流。
+如果工具先回 `OPERATION_PENDING`，服務回報 `BLOCKED` 時應在失敗報告或檢查證據附上原 job ID。即使收據在模型回報前就已寫入，系統也會核對該 ID、目標、任務、節點與 HEAD，依成功收據接續剩餘步驟，或依失敗收據的結束碼分流。報告同時引用多個 job（例如檢查證據列出已成功的 prepare 與前一次失敗的 start）時，先採 failure_report 指名的 job，仍有多個則取最新仍在執行的、沒有就取最新結束的（`OperationJobs.reported`；先前多於一個就不對帳，失敗結果不會交給分流）。
 
 prepare/start 只有固定執行器 verified 的同 HEAD、同 task／node／target 成功結果可重用；health 仍須核對該 start release，不得把舊 HTTP200 當成新版本驗收。服務重啟可依有效 journal 排回原 task；舊 AWAIT_HUMAN 需管理者先核實原收據，再以單次 AI_TEAM_RESUME_OPERATION_TASK 指定恢復，不修改任務快照或核准。
 

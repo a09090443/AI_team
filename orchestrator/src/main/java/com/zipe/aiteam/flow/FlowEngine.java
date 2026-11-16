@@ -702,7 +702,10 @@ public class FlowEngine {
                     flow.systemRetries.remove(flow.node + IssueTracker.OWNER_REPLY_RETRY);
                 }
                 String block = operation == OperationDisposition.FAILED ? flow.lastBlockReason
-                        : consultBlock != null ? consultBlock : issueBlock == null ? FlowGates.blockingReason(node, report, flow) : issueBlock;
+                        : consultBlock != null ? consultBlock : issueBlock == null ? FlowGates.currentNodeReason(node, report, flow) : issueBlock;
+                if (block == null && consultBlock == null && issueBlock == null && FlowGates.dispatchesBlockedWork(node, report, flow))
+                    audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY, "分流節點 " + flow.node
+                            + " 回報 BLOCKED 但已指定 route=" + report.path("route").asText() + "，依其分流派工（受阻的是被分流的工作）");
                 if (block==null && node.gate()==Gate.SERVICE && ServiceSupport.configured(props.homePath(),flow.snapshot.definition().project().serviceTarget().name()))
                     block=ServiceSupport.deliveryReason(props.homePath(),task.id(),report);
                 else if (block==null && node.gate()==Gate.SERVICE) {
@@ -3040,14 +3043,13 @@ public class FlowEngine {
             String evidence = failure.path("observed_error").asText() + "\n" + failure.path("evidence").asText()
                     + "\n" + report.path("checks");
             if (target != null && evidence.contains("OPERATION_PENDING")) {
-                Set<String> ids = java.util.regex.Pattern.compile("\\b[0-9a-f]{32}\\b").matcher(evidence)
-                        .results().map(java.util.regex.MatchResult::group).collect(java.util.stream.Collectors.toSet());
-                var matching = batch.jobs().stream()
-                        .filter(job -> target.name().equals(job.target()) && ids.contains(job.id()))
-                        .toList();
-                if (matching.size() == 1) {
-                    reportedJob = matching.getFirst().id();
-                    batch = new OperationJobs.Batch(matching);
+                // checks 常同時引用已成功的 prepare 與前一次失敗的 job（#1056 一份報告提到 3 個）；
+                // 只取一個時優先採 failure_report 指名的，再取最新仍在執行或最新結束的那一個。
+                var reported = OperationJobs.reported(batch.jobs(), target.name(),
+                        failure.path("observed_error").asText() + "\n" + failure.path("evidence").asText(), evidence);
+                if (reported != null) {
+                    reportedJob = reported.id();
+                    batch = new OperationJobs.Batch(List.of(reported));
                 }
             }
         }

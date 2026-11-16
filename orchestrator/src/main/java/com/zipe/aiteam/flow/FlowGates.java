@@ -7,8 +7,12 @@ import static com.zipe.aiteam.flow.TeamDefinition.*;
 /** 驗證的是工作契約，不是角色 ID；新增角色不用新增 case。 */
 public final class FlowGates {
     private FlowGates() {}
-    public static String blockingReason(Node node, JsonNode result, FlowRun flow) {
+    public static String blockingReason(Node node, JsonNode result, FlowRun flow) { return reason(node, result, flow, false); }
+    /** 剛執行完的節點（flow.node）的判定：分流已選定交回路線時依它派工，見 dispatchesBlockedWork。 */
+    static String currentNodeReason(Node node, JsonNode result, FlowRun flow) { return reason(node, result, flow, true); }
+    private static String reason(Node node, JsonNode result, FlowRun flow, boolean current) {
         String common = FailureReport.blockingReason("generic", result);
+        if (common != null && current && dispatchesBlockedWork(node, result, flow)) common = null;
         if (common != null) return common;
         String issues = IssueTracker.reportReason(node, result, flow);
         if (issues != null) return issues;
@@ -26,6 +30,21 @@ public final class FlowGates {
             }
             case REVIEW -> ReviewGate.blockingReason(result);
         };
+    }
+    /**
+     * 分流節點（其他節點受阻時的去處）已選定交回某個非真人路線，只是把「被分流的工作仍受阻」寫成 BLOCKED：
+     * 分流本身已完成，依它的 route 派工。#1056 service_triage 寫 route=service、摘要說不需使用者，
+     * 卻因 BLOCKED 被一律交真人。格式不完整、要真人決定（human_decision）或選 human 時照舊停下；
+     * 次數與總轉換上限不受影響。
+     */
+    static boolean dispatchesBlockedWork(Node node, JsonNode result, FlowRun flow) {
+        if (result == null || !result.isObject()) return false;
+        String route = result.path("route").asText("");
+        if (node.gate() != Gate.REPORT || node.routes() == null || route.isBlank() || "human".equals(route)) return false;
+        String target = node.routes().get(route);
+        if (target == null || "human".equals(target) || result.path("human_decision").isObject()) return false;
+        boolean triage = flow.snapshot.definition().nodes().values().stream().anyMatch(n -> flow.node.equals(n.blocked()));
+        return triage && "BLOCKED".equals(result.path("execution_status").asText()) && FailureReport.wellFormed(result);
     }
     /**
      * 建議性報告（REPORT，例如設計）在本流程從未執行、也沒有結果或受阻報告：是需求節點選了跳過它的路線（精簡路線），

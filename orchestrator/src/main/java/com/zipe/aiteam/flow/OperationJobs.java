@@ -44,6 +44,26 @@ public final class OperationJobs {
             return Diagnostics.safe(Diagnostics.clip(out.toString(), 12000));
         }
     }
+    private static final java.util.regex.Pattern JOB_ID = java.util.regex.Pattern.compile("\\b[0-9a-f]{32}\\b");
+    private static Set<String> ids(String text) {
+        Set<String> found = new HashSet<>();
+        JOB_ID.matcher(text == null ? "" : text).results().forEach(m -> found.add(m.group()));
+        return found;
+    }
+    /**
+     * 受阻報告說「作業還在跑」時，找出它指的是哪一個 job。報告的 checks 會同時引用已成功的 prepare
+     * 與前一次失敗的 job，所以先看 failure_report 指名的；仍有多個時取最新仍在執行的，沒有就取最新結束的。
+     * 回傳 null 表示報告沒引用任何本目標的 job。
+     */
+    public static Job reported(List<Job> jobs, String target, String primary, String all) {
+        Set<String> named = ids(primary), mentioned = ids(all);
+        List<Job> pool = jobs.stream().filter(j -> target.equals(j.target()) && named.contains(j.id())).toList();
+        if (pool.isEmpty()) pool = jobs.stream().filter(j -> target.equals(j.target()) && mentioned.contains(j.id())).toList();
+        if (pool.isEmpty()) return null;
+        List<Job> running = pool.stream().filter(Job::pending).toList();
+        return (running.isEmpty() ? pool : running).stream()
+                .max(Comparator.comparingLong(Job::updated).thenComparing(Job::id)).orElseThrow();
+    }
     public Batch read(String task, String node, String head) {
         if (home == null || task == null || !task.matches("[0-9]+") || node == null || head == null || head.isBlank()) return new Batch(List.of());
         Path base = home.resolve("operation-jobs"), directory = base.resolve(task);
