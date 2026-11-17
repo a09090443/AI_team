@@ -99,6 +99,7 @@ exec 時 `DOCKER_HOST` 指向 rootless socket，腳本照常用 `docker`／`dock
 | 重建後主機指紋沒變 | bento box 內建固定主機金鑰，所有由它建立的 VM 共用（私鑰隨公開映像流出） | 佈建時重新產生主機金鑰 |
 | 重建後第一次登錄連線失敗，重跑即過 | 剛開機的 VM 第一個連線暫時失敗 | register 的連線檢查最多重試三次 |
 | 容器以 root 執行 | 原設計未處理 | rootless Docker |
+| 部署回 `no space left on device`，根目錄 100% 滿（2026-11-17） | bento box 的 LVM 根分割只配置虛擬磁碟約一半（64 GB 磁碟、31 GB 根目錄），另一半留在 VG 未用；映像、建置快取與部署 log 長期累積後填滿 | 先 `vgs` 看 `VFree`，有剩就線上擴充：`sudo lvextend -r -l +100%FREE /dev/ubuntu-vg/ubuntu-lv`（ext4 可線上、不需重開機）；VG 已用盡才擴充 VirtualBox 磁碟。agent 只能清本專案產物，擴充由管理者執行，完成後在 Slack 按接續 |
 | Agent VM 卡死（RCU stall、soft lockup） | VirtualBox 走 Hyper-V（NEM）模式、8 vCPU，加上每晚存檔、隔天還原（依 log 推斷，未實驗驗證） | 維運注意事項（見下） |
 
 經這些修正後，第一個真實任務由 agent 自己修好兩版部署腳本，以 docker compose 起前端、後端、資料庫，service 階段 COMPLETED，
