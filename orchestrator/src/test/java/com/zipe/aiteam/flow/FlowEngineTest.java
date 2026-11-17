@@ -1715,6 +1715,23 @@ class FlowEngineTest {
                             .put("description", decision ? "problem 9" : "problem 1").put("scope", decision ? "DECISION" : "REPAIR")
                             .put("evidence", "分流補充：負責人先前核准延後").put("reason", "請負責人決定").putArray("requirement_ids").add("R1");
                 }
+                // #1058：負責人已回覆待決問題 I9，部署分流照提示填需求節點 ID；需求節點第二趟結案 I9、部署第二趟通過。
+                if (mode.equals("serviceDecisionConfirm")) {
+                    long intakes = calls.stream().filter(s -> s.startsWith("intake:")).count();
+                    long services = calls.stream().filter(s -> s.startsWith("service:")).count();
+                    for (JsonNode item : tracked.path("issue_updates"))
+                        if ("I9".equals(item.path("id").asText()) && node.gate() == TeamDefinition.Gate.REQUIREMENTS)
+                            ((ObjectNode) item).put("scope", intakes == 1 ? "DECISION" : "REPAIR");
+                    for (JsonNode item : tracked.path("issue_checks"))
+                        if ("I9".equals(item.path("id").asText())) ((ObjectNode) item).put("status", services == 1 ? "OPEN" : "PASS");
+                    if (node.gate() == TeamDefinition.Gate.REQUIREMENTS && intakes > 1)
+                        ((ObjectNode) tracked.path("requirements").get(0)).put("description", "改寫過的需求");
+                    if (flow.node.equals("service_triage")) {
+                        tracked.put("route", "intake");
+                        tracked.withArray("issue_updates").addObject().put("id", "I9").put("description", "problem 9").put("scope", "DECISION")
+                                .put("evidence", "負責人已回覆結案").put("reason", "交需求階段確認").putArray("requirement_ids").add("R1");
+                    }
+                }
                 if (flow.node.equals("verification") && mode.equals("issueDecisionUncertain"))
                     tracked.withArray("uncertainties").add("前端單元測試被沙箱擋下 localhost");
                 // verification 改寫既有 description：issueFormat 只錯一次，issueFormatTwice 兩次都錯。
@@ -2152,6 +2169,27 @@ class FlowEngineTest {
         enableService(true); mode = "serviceTriageBlockedCompleted"; engine.run(task);
         assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.COMPLETED);
         assertThat(calls).containsExactly("intake:coordinator", "service:builder", "service_triage:coordinator", "service:builder");
+    }
+    /** #1058：負責人已回覆待決問題，分流沒有通往需求的路線；系統交需求節點確認，不再要求核准需求變更，也不改需求基準。 */
+    @Test void ownerReplyIsConfirmedByRequirementsWithoutAnotherApprovalAndKeepsTheBaseline() throws Exception {
+        enableService(true); enableIssueTracking();
+        var seeded = store.flow("42").orElseThrow();
+        ObjectNode pending = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode()
+                .put("id", "I9").put("description", "problem 9").put("scope", "DECISION").put("evidence", "file:9")
+                .put("reason", "待負責人決定").put("source_task", "42").put("source_node", "intake").put("decision_supplements", 0);
+        pending.putArray("requirement_ids").add("R1");
+        seeded.issueInventory.put("I9", pending);
+        seeded.supplements = 1;
+        store.saveFlow("42", seeded);
+        mode = "serviceDecisionConfirm"; engine.run(task);
+        var flow = store.flow("42").orElseThrow();
+        assertThat(calls).containsExactly("intake:coordinator", "service:builder", "service_triage:coordinator", "intake:coordinator", "service:builder");
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.COMPLETED);
+        assertThat(flow.issueInventory.get("I9").path("scope").asText()).isEqualTo("REPAIR");
+        // 第二趟需求節點改寫了需求文字，但基準沿用第一趟。
+        assertThat(flow.receipts.get("intake").path("requirements").get(0).path("description").asText()).isNotEqualTo("改寫過的需求");
+        assertThat(flow.systemRetries).doesNotContainKey("intake" + IssueTracker.DECISION_CONFIRM);
+        verify(audit).record(eq("42"), eq(AuditLog.ACTOR_SYSTEM), eq(AuditLog.ACTION_STATE), contains("沿用原需求基準"));
     }
     @Test void triageAskingForHumanDecisionStillStops() throws Exception {
         enableService(true); mode = "serviceTriageBlockedHuman"; engine.run(task);

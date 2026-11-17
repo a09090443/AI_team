@@ -387,7 +387,8 @@ public class FlowEngine {
                     return;
                 }
                 if (flow.activeNode == null) {
-                    if (node.gate() == Gate.REQUIREMENTS && flow.baselineRevision != null && !flow.changeAuthorized) {
+                    if (node.gate() == Gate.REQUIREMENTS && flow.baselineRevision != null && !flow.changeAuthorized
+                            && !confirmingDecision(flow, node)) {
                         flow.changeTarget = flow.node;
                         waitHuman(task, flow, "重新建立需求基準需要原需求負責人明確核准。請補充「核准需求變更 具體變更內容」。"); return;
                     }
@@ -537,7 +538,8 @@ public class FlowEngine {
                     flow.activeNode = flow.node;
                     // 新的一次執行：上一次沒答完的諮詢不沿用（同一次執行的續跑不會走到這裡）。
                     flow.pendingConsult = null;
-                    if (node.gate() == Gate.REQUIREMENTS && flow.baselineRevision != null) {
+                    boolean confirming = confirmingDecision(flow, node);
+                    if (node.gate() == Gate.REQUIREMENTS && flow.baselineRevision != null && !confirming) {
                         JsonNode previous = Traceability.baseline(flow);
                         if (previous != null) flow.baselineHistory.add(previous.deepCopy());
                         // 先存下來：需求只刪減或沒變時，設計、計畫、實作可原樣沿用（ReceiptReuse）。
@@ -545,7 +547,8 @@ public class FlowEngine {
                         flow.baselineRevision = null; flow.changeAuthorized = false;
                         flow.receipts.clear(); flow.heads.clear();
                     }
-                    Traceability.invalidate(flow, flow.node);
+                    // 只確認待決問題時需求不變：保留基準與下游收據，由回報後的路線決定誰重跑。
+                    if (!confirming) Traceability.invalidate(flow, flow.node);
                     if (node.scope() == Scope.WORKSPACE) {
                         for (var entry : flow.snapshot.definition().nodes().entrySet()) {
                             if (entry.getValue().gate() == Gate.VERIFICATION || entry.getValue().gate() == Gate.REVIEW) {
@@ -825,16 +828,22 @@ public class FlowEngine {
                 attach(task, flow, node, flow.snapshot.definition().roles().get(node.role()), report);
                 String next;
                 boolean resend = false;
+                // 經系統路線回到需求節點只為依負責人的回覆結案待決問題：沿用原需求基準，新報告只用來更新問題清單。
+                JsonNode keptBaseline = node.gate() == Gate.REQUIREMENTS
+                        && flow.systemRetries.remove(flow.node + IssueTracker.DECISION_CONFIRM) != null
+                        && flow.baselineRevision != null ? flow.receipts.get(flow.node) : null;
                 if (block == null) {
                     issueRequest(task, flow, node, report);
-                    flow.receipts.put(flow.node, report);
+                    flow.receipts.put(flow.node, keptBaseline != null ? keptBaseline : report);
+                    if (keptBaseline != null) audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE,
+                            "需求節點依負責人回覆確認待決問題；沿用原需求基準=" + flow.baselineRevision + "，本次回報的需求內容不採用");
                     flow.blockedFindings.remove(flow.node);
                     if (node.gate() == Gate.TEST_PLAN && flow.browserE2eOffer == null && flow.browserE2eSetup == null
                             && BrowserE2e.offerReason(report) != null && BrowserE2e.policy(flow) != null) {
                         flow.browserE2eOffer = new FlowRun.BrowserE2eOffer(BrowserE2e.offerReason(report), null);
                         offerBrowserE2e(task, flow);
                     }
-                    if (node.gate() == Gate.REQUIREMENTS && Traceability.requirementsReason(report) == null) {
+                    if (keptBaseline == null && node.gate() == Gate.REQUIREMENTS && Traceability.requirementsReason(report) == null) {
                         flow.baselineRevision = Traceability.digest(report);
                         flow.issueScopeChangeAuthorized = false;
                         audit.record(task.id(), node.role(), AuditLog.ACTION_STATE, "建立需求基準=" + flow.baselineRevision + "；負責人=" + flow.acceptanceOwner);
@@ -844,8 +853,12 @@ public class FlowEngine {
                     String route = report.path("route").asText("");
                     String confirmRequirements = route.isBlank() ? null : IssueTracker.systemRequirementsRoute(flow, node, route);
                     if (confirmRequirements != null) {
-                        // 只是交需求階段確認負責人的回覆，不是改走開發：不移出部署檔。
+                        // 只是交需求階段確認負責人的回覆，不是改走開發：不移出部署檔。負責人已回覆，
+                        // 不再要求「核准需求變更」；需求節點這一趟沿用原基準（見上方 keptBaseline），所以不會改需求。
                         next = confirmRequirements;
+                        flow.systemRetries.put(next + IssueTracker.DECISION_CONFIRM, 1);
+                        flow.context = FlowContext.append(flow.context, "系統：這次回到需求節點只為依負責人在本任務的回覆，"
+                                + "確認並結案待決問題；需求內容沿用現有基準，本次回報的需求不會被採用。請依回覆處理問題清單，route 交回原本的下游。");
                         audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY, "節點 " + flow.node
                                 + " 沒有通往需求階段的路線；負責人已回覆待決問題，系統交需求節點 " + next + " 確認後再派工");
                     } else if (!route.isBlank()) {
@@ -955,7 +968,8 @@ public class FlowEngine {
                     return;
                 }
                 Node target = flow.snapshot.definition().nodes().get(next);
-                if (target != null && target.gate() == Gate.REQUIREMENTS && flow.baselineRevision != null) {
+                if (target != null && target.gate() == Gate.REQUIREMENTS && flow.baselineRevision != null
+                        && !flow.systemRetries.containsKey(next + IssueTracker.DECISION_CONFIRM)) {
                     AutomaticHandoff.clear(flow);
                     flow.changeTarget = next;
                     waitHuman(task, flow, "PM 提議重新確認需求，尚未授權變更。只有原需求負責人可補充「核准需求變更 具體變更內容」。\n" + report); return;
@@ -2352,6 +2366,11 @@ public class FlowEngine {
     }
 
     /** 配置中唯一的需求節點；沒有或不唯一時回 null。 */
+    /** 經系統路線回到需求節點、只為依負責人回覆確認待決問題（IssueTracker.systemRequirementsRoute）；需求基準不變。 */
+    private static boolean confirmingDecision(FlowRun flow, Node node) {
+        return node.gate() == Gate.REQUIREMENTS && flow.baselineRevision != null && Traceability.baseline(flow) != null
+                && flow.systemRetries.containsKey(flow.node + IssueTracker.DECISION_CONFIRM);
+    }
     static String requirementsNode(FlowRun flow) {
         List<String> ids = flow.snapshot.definition().nodes().entrySet().stream()
                 .filter(entry -> entry.getValue().gate() == Gate.REQUIREMENTS).map(Map.Entry::getKey).toList();

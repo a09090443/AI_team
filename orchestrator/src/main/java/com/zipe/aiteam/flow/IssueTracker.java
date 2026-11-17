@@ -99,6 +99,8 @@ public final class IssueTracker {
     static final String FORMAT_RETRY = "#issue-format";
     /** systemRetries 的鍵尾碼：需求草稿自行把待決問題改成已決定時，只說明一次該怎麼交給負責人。 */
     static final String OWNER_REPLY_RETRY = "#owner-reply";
+    /** systemRetries 的鍵尾碼：經系統路線回到需求節點確認待決問題，該趟沿用原需求基準（FlowEngine）。 */
+    static final String DECISION_CONFIRM = "#decision-confirm";
 
     /** 這類退回不是草稿寫錯，重寫也過不了：要等負責人在本任務回覆。 */
     static boolean needsOwnerReply(String reason) {
