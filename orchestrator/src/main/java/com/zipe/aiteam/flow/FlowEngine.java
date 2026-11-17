@@ -858,7 +858,8 @@ public class FlowEngine {
                         next = confirmRequirements;
                         flow.systemRetries.put(next + IssueTracker.DECISION_CONFIRM, 1);
                         flow.context = FlowContext.append(flow.context, "系統：這次回到需求節點只為依負責人在本任務的回覆，"
-                                + "確認並結案待決問題；需求內容沿用現有基準，本次回報的需求不會被採用。請依回覆處理問題清單，route 交回原本的下游。");
+                                + "確認並結案待決問題；需求內容沿用現有基準，本次回報的需求不會被採用。請依回覆把待決問題的 scope "
+                                + "改成 REPAIR（目標內已處理或要處理）或 EXCLUDED（負責人決定不做），route 交回原本的下游。");
                         audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY, "節點 " + flow.node
                                 + " 沒有通往需求階段的路線；負責人已回覆待決問題，系統交需求節點 " + next + " 確認後再派工");
                     } else if (!route.isBlank()) {

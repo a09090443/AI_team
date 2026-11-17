@@ -27,6 +27,8 @@ public final class IssueTracker {
             intake 回覆須重列完整既有清單及其需求對應，承接時保留 ID，已做成果先核實不重做。
             工作型請求有 REPAIR 時走修正流程，不得 route=question；真正需取捨才 route=human。
             同時有可修項與待決項，先在現有授權內處理可修項，待決項仍須保留，不得宣稱全部完成。
+            待決項收到負責人在本任務的回覆後，由需求階段依回覆改 scope：在目標內處理或已處理改 REPAIR，
+            負責人決定不做改 EXCLUDED，並在 reason 寫明負責人的決定。只要仍是 DECISION，查核填 PASS 也照樣擋住交付。
             issue_revision 原樣回傳系統提供的完整清單版本。implementation 不可自行宣稱問題已驗收。
             verification／review／service 的 issue_checks 必須逐項列出所有 REPAIR 與 DECISION：
             id、status（PASS 或 OPEN）、evidence（實際查核證據）。未解或未核實用 OPEN，不得杜撰 PASS。
