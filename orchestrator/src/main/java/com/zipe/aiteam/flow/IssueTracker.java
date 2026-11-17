@@ -121,7 +121,8 @@ public final class IssueTracker {
      * 需求對應：重送時必須還原原本的對應，不會因此取得改基準的權限；#1011 分流判斷要改走開發修產品，
      * 卻替既有問題多掛一個基準沒有的需求 ID，整份被退回停給人。
      */
-    static String formatCorrection(FlowRun flow, String reason) {
+    static String formatCorrection(FlowRun flow, String reason) { return formatCorrection(flow, null, reason); }
+    static String formatCorrection(FlowRun flow, Node node, String reason) {
         if (reason == null) return null;
         String rule = "\n規則：既有問題的 description 逐字照抄系統清單；進度與決定寫在 evidence／reason；"
                 + "issue_revision 原樣回傳系統提供的版本；其餘判斷與 route 照你原本的結論，不要因為這次格式修正改變。";
@@ -152,10 +153,36 @@ public final class IssueTracker {
             if (stored == null || requirements == null || flow.supplements <= stored.path("decision_supplements").asInt()) return null;
             return "【系統格式修正，不計重跑次數】負責人已在本任務回覆待決問題 " + id + "，但只有需求階段能依回覆把它結案，"
                     + "上一份回報自行改掉了它的範圍，整份未被採用。請重送完整回報：" + id + " 維持原本的 scope=DECISION 與 description，"
-                    + "把負責人的決定寫進 evidence／reason，route 填需求節點 " + requirements
-                    + "，由它確認需求後再交給下游；不要再請負責人決定同一件事。issue_revision=" + revision(flow) + "。";
+                    + "把負責人的決定寫進 evidence／reason，route 填 " + requirementsRoute(flow, node) + "（需求節點 " + requirements
+                    + "），由它確認需求後再交給下游；不要再請負責人決定同一件事。issue_revision=" + revision(flow) + "。";
         }
         return null;
+    }
+
+    /** 待決問題已收到負責人在本任務的新回覆，只差需求階段依回覆確認（#1051）。 */
+    static boolean ownerReplyAwaitsRequirements(FlowRun flow) {
+        return flow.issueInventory != null && flow.issueInventory.values().stream().anyMatch(i ->
+                "DECISION".equals(i.path("scope").asText()) && flow.supplements > i.path("decision_supplements").asInt());
+    }
+    /** 交回需求階段時 route 要填的值：節點有通往需求節點的路線就用該鍵，沒有就填需求節點 ID（見 systemRequirementsRoute）。 */
+    static String requirementsRoute(FlowRun flow, Node node) {
+        String requirements = FlowEngine.requirementsNode(flow);
+        if (requirements == null) return null;
+        if (node != null && node.routes() != null)
+            for (var route : node.routes().entrySet()) if (requirements.equals(route.getValue())) return route.getKey();
+        return requirements;
+    }
+    /**
+     * 系統路線：待決問題只有需求階段能依負責人的回覆結案，但不是每個節點都配置了通往需求節點的路線。
+     * #1057 分流（只能交 service／implementation／human）照系統修正提示填需求節點，卻因「未配置的 route」整個停下。
+     * 只在負責人已於本任務回覆、回報 route 正是需求節點 ID、節點本身沒有同名路線時放行，回傳要前往的節點；
+     * 需求節點仍要自己確認才結案，不因此取得其他權限。其餘情況回 null，照配置路線檢查。
+     */
+    static String systemRequirementsRoute(FlowRun flow, Node node, String route) {
+        String requirements = FlowEngine.requirementsNode(flow);
+        if (requirements == null || !requirements.equals(route) || node.gate() == Gate.REQUIREMENTS
+                || (node.routes() != null && node.routes().containsKey(route))) return null;
+        return ownerReplyAwaitsRequirements(flow) ? requirements : null;
     }
 
     /** Validate transactionally. Invalid reports cannot erase or partially replace the ledger. */

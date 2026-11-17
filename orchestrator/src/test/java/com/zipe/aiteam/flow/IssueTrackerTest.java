@@ -304,7 +304,37 @@ class IssueTrackerTest {
         flow.supplements++;
         assertThat(IssueTracker.ingest(flow, report, r.deepCopy(), "42")).startsWith(IssueTracker.DECISION_NEEDS_REQUIREMENTS);
         assertThat(IssueTracker.formatCorrection(flow, reason)).contains("負責人已在本任務回覆").contains("scope=DECISION")
-                .contains("route 填需求節點 " + FlowEngine.requirementsNode(flow));
+                .contains("需求節點 " + FlowEngine.requirementsNode(flow));
+    }
+
+    static Node routed(Node n, java.util.Map<String, String> routes) {
+        return new Node(n.kind(), n.role(), n.schema(), n.scope(), n.gate(), n.workspace(), n.writablePaths(), n.plan(), n.next(),
+                n.blocked(), routes, n.requires(), n.maxVisits(), n.timeoutSeconds(), n.maxTurns(), n.instructions(),
+                n.localTestNetwork(), n.protectedPathFallback(), n.candidateRoles(), n.skills(), n.consultRoles());
+    }
+    /** #1057：分流只能交 service／implementation／human，修正提示卻要它填需求節點，照做就因未配置的 route 停下。 */
+    @Test void ownerReplyLetsANodeWithoutARequirementsRouteHandBackThroughTheSystemRoute() {
+        String requirements = FlowEngine.requirementsNode(flow);
+        Node triage = routed(node(Gate.REPORT), java.util.Map.of("service", "service", "human", "human"));
+        Node withRoute = routed(node(Gate.REPORT), java.util.Map.of("confirm", requirements, "human", "human"));
+        ObjectNode r = report(); r.withArray("issue_updates").add(issue("I1", "DECISION"));
+        assertThat(IssueTracker.ingest(flow, node(Gate.REQUIREMENTS), r, "42")).isNull();
+        // 負責人還沒回覆：不開系統路線。
+        assertThat(IssueTracker.systemRequirementsRoute(flow, triage, requirements)).isNull();
+        flow.supplements++;
+        assertThat(IssueTracker.systemRequirementsRoute(flow, triage, requirements)).isEqualTo(requirements);
+        assertThat(IssueTracker.systemRequirementsRoute(flow, triage, "service")).isNull();
+        assertThat(IssueTracker.systemRequirementsRoute(flow, node(Gate.REQUIREMENTS), requirements)).isNull();
+        // 有配置通往需求節點的路線時提示填該鍵，系統路線不介入。
+        assertThat(IssueTracker.requirementsRoute(flow, withRoute)).isEqualTo("confirm");
+        assertThat(IssueTracker.requirementsRoute(flow, triage)).isEqualTo(requirements);
+        String reason = IssueTracker.DECISION_NEEDS_REQUIREMENTS + "I1";
+        assertThat(IssueTracker.formatCorrection(flow, withRoute, reason)).contains("route 填 confirm");
+        assertThat(IssueTracker.formatCorrection(flow, triage, reason)).contains("route 填 " + requirements);
+        // 待決問題已由需求階段結案後不再放行。
+        r = report(); r.withArray("issue_updates").add(issue("I1", "REPAIR"));
+        assertThat(IssueTracker.ingest(flow, node(Gate.REQUIREMENTS), r, "42")).isNull();
+        assertThat(IssueTracker.systemRequirementsRoute(flow, triage, requirements)).isNull();
     }
 
     /** #1035：原任務的計數是 2，新任務從 0 起算，負責人要回覆到第三次才放行。 */

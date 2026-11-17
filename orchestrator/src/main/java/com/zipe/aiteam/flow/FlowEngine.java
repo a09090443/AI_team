@@ -842,7 +842,13 @@ public class FlowEngine {
                     if (node.workspace()) flow.heads.put(flow.node, workspaces.headSha(task.id()));
                     IssueTracker.rememberEvidence(flow, node, report, flow.heads.get(flow.node));
                     String route = report.path("route").asText("");
-                    if (!route.isBlank()) {
+                    String confirmRequirements = route.isBlank() ? null : IssueTracker.systemRequirementsRoute(flow, node, route);
+                    if (confirmRequirements != null) {
+                        // 只是交需求階段確認負責人的回覆，不是改走開發：不移出部署檔。
+                        next = confirmRequirements;
+                        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY, "節點 " + flow.node
+                                + " 沒有通往需求階段的路線；負責人已回覆待決問題，系統交需求節點 " + next + " 確認後再派工");
+                    } else if (!route.isBlank()) {
                         if (node.routes() == null || !node.routes().containsKey(route)) throw new IllegalStateException("報告選擇未配置的 route，拒絕派工：" + route);
                         next = node.routes().get(route);
                         leaveStandaloneService(task, flow, node, next);
@@ -872,7 +878,7 @@ public class FlowEngine {
                                   && Traceability.requirementsReason(report) != null)
                                 || (IssueTracker.enabled(flow) && (issueBlock != null || IssueTracker.reportReason(node, report, flow) != null)));
                     // 只是問題清單記帳格式寫錯：附上系統原文請同一個 agent 重送一次，不計次、不交給人（#1040／#1042）。
-                    String correction = repairDraft ? null : IssueTracker.formatCorrection(flow, issueBlock);
+                    String correction = repairDraft ? null : IssueTracker.formatCorrection(flow, node, issueBlock);
                     String formatKey = flow.node + IssueTracker.FORMAT_RETRY;
                     String formatLabel = "問題清單";
                     // handoff 角色或欄位寫錯（#1044）同樣只是輸出格式：附上可填的角色 ID 請同節點重送一次。
