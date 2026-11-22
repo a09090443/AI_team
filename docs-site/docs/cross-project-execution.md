@@ -41,7 +41,7 @@ Java＋文件網站與 Node 範例均已加入契約。新專案仍需管理者�
 本版不會從 README 或模型輸出自動推導、安裝工具、開放權限。
 
 靜態檢查拒絕 shell 表達式、越界路徑、未知節點、唯讀寫入及未宣告工具。
-唯一腳本形式為 `["bash", "scripts/example.sh"]`，且必填小寫 64 位 `scriptSha256`、requiredTools 宣告 bash。
+直接執行固定腳本時用 `["bash", "scripts/example.sh"]`，必填小寫 64 位 `scriptSha256`，並於 requiredTools 宣告 bash。沙箱 E2E 可經由既有 Python 執行器驗證指定的已提交 Runner，見[沙箱 E2E](browser-e2e.md#使用已部署的沙箱驗收)。
 不接受 `-c`、額外參數、絕對路徑或 `..`。派工前核對腳本實際 SHA256、禁止 symlink，並在可寫階段將檔案釘選唯讀。
 腳本內容更新必須重新審閱並更新配置雜湊；不自動信任新版本。仍由同一外層沙箱執行，不擴大權限。
 這不改變 project.verification.commands 禁止 shell 的獨立驗證政策。
@@ -58,6 +58,9 @@ QA 操作可在相同 argv 加 `--offline`，並將輸出目錄列入 `writes` �
 若設 `commandScopes`，範例根目錄對應這條獨立驗證指令，不得只列為 QA 專屬後宣稱封裝已通過。
 目前 argv 為簡單、無空白／shell 特殊字元的參數；複雜命令不自行降級成 shell。
 `writes` 是操作需求，不是新的權限來源，也不代表列出所有執行中副作用。
+建置工具若會刪除並重建整個輸出目錄（例如靜態匯出），只把該目錄掛成可寫仍可能在 `rmdir` 時得到 `EROFS`：刪除目錄會變更其父目錄。
+請把同一提交的建置來源放在專用暫存目錄，讓該暫存目錄可寫，依核准順序在其中執行檢查；原始工作區維持既有限權。
+驗證配置時至少連續建置兩次，並確認第二次也產出預期檔案，才能覆蓋清理既有輸出的路徑。
 
 操作 ID `inspect-content` 為系統保留：它是所有 v2 測試計畫／驗收可引用的內建「讀已提交檔案內容」驗收方式，
 不是指令、不進 `OperationPreflight`，配置宣告同名操作會被拒絕。語意與限制見 [qa-scenario-workflow](qa-scenario-workflow.md)。

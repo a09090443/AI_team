@@ -38,6 +38,8 @@ public final class OwnerPublish {
     public static Result evaluate(FlowRun flow, String head, boolean clean) {
         if (flow == null || flow.snapshot == null || flow.dialogue) return refuse("這不是配置式流程的工作任務");
         if (flow.successor != null) return refuse("已由任務 #" + flow.successor + " 承接");
+        if (flow.systemRetries.containsKey(FlowEngine.PR_FEEDBACK_PENDING))
+            return refuse("回報的問題仍在處理，請等原流程完成檢查並發出新的 PR 核准卡");
         List<String> approvals = flow.snapshot.definition().nodes().entrySet().stream()
                 .filter(e -> e.getValue().kind() == Kind.APPROVAL).map(Map.Entry::getKey).toList();
         if (approvals.size() != 1) return refuse("流程沒有唯一的發布核准節點");

@@ -8,6 +8,73 @@ import static org.assertj.core.api.Assertions.*;
 
 class ServiceDeliveryTest {
     final ObjectMapper mapper = new ObjectMapper();
+
+    @Test void sandboxQaRequiresARealNonemptyRunForTheCurrentDeployment(@org.junit.jupiter.api.io.TempDir Path home) throws Exception {
+        FlowRun flow = flow(true);
+        ObjectNode definition = mapper.valueToTree(flow.snapshot.definition());
+        ObjectNode project = (ObjectNode) definition.path("project");
+        project.put("requirePlanApproval", true);
+        if (java.util.stream.StreamSupport.stream(project.path("requiredTools").spliterator(), false)
+                .noneMatch(tool -> "python3".equals(tool.asText()))) project.withArray("requiredTools").add("python3");
+        ObjectNode operations = (ObjectNode) project.path("operations");
+        ((ObjectNode) operations.path("service-start")).putArray("writes").add("ai-team-sandbox");
+        operations.set("sandbox-e2e", mapper.readTree("""
+                {"nodes":["verification"],"directory":".","argv":["python3","/opt/skills/service-build/scripts/client.py","exec","qa/sandbox-e2e.sh"],
+                 "writes":["ai-team-sandbox"],"scriptSha256":"%s"}
+                """.formatted("d".repeat(64))));
+        ObjectNode nodes = (ObjectNode) definition.path("nodes");
+        for (String id : java.util.List.of("service", "deploy")) {
+            var paths = ((ObjectNode) nodes.path(id)).withArray("writablePaths");
+            paths.add("ai-team-sandbox/**");
+        }
+        ((ObjectNode) nodes.path("deploy")).put("next", "verification").putArray("requires").add("intake").add("implementation");
+        ((ObjectNode) nodes.path("verification")).put("localTestNetwork", false).withArray("requires").add("deploy");
+        ((ObjectNode) nodes.path("verification")).withArray("writablePaths").add("ai-team-sandbox/**");
+        ((ObjectNode) nodes.path("approval")).withArray("requires").add("deploy");
+        TeamDefinition team = mapper.treeToValue(definition, TeamDefinition.class);
+        TeamCatalog.validate(team);
+        flow.snapshot = new TeamDefinition.Snapshot("sandbox", team, "/repo", java.util.Map.of());
+        flow.acceptanceOwner = "qa-owner";
+        flow.baselineRevision = "baseline";
+        var plan = mapper.readTree("""
+                {"scenarios":[{"id":"browser","requirement_ids":["R1"],"operation_ids":["sandbox-e2e"]}]}
+                """);
+        flow.receipts.put("plan", plan);
+        var issue = (ObjectNode) mapper.readTree("{\"scope\":\"REPAIR\",\"requirement_ids\":[\"R1\"]}");
+        assertThat(SandboxE2e.verifiesAfterDeploy(flow, "deploy", issue)).isFalse();
+        flow.planApprovals.put("plan", PlanApproval.approve(flow, "plan", Traceability.digest(plan), "qa-owner"));
+        assertThat(SandboxE2e.verifiesAfterDeploy(flow, "deploy", issue)).isTrue();
+        issue.withArray("requirement_ids").add("not-covered");
+        assertThat(SandboxE2e.verifiesAfterDeploy(flow, "deploy", issue)).isFalse();
+        flow.node = "deploy";
+        String head = "a".repeat(40), id = "b".repeat(32);
+        var deployment = report();
+        SandboxE2e.stampDeployment(flow, deployment);
+        flow.receipts.put("deploy", deployment);
+        flow.heads.put("deploy", head);
+        flow.node = "verification";
+        var qa = mapper.createObjectNode();
+        assertThat(SandboxE2e.attest(flow, qa, home, "42", head)).contains("收據");
+        var job = mapper.createObjectNode().put("version", 1).put("id", id).put("task", "42")
+                .put("action", "exec").put("state", "SUCCEEDED").put("verified", true).put("node", "verification")
+                .put("source_head", head).put("target", "sit-host").put("script", "qa/sandbox-e2e.sh")
+                .put("source_sha256", "c".repeat(64))
+                .put("deployment_generation", deployment.path("_sandbox_e2e_deployment").asText());
+        var evidence = job.putObject("result").put("id", id).put("action", "exec").put("target", "sit-host")
+                .put("source_sha256", "c".repeat(64)).put("exit_code", 0).putArray("evidence");
+        Path journal = Files.createDirectories(home.resolve("operation-jobs/42")).resolve(id + ".json");
+        evidence.add("EXEC_OUTPUT: AI_TEAM_SANDBOX_E2E_PASS " + head + " 0");
+        mapper.writeValue(journal.toFile(), job);
+        assertThat(SandboxE2e.attest(flow, qa, home, "42", head)).contains("為零");
+        evidence.removeAll().add("EXEC_OUTPUT: AI_TEAM_SANDBOX_E2E_PASS " + head + " 3");
+        mapper.writeValue(journal.toFile(), job);
+        assertThat(SandboxE2e.attest(flow, qa, home, "42", head)).isNull();
+        flow.receipts.put("verification", qa);
+        assertThat(SandboxE2e.publicationReason(flow, head)).isNull();
+        flow.node = "deploy";
+        SandboxE2e.stampDeployment(flow, deployment);
+        assertThat(SandboxE2e.publicationReason(flow, head)).contains("沙箱 E2E");
+    }
     FlowRun flow(boolean target) throws Exception {
         ObjectNode d = (ObjectNode) mapper.readTree(Files.readString(Path.of("teams/gradle-fullstack.json")));
         if (target) {

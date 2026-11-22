@@ -77,6 +77,15 @@ public final class SlackBlocks {
                 ))));
     }
 
+    public static List<LayoutBlock> configuredApprovalBlocks(String taskId, String text, int revision, boolean canReport) {
+        var controls = new java.util.ArrayList<>(asElements(
+                button(b -> b.actionId(ACTION_APPROVE).value(taskId + "|" + revision).style("primary")
+                        .text(plainText("核准，推分支並開 PR")))));
+        if (canReport) controls.add(HumanInput.prFeedbackButton(taskId, revision));
+        controls.add(button(b -> b.actionId(ACTION_ABORT).value(taskId).style("danger").text(plainText("中止"))));
+        return asBlocks(section(s -> s.text(markdownText(clip(text, 2900)))), actions(a -> a.elements(controls)));
+    }
+
     /** 依角色分派渲染。新增角色時在這裡加一個 case。 */
     public static String renderStage(Task task, StageSpec stage, StageOutcome o) {
         return switch (stage.role()) {

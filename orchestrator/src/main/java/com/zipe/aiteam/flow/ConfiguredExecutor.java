@@ -153,6 +153,7 @@ public class ConfiguredExecutor {
         if (!flow.dialogue) context.append("\n本階段可使用／規畫的操作契約：").append(availableOperations(flow, node));
         if (!flow.dialogue) context.append(inspectionNotice(flow, node));
         if (!flow.dialogue) context.append(ServiceDelivery.notice(flow, node, pendingCommits(task, flow, node)));
+        if (!flow.dialogue) context.append(SandboxE2e.notice(flow, node));
         if (!flow.dialogue) {
             context.append(OperationJobs.instruction());
             String operationHead = flow.workspaceReady ? workspaces.headSha(task.id()) : null;
@@ -220,8 +221,13 @@ public class ConfiguredExecutor {
                     .append("\n它們不屬於本次驗收：不要為它們寫情境結果，也不要列進 uncertainties。");
         context.append("\n若系統獨立驗證收據含管理者固定命令、exitCode=0 且版本仍有效，"
                 + "它就是該完整建置操作的主要證據；不得只因本節點操作契約未重複提供同一命令而回報受阻。"
-                + "本節點若補了測試，不要自己 commit，在 summary 列出新增或修改的測試路徑即可：允許路徑內的修改由系統自動提交，"
-                + "並在提交後的版本重新驗收；「無法 commit」「工作樹不乾淨」不是判定 FAIL 或受阻的理由。不得要求放寬 .git 權限。");
+                + "不得要求放寬 .git 權限。");
+        if (!flow.dialogue && node.gate() == Gate.VERIFICATION && node.scope() == Scope.LIMITED)
+            context.append("\n本節點若補了測試，不要自己 commit，在 summary 列出新增或修改的測試路徑即可：允許路徑內的修改由系統自動提交，"
+                + "並在提交後的版本重新驗收；「無法 commit」「工作樹不乾淨」不是判定 FAIL 或受阻的理由。");
+        if (!flow.dialogue && implementationCommits(node, role))
+            context.append("\n本節點交給驗收前，須在本任務工作區核對並 commit 本次授權範圍內的程式、測試與文件。")
+                    .append("在 summary 列出實際 commit，確認工作區乾淨後再回報成功。");
         context.append("\n系統保存的真人測試計畫核准收據（以版本綁定；不同於測試結果）：").append(flow.planApprovals)
                 .append("\n人工核准不等於測試 PASS。請依目前 HEAD 重新執行本階段驗收，不得把補核准直接當作全部通過。");
         context.append("\n系統獨立驗證收據是建置／測試證據，不是真人核准紀錄；不得以它為 null 推論無人核准。")
@@ -307,6 +313,14 @@ public class ConfiguredExecutor {
 
     /** 每個任務最近一次 execute 期間 agent 實際執行的指令；同一實例同一時間只跑一個任務的一個節點。 */
     private final Map<String, List<CommandRuns.CommandRun>> commandRuns = new java.util.concurrent.ConcurrentHashMap<>();
+
+    static boolean implementationCommits(Node node, Role role) {
+        if (node.gate() != Gate.IMPLEMENTATION || node.scope() != Scope.WORKSPACE || !node.workspace()
+                || role == null || !"claude-code".equals(role.runtime()) || role.tools() == null) return false;
+        List<String> tools = role.tools();
+        return tools.contains("Bash") || tools.contains("Bash(git *)")
+                || (tools.contains("Bash(git add *)") && tools.contains("Bash(git commit *)"));
+    }
 
     /** 最近一次執行讀到的指令紀錄；沒有證據時回空清單。 */
     public List<CommandRuns.CommandRun> lastCommandRuns(String taskId) {

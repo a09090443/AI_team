@@ -166,6 +166,7 @@ public class IndependentVerifier {
         var selection = VerificationPlan.select(spec, changed);
         List<String> prints = VerificationPlan.fingerprints(spec, workspaces.treeEntries(task.id(), head));
         List<VerificationPlan.Decision> decisions = new ArrayList<>();
+        int lastCommandToRun = -1;
         for (int i = 0; i < spec.commands().size(); i++) {
             List<String> argv = List.copyOf(spec.commands().get(i));
             if (!selection.needs(i)) {
@@ -177,15 +178,25 @@ public class IndependentVerifier {
             VerificationPlan.HistoryEntry previous = reusable(flow, argv, prints.get(i));
             if (previous != null) decisions.add(new VerificationPlan.Decision(i, argv, VerificationPlan.Action.REUSE,
                     "相同輸入指紋已於 commit " + previous.head() + " 通過", matched, prints.get(i), previous.log(), previous.sha256(), previous.head()));
-            else decisions.add(new VerificationPlan.Decision(i, argv, VerificationPlan.Action.RUN,
-                    selection.fullRun() ? selection.fullRunReason() : "範圍內有變更", matched, prints.get(i), null, null, null));
+            else {
+                decisions.add(new VerificationPlan.Decision(i, argv, VerificationPlan.Action.RUN,
+                        selection.fullRun() ? selection.fullRunReason() : "範圍內有變更", matched, prints.get(i), null, null, null));
+                lastCommandToRun = i;
+            }
         }
         List<String> changedFiles = changed == null ? null : List.copyOf(changed.subList(0, Math.min(500, changed.size())));
         Instant started = Instant.now();
-        if (decisions.stream().noneMatch(d -> d.action() == VerificationPlan.Action.RUN)) {
+        if (lastCommandToRun < 0) {
             if (!head.equals(workspaces.headSha(task.id())) || !workspaces.clean(task.id())) throw new IllegalStateException("驗證期間來源工作區變更，收據作廢");
             return new Receipt(head, flow.baselineRevision, flow.snapshot.revision(), started.toString(), Instant.now().toString(),
                     List.of(), null, fileEvidence, List.copyOf(decisions), changedFiles, task.id(), jsonEvidence);
+        }
+        // 固定指令依序執行。舊收據只有結果，無法在新副本提供後續指令可能用到的套件或產物。
+        for (int i = 0; i < lastCommandToRun; i++) {
+            var previous = decisions.get(i);
+            if (previous.action() == VerificationPlan.Action.REUSE)
+                decisions.set(i, new VerificationPlan.Decision(i, previous.argv(), VerificationPlan.Action.RUN,
+                        "在新副本重新準備後續指令環境", previous.matched(), previous.fingerprint(), null, null, null));
         }
         Path root = props.homePath().resolve("verification-runs").resolve(task.id()).toAbsolutePath().normalize();
         Files.createDirectories(root);
@@ -226,7 +237,7 @@ public class IndependentVerifier {
             results.add(result);
             decisions.set(i, new VerificationPlan.Decision(i, decision.argv(), decision.action(), decision.reason(), decision.matched(),
                     decision.fingerprint(), result.log(), result.sha256(), null));
-            // 每通過一個就記下來：後面的指令失敗時，修正後的下一輪仍可重用輸入沒變的這個結果。
+            // 保存成功證據。同一輸入下，無須在新副本準備後續指令時可重用。
             remember(flow, new VerificationPlan.HistoryEntry(decision.argv(), decision.fingerprint(), flow.snapshot.revision(), head, result.log(), result.sha256()));
         }
         if (!head.equals(workspaces.headSha(task.id())) || !workspaces.clean(task.id())) throw new IllegalStateException("驗證期間來源工作區變更，收據作廢");

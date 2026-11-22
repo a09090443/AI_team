@@ -98,6 +98,21 @@ class ConfiguredExecutorTest {
         verify(runtime, never()).execute(any(), any());
     }
     OperationPreflight preflight = mock(OperationPreflight.class);
+    @Test void implementationAndLimitedVerificationReceiveDifferentCommitInstructions() throws Exception {
+        when(workspace.exists("42")).thenReturn(true);
+        var captured = new AtomicReference<AgentRuntime.RuntimeRequest>();
+        when(runtime.execute(any(), any())).thenAnswer(c -> { captured.set(c.getArgument(0)); return null; });
+        var task = new Task("42", "c", "t", "u", "修前端與測試");
+        flow.node = "implementation";
+        executor.execute(task, flow, flow.snapshot.definition().nodes().get(flow.node));
+        assertThat(captured.get().prompt()).contains("須在本任務工作區核對並 commit")
+                .doesNotContain("本節點若補了測試，不要自己 commit");
+
+        flow.node = "verification";
+        executor.execute(task, flow, flow.snapshot.definition().nodes().get(flow.node));
+        assertThat(captured.get().prompt()).contains("本節點若補了測試，不要自己 commit")
+                .doesNotContain("須在本任務工作區核對並 commit");
+    }
     @Test void readOnlyTriageUsesExistingWorkspaceNotMainClone() throws Exception {
         Path taskRepo = tmp.resolve("task-repo"); Files.createDirectories(taskRepo.resolve(".git"));
         when(workspace.pathFor("42")).thenReturn(taskRepo);

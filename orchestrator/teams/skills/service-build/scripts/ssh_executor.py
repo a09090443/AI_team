@@ -50,7 +50,8 @@ def poll(home, config):
         definition,node,service_target = client.service_parts(flow)
         target = service_target.get("name")
         service = node.get("gate")=="SERVICE" and target==c["target"]
-        if not service and not any(jobs_dir.glob("*.json")):
+        e2e = node.get("gate") == "VERIFICATION" and target == c["target"]
+        if not service and not e2e and not any(jobs_dir.glob("*.json")):
             continue
         try:
             relative = client.request_directory(flow)
@@ -74,7 +75,7 @@ def poll(home, config):
             except (ValueError,OSError):
                 req=None;valid=False
             path = jobs_dir / (req["id"]+".json") if valid else None
-            if path is not None and not path.exists() and client.authorized(root, c["target"]):
+            if path is not None and not path.exists() and client.launch_allowed(root, c["target"], req):
                 if (queue / (req["id"]+".accepted")).exists() and not (queue / (req["id"]+".ssh-accepted")).exists():
                     continue
                 head = client.source_head(root)
@@ -86,6 +87,8 @@ def poll(home, config):
                            result=None,error_kind=None,verified=False,remote_accepted=False)
                 if req["action"] in client.SANDBOX_ACTIONS:
                     job["script"] = req["script"]
+                if req.get("deployment_generation"):
+                    job["deployment_generation"] = req["deployment_generation"]
                 save(home, job)
                 queue = client.directory(root, relative)
                 (queue / (req["id"] + ".accepted")).touch()
@@ -105,7 +108,7 @@ def poll(home, config):
                       or cancellation_requested(home,job))
             # Paused tasks only collect work already sent; they never launch queued work.
             allow_launch = (task_state == "STAGE_RUNNING" and job.get("node")==flow.get("activeNode")
-                            and client.authorized(root,c["target"]))
+                            and client.launch_allowed(root,c["target"],job))
             if not job.get("launched") and (cancel or not allow_launch):
                 if cancel:
                     job.update(state="FAILED",error_kind="OPERATION_CANCELLED",verified=False,

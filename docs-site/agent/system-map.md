@@ -87,6 +87,8 @@ Slack @主機器人 需求
   → verification  QA（tester）逐情境執行並附證據
   → review        Code Reviewer（inspector）獨立審查
   → approval      [真人核准 PR] → 推分支、開 PR → 狀態 PR_CREATED
+  （核准前發現問題）驗收負責人回報 → 舊核准卡失效 → 回既有審查分流 → 重新檢查與核准
+  （有配置沙箱 E2E）部署 → QA 實測已部署版本 → 審查 → 真人核准 PR
   （選用）PR 與基準衝突 → 回原任務 implementation 解衝突 → 驗證／驗收／審查 → 推回同一個 PR（PullRequestSync）
   PR 已合併 → COMPLETED 並刪除工作區（PullRequestMonitor → FlowEngine.checkPullRequest，AI_TEAM_PR_TRACKING，2026-11-06）；來自 GitHub issue 的任務同時關閉 issue
 ```

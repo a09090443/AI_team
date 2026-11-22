@@ -36,17 +36,22 @@ public final class HumanInput {
     public static final String FIELD = "text";
     static final int MAX_TEXT = 2800;
 
-    public record Choice(String task, String kind) {
-        public String value() { return task + "|" + kind; }
+    public record Choice(String task, String kind, String revision) {
         public static Choice parse(String value) {
-            if (value == null || !value.matches("\\d{1,12}\\|[A-Z]{1,20}")) throw new IllegalArgumentException("無效的按鈕");
-            String[] parts = value.split("\\|");
-            if (!HumanOptions.INPUT_KINDS.contains(parts[1])) throw new IllegalArgumentException("無效的按鈕");
-            return new Choice(parts[0], parts[1]);
+            if (value == null) throw new IllegalArgumentException("無效的按鈕");
+            String[] parts = value.split("\\|", -1);
+            if (parts.length < 2 || !parts[0].matches("\\d{1,12}") || !HumanOptions.INPUT_KINDS.contains(parts[1]))
+                throw new IllegalArgumentException("無效的按鈕");
+            if (HumanOptions.PR_FEEDBACK.equals(parts[1])) {
+                if (parts.length != 3 || !parts[2].matches("\\d{1,9}")) throw new IllegalArgumentException("無效的按鈕");
+                return new Choice(parts[0], parts[1], parts[2]);
+            }
+            if (parts.length != 2) throw new IllegalArgumentException("無效的按鈕");
+            return new Choice(parts[0], parts[1], null);
         }
     }
 
-    /** 視窗帶著的脈絡；extra 只有重驗用到：開窗當下系統查得的「驗收節點 commit」。 */
+    /** extra 保存重驗的驗收節點與 commit，或問題回報綁定的核准卡版本。 */
     public record Submission(String task, String kind, String channel, String thread, String extra) {
         public String metadata() { return String.join("|", task, kind, channel, thread, extra == null ? "" : extra); }
         public static Submission parse(String metadata) {
@@ -56,13 +61,20 @@ public final class HumanInput {
                     || parts[2].isBlank() || parts[3].isBlank()) throw new IllegalArgumentException("無效的輸入視窗");
             if (HumanOptions.REMEDIATE.equals(parts[1]) && !parts[4].matches("[a-z][a-z0-9_]* [0-9a-f]{7,64}"))
                 throw new IllegalArgumentException("無效的輸入視窗");
+            if (HumanOptions.PR_FEEDBACK.equals(parts[1]) && !parts[4].matches("\\d{1,9}"))
+                throw new IllegalArgumentException("無效的輸入視窗");
             return new Submission(parts[0], parts[1], parts[2], parts[3], parts[4]);
         }
     }
 
     public static BlockElement inputButton(String taskId, HumanOptions.Option option, int index) {
         String label = option.label().length() <= 70 ? option.label() : option.label().substring(0, 70) + "…";
-        return button(b -> b.actionId(ACTION + "_" + index).value(new Choice(taskId, option.kind()).value()).text(plainText(label)));
+        return button(b -> b.actionId(ACTION + "_" + index).value(taskId + "|" + option.kind()).text(plainText(label)));
+    }
+
+    public static BlockElement prFeedbackButton(String taskId, int revision) {
+        return button(b -> b.actionId(ACTION + "_0").value(taskId + "|" + HumanOptions.PR_FEEDBACK + "|" + revision)
+                .text(plainText("回報問題")));
     }
 
     /** 重驗只需確認系統帶入的節點與 commit；其他種類要填內容。 */
@@ -84,6 +96,12 @@ public final class HumanInput {
                         + "知道還有沒修好的問題就直接寫出來，系統才派得出去。";
                 label = "你的說明或決定";
                 placeholder = "例如：第 142 行改成 14 個模組即可，不需要動其他檔案";
+            }
+            case HumanOptions.PR_FEEDBACK -> {
+                title = "回報問題";
+                intro = "*任務 #" + s.task() + "*：送出後會暫停開 PR，把問題交給分流判斷。處理完會重新檢查並請你再核准。";
+                label = "實際看到什麼、預期應該如何";
+                placeholder = "例如：沒有上傳 JAR 的服務顯示啟用，預期應維持停用且無法啟用。";
             }
             default -> {
                 title = "修好了，請它重驗";
@@ -112,6 +130,7 @@ public final class HumanInput {
         return switch (s.kind()) {
             case "REQUIREMENT" -> content.isEmpty() ? null : "核准需求變更 " + content;
             case "SUPPLEMENT" -> content.isEmpty() ? null : content;
+            case HumanOptions.PR_FEEDBACK -> content.isEmpty() ? null : HumanOptions.PR_FEEDBACK_COMMAND + " " + content;
             default -> "核准人工修復重驗 " + s.extra();
         };
     }

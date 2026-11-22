@@ -65,6 +65,8 @@ public final class FlowGates {
     static String publicationReason(FlowRun flow, String head, java.util.Set<String> pending) {
         Node approval = flow.snapshot.definition().nodes().get(flow.node);
         if (flow.dialogue || approval == null || approval.kind() != Kind.APPROVAL) return "不是發布核准節點";
+        String sandbox = SandboxE2e.publicationReason(flow, head);
+        if (sandbox != null) return sandbox;
         String issues = IssueTracker.completionReason(flow);
         if (issues != null) return issues;
         if (flow.snapshot.definition().version() >= 2) {

@@ -307,8 +307,16 @@ public final class IssueTracker {
         if (verification == null || verification.plan() == null || !DeferredAcceptance.enabled(flow)
                 || !"REPAIR".equals(issue.path("scope").asText())
                 || PlanApproval.blockingReason(flow, verification.plan()) != null) return Set.of();
-        Node source = flow.snapshot.definition().nodes().get(issue.path("source_node").asText());
-        if (source == null || source.gate() != Gate.REQUIREMENTS) return Set.of();
+        String sourceId = issue.path("source_node").asText();
+        var nodes = flow.snapshot.definition().nodes();
+        Node source = nodes.get(sourceId);
+        if (source == null) return Set.of();
+        if (source.gate() != Gate.REQUIREMENTS) {
+            String deploy = deployAfter(flow, nodeId(flow, verification));
+            if (source.gate() != Gate.REPORT || deploy == null || source.routes() == null
+                    || !source.routes().containsValue(deploy)
+                    || nodes.values().stream().noneMatch(node -> sourceId.equals(node.blocked()))) return Set.of();
+        }
         JsonNode plan = flow.receipts.get(verification.plan());
         JsonNode baseline = Traceability.baseline(flow);
         if (plan == null || baseline == null || ServiceDelivery.readiness(flow) != null) return Set.of();
@@ -461,7 +469,8 @@ public final class IssueTracker {
             // 已移出範圍或只是觀察的項目不要求通過；查核當時它可能還是待決（#1055 負責人事後裁定排除）。
             if (!actionable(item)) continue;
             if (deploy != null && "OPEN".equals(check.path("status").asText())
-                    && (deferrable(flow, item) || !plannedDeploymentItems(flow, verification, item).isEmpty())) continue;
+                    && (deferrable(flow, item) || !plannedDeploymentItems(flow, verification, item).isEmpty()
+                        || (verification == null && SandboxE2e.verifiesAfterDeploy(flow, deploy, item)))) continue;
             if (!"PASS".equals(check.path("status").asText()) || "DECISION".equals(item.path("scope").asText()))
                 return "問題尚未解決或待必要決策：" + id;
         }

@@ -218,7 +218,7 @@ claude-code 角色要有 `Bash(npm --prefix <directory> *)` 之類的權限；�
 
 操作 `argv` 與角色 `tools` 中的 `${teams}` 在載入時展開成配置所在的 teams 目錄（反斜線轉成斜線），只在這兩處展開；快照存展開後的路徑。
 `Gate.SERVICE` 限 LIMITED 工作區，成功直接 end，不套用開發 QA／PR 閘門；完整欄位與證據限制見 [服務建置](/docs/service-delivery)。
-`project.operations.*.scriptSha256` 僅可配固定的 bash 相對腳本，內容必須吻合且執行時唯讀；見 [跨專案契約](/docs/cross-project-execution)。
+`project.operations.*.scriptSha256` 支援固定的 bash 相對腳本與 `sandbox-e2e` Runner，內容必須吻合且執行時唯讀。見 [跨專案契約](/docs/cross-project-execution)與[沙箱 E2E](/docs/browser-e2e#使用已部署的沙箱驗收)。
 
 `project.jsonAdditionsComparison: true` 啟用 v2 的內建 `compare-json-additions`，預設關閉。可透過既有配置更新套用至舊任務，
 仍需重訂含此操作的測試計畫。見 [QA 情境流程](/docs/qa-scenario-workflow#允許新增-json-陣列項目)。
@@ -272,6 +272,8 @@ home/service-context/&lt;target&gt;.json可設定access_endpoints陣列（1～4�
 沒有 access_endpoints 時，service 角色據 `user_host` 組交付網址，系統交付前只實測摘要中主機為 `user_host` 的網址（2xx 才通過，見 [服務建置](/docs/service-delivery)）；有 access_endpoints 時仍以登錄入口為準。
 
 AI_TEAM_RESUME_DIALOGUE_TASK只在一次啟動指定舊AWAIT_HUMAN、dialogue=true且有parent的單一對話ID；已COMPLETED服務對話僅在保存答案含不可執行的執行前綴建議時允許校正，走原中央佇列重新回答同一問題；不更換快照、不重開部署、用後移除。service-support/&lt;task&gt;保存current.json與health/diagnose/repair原job；dialogue-evidence/&lt;task&gt;是已清理來源之結案對話的證據資料夾，不是產品clone。
+
+`AI_TEAM_SANDBOX_PREVIEW=<任務編號>:<完整核准commit>:<沙箱目標>` 是管理者單次啟動參數，供目前等待 PR 核准且尚未部署的版本進入既有沙箱部署回路。條件與換手額度見[服務建置與開發分流](/docs/service-delivery)。
 
 
 ### 持久診斷期限（已部署）

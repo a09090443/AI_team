@@ -72,6 +72,51 @@ class SourceTests(unittest.TestCase):
 
 
 class QueueTests(unittest.TestCase):
+    def test_sandbox_qa_payload_uses_the_pinned_runner_from_commit(self):
+        import hashlib
+        import ssh_client
+        import tarfile
+        from io import BytesIO
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            script = "qa/sandbox-e2e.sh"
+            (root / "qa").mkdir()
+            (root / script).write_bytes(b"uncommitted")
+            head = "b" * 40
+            runner = b"echo committed\n"
+            tree = ("100644 blob " + "c" * 40 + "\t" + script + "\0").encode()
+            config = {"mode": "sandbox", "source_paths": ["qa"]}
+            with patch.object(ssh_client.subprocess, "check_output", side_effect=[tree, runner]):
+                data = ssh_client.qa_exec_payload(root, config, script, head, hashlib.sha256(runner).hexdigest())
+            with tarfile.open(fileobj=BytesIO(data)) as package:
+                self.assertEqual(package.extractfile("run.sh").read(),
+                                 b"export AI_TEAM_E2E_EXPECTED_HEAD=" + head.encode() + b"\n" + runner)
+            with patch.object(ssh_client.subprocess, "check_output", side_effect=[tree, runner]):
+                with self.assertRaisesRegex(ssh_client.SourcePreflightError, "SOURCE_SCRIPT_CHANGED"):
+                    ssh_client.qa_exec_payload(root, config, script, head, "0" * 64)
+
+    def test_sandbox_qa_only_authorizes_the_fixed_script_on_current_deployment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            flow = fx.flow("example-dev")
+            flow["node"] = flow["activeNode"] = "qa"
+            definition = flow["snapshot"]["definition"]
+            definition["nodes"].update(qa={"gate":"VERIFICATION","requires":["deploy"]},
+                                       deploy={"gate":"SERVICE","next":"qa"})
+            definition["project"]["operations"]["sandbox-e2e"] = {
+                "nodes":["qa"], "argv":["python3","/opt/client.py","exec","qa/sandbox-e2e.sh"]}
+            generation = "a"*8+"-aaaa-aaaa-aaaa-"+"a"*12
+            flow["receipts"] = {"deploy":{"_sandbox_e2e_deployment":generation}}
+            flow["heads"] = {"deploy":"b"*40}
+            root = fx.workspace(tmp, data=flow)
+            request = dict(action="exec",script="qa/sandbox-e2e.sh",source_head="b"*40,deployment_generation=generation)
+            with patch.object(client,"source_head",return_value="b"*40):
+                self.assertTrue(client.launch_allowed(root,"example-dev",request))
+                self.assertFalse(client.launch_allowed(root,"wrong-target",request))
+                for bad in (dict(action="start"),dict(script="qa/other.sh"),
+                            dict(deployment_generation="c"*36),dict(source_head="d"*40)):
+                    self.assertFalse(client.launch_allowed(root,"example-dev",dict(request,**bad)))
+            self.assertFalse(client.authorized(root,"example-dev"))
+
     def test_accepted_request_waits_even_when_poll_heartbeat_is_stale(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = fx.workspace(tmp)

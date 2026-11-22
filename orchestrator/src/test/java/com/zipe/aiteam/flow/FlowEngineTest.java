@@ -1594,6 +1594,11 @@ class FlowEngineTest {
                     && flow.node.equals("verification")
                     && calls.stream().filter(s -> s.startsWith("verification:")).count() == 1;
             if (firstDirtyVerification) workspaceClean = false;
+            if (mode.startsWith("dirtyImplementation") && flow.node.equals("implementation")) {
+                boolean first = calls.stream().filter(s -> s.startsWith("implementation:")).count() == 1;
+                workspaceClean = !first && !mode.equals("dirtyImplementationAlways");
+                if (workspaceClean) workspaceHead = "head-repaired";
+            }
             if (mode.equals("dirtyVerification") && flow.node.equals("implementation") && !workspaceClean) {
                 workspaceClean = true; workspaceHead = "head2";
             }
@@ -2108,6 +2113,38 @@ class FlowEngineTest {
         verify(workspace, never()).commitPaths(eq("42"), anyList(), contains("服務建置設定"));
         assertThat(store.flow(task.id()).orElseThrow().independentEvidence).isNotNull();
     }
+    @Test void administratorPreviewRequiresTheApprovedHeadAndReturnsToPrApproval() throws Exception {
+        enableService(true);
+        engine.run(task);
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        var flow = store.flow(task.id()).orElseThrow();
+        String head = flow.approvalHead;
+        var d = (ObjectNode) mapper.valueToTree(flow.snapshot.definition());
+        for (String id : List.of("start", "health")) {
+            var op = (ObjectNode) d.path("project").path("operations").path(id);
+            op.putArray("argv").add("python3").add("/teams/skills/client.py").add("exec").add("sandbox/" + id + ".sh");
+        }
+        flow.snapshot = new TeamDefinition.Snapshot(flow.snapshot.revision(), mapper.treeToValue(d, TeamDefinition.class),
+                flow.snapshot.repository(), flow.snapshot.assets());
+        flow.transitions = flow.snapshot.definition().maxTransitions();
+        store.saveFlow(task.id(), flow);
+        List<Runnable> jobs = new ArrayList<>();
+        engine.queueSandboxPreview(task, "stale", "test-host", jobs::add);
+        engine.queueSandboxPreview(task, head, "other-host", jobs::add);
+        assertThat(jobs).isEmpty();
+        calls.clear();
+        engine.queueSandboxPreview(task, head, "test-host", jobs::add);
+        engine.queueSandboxPreview(task, head, "test-host", jobs::add);
+        assertThat(jobs).hasSize(1);
+        assertThat(store.flow(task.id()).orElseThrow().node).isEqualTo("deploy");
+        assertThat(store.flow(task.id()).orElseThrow().independentEvidence).isNotNull();
+        jobs.getFirst().run();
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        assertThat(calls.getFirst()).startsWith("deploy:");
+        assertThat(calls.getLast()).startsWith("review:");
+        verifyNoInteractions(publisher);
+    }
+
     @Test void verificationWithPlannedDeploymentEvidenceRoutesDirectlyToDeployOnce() throws Exception {
         enableService(true);
         enableIssueTracking();
@@ -2138,6 +2175,35 @@ class FlowEngineTest {
         assertThat(calls.stream().filter(s -> s.startsWith("verification:"))).hasSize(2);
         assertThat(calls).noneMatch(s -> s.startsWith("deploy:"));
         assertThat(store.flow(task.id()).orElseThrow().lastBlockReason).contains("已停止重跑", "I1");
+        verifyNoInteractions(publisher);
+    }
+    @Test void resumingAfterDeferredDeployPolicyFixReusesTheSameCommitVerification() throws Exception {
+        verificationWithPlannedDeploymentEvidenceRoutesDirectlyToDeployOnce();
+        var flow = store.flow(task.id()).orElseThrow();
+        Traceability.invalidate(flow, "deploy");
+        ((ObjectNode) flow.issueInventory.get("I1")).put("source_node", "triage");
+        ObjectNode verification = (ObjectNode) flow.receipts.remove("verification");
+        verification.put("issue_revision", IssueTracker.revision(flow));
+        flow.blockedFindings.put("verification", verification);
+        flow.attemptHeads.put("verification", "head1");
+        flow.node = "deploy";
+        flow.transitions = flow.snapshot.definition().maxTransitions() - 2;
+        flow.lastBlockReason = "分流後仍無法交部署，系統已停止重跑相同的驗收。請確認：問題尚未解決或待必要決策：I1";
+        store.saveFlow(task.id(), flow);
+        task.state(Task.State.AWAIT_HUMAN);
+        store.save(task);
+        calls.clear();
+        var jobs = new ArrayList<Runnable>();
+
+        engine.resume(task, "續跑", "u", jobs::add);
+        assertThat(jobs).hasSize(1);
+        jobs.getFirst().run();
+
+        assertThat(calls).containsExactly("deploy:infrastructure", "review:security_auditor");
+        var resumed = store.flow(task.id()).orElseThrow();
+        assertThat(resumed.heads).containsEntry("verification", "head1").containsEntry("deploy", "head1");
+        assertThat(resumed.blockedFindings).doesNotContainKey("verification");
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
         verifyNoInteractions(publisher);
     }
     @Test void serviceTypedTimeoutResumesSuccessfulJobWithoutAnotherVisit() throws Exception {
@@ -2484,6 +2550,66 @@ class FlowEngineTest {
         assertThat(calls).contains("triage:coordinator").doesNotContain("review:security_auditor");
         assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN); verifyNoInteractions(publisher);
     }
+    @Test void anApprovalIssueReopensTheSameTaskAndInvalidatesTheOldCard() {
+        engine.run(task);
+        var before = store.flow(task.id()).orElseThrow();
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        assertThat(engine.prFeedbackRevision(task, "u")).isEqualTo(0);
+        assertThat(before.receipts).containsKeys("verification", "review");
+        List<Runnable> queue = new ArrayList<>();
+
+        engine.reportPrIssue(task, "stranger", 0, "尚未上傳 JAR 卻顯示啟用。", queue::add);
+        assertThat(queue).isEmpty();
+        engine.resume(task, "回報問題 尚未上傳 JAR 卻顯示啟用。", "u", queue::add);
+
+        var reopened = store.flow(task.id()).orElseThrow();
+        assertThat(task.state()).isEqualTo(Task.State.RESUME_QUEUED);
+        assertThat(reopened.node).isEqualTo("triage");
+        assertThat(reopened.context).contains("尚未上傳 JAR 卻顯示啟用");
+        assertThat(reopened.receipts).containsKey("verification").doesNotContainKey("review");
+        assertThat(reopened.approvalHead).isNull();
+        assertThat(queue).hasSize(1);
+        verifyNoInteractions(publisher);
+        assertThat(OwnerPublish.evaluate(reopened, before.approvalHead, true).reason()).contains("回報的問題仍在處理");
+
+        // 即使問題釐清後仍是同一個 commit，舊的核准按鈕和輸入視窗也不能重放。
+        reopened.node = "approval";
+        reopened.approvalHead = before.approvalHead;
+        reopened.systemRetries.remove(FlowEngine.PR_FEEDBACK_PENDING);
+        store.saveFlow(task.id(), reopened);
+        task.state(Task.State.AWAIT_PR_APPROVAL);
+        store.save(task);
+        assertThat(engine.prFeedbackRevision(task, "u")).isEqualTo(1);
+        engine.approveFromCard(task, "u", 0, queue::add);
+        engine.reportPrIssue(task, "u", 0, "這是過期視窗", queue::add);
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
+        assertThat(queue).hasSize(1);
+        engine.approveFromCard(task, "u", 1, queue::add);
+        assertThat(queue).hasSize(2);
+    }
+
+    @Test void approvalFeedbackIsKeptEvenWhenTriageHasNoBudget() {
+        engine.run(task);
+        var before = store.flow(task.id()).orElseThrow();
+        before.transitions = before.snapshot.definition().maxTransitions();
+        before.automaticHandoffs = AutomaticHandoff.effectiveLimit(before);
+        store.saveFlow(task.id(), before);
+        calls.clear();
+        List<Runnable> queue = new ArrayList<>();
+
+        engine.reportPrIssue(task, "u", 0, "入口回傳 404，預期能開啟。", queue::add);
+        assertThat(queue).hasSize(1);
+        queue.getFirst().run();
+
+        var stopped = store.flow(task.id()).orElseThrow();
+        assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        assertThat(stopped.context).contains("入口回傳 404");
+        assertThat(stopped.transitions).isEqualTo(before.transitions);
+        assertThat(stopped.approvalHead).isNull();
+        assertThat(calls).isEmpty();
+        verifyNoInteractions(publisher);
+    }
+
     @Test void springQaTestsLeftUncommittedAreCommittedBySystemAndReverifiedWithoutTheImplementer() throws Exception {
         // #1019：QA 跑在 Codex，.git 唯讀，補的測試永遠無法自己提交；舊做法每次交給實作節點提交，多繞一整輪。
         mode = "dirtyVerification";
@@ -2497,6 +2623,28 @@ class FlowEngineTest {
         assertThat(task.state()).isEqualTo(Task.State.AWAIT_PR_APPROVAL);
         verify(audit).record(eq("42"), eq(AuditLog.ACTOR_SYSTEM), eq(AuditLog.ACTION_RECOVERY), contains("未消耗自動處理額度"));
         verify(slack).post(any(), eq("c"), eq("t"), contains("系統已代為提交"));
+    }
+    @Test void anUncommittedImplementationReturnsToTheSameAgentBeforeVerification() throws Exception {
+        mode = "dirtyImplementation";
+
+        engine.run(task);
+
+        assertThat(calls).containsSubsequence("implementation:builder", "implementation:builder", "verification:tester");
+        assertThat(calls.stream().filter("implementation:builder"::equals)).hasSize(2);
+        assertThat(store.flow("42").orElseThrow().visits.get("implementation")).isEqualTo(1);
+        assertThat(workspaceHead).isEqualTo("head-repaired");
+        verify(workspace, never()).commitPaths(any(), any(), any());
+        verify(audit).record(eq("42"), eq(AuditLog.ACTOR_SYSTEM), eq(AuditLog.ACTION_RECOVERY), contains("交回原角色 builder 補交 commit"));
+    }
+    @Test void implementationThatCannotFinishItsCommitNeverReachesVerification() throws Exception {
+        mode = "dirtyImplementationAlways";
+
+        engine.run(task);
+
+        assertThat(calls.stream().filter("implementation:builder"::equals)).hasSize(2);
+        assertThat(calls).doesNotContain("verification:tester");
+        assertThat(task.state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        verify(verifier, never()).verify(any(), any());
     }
     @Test void springChangesOutsideTheQaWritablePathsAreNeverCommittedBySystem() throws Exception {
         dirtyPath = "base-spring-boot-starter/src/main/java/com/example/MailService.java";
@@ -3595,6 +3743,36 @@ class FlowEngineTest {
         assertThat(changed.context).contains("移除 REQ-016");
         verify(audit).record(eq("42"), eq("u"), eq(AuditLog.ACTION_STATE), contains("核准需求變更"));
     }
+    @Test void versionedRequirementApprovalQueuesOnceAndRejectsAnOlderCard() throws Exception {
+        task.state(Task.State.AWAIT_HUMAN); store.save(task);
+        var flow = store.flow(task.id()).orElseThrow();
+        flow.node = "triage";
+        flow.changeTarget = "intake";
+        flow.baselineRevision = "baseline-1";
+        flow.blockedFindings.put("triage", new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+                {"human_decision":{"headline":"調整驗收方式","question":"改成分開驗證嗎？",
+                "options":[{"label":"分開驗證","consequence":"同一版本的四項檢查皆須通過","action":"decide"}]}}
+                """));
+        String old = HumanOptions.decisionOptions(flow).getFirst().command();
+        flow.baselineRevision = "baseline-2";
+        String current = HumanOptions.decisionOptions(flow).getFirst().command();
+        store.saveFlow(task.id(), flow);
+        List<Runnable> jobs = new ArrayList<>();
+
+        when(props.allowedUsers()).thenReturn(Set.of("u", "someone-else"));
+        engine.resume(task, current, "someone-else", jobs::add);
+        engine.resume(task, old, "u", jobs::add);
+        assertThat(jobs).isEmpty();
+        engine.resume(task, current, "u", jobs::add);
+        engine.resume(store.find(task.id()).orElseThrow(), current, "u", jobs::add);
+
+        assertThat(jobs).hasSize(1);
+        var changed = store.flow(task.id()).orElseThrow();
+        assertThat(changed.node).isEqualTo("intake");
+        assertThat(changed.changeAuthorized).isTrue();
+        verifyNoInteractions(publisher);
+    }
+
     @Test void requirementChangeBeforeAnyBaselineIsExplainedInsteadOfQueued() {
         task.state(Task.State.AWAIT_HUMAN); store.save(task);
         var flow = store.flow(task.id()).orElseThrow();

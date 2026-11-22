@@ -158,6 +158,38 @@ def exec_payload(root, c, script):
     return pack(entries)
 
 
+def qa_exec_payload(root, c, script, head, expected_sha256):
+    """Package only content from the same commit used for the authorized deployment."""
+    if c.get("mode") != "sandbox":
+        raise SourcePreflightError("SANDBOX_MODE_REQUIRED: QA can only execute on an authorized sandbox")
+    relative = client.sandbox_script(root, script)
+    if not re.fullmatch(r"[0-9a-f]{40,64}", head):
+        raise SourcePreflightError("SOURCE_HEAD_INVALID: sandbox E2E requires a verified commit")
+    lines = subprocess.check_output(["git","-C",str(root),"ls-tree","-rz",head,"--",*c["source_paths"]]).split(b"\0")
+    entries = []
+    runner = None
+    total = 0
+    for line in filter(None, lines):
+        header, raw_name = line.split(b"\t", 1)
+        mode, kind, oid = header.decode("ascii").split()
+        name = raw_name.decode("utf-8")
+        if kind != "blob" or mode not in {"100644", "100755"} or hidden(name):
+            continue
+        content = subprocess.check_output(["git","-C",str(root),"cat-file","blob",oid])
+        total += len(content)
+        if total > MAX_ARCHIVE:
+            raise SourcePreflightError("SOURCE_TOO_LARGE: narrow the administrator-configured sandbox E2E source paths")
+        entries.append(("source/" + name, content, mode == "100755"))
+        if name == relative:
+            runner = content
+    if runner is None or len(runner) > client.SCRIPT_LIMIT:
+        raise SourcePreflightError("SOURCE_MISSING_SCRIPT: sandbox E2E runner must be in the configured source paths and commit")
+    if hashlib.sha256(runner).hexdigest() != expected_sha256:
+        raise SourcePreflightError("SOURCE_SCRIPT_CHANGED: sandbox E2E runner does not match the authorized digest")
+    entries.append(("run.sh", b"export AI_TEAM_E2E_EXPECTED_HEAD=" + head.encode("ascii") + b"\n" + runner, True))
+    return pack(entries)
+
+
 def upgrade_entry(c, here=None):
     """Send this skill's tested target entry to a sandbox target; the target replies UPGRADE_UNCHANGED when current."""
     here = here or Path(__file__).resolve().parent
@@ -307,13 +339,18 @@ def execute_job(c, root, job, allow_launch=True, cancel=False):
     if receipt is None:
         if cancel or not allow_launch or time.time() > job.get("deadline",float("inf")):
             return None
-        if (not client.authorized(root,c["target"])
+        if (not client.launch_allowed(root,c["target"],job)
                 or client.cancellation_requested(root.parent.parent,job)):
             return None
         if client.source_head(root) != job["source_head"]:
             raise ValueError("source HEAD changed")
-        data = (archive_source(root, c) if job["action"] == "start"
-                else exec_payload(root, c, job["script"]) if job["action"] == "exec" else None)
+        if job.get("deployment_generation"):
+            project = client.mapping(client.service_parts(client.task_flow(root))[0].get("project"))
+            operation = client.mapping(client.mapping(project.get("operations")).get("sandbox-e2e"))
+            data = qa_exec_payload(root, c, job["script"], job["source_head"], operation.get("scriptSha256"))
+        else:
+            data = (archive_source(root, c) if job["action"] == "start"
+                    else exec_payload(root, c, job["script"]) if job["action"] == "exec" else None)
         new_digest = hashlib.sha256(data).hexdigest() if data else None
         if digest is not None and new_digest != digest:
             raise ValueError("source archive changed during same-ID retry")
@@ -322,7 +359,7 @@ def execute_job(c, root, job, allow_launch=True, cancel=False):
         job["launched"] = True
         client.atomic_json(root.parent.parent / "operation-jobs" / job["task"] / (job["id"]+".json"), job)
         # Recheck immediately before the only operation that may launch a remote job.
-        if (not client.authorized(root,c["target"])
+        if (not client.launch_allowed(root,c["target"],job)
                 or client.cancellation_requested(root.parent.parent,job)):
             return None
         proc = subprocess.run(command(c, job["action"], job["id"], digest),

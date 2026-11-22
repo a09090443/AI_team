@@ -47,7 +47,8 @@ public final class OperationContract {
             TeamCatalog.require(definition.project().requiredTools().contains(op.argv().getFirst())
                     && (!Set.of("sh", "bash", "cmd", "powershell", "pwsh", "zsh").contains(op.argv().getFirst())
                         || pinnedScript(op)), "操作執行檔未宣告或為未釘選的 shell：" + id);
-            TeamCatalog.require(op.scriptSha256() == null || pinnedScript(op), "scriptSha256 只支援固定的 bash 相對腳本：" + id);
+            TeamCatalog.require(op.scriptSha256() == null || pinnedScript(op) || SandboxE2e.OPERATION.equals(id),
+                    "scriptSha256 只支援固定的 bash 相對腳本或沙箱 E2E：" + id);
             TeamCatalog.require(op.nodes() != null && !op.nodes().isEmpty() && op.writes() != null, "操作缺 nodes/writes：" + id);
             op.writes().forEach(OperationContract::relative);
             for (String nodeId : op.nodes()) {
@@ -69,9 +70,12 @@ public final class OperationContract {
     }
     static List<Path> scriptPins(TeamDefinition definition, String node, Path cwd) throws Exception {
         List<Path> pins = new ArrayList<>();
-        for (Operation op : forNode(definition, node).values()) if (op.scriptSha256() != null) {
-            if (!pinnedScript(op)) throw new IllegalStateException("未核准的腳本操作");
-            Path script = resolve(resolve(cwd, op.directory()), op.argv().get(1));
+        for (var entry : forNode(definition, node).entrySet()) if (entry.getValue().scriptSha256() != null) {
+            Operation op = entry.getValue();
+            boolean sandboxE2e = SandboxE2e.OPERATION.equals(entry.getKey());
+            if (!sandboxE2e && !pinnedScript(op)) throw new IllegalStateException("未核准的腳本操作");
+            String relative = sandboxE2e ? op.argv().get(3) : op.argv().get(1);
+            Path script = resolve(resolve(cwd, op.directory()), relative);
             if (!Files.isRegularFile(script, LinkOption.NOFOLLOW_LINKS)
                     || !IndependentVerifier.hash(script).equals(op.scriptSha256()))
                 throw new IllegalStateException("腳本內容與核准版本不符，禁止執行：" + script);

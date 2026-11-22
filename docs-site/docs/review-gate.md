@@ -5,7 +5,14 @@
 起因：reviewer 回報 bwrap 建立 `.agents` 時遇到唯讀檔案系統，
 未取得 commit、diff 或程式碼；結果為 COMMENT、空 findings、LOW confidence。
 舊流程未檢查結果，且例外也會略過，因此錯誤進入 AWAIT_PR_APPROVAL。
+
 該任務後來由使用者中止，未發布。
+
+配置式任務在開 PR 前，若配置的審查節點有分流，負責人可以在原討論串按「回報問題」。
+找不到按鈕時，在同一串 @主機器人 說「請顯示回報問題的選項」，即可重新取得核准卡。
+送出會使舊審查與核准失效，並將原任務排入分流。範圍內問題依原流程派修，需求變更仍須使用既有核准機制。
+同一個 commit 在回報後再次通過審查時，必須使用新核准卡。舊卡及舊輸入視窗都會被拒絕。
+若換手及自動交接額度均已耗盡，系統仍保留回報並使舊卡失效，再顯示現有的續跑選項。重新進入 PR 核准前，文字指令也無法直接開 PR。
 
 新報告必須提供 verification_status 與 blockers。只有 VERIFIED、
 HIGH／MEDIUM confidence、APPROVE／COMMENT、空 blockers、非空 checked，

@@ -133,7 +133,7 @@ public final class Traceability {
             missing.removeAll(coveredAcceptance);
             if (!missing.isEmpty()) return "測試計畫遺漏原子驗收項目：" + missing;
         }
-        return null;
+        return SandboxE2e.planReason(flow, plan);
     }
     public static String executionReason(Node node, JsonNode report, FlowRun flow) {
         JsonNode plan = flow.receipts.get(node.plan());

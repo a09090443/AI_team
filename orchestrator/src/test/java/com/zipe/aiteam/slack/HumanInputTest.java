@@ -18,6 +18,27 @@ class HumanInputTest {
     static final HumanOptions.Option SUPPLEMENT = new HumanOptions.Option(HumanOptions.SUPPLEMENT, "告訴它還缺什麼", "h", null);
     static final HumanOptions.Option REMEDIATE = new HumanOptions.Option(HumanOptions.REMEDIATE, "你自己修好了，請它重驗", "h", null);
 
+    @Test void configuredApprovalCardOpensTheVersionBoundIssueForm() {
+        var card = SlackBlocks.configuredApprovalBlocks("1012", "核准", 2, true);
+        var controls = (ActionsBlock) card.getLast();
+        assertThat(controls.getElements()).extracting(e -> ((ButtonElement) e).getValue())
+                .contains("1012|2", "1012|PR_FEEDBACK|2");
+        var props = mock(AiTeamProperties.class); when(props.allowedUsers()).thenReturn(Set.of("u"));
+        var orchestrator = mock(TaskOrchestrator.class);
+        var task = new Task("1012", "C1", "1.0", "u", "改文件");
+        when(orchestrator.lookup("1012")).thenReturn(Optional.of(task));
+        when(orchestrator.prFeedbackRevision(task, "u")).thenReturn(2);
+        var listener = new SlackListener(props, orchestrator, mock(SlackNotifier.class), mock(TaskStore.class), mock(AuditLog.class));
+
+        assertThat(listener.inputView("u", "1012|PR_FEEDBACK|1", "C1", "1.0")).isNull();
+        var view = listener.inputView("u", "1012|PR_FEEDBACK|2", "C1", "1.0");
+        assertThat(view.getPrivateMetadata()).isEqualTo("1012|PR_FEEDBACK|C1|1.0|2");
+        assertThat(view.getBlocks()).anyMatch(InputBlock.class::isInstance);
+        listener.handleHumanInputSubmit("u", view.getPrivateMetadata(), " 沒有上傳 JAR仍顯示啟用 ");
+        verify(orchestrator).reportPrIssue(task, "u", 2, "沒有上傳 JAR仍顯示啟用");
+        verify(orchestrator, never()).approvePr(any(), any());
+    }
+
     @Test void onlyFreeTextKindsWithoutCommandAreInputs() {
         assertThat(REQUIREMENT.input()).isTrue();
         assertThat(new HumanOptions.Option(HumanOptions.RESUME, "繼續執行", "h", "續跑").input()).isFalse();
@@ -41,8 +62,9 @@ class HumanInputTest {
     }
 
     @Test void choiceAndMetadataRejectTampering() {
-        assertThat(HumanInput.Choice.parse("1012|SUPPLEMENT")).isEqualTo(new HumanInput.Choice("1012", "SUPPLEMENT"));
-        for (String bad : new String[]{null, "", "1012", "1012|RESUME", "1012|續跑", "x|SUPPLEMENT", "1012|SUPPLEMENT|x"})
+        assertThat(HumanInput.Choice.parse("1012|SUPPLEMENT")).isEqualTo(new HumanInput.Choice("1012", "SUPPLEMENT", null));
+        for (String bad : new String[]{null, "", "1012", "1012|RESUME", "1012|續跑", "x|SUPPLEMENT",
+                "1012|SUPPLEMENT|x", "1012|PR_FEEDBACK", "1012|PR_FEEDBACK|x"})
             assertThatThrownBy(() -> HumanInput.Choice.parse(bad)).isInstanceOf(IllegalArgumentException.class);
         var s = new HumanInput.Submission("1012", "REMEDIATE", "C1", "1.0", "verification abc1234");
         assertThat(HumanInput.Submission.parse(s.metadata())).isEqualTo(s);

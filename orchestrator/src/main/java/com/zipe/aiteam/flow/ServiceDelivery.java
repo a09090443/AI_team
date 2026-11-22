@@ -17,8 +17,9 @@ public final class ServiceDelivery {
                     "服務建置須限寫工作區、無 QA 計畫且不自行分流：" + entry.getKey());
             // 開發後部署：部署完一定回審查確認證據，不能跳過審查直接進 PR 核准。
             Node after = definition.nodes().get(node.next());
-            TeamCatalog.require("end".equals(node.next()) || (after != null && after.gate() == Gate.REVIEW),
-                    "服務建置成功後須直接結束，或回到審查節點：" + entry.getKey());
+            TeamCatalog.require("end".equals(node.next()) || SandboxE2e.isQa(definition, node.next())
+                    || (after != null && after.gate() == Gate.REVIEW),
+                    "服務建置成功後須直接結束、回到審查節點，或接配置的沙箱 QA：" + entry.getKey());
             TeamCatalog.require(node.requires() != null && node.requires().stream()
                     .anyMatch(id -> definition.nodes().get(id).gate() == Gate.REQUIREMENTS), "服務建置缺需求基準");
         }

@@ -392,6 +392,11 @@ public class SlackListener {
             // 按鈕可能來自別的討論串或被轉貼；只認任務原本的討論串。
             if (!task.slackChannel().equals(channel) || !task.slackThreadTs().equals(thread)) return;
             audit.record(task.id(), user, AuditLog.ACTION_BUTTON, "以停止選項按鈕送出：" + command.command());
+            if (command.command().startsWith("核准需求變更 ")) {
+                // 舊卡片未綁定提案版本，只能從它重新查看目前選項。
+                orchestrator.requestTriage(task, com.zipe.aiteam.flow.HumanOptions.STATUS_COMMAND, user);
+                return;
+            }
             orchestrator.requestTriage(task, command.command(), user);
         });
     }
@@ -440,7 +445,14 @@ public class SlackListener {
         Task task = orchestrator.lookup(choice.task()).orElse(null);
         if (task == null || !task.slackChannel().equals(channel) || !task.slackThreadTs().equals(thread)) return null;
         String extra = "";
-        if (com.zipe.aiteam.flow.HumanOptions.REMEDIATE.equals(choice.kind())) {
+        if (com.zipe.aiteam.flow.HumanOptions.PR_FEEDBACK.equals(choice.kind())) {
+            Integer revision = orchestrator.prFeedbackRevision(task, user);
+            if (revision == null || !revision.toString().equals(choice.revision())) {
+                notifier.post(SlackNotifier.Identity.SYSTEM, channel, thread, "請由驗收負責人使用最新的 PR 核准卡回報問題。");
+                return null;
+            }
+            extra = revision.toString();
+        } else if (com.zipe.aiteam.flow.HumanOptions.REMEDIATE.equals(choice.kind())) {
             extra = orchestrator.remediationTarget(task).orElse(null);
             if (extra == null) {
                 notifier.post(SlackNotifier.Identity.SYSTEM, channel, thread,
@@ -457,6 +469,10 @@ public class SlackListener {
         if (command == null) return;
         orchestrator.lookup(submission.task()).ifPresent(task -> {
             if (!task.slackChannel().equals(submission.channel()) || !task.slackThreadTs().equals(submission.thread())) return;
+            if (com.zipe.aiteam.flow.HumanOptions.PR_FEEDBACK.equals(submission.kind())) {
+                orchestrator.reportPrIssue(task, user, Integer.parseInt(submission.extra()), text.strip());
+                return;
+            }
             audit.record(task.id(), user, AuditLog.ACTION_BUTTON, "以輸入視窗送出：" + command);
             orchestrator.requestTriage(task, command, user);
         });
@@ -512,6 +528,12 @@ public class SlackListener {
         });
     }
     private void handleButton(String userId, String taskId, String action) {
+        if (SlackBlocks.ACTION_APPROVE.equals(action) && taskId != null && taskId.matches("\\d{1,12}\\|\\d{1,9}")) {
+            String[] approval = taskId.split("\\|");
+            if (props.allowedUsers().contains(userId))
+                orchestrator.lookup(approval[0]).ifPresent(task -> orchestrator.approveConfiguredPr(task, userId, Integer.parseInt(approval[1])));
+            return;
+        }
         Optional<Task> found = orchestrator.lookup(taskId);
         if (found.isEmpty()) {
             log.warn("按鈕指向不存在的任務 {}", taskId);

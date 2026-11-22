@@ -474,6 +474,25 @@ class IndependentVerifierTest {
         assertThat(mapper.treeToValue(json, FlowRun.class).verificationHistory).isEmpty();
     }
 
+    @Test void aFreshCloneReplaysPassedCommandsBeforeAnUnfinishedCheck() throws Exception {
+        verifyNow();
+        var commands = flow.independentEvidence.commands();
+        Path firstRun = commandDirs.getFirst();
+        flow.independentEvidence = null;
+        flow.verificationHistory.removeLast();
+        calls.clear();
+        commandDirs.clear();
+
+        verifyNow();
+
+        assertThat(calls.subList(2, calls.size()))
+                .containsExactlyElementsOf(commands.stream().map(IndependentVerifier.CommandResult::argv).toList());
+        assertThat(commandDirs).containsOnly(commandDirs.getFirst()).doesNotContain(firstRun);
+        assertThat(flow.independentEvidence.decisions()).extracting(VerificationPlan.Decision::action)
+                .containsOnly(VerificationPlan.Action.RUN);
+        assertThat(verifier.blockingReason(flow, head)).isNull();
+    }
+
     // ---- 程式失敗與環境失敗要分開：前者交回實作，後者才需要人 ----
 
     @Test void summaryPicksTheFailingTestsOutOfALongBuildLog() {

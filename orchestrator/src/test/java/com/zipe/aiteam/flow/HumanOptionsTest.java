@@ -49,6 +49,28 @@ class HumanOptionsTest {
                 .anyMatch(o -> o.label().equals("保存修改並改用新任務繼續") && o.command().equals("承接成新任務 保存 fp9"));
     }
 
+    @Test void confirmedVerificationMaintenanceExplainsWhoActsAndHowToCheckTheThreadAgain() {
+        task.state(Task.State.AWAIT_HUMAN);
+        flow.node = "triage";
+        var json = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance;
+        flow.blockedFindings.put("verification", json.objectNode().put("source", IndependentVerifier.FINDING_SOURCE));
+        var finding = json.objectNode();
+        var failure = finding.putObject("failure_report").put("cause_status", "CONFIRMED").put("owner", "系統管理者（驗證設定）");
+        flow.blockedFindings.put("triage", finding);
+
+        assertThat(HumanOptions.verificationMaintenanceNotice(task, flow, false))
+                .contains("請把這則訊息轉給系統管理者", "重新整理選項", "補充 #1014 狀態");
+        assertThat(HumanOptions.options(task, flow, true, true, null))
+                .anyMatch(option -> "狀態".equals(option.command()));
+        assertThat(HumanOptions.verificationMaintenanceNotice(task, flow, true)).contains("請按「檢視配置更新」");
+
+        failure.put("owner", "需求負責人");
+        assertThat(HumanOptions.verificationMaintenanceNotice(task, flow, false)).isEmpty();
+        failure.put("owner", "系統管理者");
+        flow.blockedFindings.remove("verification");
+        assertThat(HumanOptions.verificationMaintenanceNotice(task, flow, false)).isEmpty();
+    }
+
     @Test void rejectedTriageDecisionOffersTheOwnerAPathBackToRequirements() {
         task.state(Task.State.AWAIT_HUMAN);
         flow.node = "service_triage";
@@ -302,7 +324,12 @@ class HumanOptionsTest {
         // #1053：範圍變更的按鈕直接送「核准需求變更」，按下去就回需求階段，不再白停一次。
         assertThat(decisions.get(0).command()).startsWith("負責人決定：");
         assertThat(decisions.get(1).label()).isEqualTo("核准：這次一起支援");
-        assertThat(decisions.get(1).command()).startsWith("核准需求變更 smtps 要一起支援嗎？").contains("選擇：這次一起支援");
+        String command = decisions.get(1).command();
+        assertThat(command).startsWith(HumanOptions.APPROVE_PROPOSAL + " ");
+        assertThat(HumanOptions.currentProposalApproval(flow, command))
+                .startsWith("核准需求變更 smtps 要一起支援嗎？").contains("選擇：這次一起支援");
+        flow.baselineRevision = "updated-baseline";
+        assertThat(HumanOptions.currentProposalApproval(flow, command)).isNull();
     }
 
     @Test void decisionCommandsCanNeverBeMistakenForAnApprovalCommand() throws Exception {
@@ -347,8 +374,28 @@ class HumanOptionsTest {
 
         assertThat(decisions).extracting(HumanOptions.Option::label)
                 .containsExactly("核准：另開任務處理", "核准：這次一起支援");
-        assertThat(decisions).allSatisfy(o -> assertThat(o.command()).startsWith("核准需求變更 smtps 要一起支援嗎？"));
+        assertThat(decisions).allSatisfy(o -> assertThat(HumanOptions.currentProposalApproval(flow, o.command()))
+                .startsWith("核准需求變更 smtps 要一起支援嗎？"));
         assertThat(HumanOptions.render(task, flow, true, true, null)).contains("按下去就是核准需求變更");
+    }
+
+    @Test void blockedRequirementsProposalWithGenericOptionsProvidesARealApprovalForm() throws Exception {
+        task.state(Task.State.AWAIT_HUMAN);
+        flow.node = "triage";
+        flow.baselineRevision = "approved-baseline";
+        flow.acceptanceOwner = "owner";
+        var report = (com.fasterxml.jackson.databind.node.ObjectNode) decisionReport();
+        report.put("route", "requirements");
+        flow.blockedFindings.put("triage", report);
+
+        var options = HumanOptions.options(task, flow, true, true, null);
+        assertThat(options).anySatisfy(o -> {
+            assertThat(o.label()).isEqualTo("核准需求變更");
+            assertThat(o.kind()).isEqualTo(HumanOptions.REQUIREMENT);
+            assertThat(o.input()).isTrue();
+        });
+        assertThat(options).filteredOn(o -> HumanOptions.DECISION.equals(o.kind()))
+                .allSatisfy(o -> assertThat(o.label()).startsWith("回覆："));
     }
 
     // ---- 自動處理次數全部用完 ----

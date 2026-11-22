@@ -119,14 +119,24 @@ class IssueTrackerTest {
         assertThat(IssueTracker.reportReason(deploy, r.deepCopy().put("service_status", "RUNNING"), flow)).isNull();
     }
     @Test void intakeIssueOnlyDefersWithMatchingApprovedPlanAndDeploymentHealthEvidence() throws Exception {
+        assertPlannedDeployment("intake");
+    }
+
+    @Test void triageIssueOnlyDefersWithMatchingApprovedPlanAndDeploymentHealthEvidence() throws Exception {
+        assertPlannedDeployment("triage");
+    }
+
+    private void assertPlannedDeployment(String origin) throws Exception {
         ObjectNode definition = json.valueToTree(flow.snapshot.definition());
         ((ObjectNode) definition.path("project")).putObject("autonomy").put("deferUnverifiable", true);
         ((ObjectNode) definition.path("project")).putObject("serviceTarget").put("name", "test-host")
                 .putObject("checks").put("start", "service-start").put("health", "service-health");
         flow.snapshot = new Snapshot("deployment", json.treeToValue(definition, TeamDefinition.class),
                 flow.snapshot.repository(), flow.snapshot.assets());
-        flow.node = "intake";
-        discover(1);
+        flow.node = origin;
+        ObjectNode found = report();
+        found.withArray("issue_updates").add(issue("I1", "REPAIR"));
+        assertThat(IssueTracker.ingest(flow, flow.snapshot.definition().nodes().get(origin), found, "42")).isNull();
         flow.receipts.put("intake", json.readTree("""
                 {"requirements":[{"id":"R1","acceptance_items":[{"id":"A-code"},{"id":"A-http"}]}]}
                 """));
@@ -146,6 +156,15 @@ class IssueTrackerTest {
         assertThat(IssueTracker.reportReason(verification, qa, flow)).isNull();
         assertThat(IssueTracker.deferredDeploy(flow, verification, qa)).isEqualTo("deploy");
         assertThat(IssueTracker.reportReason(node(Gate.REVIEW), qa, flow)).contains("I1");
+        if ("triage".equals(origin)) {
+            ObjectNode changed = definition.deepCopy();
+            ((ObjectNode) changed.path("nodes").path("triage").path("routes")).remove("service");
+            var original = flow.snapshot;
+            flow.snapshot = new Snapshot(original.revision(), json.treeToValue(changed, TeamDefinition.class),
+                    original.repository(), original.assets());
+            assertThat(IssueTracker.deferredDeploy(flow, verification, qa)).isNull();
+            flow.snapshot = original;
+        }
         flow.receipts.put("verification", qa);
         assertThat(IssueTracker.completionReason(flow)).isNotNull();
         assertThat(IssueTracker.reportReason(deploy, qa.deepCopy().put("service_status", "RUNNING"), flow)).contains("I1");

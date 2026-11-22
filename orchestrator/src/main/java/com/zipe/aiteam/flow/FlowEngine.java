@@ -10,6 +10,8 @@ import com.zipe.aiteam.store.*;
 import com.zipe.aiteam.task.*;
 import com.zipe.aiteam.workspace.WorkspaceManager;
 import org.springframework.stereotype.Component;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.function.Consumer;
@@ -169,8 +171,12 @@ public class FlowEngine {
         flow.ownerPublishBy = null;
         store.saveFlow(task.id(), flow);
         state(task, Task.State.AWAIT_HUMAN, "任務 #" + task.id() + " 等待人工，禁止發布");
+        String waitingFor = HumanOptions.awaitsVerificationMaintenance(task, flow)
+                ? "請依上方的驗證指引處理。"
+                : reason.startsWith(ContractRecovery.DEPLOY_RETRY_STOP) ? "請由協調器維護者檢查部署前置條件。"
+                : "要等你決定怎麼做。";
         postHumanOptions(task, flow, (flow.acceptanceOwner == null ? "" : "<@" + flow.acceptanceOwner + "> ")
-              + "任務 #" + task.id() + " 停下來了，現在沒有任何 agent 在跑，要等你決定怎麼做。\n"
+              + "任務 #" + task.id() + " 停下來了，現在沒有任何 agent 在跑，" + waitingFor + "\n"
                 + Diagnostics.clip(reason, 7000), canSupplement);
     }
 
@@ -183,7 +189,8 @@ public class FlowEngine {
         String token = extensionToken(task, flow);
         HumanOptions.Workspace workspace = workspaceState(task, flow);
         boolean configUpdate = configUpdateAvailable(flow);
-        lead = TaskGoal.line(task, flow) + "\n" + lead;
+        lead = TaskGoal.line(task, flow) + "\n"
+                + HumanOptions.verificationMaintenanceNotice(task, flow, configUpdate) + lead;
         String text = lead
                 + HumanOptions.render(task, flow, canSupplement, props.briefReports(), token, workspace, configUpdate, true);
         var options = HumanOptions.options(task, flow, canSupplement, props.briefReports(), token, workspace, configUpdate);
@@ -376,6 +383,7 @@ public class FlowEngine {
                         publishApproved(task, flow);
                         return;
                     }
+                    flow.systemRetries.remove(PR_FEEDBACK_PENDING);
                     store.saveFlow(task.id(), flow);
                     state(task, Task.State.AWAIT_PR_APPROVAL, "任務 #" + task.id() + " 等待人工核准 PR");
                     String message = "任務 #" + task.id() + " 已完成配置中的檢查，"
@@ -383,7 +391,7 @@ public class FlowEngine {
                             + "（不代表產品已交付）。\ncommit=" + head
                             + "\n需求基準=" + flow.baselineRevision + "\n需求／驗收負責人=<@" + flow.acceptanceOwner + ">"
                             + IssueTracker.summary(flow) + DeferredAcceptance.summary(flow) + TeamBoard.summary(flow) + reviewSuggestions(flow, 8);
-                    slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), message, SlackBlocks.approvalBlocks(task.id(), message));
+                    postConfiguredApproval(task, flow, message);
                     return;
                 }
                 if (flow.activeNode == null) {
@@ -402,6 +410,14 @@ public class FlowEngine {
                         String head = workspaceNode ? workspaces.headSha(task.id()) : null;
                         boolean clean = !workspaceNode || workspaces.clean(task.id());
                         if (ContractRecovery.blockingReason(flow, dependency, head, clean) == null) {
+                            if (ContractRecovery.resumeDeploy(flow, dependency, head)) {
+                                if (verifier.blockingReason(flow, head) == null) {
+                                    restoreDeferredDeploymentVerification(task, flow, dependency, needed, head);
+                                    continue;
+                                }
+                                redo = dependency;
+                                break;
+                            }
                             waitHuman(task, flow, "「" + flow.node + "」要開始前，需要「" + dependency + "」的有效結果，但系統手上沒有。"
                                     + "\n原因是「" + dependency + "」的報告先前被系統規則否決了，而那份報告本身是合格的"
                                     + "（重新檢查已通過該階段的閘門）。"
@@ -429,7 +445,7 @@ public class FlowEngine {
                                         .add(Objects.toString(flow.receipts.get(dependency.plan()), "")).add(issueReason);
                                 String key = "deploy-verification:" + Traceability.digest(inputs);
                                 if (flow.systemRetries.putIfAbsent(key, 1) != null) {
-                                    flow.lastBlockReason = "分流後仍無法交部署，系統已停止重跑相同的驗收。請確認：" + issueReason;
+                                    flow.lastBlockReason = ContractRecovery.DEPLOY_RETRY_STOP + "受阻原因：" + issueReason;
                                     audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_REJECTED, flow.lastBlockReason);
                                     waitHuman(task, flow, flow.lastBlockReason);
                                     return;
@@ -735,6 +751,8 @@ public class FlowEngine {
                 }
                 AgentDispatch.Assignment assignment = null;
                 String handoffCorrection = null;
+                if (block == null && SandboxE2e.isQa(flow.snapshot.definition(), flow.node))
+                    block = SandboxE2e.attest(flow, report, props.homePath(), task.id(), workspaces.headSha(task.id()));
                 String deferredDeployment = block == null && report.path("route").asText("").isBlank()
                         ? IssueTracker.deferredDeploy(flow, node, report) : null;
                 if (block == null && deferredDeployment == null) {
@@ -787,6 +805,24 @@ public class FlowEngine {
                                 + sync.conflicts() + "；HEAD=" + workspaces.headSha(task.id()));
                     }
                 }
+                if (block == null && !flow.dialogue && ConfiguredExecutor.implementationCommits(runner,
+                        flow.snapshot.definition().roles().get(runner.role()))) {
+                    String key = flow.node + ":implementation-commit";
+                    if (workspaces.clean(task.id())) flow.systemRetries.remove(key);
+                    else {
+                        block = "實作工作區尚有未提交修改，重新驗證需要乾淨的 commit。";
+                        if (flow.systemRetries.putIfAbsent(key, 1) == null) {
+                            flow.context = FlowContext.append(flow.context, "系統交接檢查：" + block
+                                    + "請核對並提交前一輪已完成、屬於本任務的修改，保留檢查證據並重送實作回報。");
+                            store.saveFlow(task.id(), flow);
+                            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY,
+                                    "實作尚未提交，交回原角色 " + runner.role() + " 補交 commit 一次，不計節點次數");
+                            slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                                    "實作變更已完成核對流程，系統請原實作角色提交後再交給驗收。");
+                            continue;
+                        }
+                    }
+                }
                 if (node.gate() == Gate.SERVICE && ServiceDelivery.postDevelopment(node)) {
                     // 開發後部署：HEAD 必須維持在已驗證、已審查的版本，部署檔只保存不提交，結束後移出工作區。
                     List<String> dirty = workspaces.uncommittedPaths(task.id());
@@ -834,6 +870,7 @@ public class FlowEngine {
                         && flow.baselineRevision != null ? flow.receipts.get(flow.node) : null;
                 if (block == null) {
                     issueRequest(task, flow, node, report);
+                    SandboxE2e.stampDeployment(flow, report);
                     flow.receipts.put(flow.node, keptBaseline != null ? keptBaseline : report);
                     if (keptBaseline != null) audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE,
                             "需求節點依負責人回覆確認待決問題；沿用原需求基準=" + flow.baselineRevision + "，本次回報的需求內容不採用");
@@ -2082,10 +2119,31 @@ public class FlowEngine {
                 || !flow.workspacePath.equals(workspaces.pathFor(task.id()).toAbsolutePath().normalize().toString()))
             throw new IllegalStateException("原工作區遺失或位置與快照不同，拒絕重新 clone 或使用其他目錄");
     }
+
+    /** 舊版停下的驗收若已能依核准計畫交部署，就重驗保存的證據並恢復原契約。 */
+    private void restoreDeferredDeploymentVerification(Task task, FlowRun flow, String dependency, Node node, String head) {
+        ContractRecovery.restore(flow, dependency, head);
+        IssueTracker.rememberEvidence(flow, node, flow.receipts.get(dependency), head);
+        store.saveFlow(task.id(), flow);
+        audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY,
+                "驗收證據重新核對通過，恢復 " + dependency + " 並交 " + flow.node + " 實測；commit=" + head);
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                "已核對原本的本機驗收，接續交由部署角色實測沙箱。通過後才會進入審查與 PR 核准。");
+    }
+
     public void resume(Task task, String feedback, String user, Consumer<Runnable> enqueue) {
         if (!props.allowedUsers().contains(user)) return;
         // 唯讀查看在任何狀態都可以：計畫自動核准後任務已在執行，「檢視測試計畫」以前一律被下一行的狀態檢查擋掉。
         String requested = feedback == null ? "" : feedback.trim();
+        if (requested.equals(HumanOptions.PR_FEEDBACK_COMMAND) || requested.startsWith(HumanOptions.PR_FEEDBACK_COMMAND + " ")) {
+            reportPrIssue(task, user, null, requested.substring(HumanOptions.PR_FEEDBACK_COMMAND.length()).strip(), enqueue);
+            return;
+        }
+        if (requested.equals(HumanOptions.STATUS_COMMAND) && task.state() == Task.State.AWAIT_PR_APPROVAL) {
+            FlowRun current = store.flow(task.id()).orElseThrow();
+            postConfiguredApproval(task, current, "任務 #" + task.id() + " 等待核准 PR。\ncommit=" + current.approvalHead);
+            return;
+        }
         if (requested.startsWith("檢視完整報告") || requested.equals("檢視測試計畫")) {
             FlowRun current = store.flow(task.id()).orElse(null);
             if (current != null) { readOnlyView(task, current, requested); return; }
@@ -2112,6 +2170,18 @@ public class FlowEngine {
         if (command.equals("狀態")) {
             postHumanOptions(task, flow, "任務 #" + task.id() + " 目前停在「" + flow.node + "」，沒有 agent 在跑。", true);
             return;
+        }
+        if (command.startsWith(HumanOptions.APPROVE_PROPOSAL + " ")) {
+            String denied = ownerChangeBlock(task, flow, from, user);
+            if (denied != null) {
+                slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), denied);
+                return;
+            }
+            feedback = HumanOptions.currentProposalApproval(flow, command);
+            if (feedback == null) {
+                postHumanOptions(task, flow, "這張需求變更提案已處理或已更新。請看目前可用的選項。", true);
+                return;
+            }
         }
         if (command.equals(HumanOptions.SUCCESSOR_COMMAND) || command.startsWith(HumanOptions.SUCCESSOR_SAVE_COMMAND + " ")) {
             if (from != Task.State.AWAIT_HUMAN || !user.equals(flow.acceptanceOwner)) return;
@@ -2671,9 +2741,154 @@ public class FlowEngine {
                             + " 輪，沒有啟動任何 agent）：" + Diagnostics.clip(Diagnostics.safe(e.getMessage()), 800));
         }
     }
+    /** 由部署管理者透過單次啟動要求派工，不代表任何 Slack 使用者的 PR 核准。 */
+    public void queueSandboxPreview(Task task, String head, String target, Consumer<Runnable> enqueue) {
+        try {
+            if (task.state() != Task.State.AWAIT_PR_APPROVAL) throw new IllegalArgumentException("任務未停在 PR 核准");
+            FlowRun flow = store.flow(task.id()).orElseThrow();
+            var definition = flow.snapshot.definition();
+            var service = definition.project().serviceTarget();
+            if (flow.prUrl != null || flow.dialogue || flow.ownerPublishBy != null || service == null
+                    || !target.equals(service.name()) || !head.equals(flow.approvalHead))
+                throw new IllegalArgumentException("目標、核准提交或任務狀態不符");
+            requireWorkspace(task, flow);
+            if (!head.equals(workspaces.headSha(task.id())) || !workspaces.clean(task.id())
+                    || FlowGates.publicationReason(flow, head) != null || verifier.blockingReason(flow, head) != null)
+                throw new IllegalArgumentException("工作區或驗收證據不符合核准版本");
+            var nodes = definition.nodes();
+            var candidates = nodes.entrySet().stream().filter(e -> e.getValue().gate() == Gate.SERVICE
+                    && ServiceDelivery.postDevelopment(e.getValue()) && nodes.get(e.getValue().next()) != null
+                    && nodes.get(e.getValue().next()).gate() == Gate.REVIEW
+                    && flow.node.equals(nodes.get(e.getValue().next()).next())
+                    && java.util.List.of("start", "health").stream().allMatch(check -> {
+                        var op = OperationContract.forNode(definition, e.getKey()).get(service.checks().get(check));
+                        return op != null && op.argv().size() == 4 && op.argv().get(1).endsWith("/client.py")
+                                && "exec".equals(op.argv().get(2));
+                    })).map(java.util.Map.Entry::getKey).toList();
+            if (candidates.size() != 1) throw new IllegalArgumentException("沒有唯一的已配置沙箱部署回路");
+            String node = candidates.getFirst();
+            String previewKey = "sandbox-preview:" + head;
+            if (head.equals(flow.heads.get(node)) || flow.systemRetries.containsKey(previewKey))
+                throw new IllegalArgumentException("該版本已派送預覽或已有部署報告");
+            if (!store.claimState(task.id(), Task.State.AWAIT_PR_APPROVAL, Task.State.RESUME_QUEUED)) return;
+            task.state(Task.State.RESUME_QUEUED);
+            flow.node = node;
+            flow.activeNode = null;
+            flow.approvalHead = null;
+            flow.systemRetries.put(previewKey, 1);
+            OwnerIssueDecision.grantForward(flow, node);
+            flow.context = FlowContext.append(flow.context, "管理者要求開 PR 前先部署已驗收的提交 " + head
+                    + " 至既有沙箱 " + target + "。保留資料庫和資料，沿用已還原部署腳本，實測入口和審查列出的部署檢查。"
+                    + "部署後回審查及 PR 核准；本次並未核准 PR。");
+            store.saveFlow(task.id(), flow);
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY,
+                    "管理者派送已驗收版本至沙箱：target=" + target + "；commit=" + head + "；node=" + node);
+            queue(enqueue, task, () -> run(store.find(task.id()).orElseThrow()));
+        } catch (Exception e) {
+            audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_REJECTED,
+                    "沙箱預覽未排隊：" + Diagnostics.safe(Diagnostics.describe(e)));
+        }
+    }
+
+    private static final String PR_FEEDBACK_REVISION = "pr-feedback-revision";
+    static final String PR_FEEDBACK_PENDING = "pr-feedback-pending";
+
+    private static int prFeedbackRevision(FlowRun flow) {
+        return flow.systemRetries.getOrDefault(PR_FEEDBACK_REVISION, 0);
+    }
+
+    private static String prFeedbackTriage(FlowRun flow) {
+        if (flow.snapshot == null || flow.successor != null || flow.prUrl != null || flow.approvalHead == null) return null;
+        var nodes = flow.snapshot.definition().nodes();
+        Node approval = nodes.get(flow.node);
+        if (approval == null || approval.kind() != Kind.APPROVAL || approval.requires() == null) return null;
+        for (String dependency : approval.requires()) {
+            Node review = nodes.get(dependency);
+            if (review == null || review.gate() != Gate.REVIEW || review.blocked() == null) continue;
+            Node triage = nodes.get(review.blocked());
+            if (triage != null && triage.kind() == Kind.AGENT) return review.blocked();
+        }
+        return null;
+    }
+
+    public Integer prFeedbackRevision(Task task, String user) {
+        FlowRun flow = store.flow(task.id()).orElse(null);
+        return task.state() == Task.State.AWAIT_PR_APPROVAL && flow != null && props.allowedUsers().contains(user)
+                && user.equals(flow.acceptanceOwner) && prFeedbackTriage(flow) != null ? prFeedbackRevision(flow) : null;
+    }
+
+    private void postConfiguredApproval(Task task, FlowRun flow, String message) {
+        boolean canReport = prFeedbackTriage(flow) != null;
+        if (canReport) {
+            message += "\n發現問題時可按「回報問題」，或在原串 @主機器人 輸入 `補充 #" + task.id() + " 回報問題 <實際情況與預期結果>`。";
+        }
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), message,
+                SlackBlocks.configuredApprovalBlocks(task.id(), message, prFeedbackRevision(flow), canReport));
+    }
+
+    public void reportPrIssue(Task task, String user, Integer revision, String feedback, Consumer<Runnable> enqueue) {
+        FlowRun flow = store.flow(task.id()).orElse(null);
+        if (flow == null || !props.allowedUsers().contains(user) || !user.equals(flow.acceptanceOwner)) {
+            slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "請由此任務的驗收負責人回報。");
+            return;
+        }
+        String triage = prFeedbackTriage(flow);
+        if (task.state() != Task.State.AWAIT_PR_APPROVAL || triage == null
+                || (revision != null && revision != prFeedbackRevision(flow))) {
+            slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "目前沒有可回報問題的 PR 核准卡。若卡片已更新，請用最新卡片。");
+            return;
+        }
+        if (feedback == null || feedback.isBlank()) {
+            postConfiguredApproval(task, flow, "請說明實際看到什麼，以及預期應該如何。");
+            return;
+        }
+        if (!store.claimState(task.id(), Task.State.AWAIT_PR_APPROVAL, Task.State.RESUME_QUEUED)) return;
+        task.state(Task.State.RESUME_QUEUED);
+        var nodes = flow.snapshot.definition().nodes();
+        for (String dependency : nodes.get(flow.node).requires())
+            if (nodes.get(dependency).gate() == Gate.REVIEW) Traceability.invalidate(flow, dependency);
+        flow.systemRetries.merge(PR_FEEDBACK_REVISION, 1, Integer::sum);
+        flow.systemRetries.put(PR_FEEDBACK_PENDING, 1);
+        flow.approvalHead = null;
+        flow.ownerPublishBy = null;
+        flow.node = triage;
+        flow.activeNode = null;
+        flow.lastBlockReason = "負責人在核准 PR 前回報：" + Diagnostics.clip(feedback, 2800);
+        flow.context = FlowContext.append(flow.context, flow.lastBlockReason
+                + "\n先核對問題與既有需求。範圍內問題依流程派修並重驗；涉及需求變更時依既有核准流程處理。");
+        store.saveFlow(task.id(), flow);
+        audit.record(task.id(), user, AuditLog.ACTION_RECOVERY, "PR 核准前回報問題，交回分流：" + Diagnostics.clip(feedback, 2800));
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
+                "已收到問題，先前的 PR 核准卡已失效。任務將檢查分流額度並回報下一步。");
+        queue(enqueue, task, () -> run(store.find(task.id()).orElseThrow()));
+    }
+
+    public void approveFromCard(Task task, String user, int revision, Consumer<Runnable> enqueue) {
+        FlowRun flow = store.flow(task.id()).orElse(null);
+        if (flow == null || !props.allowedUsers().contains(user)) return;
+        if (revision != prFeedbackRevision(flow)) {
+            if (task.state() == Task.State.AWAIT_PR_APPROVAL)
+                postConfiguredApproval(task, flow, "這張 PR 核准卡已過期。請查看目前的版本。\ncommit=" + flow.approvalHead);
+            return;
+        }
+        approve(task, user, revision, enqueue);
+    }
+
     public void approve(Task task, String user, Consumer<Runnable> enqueue) {
+        approve(task, user, null, enqueue);
+    }
+
+    private void approve(Task task, String user, Integer revision, Consumer<Runnable> enqueue) {
         if (!props.allowedUsers().contains(user)) return;
         if (!store.claimState(task.id(), Task.State.AWAIT_PR_APPROVAL, Task.State.PUBLISH_RUNNING)) return;
+        if (revision != null) {
+            FlowRun current = store.flow(task.id()).orElseThrow();
+            if (revision != prFeedbackRevision(current)) {
+                state(task, Task.State.AWAIT_PR_APPROVAL, "任務 #" + task.id() + " 等待人工核准 PR");
+                postConfiguredApproval(task, current, "這張 PR 核准卡已過期。請查看目前的版本。\ncommit=" + current.approvalHead);
+                return;
+            }
+        }
         audit.record(task.id(), user, AuditLog.ACTION_BUTTON, "人工核准配置流程的 PR");
         slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
                 "已收到 PR 核准，將安排推分支、開 PR；排隊狀況與開始執行會另行通知，完成後會貼出 PR 連結。");
@@ -2992,7 +3207,7 @@ public class FlowEngine {
                 + "，任務還沒有發布出去；實作、驗收與審查結果都保留。\n"
                 + "原因：" + Diagnostics.clip(Diagnostics.safe(e.getMessage()), 1500)
                 + "\n修正上面的原因後，直接再按一次核准即可，不必重跑任何步驟（核准前仍會重新檢查證據與 commit）。\ncommit=" + flow.approvalHead;
-        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), message, SlackBlocks.approvalBlocks(task.id(), message));
+        postConfiguredApproval(task, flow, message);
     }
     /** Compatibility entry used when no central queue was supplied. */
     public void recover(Task task) { recover(task, null); }
@@ -3063,7 +3278,8 @@ public class FlowEngine {
         if (flow.dialogue || !flow.node.equals(flow.activeNode)) return OperationDisposition.NONE;
         OperationJobs.Batch batch = operationBatch(task, flow);
         String reportedJob = null;
-        if (node.gate() == Gate.SERVICE && report != null && "BLOCKED".equals(report.path("execution_status").asText())) {
+        if ((node.gate() == Gate.SERVICE || SandboxE2e.isQa(flow.snapshot.definition(), flow.node))
+                && report != null && "BLOCKED".equals(report.path("execution_status").asText())) {
             var target = flow.snapshot.definition().project().serviceTarget();
             JsonNode failure = report.path("failure_report");
             String evidence = failure.path("observed_error").asText() + "\n" + failure.path("evidence").asText()
@@ -3194,9 +3410,20 @@ public class FlowEngine {
     /** 前次成功部署的部署檔補進工作區並由系統提交，讓 restricted 目標的乾淨工作區要求照常成立。 */
     private void restoreServiceArtifacts(Task task, FlowRun flow) {
         if (props.homePath() == null) return;
+        boolean stagedPreview = false;
         try {
-            var restored = ServiceArtifacts.restore(props.homePath(), flow.snapshot.definition().project().serviceTarget().name(),
-                    workspaces.pathFor(task.id()));
+            Path home = props.homePath();
+            String target = flow.snapshot.definition().project().serviceTarget().name();
+            if (flow.systemRetries.keySet().stream().anyMatch(k -> k.startsWith("sandbox-preview:"))) {
+                String head = workspaces.headSha(task.id());
+                Path staged = home.resolve("sandbox-preview").resolve(task.id()).resolve(head);
+                stagedPreview = flow.systemRetries.containsKey("sandbox-preview:" + head)
+                        && Files.exists(ServiceArtifacts.directory(staged, target), LinkOption.NOFOLLOW_LINKS);
+                if (stagedPreview) home = staged;
+            }
+            var restored = ServiceArtifacts.restore(home, target, workspaces.pathFor(task.id()));
+            if (stagedPreview && (restored == null || !restored.differing().isEmpty()))
+                throw new IllegalStateException("沙箱預覽交接檔案無法核對或與工作區衝突");
             if (restored == null || restored.added().isEmpty()) return;
             // 開發後部署不提交：HEAD 要維持在已審查的版本，sandbox exec 本來就會帶上未提交檔。
             if (!ServiceDelivery.postDevelopment(flow.snapshot.definition().nodes().get(flow.node))) {
@@ -3204,11 +3431,16 @@ public class FlowEngine {
                         "任務 #" + task.id() + " 還原前次部署檔（來源任務 #" + restored.sourceTask() + "）");
                 rememberServiceCommit(flow, restored.added());
             }
-            flow.context = FlowContext.append(flow.context, ServiceArtifacts.notice(restored));
+            flow.context = FlowContext.append(flow.context, stagedPreview
+                    ? "【管理者交接的沙箱預覽部署檔】已檢查雜湊並還原：" + String.join("、", restored.added())
+                            + "。請執行這些檔案，保留既有資料並彙整本次收據。"
+                    : ServiceArtifacts.notice(restored));
             store.saveFlow(task.id(), flow);
             audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY,
-                    "已還原任務 #" + restored.sourceTask() + " 的部署檔：" + String.join("、", restored.added()));
+                    (stagedPreview ? "已還原管理者的預覽部署檔：" : "已還原任務 #" + restored.sourceTask() + " 的部署檔：")
+                            + String.join("、", restored.added()));
         } catch (Exception e) {
+            if (stagedPreview) throw new IllegalStateException("沙箱預覽部署檔驗證失敗，未交給角色執行", e);
             audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_ERROR, "還原前次部署檔失敗，改由角色自行準備：" + e.getMessage());
         }
     }

@@ -480,7 +480,10 @@ stage_attempt 現在也供 TaskStore.serviceHistory 查詢同頻道、同目標 
 
 OperationJobs 只讀取同 task／node／目前 HEAD 的有效記錄，拒絕 journal 基底／任務目錄 symlink、非一般檔案、非預期檔名、單檔超過 65536 bytes；每次最多讀取排序後 256 個檔案。無法讀取時保留現場並拋錯，不猜測部署結果。FAILED 終態也須有對應且非零的整數 exit_code；UNCERTAIN 不等於已失敗。
 
-FlowRun.systemRetries 沿用以下持久鍵：
+沙箱 E2E 使用原有收據與操作 journal。系統在部署收據加 `_sandbox_e2e_deployment`，固定執行器於 QA 作業保存該次 `deployment_generation`。驗收通過時由系統加 `_sandbox_e2e_receipt`，保存作業 ID、部署識別與 HEAD。使用既有 JSON，無資料庫遷移。
+
+FlowRun.systemRetries 沿用以下持久鍵。管理者單次沙箱預覽另記 `sandbox-preview:<完整 commit>`，用來拒絕同一任務、同一提交的重複派工；部署與審查使用既有 `owner-forward-*` 回路額度。
+開 PR 前每收到一筆有效的問題回報，就遞增 `pr-feedback-revision`，用來辨識過期核准卡與輸入視窗。舊快照無此鍵時從 0 開始。`pr-feedback-pending` 在重新進入 PR 核准前阻止以文字指令直接開 PR。
 
 - operation-checkpoint:&lt;fingerprint&gt;：同一結果只續一次。
 - operation-timeout:&lt;fingerprint&gt;：同一逾時觀察只恢復一次。

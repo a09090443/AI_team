@@ -131,6 +131,27 @@ def service_parts(flow):
     return definition,node,target
 
 
+def sandbox_e2e(flow, action, script):
+    """Return the deployment generation for the already configured QA operation."""
+    definition,node,target = service_parts(flow)
+    project = mapping(definition.get("project"))
+    operation = mapping(mapping(project.get("operations")).get("sandbox-e2e"))
+    argv = operation.get("argv")
+    qa = flow.get("node")
+    if (action != "exec" or not isinstance(script,str) or node.get("gate") != "VERIFICATION"
+            or flow.get("activeNode") != qa or not target.get("name")
+            or operation.get("nodes") != [qa] or not isinstance(argv,list)
+            or len(argv) != 4 or argv[2:] != ["exec",script]):
+        return None
+    nodes = mapping(definition.get("nodes"))
+    deploys = [name for name in node.get("requires",[]) if mapping(nodes.get(name)).get("gate") == "SERVICE"
+               and mapping(nodes.get(name)).get("next") == qa]
+    if len(deploys) != 1:
+        return None
+    generation = mapping(mapping(flow.get("receipts")).get(deploys[0])).get("_sandbox_e2e_deployment")
+    return generation if isinstance(generation,str) and re.fullmatch(r"[0-9a-f-]{36}", generation) else None
+
+
 def cancellation_requested(home, job):
     path = home / "operation-cancellations" / job["task"] / (job["id"]+".json")
     if not path.exists():
@@ -154,6 +175,10 @@ def submit(action, timeout=WAIT_PER_CALL, script=None):
     if script is not None:
         script = sandbox_script(root, script)
     flow = task_flow(root)
+    generation = sandbox_e2e(flow, action, script)
+    if service_parts(flow)[1].get("gate") == "VERIFICATION" and not generation:
+        print("TASK_NOT_ACTIVE: no authorized sandbox E2E operation")
+        return 75
     try:
         relative = request_directory(flow)
     except ValueError:
@@ -167,7 +192,9 @@ def submit(action, timeout=WAIT_PER_CALL, script=None):
     head = None
     if pending.exists():
         request = json.loads(pending.read_text())
-        if request.get("action") != action or request.get("script") != script:
+        if generation and request.get("deployment_generation") != generation:
+            pending.unlink()
+        elif request.get("action") != action or request.get("script") != script:
             old = queue / (request["id"] + ".json")
             if not old.exists() or json.loads(old.read_text()).get("exit_code") == 75:
                 print(json.dumps(pending_view(request)))
@@ -195,6 +222,8 @@ def submit(action, timeout=WAIT_PER_CALL, script=None):
                    "created": int(time.time()), "source_head": head}
         if script is not None:
             request["script"] = script
+        if generation:
+            request["deployment_generation"] = generation
         atomic_json(pending, request)
     created = request.get("created") if isinstance(request.get("created"), int) else int(time.time())
     deadline = time.monotonic() + max(0, min(timeout, created + WAIT_PER_JOB - time.time()))
@@ -214,7 +243,7 @@ def submit(action, timeout=WAIT_PER_CALL, script=None):
         accepted = queue / (request["id"] + ".accepted")
         trusted_job = root.parent.parent / "operation-jobs" / request["task"] / (request["id"]+".json")
         if not accepted.exists() and not trusted_job.exists():
-            if not authorized(root):
+            if not launch_allowed(root, None, request):
                 print("TASK_NOT_ACTIVE: request retained")
                 return 75
             heartbeat = root.parent.parent / "operation-executor-heartbeat"
@@ -263,6 +292,30 @@ def authorized(root, target_name=None):
     return bool(node.get("gate") == "SERVICE" and isinstance(flow.get("node"),str)
                 and flow.get("activeNode") == flow.get("node") and isinstance(name,str) and name
                 and (target_name is None or name == target_name))
+
+
+def launch_allowed(root, target_name, request):
+    generation = request.get("deployment_generation")
+    if not generation:
+        return authorized(root, target_name)
+    database = root.parent.parent / "ai-team.db"
+    with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)) as conn:
+        row = conn.execute("select task.state,flow_run.data from task join flow_run on task.id=flow_run.task_id where task.id=?",
+                           (root.name[5:],)).fetchone()
+    if row is None or row[0] != "STAGE_RUNNING":
+        return False
+    try:
+        flow = mapping(json.loads(row[1]))
+    except (ValueError,TypeError):
+        return False
+    _, node, target = service_parts(flow)
+    head = request.get("source_head")
+    return (generation == sandbox_e2e(flow, request.get("action"), request.get("script"))
+            and (target_name is None or target.get("name") == target_name)
+            and isinstance(head,str) and head == source_head(root)
+            and any(mapping(flow.get("heads")).get(deploy) == head
+                    and mapping(mapping(flow.get("receipts")).get(deploy)).get("_sandbox_e2e_deployment") == generation
+                    for deploy in node.get("requires",[])))
 
 
 

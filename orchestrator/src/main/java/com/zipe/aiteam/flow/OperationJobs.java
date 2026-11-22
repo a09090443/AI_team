@@ -16,7 +16,7 @@ public final class OperationJobs {
     public OperationJobs(Path home) { this.home = home; }
 
     public record Job(String id, String action, String target, String state, String sourceHead, long updated,
-                      long deadline, String errorKind, JsonNode result) {
+                      long deadline, String errorKind, JsonNode result, String script, String deploymentGeneration) {
         public boolean pending() { return Set.of("QUEUED", "RUNNING", "UNCERTAIN").contains(state); }
     }
     public record Batch(List<Job> jobs) {
@@ -87,7 +87,8 @@ public final class OperationJobs {
                         || !result.path("exit_code").isIntegralNumber()
                         || ("SUCCEEDED".equals(state) != (result.path("exit_code").asInt()==0)))) continue;
                 jobs.add(new Job(id,record.path("action").asText(),record.path("target").asText(),state,head,record.path("updated").asLong(),
-                        record.path("deadline").asLong(),record.path("error_kind").isTextual()?record.path("error_kind").asText():null,result));
+                        record.path("deadline").asLong(),record.path("error_kind").isTextual()?record.path("error_kind").asText():null,result,
+                        record.path("script").asText(),record.path("deployment_generation").asText()));
             }
         } catch (java.io.IOException e) { throw new IllegalStateException("作業紀錄無法讀取；保留現場，不猜測部署結果", e); }
         jobs.sort(Comparator.comparing(Job::updated).thenComparing(Job::id));

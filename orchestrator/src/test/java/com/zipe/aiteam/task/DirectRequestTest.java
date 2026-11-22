@@ -111,6 +111,22 @@ class DirectRequestTest {
                 s.contains("任務 #" + second.id()) && s.contains("前方排隊任務（依順序）：#" + first.id())));
         verifyNoInteractions(runner);
     }
+
+    @Test void unmatchedMentionInApprovalThreadRefreshesTheExistingCard() {
+        Task waiting = new Task("42", "c", "t", "u", "修正入口");
+        waiting.state(Task.State.AWAIT_PR_APPROVAL);
+        store.save(waiting);
+        var engine = mock(com.zipe.aiteam.flow.FlowEngine.class);
+        when(engine.enabled()).thenReturn(true);
+        when(engine.owns("42")).thenReturn(true);
+        ReflectionTestUtils.setField(app, "flowEngine", engine);
+
+        assertThat(app.createAndSubmit("c", "t", "u", "請給我回報問題的選項")).extracting(Task::id).isEqualTo("42");
+
+        verify(engine).resume(argThat(task -> task.id().equals("42")), eq("狀態"), eq("u"), any());
+        assertThat(store.inThread("c", "t")).hasSize(1);
+        verifyNoInteractions(runner, publisher, slack);
+    }
     Task ask() {
         app.requestRole(Identity.QA, "c", "t", "u", "哪些情境尚未核實？");
         return store.inThread("c", "t").stream().filter(t -> store.direct(t.id()).isPresent()).reduce((a,b) -> b).orElseThrow();

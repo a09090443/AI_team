@@ -520,6 +520,11 @@ public class TaskOrchestrator {
                     .filter(t -> store.direct(t.id()).isEmpty() && store.flow(t.id()).map(f -> !f.dialogue).orElse(true)).findFirst();
             if (existing.isPresent()) {
                 Task taken = existing.get();
+                if (taken.state() == Task.State.AWAIT_PR_APPROVAL && flowEngine.owns(taken.id())) {
+                    // 一般提及或指令格式未辨識時，補發核准卡，讓使用者直接從卡片回報問題。
+                    flowEngine.resume(taken, com.zipe.aiteam.flow.HumanOptions.STATUS_COMMAND, userId, this::enqueue);
+                    return taken;
+                }
                 String notice = threadTakenMessage(taken);
                 // 原任務停著等你時附按鈕，按下去重新列出可用選項（與打「補充 #N 狀態」相同）。
                 if (!waitingForHuman(taken) || slack.post(Identity.SYSTEM, channel, threadTs, notice,
@@ -540,8 +545,7 @@ public class TaskOrchestrator {
     }
 
     /**
-     * 同串再 @主機器人時的說明。「補充」只在 AWAIT_HUMAN／WAITING_QUOTA 有效（FlowEngine.resume），
-     * 其他狀態不能叫使用者用它續跑，否則照做只會再收到一次拒絕。
+     * 同串再 @主機器人時的備援說明。配置式 PR 核准由 submit 直接補發核准卡。
      */
     static boolean waitingForHuman(Task task) {
         return task.state() == Task.State.AWAIT_HUMAN || task.state() == Task.State.WAITING_QUOTA;
@@ -591,7 +595,7 @@ public class TaskOrchestrator {
      * 因此這裡只記錄與回覆，真正的工作丟給工作執行緒。
      */
     public void approvePr(Task task, String byUser) {
-        if (flowEngine != null && flowEngine.owns(task.id())) { flowEngine.approve(task, byUser, this::enqueue); return; }
+        if (flowEngine != null && flowEngine.owns(task.id())) { approveConfiguredPr(task, byUser, 0); return; }
         if (legacyBlockedByNewConfiguration(task)) return;
         if (store.direct(task.id()).isPresent()) {
             slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), "角色對話不能提交 PR，請操作原工作任務。");
@@ -605,6 +609,18 @@ public class TaskOrchestrator {
                 "✅ 任務 #" + task.id() + " 已由 <@" + byUser + "> 核准，將安排推送分支並開 PR。");
         Task approved = task;
         enqueue(new QueuedTask(approved, () -> publish(approved, byUser)));
+    }
+
+    public void approveConfiguredPr(Task task, String user, int revision) {
+        if (flowEngine != null && flowEngine.owns(task.id())) flowEngine.approveFromCard(task, user, revision, this::enqueue);
+    }
+
+    public Integer prFeedbackRevision(Task task, String user) {
+        return flowEngine == null ? null : flowEngine.prFeedbackRevision(task, user);
+    }
+
+    public void reportPrIssue(Task task, String user, int revision, String feedback) {
+        if (flowEngine != null) flowEngine.reportPrIssue(task, user, revision, feedback, this::enqueue);
     }
 
     /**
@@ -1385,6 +1401,14 @@ public class TaskOrchestrator {
         Task task = store.find(id).orElseThrow(() -> new IllegalArgumentException("指定任務不存在"));
         if (flowEngine == null || !flowEngine.owns(id)) throw new IllegalArgumentException("指定任務不是配置流程");
         flowEngine.resumeOperationTask(task, this::enqueue);
+    }
+    public void queueSandboxPreview(String id, String head, String target) {
+        Task task = store.find(id).orElse(null);
+        if (task == null || flowEngine == null || !flowEngine.owns(id)) {
+            log.warn("沙箱預覽未排隊：找不到配置式任務 {}", id);
+            return;
+        }
+        flowEngine.queueSandboxPreview(task, head, target, this::enqueue);
     }
     public void resumeApprovedPlanTask(String id) {
         Task task = store.find(id).orElseThrow(() -> new IllegalArgumentException("指定任務不存在"));

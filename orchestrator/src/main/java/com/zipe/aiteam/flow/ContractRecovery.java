@@ -20,6 +20,15 @@ import static com.zipe.aiteam.flow.TeamDefinition.*;
  */
 final class ContractRecovery {
     private ContractRecovery() {}
+    static final String DEPLOY_RETRY_STOP = "分流後仍無法交部署，系統已停止重跑相同的驗收。";
+
+    static boolean resumeDeploy(FlowRun flow, String dependency, String head) {
+        Node verification = flow.snapshot.definition().nodes().get(dependency);
+        return verification != null && verification.gate() == Gate.VERIFICATION
+                && flow.lastBlockReason != null && flow.lastBlockReason.startsWith(DEPLOY_RETRY_STOP)
+                && head != null && head.equals(flow.attemptHeads.get(dependency))
+                && flow.node.equals(IssueTracker.deferredDeploy(flow, verification, flow.blockedFindings.get(dependency)));
+    }
 
     /** 回傳 null 表示可以恢復；否則說明為什麼不行。 */
     static String blockingReason(FlowRun flow, String dependency, String head, boolean clean) {

@@ -128,6 +128,17 @@ public class AiTeamApplication implements CommandLineRunner {
             orchestrator.resumeDialogueTask(dialogueTask);
         }
 
+        String preview = System.getenv("AI_TEAM_SANDBOX_PREVIEW");
+        if (preview != null && !preview.isBlank()) {
+            String[] parts = preview.split(":", -1);
+            if (parts.length != 3 || !parts[0].matches("[0-9]+") || !parts[1].matches("[0-9a-f]{40,64}")
+                    || !parts[2].matches("[A-Za-z0-9_-]{1,100}")) {
+                log.warn("AI_TEAM_SANDBOX_PREVIEW 格式須為任務編號:完整commit:沙箱目標");
+            } else {
+                orchestrator.queueSandboxPreview(parts[0], parts[1], parts[2]);
+            }
+        }
+
         // SocketModeApp.start() 會阻塞，因此不能等 ApplicationReadyEvent 才啟動。
         quotaAutoResume.start();
         pullRequestMonitor.start();

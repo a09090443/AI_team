@@ -25,7 +25,9 @@ public final class HumanOptions {
         public boolean button() { return command != null; }
         public boolean input() { return command == null && INPUT_KINDS.contains(kind); }
     }
-    public static final java.util.Set<String> INPUT_KINDS = java.util.Set.of("REQUIREMENT", "SUPPLEMENT", "REMEDIATE");
+    public static final String PR_FEEDBACK = "PR_FEEDBACK";
+    public static final String PR_FEEDBACK_COMMAND = "回報問題";
+    public static final java.util.Set<String> INPUT_KINDS = java.util.Set.of("REQUIREMENT", "SUPPLEMENT", "REMEDIATE", PR_FEEDBACK);
 
     /** 工作區現況；head 為 null 表示沒有工作區或取不到。 */
     /**
@@ -118,6 +120,9 @@ public final class HumanOptions {
 
         // 自動處理次數全部用完時，任何選項都不會讓任務往下跑；只提供承接成新任務。
         if (exhausted(flow)) {
+            if (awaitsVerificationMaintenance(task, flow))
+                options.add(new Option(STATUS, "重新整理選項",
+                        "收到維護完成通知後按這個，查看原討論串目前可用的接續方式。", STATUS_COMMAND));
             if (ws.canSaveAndContinue())
                 options.add(new Option(SUCCESSOR, "保存未提交的修改並承接",
                         "工作區有 " + ws.uncommitted().size() + " 個檔案改了但還沒 commit。按下去系統會先把它們 commit 到這個任務，"
@@ -154,8 +159,11 @@ public final class HumanOptions {
         if (configUpdate)
             options.add(new Option(CONFIG_UPDATE, "檢視配置更新",
                     "管理者已經部署新的配置。按下去會列出差異，確認後才會套用。", "檢視配置更新"));
+        if (recoverable == null && !configUpdate && awaitsVerificationMaintenance(task, flow))
+            options.add(new Option(STATUS, "重新整理選項",
+                    "收到維護完成通知後按這個，查看原討論串目前可用的接續方式。", STATUS_COMMAND));
         // 卡在上限又沒有恢復方式：唯一的出路是管理者部署新配置，部署後要有地方重新檢查。
-        if (stuck && recoverable == null && !configUpdate && !repairScopeBlocked)
+        else if (stuck && recoverable == null && !configUpdate && !repairScopeBlocked)
             options.add(new Option(STATUS, "重新整理選項",
                     "管理者部署新配置後按這個，系統會重新檢查並列出可用的選項（例如「檢視配置更新」）；不會啟動 agent。",
                     STATUS_COMMAND));
@@ -172,6 +180,7 @@ public final class HumanOptions {
             options.add(new Option(PUBLISH, "開 PR", publish, PUBLISH_COMMAND));
 
         String restorable = flow.snapshot == null ? null : ContractRecovery.candidate(flow, ws.head(), ws.clean());
+        if (restorable != null && ContractRecovery.resumeDeploy(flow, restorable, ws.head())) restorable = null;
         if (restorable != null)
             options.add(new Option(RESTORE, "恢復「" + restorable + "」的結果",
                     "那份結果先前被系統規則否決，但重新檢查已經通過。恢復後不會重跑、不會重設次數。",
@@ -200,6 +209,10 @@ public final class HumanOptions {
             options.add(new Option(REQUIREMENT, "需求要改",
                     "只有需求負責人可以核准；核准後會回到需求節點重做，既有驗收證據會失效。",
                     null));
+        else if (!stuck && !repairScopeBlocked && task.state() == Task.State.AWAIT_HUMAN && requirementChangeProposed(flow)
+                && options.stream().noneMatch(o -> o.button() && o.command().startsWith(APPROVE_PROPOSAL + " ")))
+            options.add(new Option(REQUIREMENT, "核准需求變更",
+                    "請需求負責人確認具體要修改的條件。送出後會交回需求整理，接著重新驗收與審查。", null));
         // 停在測試計畫：需求本身有問題（例如有一條根本測不了）最常在這裡浮現，而此時沒有人會替你提出修改。
         else if (!repairScopeBlocked && current != null && current.gate() == Gate.TEST_PLAN && flow.baselineRevision != null)
             options.add(new Option(REQUIREMENT, "需求要改",
@@ -240,6 +253,7 @@ public final class HumanOptions {
     }
 
     public static final String DECISION = "DECISION";
+    static final String APPROVE_PROPOSAL = "核准需求變更提案";
     public static final String ISSUE_DECISION = "ISSUE_DECISION";
 
     /** 驗收在同一個乾淨 commit 只因待決問題被擋：每個待決問題一顆「移出本任務範圍」按鈕（{@link OwnerIssueDecision}）。 */
@@ -326,16 +340,17 @@ public final class HumanOptions {
                 // 範圍變更直接送核准指令（project.autonomy 開放時）：#1053 的「網址檢查改到部署時」做成 decide，
                 // 按下去不算核准，分流自己把問題降為排除又被擋，任務白停一次。未開放的專案照舊當 decide。
                 case ACTION_CHANGE_REQUIREMENTS -> {
-                    if (repeated) continue;
+                    if (repeated && !AutonomousRecovery.requirementChangeOptions(flow) && !approvesChange) continue;
                     result.add(AutonomousRecovery.requirementChangeOptions(flow) || approvesChange
-                            ? new Option(DECISION, "核准：" + label, consequence + CHANGE_NOTICE, "核准需求變更 " + choice)
-                            : new Option(DECISION, label, consequence, "負責人決定：" + choice));
+                            ? new Option(DECISION, "核准：" + label, consequence + CHANGE_NOTICE, proposalCommand(flow, choice))
+                            : new Option(DECISION, "回覆：" + label, consequence, "負責人決定：" + choice));
                 }
                 default -> {
-                    if (repeated) continue;
+                    if (repeated && !approvesChange) continue;
                     result.add(approvesChange
-                            ? new Option(DECISION, "核准：" + label, consequence, "核准需求變更 " + choice)
-                            : new Option(DECISION, label, consequence, "負責人決定：" + choice));
+                            ? new Option(DECISION, "核准：" + label, consequence, proposalCommand(flow, choice))
+                            : new Option(DECISION, requirementChangeProposed(flow) ? "回覆：" + label : label,
+                                    consequence, "負責人決定：" + choice));
                 }
             }
         }
@@ -364,6 +379,59 @@ public final class HumanOptions {
         if (flow.blockedFindings != null && flow.blockedFindings.containsKey(flow.node))
             return flow.blockedFindings.get(flow.node);
         return flow.receipts.get(flow.node);
+    }
+
+    static boolean awaitsVerificationMaintenance(Task task, FlowRun flow) {
+        if (task.state() != Task.State.AWAIT_HUMAN || flow.dialogue || flow.changeTarget != null
+                || flow.successor != null || flow.blockedFindings == null
+                || flow.blockedFindings.values().stream().noneMatch(finding ->
+                        IndependentVerifier.FINDING_SOURCE.equals(finding.path("source").asText()))) return false;
+        var report = flow.blockedFindings.get(flow.node);
+        if (report == null) return false;
+        var failure = report.path("failure_report");
+        String owner = failure.path("owner").asText().strip();
+        return "CONFIRMED".equals(failure.path("cause_status").asText())
+                && (owner.startsWith("系統管理者") || owner.startsWith("管理者") || owner.startsWith("維運"));
+    }
+
+    static String verificationMaintenanceNotice(Task task, FlowRun flow, boolean configUpdate) {
+        if (!awaitsVerificationMaintenance(task, flow)) return "";
+        if (!exhausted(flow)) {
+            if (recoverableNode(flow) != null)
+                return "\n*系統驗證已有恢復選項*\n請按「重新執行這一步」。\n";
+            if (configUpdate)
+                return "\n*系統驗證有配置更新可檢視*\n請按「檢視配置更新」，依卡片上的說明接續。\n";
+        }
+        return "\n*系統驗證需要維護*\n請把這則訊息轉給系統管理者。用原設定重試或另開任務都可能卡在同一步。\n"
+                + "維護完成後，回原串按「重新整理選項」。找不到按鈕時，在原串 @主機器人 並輸入 `補充 #"
+                + task.id() + " 狀態`。\n";
+    }
+
+    private static boolean requirementChangeProposed(FlowRun flow) {
+        if (flow.snapshot == null || flow.dialogue || flow.baselineRevision == null || flow.acceptanceOwner == null) return false;
+        Node current = flow.snapshot.definition().nodes().get(flow.node);
+        var report = latestReport(flow);
+        String requirements = FlowEngine.requirementsNode(flow);
+        if (current == null || requirements == null || !com.zipe.aiteam.slack.SlackReport.hasDecision(report)) return false;
+        String route = report.path("route").asText();
+        return requirements.equals(current.routes() == null ? null : current.routes().get(route))
+                || requirements.equals(route)
+                || java.util.stream.StreamSupport.stream(report.path("human_decision").path("options").spliterator(), false)
+                        .anyMatch(o -> ACTION_CHANGE_REQUIREMENTS.equals(o.path("action").asText()));
+    }
+
+    private static String proposalCommand(FlowRun flow, String choice) {
+        var binding = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+        binding.put("baseline", flow.baselineRevision).put("configuration", flow.snapshot == null ? null : flow.snapshot.revision())
+                .put("node", flow.node).put("transitions", flow.transitions).put("supplements", flow.supplements)
+                .put("target", flow.changeTarget).put("choice", choice);
+        binding.set("decision", latestReport(flow).path("human_decision"));
+        return APPROVE_PROPOSAL + " " + Traceability.digest(binding) + " " + choice;
+    }
+
+    static String currentProposalApproval(FlowRun flow, String command) {
+        return decisionOptions(flow).stream().map(Option::command).filter(command::equals).findFirst()
+                .map(value -> "核准需求變更 " + value.split(" ", 3)[2]).orElse(null);
     }
 
     private static String clip(String text, int max) {
@@ -416,6 +484,9 @@ public final class HumanOptions {
         if (options.stream().anyMatch(o -> CONFIRM_REPAIR_SCOPE.equals(o.label()))) {
             out.append("\n\n*分流還無法派工*\n你的回覆會帶入流程，但待決問題必須由需求階段確認後才能派修。")
                .append("請用「確認修復範圍」送出修法，讓任務回到需求整理。");
+        } else if (options.stream().anyMatch(o -> REQUIREMENT.equals(o.kind()) && "核准需求變更".equals(o.label()))) {
+            out.append("\n\n*需求條件需要核准*\n請需求負責人使用「核准需求變更」。")
+               .append("「回覆：…」只把你的選擇交回分流。");
         } else if (stuckAtLimit(flow)) {
             Node node = flow.snapshot.definition().nodes().get(flow.node);
             out.append("\n\n*這一步已經重試到上限*\n「").append(flow.node).append("」已經跑了 ")

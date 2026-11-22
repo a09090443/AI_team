@@ -138,6 +138,9 @@ runtime 清理精確 sandbox unit 的 cgroup，stdout／stderr 及 session check
 
 Linux cgroup 與獨立 SSH 背景 health 已實測，真實模型逾時／重啟／取消的所有故障組合尚未全面演練。
 
+系統有獨立驗證失敗紀錄，且當前的受阻回報已確認需要管理者或維運處理時，Slack 停止卡會先說明由誰接手，
+並附上維護完成後回原討論串查看選項的方式。第一次停止與之後查詢狀態都顯示同一段指引。
+
 ## 管理者授權的自主恢復（project.autonomy，2026-10-22）
 
 `project.autonomy` 是選填的團隊配置；沒設定（null）時以下行為全部不啟用，照舊停下等人。各欄位可分別開關；只開部分欄位時，其餘欄位為 0／false，行為與未設定相同（見[功能開關一覽](configurable-team.md#功能開關一覽)）。
@@ -148,7 +151,7 @@ Linux cgroup 與獨立 SSH 背景 health 已實測，真實模型逾時／重啟
 | `modelTimeoutRecoveries`（0～3） | 2 | 模型逾時（`RuntimeTimedOut`、MODEL、cleanup=CONFIRMED）且長作業對帳沒有可接續的作業時，自動沿用原 session 接著做，等同按「繼續執行」：activeNode 保留、不計節點次數。每任務最多這麼多次；同一節點在同一工作區狀態（HEAD＋未提交指紋）只接續一次，兩輪之間沒有任何變化就停給人。flow.context 會加上「上一輪跑了多久、目前工作區、不要重做已通過步驟」的說明，Slack 貼一則通知。 |
 | `maxTimeoutSeconds`（0～3600） | 3600 | 自動接續過的節點之後改用這個時限（不會比節點原值短）。 |
 | `verificationContinuations`（0～3） | 2 | 系統獨立驗證用完 `verification.timeoutSeconds` 時，在**同一個 clone** 從被中止的那條指令重跑，剩下的指令給新的總時限（`IndependentVerifier.verify` 內）。這一輪至少要通過一條，否則停給人；同一 commit 最多續這麼多輪。2026-10-22 第一版改成「開新 clone、重用已通過的指令」，結果 npm ci 被重用、新目錄沒有 node_modules，build 出現 `vue-tsc: not found` 被誤判為程式失敗交回實作；同日改為同一 clone 續跑。基準驗證同樣在同一次執行內續跑剩下的指令，結果的 summary 註記「自動續驗第 N 輪後通過」。 |
-| `requirementChangeOptions` | true | human_decision 選項多一種 `change_requirements`：需求負責人按下即送「核准需求變更 <問題與選項>」，回到需求節點重訂基準（見[計畫核准按鈕](plan-approval-buttons.md)）。提示同時要求範圍變更一律用它，不可用 decide，也不可自己把未解問題改成 EXCLUDED。 |
+| `requirementChangeOptions` | true | `human_decision` 可提供 `change_requirements`。需求負責人按下會核准畫面上的提案版本，回到需求節點重訂基準。關閉此選項時，停止卡仍可用表單提交需求變更。提示要求範圍變更與一般 `decide` 分開，也不可自行把未解問題改成 `EXCLUDED`。見[計畫核准按鈕](plan-approval-buttons.md)。 |
 | `channelCommandRouting` | true | 頻道頂層訊息「#編號 已知指令」或「補充 #編號 …」轉給該任務處理（回覆貼在原討論串），不另開新任務。已知指令：檢視配置更新、核准配置更新、狀態、檢視完整報告、檢視測試計畫、核准需求變更、核准測試計畫。只限同頻道、白名單使用者；別的任務討論串裡的指令照舊拒絕。 |
 | `deferUnverifiable`（2026-10-23，缺欄位為 false） | true | 測試計畫可把「需要驗收節點操作契約沒有的能力才能驗」的驗收項目（實際部署探測、外部系統、真實資料庫、專案外檔案）列入 `deferred_acceptance`，算作已涵蓋、不停給真人；驗收提示說明它們不屬本次驗收，核准 PR 訊息與 PR 說明逐項列出「延後驗收」。見[工程流程](engineering-workflow.md#延後驗收與沿用前次結果2026-10-23)。 |
 | `pullRequestSyncRounds`（2026-10-23，0～3，缺欄位為 0） | 2 | 系統開出的 PR 與基準衝突時，回原任務解衝突、重驗並推回同一個 PR，每個 PR 最多這麼多輪。讀目前配置，不需配置遷移。見[已開 PR 的衝突同步](engineering-workflow.md#已開-pr-的衝突同步2026-10-23)。 |

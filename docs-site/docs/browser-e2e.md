@@ -90,10 +90,33 @@ agent 自陳不算數，以系統紀錄為準：
 
 - **支援**：測試指令自己在本機啟動預覽伺服器、跑瀏覽器、結束時關閉（Playwright 的 `webServer`）。
   系統沒有背景程序機制（每個指令是一個 systemd unit，結束時整個 cgroup 終止），所以伺服器與測試必須在**同一個指令**內。
-- **不支援**：對沙箱 VM 上已部署的網址跑 E2E。QA 在部署之前執行，Codex QA 的網路只開放 loopback，
-  沙箱 VM 也沒有把截圖傳回的通道。部署後仍由系統實測交付網址的 HTTP 狀態碼（見[服務建置](service-delivery.md)），
-  無法在本機驗的項目照[延後驗收](engineering-workflow.md)處理。
+- **沙箱驗收**：配置 `sandbox-e2e` 操作的團隊由 QA 先規劃、Infrastructure 部署後，再由 QA 使用固定操作對已部署服務驗收。瀏覽器在授權沙箱執行，收據經既有 SSH 執行器回傳。
+- Codex 本機 QA 的網路仍只開放 loopback。沙箱 E2E 的判定依測試退出碼、已部署版本和實際情境數，截圖不會透過服務執行器回傳。
 - **agent 看不到截圖**：Codex／opencode 無法讀圖。判定一律以測試斷言為準，截圖只是給人看的佐證。
+
+## 使用已部署的沙箱驗收
+
+以配置中的 `sandbox-e2e` 操作啟用。計畫須在實作前核准，並包含至少一個引用此操作的情境。QA 要規劃真實前後端、資料、預期結果與反例。Mock 測試可繼續在本機執行。
+
+路線是 `plan → implementation → deploy → verification → review → approval`。部署節點依賴需求與實作，QA 依賴部署與原測試計畫。審查依賴 QA，發布核准條件包含部署、QA 和審查。部署角色與 QA 角色須分開。操作範例，路徑依團隊實際安裝位置設定。
+
+```json
+{
+  "sandbox-e2e": {
+    "nodes": ["verification"],
+    "directory": ".",
+    "argv": ["python3", "/opt/ai-team/skills/service-build/scripts/client.py", "exec", "qa/sandbox-e2e.sh"],
+    "writes": ["ai-team-sandbox"],
+    "scriptSha256": "<管理者核准的 64 位小寫十六進位 SHA-256>"
+  }
+}
+```
+
+操作的寫入位置等於服務 start 的佇列設定。Runner 必須隨同一個 commit 提交，位於管理者允許送往沙箱的來源路徑。操作只接受已登錄的 sandbox 目標及指定腳本，並核對 Runner 的 SHA-256。QA 仍以原有的計畫與逐項驗收格式回報。
+
+Runner 取得 `AI_TEAM_E2E_EXPECTED_HEAD`。它必須確認服務實際提供同一版本，使用真實前端和後端，不啟動本機預覽伺服器或攔截 API，並執行測試計畫中安排的情境。失敗要回傳非零。成功時最後印出 `AI_TEAM_SANDBOX_E2E_PASS <完整 commit> <通過情境數>`，情境數必須大於零。發布閘門核對執行器收據、原部署識別及版本；同一個 commit 重新部署也須取得新的收據。
+
+部署階段須完成啟動與健康檢查。若某待修問題所連結的需求都有核准的沙箱 E2E 情境，部署報告可將該問題留為 `OPEN`，交給下一階段 QA 逐項實測。QA 與審查仍須確認問題已解決。
 
 ## 運作方式
 

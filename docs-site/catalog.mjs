@@ -276,9 +276,9 @@ export const docs = [
     title: '瀏覽器 E2E 驗收',
     category: 'runtime',
     status: 'current',
-    summary: '一行 project.browserE2e 啟用 Playwright 瀏覽器 E2E：QA 詢問、負責人同意後自動開安裝任務、專案就緒後自動生效；不支援對已部署網址跑 E2E。',
+    summary: '本機 Playwright 與授權沙箱 E2E。沙箱 QA 在同版本部署後執行，發布前核對固定執行器收據。',
     readWhen: '要讓 QA 或獨立驗證實際開啟頁面驗收、處理「啟用瀏覽器 E2E」按鈕，或瀏覽器測試在沙箱內失敗。',
-    code: ['orchestrator/src/main/java/com/zipe/aiteam/flow/BrowserE2e.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/IndependentVerifier.java', 'orchestrator/teams/prompts/plan.md', 'orchestrator/teams/prompts/verify.md'],
+    code: ['orchestrator/src/main/java/com/zipe/aiteam/flow/BrowserE2e.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/SandboxE2e.java', 'orchestrator/src/main/java/com/zipe/aiteam/flow/IndependentVerifier.java', 'orchestrator/teams/prompts/plan.md', 'orchestrator/teams/prompts/verify.md'],
   },
   {
     id: 'opencode-runtime-report',
