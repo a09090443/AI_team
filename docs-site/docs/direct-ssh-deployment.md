@@ -124,6 +124,10 @@ Linux 精確 cgroup 清理、獨立 SSH health 與原收據對帳已實測；所
 
 只有 journal 中 verified=true、SUCCEEDED、exit 0，且 task、activeNode、target、目前 HEAD 一致的 prepare/start 可以重用；HEAD 改變不沿用舊成功。health 必須重新核實，並綁定同 HEAD／target 已驗證 start 的 release，收據附 start_id、start_source_sha256。成功 start 不等於完整交付。
 
+**部署後沙箱 QA 的啟動收據**：部署報告的 `checks` 中，`start` 的 `evidence` 須引用固定執行器的成功 job ID。
+協調器採納報告、沿用部署結果或檢查前置結果時，會比對同一任務、部署節點、目標、目前 HEAD、配置的操作與腳本，以及已驗證的成功狀態與來源摘要。
+若只做了新提交的健康檢查、仍引用舊提交的啟動收據，就需要執行目前提交的啟動操作。其他服務路線仍使用既有檢查，交付網址與沙箱 E2E 各自有獨立驗證。
+
 executor 的獨立 operation-executor-heartbeat 不依工作區佇列心跳判斷離線；未接單時區分 TASK_NOT_ACTIVE 與 SERVICE_EXECUTOR_OFFLINE。SQLite 使用 contextlib.closing 關閉連線。
 
 ### 重啟、指定舊任務與取消

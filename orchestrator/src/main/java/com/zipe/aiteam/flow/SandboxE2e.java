@@ -101,6 +101,7 @@ final class SandboxE2e {
         if (node.gate() == Gate.SERVICE && isQa(team, node.next()))
             return "\n本輪只負責部署與健康檢查，完成後交配置的 QA 節點（" + node.next() + "）執行已核准計畫。"
                     + "target 只填配置的目標名稱 " + team.project().serviceTarget().name() + "，網址與容器說明寫在摘要。"
+                    + "checks 的 start 證據須填固定執行器的目前 HEAD 成功 job ID；HEAD 改變時執行新版 start。"
                     + "不要在部署階段要求 sandbox-e2e 操作，也不要重送同版本已成功的啟動作業。"
                     + "交後續 QA 驗證的 REPAIR 問題可如實留 OPEN；部署本身成功時回 COMPLETED。"
                     + "後續 QA 尚未執行寫在摘要及 issue_checks，不列為部署本身的 uncertainties；"
@@ -111,6 +112,31 @@ final class SandboxE2e {
         if (isQa(team, flow.node))
             return "\n本輪是部署後的沙箱 QA。使用已配置的 sandbox-e2e 操作對已部署服務執行計畫。依實際斷言與執行器收據回報，不能把本機預覽或 mock 結果當沙箱驗收。";
         return "";
+    }
+
+    static String deploymentReason(FlowRun flow, String nodeId, JsonNode report, Path home, String task, String head) {
+        var team = flow.snapshot.definition();
+        Node node = team.nodes().get(nodeId);
+        if (node == null || !ServiceDelivery.postDevelopment(node) || !isQa(team, node.next())) return null;
+        var target = team.project().serviceTarget();
+        Operation start = team.project().operations().get(target.checks().get("start"));
+        var argv = start.argv();
+        if ((argv.size() != 3 && argv.size() != 4)
+                || !argv.get(1).endsWith("/skills/service-build/scripts/client.py")
+                || !(argv.size() == 3 ? "start" : "exec").equals(argv.get(2)))
+            return "沙箱 QA 前的啟動操作須使用可核對收據的固定服務執行器";
+        String script = argv.size() == 4 ? argv.get(3) : "";
+        String evidence = "";
+        for (JsonNode check : report.path("checks"))
+            if ("start".equals(check.path("name").asText())) evidence = check.path("evidence").asText();
+        var jobs = new OperationJobs(home).read(task, nodeId, head).jobs().stream()
+                .filter(job -> "SUCCEEDED".equals(job.state()) && target.name().equals(job.target())
+                        && argv.get(2).equals(job.action()) && script.equals(job.script())
+                        && job.result().path("source_sha256").asText().matches("[0-9a-f]{64}"))
+                .toList();
+        if (OperationJobs.reported(jobs, target.name(), evidence, "") == null)
+            return "缺少目前提交的可信沙箱啟動收據；請執行目前 HEAD 的 start 並在 checks.evidence 引用成功 job ID";
+        return null;
     }
 
     static void stampDeployment(FlowRun flow, JsonNode report) {

@@ -403,13 +403,16 @@ public class FlowEngine {
                     String redo = null;
                     if (node.requires() != null) for (String dependency : node.requires()) {
                         String invalid = FlowGates.blockingReason(flow.snapshot.definition().nodes().get(dependency), flow.receipts.get(dependency), flow);
-                        if (invalid == null || FlowGates.bypassed(flow, dependency)) continue;
-                        // 能恢復就停下來讓人決定（附按鈕），不要丟成一般錯誤 —— 否則每次續跑都在同一處失敗。
                         Node needed = flow.snapshot.definition().nodes().get(dependency);
+                        String deployment = invalid == null && needed != null && needed.gate() == Gate.SERVICE
+                                ? SandboxE2e.deploymentReason(flow, dependency, flow.receipts.get(dependency),
+                                        props.homePath(), task.id(), workspaces.headSha(task.id())) : null;
+                        if (deployment == null && (invalid == null || FlowGates.bypassed(flow, dependency))) continue;
+                        // 能恢復就停下來讓人決定（附按鈕），不要丟成一般錯誤 —— 否則每次續跑都在同一處失敗。
                         boolean workspaceNode = needed != null && needed.workspace() && workspaces.exists(task.id());
                         String head = workspaceNode ? workspaces.headSha(task.id()) : null;
                         boolean clean = !workspaceNode || workspaces.clean(task.id());
-                        if (ContractRecovery.blockingReason(flow, dependency, head, clean) == null) {
+                        if (deployment == null && ContractRecovery.blockingReason(flow, dependency, head, clean) == null) {
                             if (ContractRecovery.resumeDeploy(flow, dependency, head)) {
                                 if (verifier.blockingReason(flow, head) == null) {
                                     restoreDeferredDeploymentVerification(task, flow, dependency, needed, head);
@@ -435,6 +438,9 @@ public class FlowEngine {
                     if (redo != null) {
                         Node dependency = flow.snapshot.definition().nodes().get(redo);
                         String invalid = FlowGates.blockingReason(dependency, flow.receipts.get(redo), flow);
+                        if (invalid == null && dependency.gate() == Gate.SERVICE)
+                            invalid = SandboxE2e.deploymentReason(flow, redo, flow.receipts.get(redo),
+                                    props.homePath(), task.id(), workspaces.headSha(task.id()));
                         JsonNode previous = flow.blockedFindings.get(redo);
                         if (ServiceDelivery.postDevelopment(node) && dependency.gate() == Gate.VERIFICATION && previous != null) {
                             String issueReason = IssueTracker.reportReason(dependency, previous, flow);
@@ -470,7 +476,8 @@ public class FlowEngine {
                     String reuseHead = flow.workspaceReady && workspaces.exists(task.id()) ? workspaces.headSha(task.id()) : null;
                     JsonNode reused = ReceiptReuse.reusable(flow, flow.node, node, reuseHead,
                             reuseHead != null && workspaces.clean(task.id()));
-                    if (reused != null) {
+                    if (reused != null && SandboxE2e.deploymentReason(flow, flow.node, reused,
+                            props.homePath(), task.id(), reuseHead) == null) {
                         String reusedNode = flow.node;
                         String next = ReceiptReuse.restore(flow, reusedNode, node, reused, reuseHead);
                         audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY, "沿用節點 " + reusedNode
@@ -725,6 +732,9 @@ public class FlowEngine {
                 if (block == null && consultBlock == null && issueBlock == null && FlowGates.dispatchesBlockedWork(node, report, flow))
                     audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY, "分流節點 " + flow.node
                             + " 附受阻報告（" + report.path("execution_status").asText() + "）但已指定 route=" + report.path("route").asText() + "，依其分流派工（受阻的是被分流的工作）");
+                if (block == null && node.gate() == Gate.SERVICE)
+                    block = SandboxE2e.deploymentReason(flow, flow.node, report, props.homePath(),
+                            task.id(), workspaces.headSha(task.id()));
                 if (block==null && node.gate()==Gate.SERVICE && ServiceSupport.configured(props.homePath(),flow.snapshot.definition().project().serviceTarget().name()))
                     block=ServiceSupport.deliveryReason(props.homePath(),task.id(),report);
                 else if (block==null && node.gate()==Gate.SERVICE) {

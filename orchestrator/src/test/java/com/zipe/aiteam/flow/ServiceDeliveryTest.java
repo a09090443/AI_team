@@ -18,6 +18,8 @@ class ServiceDeliveryTest {
                 .noneMatch(tool -> "python3".equals(tool.asText()))) project.withArray("requiredTools").add("python3");
         ObjectNode operations = (ObjectNode) project.path("operations");
         ((ObjectNode) operations.path("service-start")).putArray("writes").add("ai-team-sandbox");
+        ((ObjectNode) operations.path("service-start")).putArray("argv")
+                .add("python3").add("/opt/skills/service-build/scripts/client.py").add("exec").add("sit/start.sh");
         operations.set("sandbox-e2e", mapper.readTree("""
                 {"nodes":["verification"],"directory":".","argv":["python3","/opt/skills/service-build/scripts/client.py","exec","qa/sandbox-e2e.sh"],
                  "writes":["ai-team-sandbox"],"scriptSha256":"%s"}
@@ -90,6 +92,23 @@ class ServiceDeliveryTest {
         flow.node = "deploy";
         String head = "a".repeat(40), id = "b".repeat(32);
         var deployment = report();
+        String startId = "d".repeat(32);
+        ((ObjectNode) deployment.path("checks").get(0)).put("evidence", "job " + startId);
+        var start = mapper.createObjectNode().put("version", 1).put("task", "42").put("node", "deploy")
+                .put("id", startId).put("target", "sit-host").put("action", "exec").put("script", "sit/start.sh")
+                .put("state", "SUCCEEDED").put("verified", true).put("source_head", "e".repeat(40))
+                .put("source_sha256", "f".repeat(64));
+        start.putObject("result").put("id", startId).put("target", "sit-host").put("action", "exec")
+                .put("source_sha256", "f".repeat(64)).put("exit_code", 0);
+        Path startJournal = Files.createDirectories(home.resolve("operation-jobs/42")).resolve(startId + ".json");
+        mapper.writeValue(startJournal.toFile(), start);
+        assertThat(SandboxE2e.deploymentReason(flow, "deploy", deployment, home, "42", head)).contains("目前提交");
+        start.put("source_head", head).put("script", "sit/health.sh");
+        mapper.writeValue(startJournal.toFile(), start);
+        assertThat(SandboxE2e.deploymentReason(flow, "deploy", deployment, home, "42", head)).contains("目前提交");
+        start.put("script", "sit/start.sh");
+        mapper.writeValue(startJournal.toFile(), start);
+        assertThat(SandboxE2e.deploymentReason(flow, "deploy", deployment, home, "42", head)).isNull();
         SandboxE2e.stampDeployment(flow, deployment);
         flow.receipts.put("deploy", deployment);
         flow.heads.put("deploy", head);
