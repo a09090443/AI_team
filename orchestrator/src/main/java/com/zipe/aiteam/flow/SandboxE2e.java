@@ -82,18 +82,29 @@ final class SandboxE2e {
         Node qa = team.nodes().get(deployment.next());
         if (PlanApproval.blockingReason(flow, qa.plan()) != null) return false;
         var covered = new java.util.HashSet<String>();
+        var sandboxCovered = new java.util.HashSet<String>();
         for (JsonNode scenario : flow.receipts.get(qa.plan()).path("scenarios")) {
+            scenario.path("requirement_ids").forEach(ref -> covered.add(ref.asText()));
             for (JsonNode id : scenario.path("operation_ids"))
-                if (OPERATION.equals(id.asText())) scenario.path("requirement_ids").forEach(ref -> covered.add(ref.asText()));
+                if (OPERATION.equals(id.asText())) scenario.path("requirement_ids").forEach(ref -> sandboxCovered.add(ref.asText()));
         }
         JsonNode requirements = issue.path("requirement_ids");
         if (!requirements.isArray() || requirements.isEmpty()) return false;
+        boolean needsSandbox = false;
         for (JsonNode id : requirements) if (!covered.contains(id.asText())) return false;
-        return true;
+        for (JsonNode id : requirements) if (sandboxCovered.contains(id.asText())) needsSandbox = true;
+        return needsSandbox;
     }
 
     static String notice(FlowRun flow, Node node) {
         var team = flow.snapshot.definition();
+        if (node.gate() == Gate.SERVICE && isQa(team, node.next()))
+            return "\n本輪只負責部署與健康檢查，完成後交配置的 QA 節點（" + node.next() + "）執行已核准計畫。"
+                    + "target 只填配置的目標名稱 " + team.project().serviceTarget().name() + "，網址與容器說明寫在摘要。"
+                    + "不要在部署階段要求 sandbox-e2e 操作，也不要重送同版本已成功的啟動作業。"
+                    + "交後續 QA 驗證的 REPAIR 問題可如實留 OPEN；部署本身成功時回 COMPLETED。"
+                    + "後續 QA 尚未執行寫在摘要及 issue_checks，不列為部署本身的 uncertainties；"
+                    + "部署或健康檢查確有未核實事項仍須 BLOCKED，不得填 PASS。";
         if (operation(team) == null) return "";
         if (node.gate() == Gate.TEST_PLAN)
             return "\n計畫須在實作前定義至少一個 sandbox-e2e 情境，列真實前後端的測試資料、操作、預期及反例。授權沙箱先部署後才由 QA 執行。";

@@ -46,6 +46,47 @@ class ServiceDeliveryTest {
         assertThat(SandboxE2e.verifiesAfterDeploy(flow, "deploy", issue)).isTrue();
         issue.withArray("requirement_ids").add("not-covered");
         assertThat(SandboxE2e.verifiesAfterDeploy(flow, "deploy", issue)).isFalse();
+        // 同一問題的功能由沙箱驗證、文件由獨立情境驗證，不能要求文件也假掛到瀏覽器情境。
+        var mixedPlan = mapper.readTree("""
+                {"scenarios":[
+                 {"id":"browser","requirement_ids":["R1"],"operation_ids":["sandbox-e2e"]},
+                 {"id":"docs","requirement_ids":["R2"],"operation_ids":["inspect-content"]}]}
+                """);
+        flow.receipts.put("plan", mixedPlan);
+        assertThat(SandboxE2e.verifiesAfterDeploy(flow, "deploy", issue)).isFalse(); // 舊核准不能沿用
+        flow.planApprovals.put("plan", PlanApproval.approve(flow, "plan", Traceability.digest(mixedPlan), "qa-owner"));
+        issue.putArray("requirement_ids").add("R1").add("R2");
+        assertThat(SandboxE2e.verifiesAfterDeploy(flow, "deploy", issue)).isTrue();
+        issue.withArray("requirement_ids").add("R3");
+        assertThat(SandboxE2e.verifiesAfterDeploy(flow, "deploy", issue)).isFalse();
+        issue.putArray("requirement_ids").add("R2");
+        assertThat(SandboxE2e.verifiesAfterDeploy(flow, "deploy", issue)).isFalse(); // 無關沙箱情境不放行
+        issue.putArray("requirement_ids").add("R1").add("R2");
+        issue.put("scope", "DECISION");
+        assertThat(SandboxE2e.verifiesAfterDeploy(flow, "deploy", issue)).isFalse();
+        issue.put("scope", "REPAIR").put("id", "I1");
+        flow.snapshot = new TeamDefinition.Snapshot("sandbox", team, "/repo", java.util.Map.of(IssueTracker.CONTRACT, "v1"));
+        flow.receipts.put("intake", mapper.readTree("""
+                {"requirements":[{"id":"R1","acceptance_items":[{"id":"A1"}]},
+                                 {"id":"R2","acceptance_items":[{"id":"A2"}]}]}
+                """));
+        flow.issueInventory.put("I1", issue);
+        var openDeployment = report();
+        openDeployment.putArray("issue_updates");
+        openDeployment.put("issue_revision", IssueTracker.revision(flow)).putArray("issue_checks")
+                .addObject().put("id", "I1").put("status", "OPEN").put("evidence", "部署成功，交已核准計畫的 QA 實測");
+        flow.node = "deploy";
+        assertThat(IssueTracker.reportReason(team.nodes().get("deploy"), openDeployment, flow)).isNull();
+        assertThat(ServiceDelivery.blockingReason(openDeployment, flow)).isNull();
+        var unhealthy = openDeployment.deepCopy();
+        ((ObjectNode) unhealthy.path("checks").get(1)).put("status", "FAIL").put("exit_code", 1);
+        assertThat(ServiceDelivery.blockingReason(unhealthy, flow)).contains("服務檢查失敗");
+        var uncertain = openDeployment.deepCopy();
+        uncertain.withArray("uncertainties").add("部署健康狀態尚未核實");
+        assertThat(ServiceDelivery.blockingReason(uncertain, flow)).contains("未核實事項");
+        assertThat(SandboxE2e.notice(flow, team.nodes().get("deploy"))).contains("交配置的 QA 節點", "回 COMPLETED", "仍須 BLOCKED");
+        assertThat(IssueTracker.reportReason(team.nodes().get("verification"), openDeployment, flow)).contains("問題尚未解決");
+        assertThat(IssueTracker.reportReason(team.nodes().get("review"), openDeployment, flow)).contains("問題尚未解決");
         flow.node = "deploy";
         String head = "a".repeat(40), id = "b".repeat(32);
         var deployment = report();
