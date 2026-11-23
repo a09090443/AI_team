@@ -60,6 +60,9 @@ docs-site/                      # 文件網站：docs/ 原始文件、agent/ 入
 從零建置的唯一入口是 [docs-site/docs/INSTALL.md](docs-site/docs/INSTALL.md)。**不是一鍵安裝**：
 安裝媒體、官方工具鏈 checksum、系統套件與本人 CLI 登入都需先備妥。
 
+可請具備 SSH 執行能力的 AI 開發工具，依安裝指南在授權的指定 Linux Server 完成建置、安裝與啟動；
+所需資訊與可直接使用的派工範例見 [使用 AI 建置到指定 Server](docs-site/docs/INSTALL.md#使用-ai-建置到指定-server)。
+
 執行環境為 Linux x86_64／glibc／systemd，各發行版實測狀態見
 [docs-site/docs/linux-support.md](docs-site/docs/linux-support.md)；未實測的不標成已支援。
 
