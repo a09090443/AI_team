@@ -49,6 +49,18 @@ class TeamMigrationTest {
         // 下一步開新對話，不以新模型接續舊模型的 session。
         assertThat(flow.activeNode).isNull();
     }
+    @Test void operationPreviewListsOnlyChangedEntriesAndBindsTheEntireTarget() throws Exception {
+        var operations = (ObjectNode) target.path("project").path("operations");
+        String id = operations.fieldNames().next();
+        ((ObjectNode) operations.get(id)).withArray("argv").add("--test-flag");
+        var next = snapshot();
+        var preview = TeamMigration.preview(original, next);
+        assertThat(preview.changes()).singleElement().asString()
+                .startsWith("project.operations." + id + "：").contains("--test-flag");
+        ((ObjectNode) operations.get(id)).withArray("argv").add("--another-flag");
+        assertThatThrownBy(() -> TeamMigration.apply(new FlowRun(original), snapshot(), preview.token()))
+                .hasMessageContaining("版本過期");
+    }
     @Test void runtimeOrApprovalPolicyChangesCannotSneakIntoCapabilityMigration() throws Exception {
         ((ObjectNode)target.path("roles").path("builder")).put("runtime", "codex").put("model", "gpt-5.6-sol");
         assertThatThrownBy(() -> TeamMigration.preview(original, snapshot())).hasMessageContaining("非能力設定");

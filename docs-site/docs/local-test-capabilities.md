@@ -32,6 +32,15 @@ Node 的 fetch 連 `localhost`／`127.0.0.1` 也會送進 proxy 而被拒（`Net
 因此系統列給 `localTestNetwork` 節點的固定操作一律加上前綴 `env NO_PROXY=localhost,127.0.0.1,::1 no_proxy=localhost,127.0.0.1,::1`（`ConfiguredExecutor.LOOPBACK_NO_PROXY`），
 只放行 loopback，外連仍被拒（實測）。配置裡的 argv 不變。
 
+如果 TypeScript 檢查因增量快取要寫入唯讀的來源目錄，可在專案的固定操作中執行
+`npm run type-check -- --incremental false`。這會保留型別檢查，並省略 `tsbuildinfo` 快取。
+如果 Next.js 建置因遙測連線被阻擋，可將建置操作宣告為 `["env", "NEXT_TELEMETRY_DISABLED=1", "npm", "run", "build"]`，
+並在 `requiredTools` 列出 `env`。既有 loopback 前綴會保留，對外網路政策與可寫路徑無需變更。
+
+Next.js 正式建置也可能產生 `next-env.d.ts` 等檔案。遇到這種情況，讓管理者配置的準備操作把目前已提交的前端目錄匯出到
+可寫的驗收產物目錄（例如 `target/qa-ui`）。安裝、型別檢查、lint 與正式建置都在同一份副本依序執行。
+原產品目錄維持唯讀，副本由固定操作的 `writes` 宣告為驗收產物。
+
 呼叫模型前，以相同內外層設定測試 localhost TCP 往返、帶上述前綴以 fetch 連 localhost HTTP（2026-10-23 新增），以及可寫路徑（unit 最長 25 秒、客戶端最長 30 秒），
 失敗就停止，不略過不相容的 CLI、不退回無沙箱。於 Codex 0.153.4 實測；未宣稱所有 CLI／OS 版本都支援。
 

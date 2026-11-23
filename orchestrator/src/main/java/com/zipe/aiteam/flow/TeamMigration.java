@@ -15,10 +15,11 @@ public final class TeamMigration {
         ObjectNode left = MAPPER.valueToTree(before.definition()), right = MAPPER.valueToTree(after.definition());
         List<String> changes = new ArrayList<>();
         // autonomy 是管理者授權的恢復政策（次數有上限、不擴權），與能力設定一樣可原地套用（2026-10-22，#1053）。
-        for (String field : List.of("requiredTools", "cachePaths", "buildInstructions", "testInstructions", "operations",
+        for (String field : List.of("requiredTools", "cachePaths", "buildInstructions", "testInstructions",
                 "serviceTarget", "autonomy", "jsonAdditionsComparison")) {
             compareRemove((ObjectNode)left.get("project"), (ObjectNode)right.get("project"), field, "project.", changes);
         }
+        compareOperations((ObjectNode)left.get("project"), (ObjectNode)right.get("project"), changes);
         if (!before.definition().roles().keySet().equals(after.definition().roles().keySet()))
             throw new IllegalArgumentException("角色清單已變更，不能原地遷移");
         for (String role : before.definition().roles().keySet()) {
@@ -43,6 +44,19 @@ public final class TeamMigration {
     private static void compareRemove(ObjectNode left, ObjectNode right, String field, String prefix, List<String> changes) {
         JsonNode a = left.remove(field), b = right.remove(field);
         if (!Objects.equals(a, b)) changes.add(prefix + field + "：" + a + " → " + b);
+    }
+    private static void compareOperations(ObjectNode left, ObjectNode right, List<String> changes) {
+        JsonNode before = left.remove("operations"), after = right.remove("operations");
+        Set<String> ids = new TreeSet<>();
+        if (before != null) before.fieldNames().forEachRemaining(ids::add);
+        if (after != null) after.fieldNames().forEachRemaining(ids::add);
+        for (String id : ids) {
+            JsonNode a = before == null ? null : before.get(id);
+            JsonNode b = after == null ? null : after.get(id);
+            if (!Objects.equals(a, b)) changes.add("project.operations." + id + "：" + a + " → " + b);
+        }
+        if (ids.isEmpty() && !Objects.equals(before, after))
+            changes.add("project.operations：" + before + " → " + after);
     }
     public static void apply(FlowRun flow, TeamDefinition.Snapshot target, String token) {
         Preview preview = preview(flow.snapshot, target);

@@ -1,6 +1,7 @@
 package com.zipe.aiteam.flow;
 
 import java.util.Objects;
+import com.zipe.aiteam.task.FailureReport;
 import static com.zipe.aiteam.flow.TeamDefinition.*;
 
 /** 能力配置經真人核准後，另一個明確指令授予一次驗收；不重設歷史計數。 */
@@ -42,7 +43,17 @@ public final class VerificationRecovery {
         if(flow.transitions>=flow.snapshot.definition().maxTransitions())
             return "流程總上限已用盡，不授予恢復";
         if (node.requires() != null) for(String dep:node.requires()) {
-            String block=FlowGates.blockingReason(flow.snapshot.definition().nodes().get(dep),flow.receipts.get(dep),flow);
+            Node prerequisite = flow.snapshot.definition().nodes().get(dep);
+            var report = flow.receipts.get(dep);
+            // 配置遷移會清除計畫核准。這一步只定位到待核准的 QA，尚未派工。
+            // 部署問題中的 OPEN 需要核准計畫才能判定，等真人核准後由執行入口完整重查。
+            boolean waitsForPlan = SandboxE2e.isQa(flow.snapshot.definition(), nodeId)
+                    && SandboxE2e.deployments(flow.snapshot.definition(), nodeId).contains(dep)
+                    && flow.receipts.get(node.plan()) != null
+                    && PlanApproval.blockingReason(flow, node.plan()) != null;
+            String block = waitsForPlan ? FailureReport.blockingReason("generic", report)
+                    : FlowGates.blockingReason(prerequisite, report, flow);
+            if (waitsForPlan && block == null) block = ServiceDelivery.blockingReason(report, flow, prerequisite);
             if(block!=null) return "前置契約 "+dep+" 無效："+block;
         }
         return null;
