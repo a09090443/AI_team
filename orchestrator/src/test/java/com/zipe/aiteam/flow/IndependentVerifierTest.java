@@ -34,6 +34,12 @@ class IndependentVerifierTest {
         when(workspace.pathFor("42")).thenReturn(tmp.resolve("source"));
         // 此層只模擬子行程；測收據與權限組裝，不冒充 Linux/systemd 實測。
         verifier = new IndependentVerifier(props, sandbox, workspace) {
+            @Override void execute(String taskId, List<String> argv, Path cwd, Path home, SandboxPolicy policy,
+                                   Path log, long deadline, boolean offline, List<String> environment) throws Exception {
+                assertThat(offline).isTrue();
+                execute(taskId, argv, cwd, home, policy, log, deadline);
+            }
+
             @Override void execute(String taskId, List<String> argv, Path cwd, Path home, SandboxPolicy policy, Path log, long deadline) throws Exception {
                 assertThat(taskId).isEqualTo("42");
                 calls.add(argv); policies.add(policy);
@@ -52,6 +58,44 @@ class IndependentVerifierTest {
             }
         };
     }
+    @Test void qaRehearsalRunsDeclaredOrderAndCachesOnlySuccessForMatchingConfiguration() throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var tree = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.valueToTree(flow.snapshot.definition());
+        var project = tree.withObject("/project");
+        project.putArray("cachePaths");
+        var operations = project.withObject("/operations");
+        var install = operations.withObject("/install");
+        install.put("qaRehearsalOrder", 2).putArray("nodes").add("verification");
+        install.putArray("argv").add("npm").add("ci").add("--offline");
+        var build = operations.withObject("/build");
+        build.put("qaRehearsalOrder", 5).putArray("nodes").add("verification");
+        var task = new Task("42", "c", "t", "u", "mail");
+
+        Path success = rehearse(task, mapper, tree);
+        assertThat(calls.subList(2, calls.size())).containsExactly(List.of("npm", "ci", "--offline"), List.of("npm", "run", "build"));
+        assertThat(commandDirs).hasSize(2).doesNotContain(tmp.resolve("source"));
+        assertThat(commandDirs.getFirst()).isEqualTo(commandDirs.getLast()).doesNotExist();
+        assertThat(Files.readString(success)).contains("\"operation\":\"install\"", "\"exitCode\":0", "\"sha256\"");
+        calls.clear();
+        assertThat(rehearse(task, mapper, tree)).isNull();
+        assertThat(calls).isEmpty();
+
+        build.putArray("argv").add("npm").add("run").add("build:qa");
+        fail = true;
+        assertThatThrownBy(() -> rehearse(task, mapper, tree)).hasMessageContaining("QA 配置試跑失敗：install");
+        fail = false;
+        assertThat(rehearse(task, mapper, tree)).exists().isNotEqualTo(success);
+
+        build.put("qaRehearsalOrder", 2);
+        assertThatThrownBy(() -> rehearse(task, mapper, tree)).hasMessageContaining("試跑順序不可重複");
+    }
+
+    private Path rehearse(Task task, com.fasterxml.jackson.databind.ObjectMapper mapper, com.fasterxml.jackson.databind.JsonNode tree) throws Exception {
+        TeamDefinition team = mapper.treeToValue(tree, TeamDefinition.class);
+        TeamCatalog.validate(team);
+        flow.snapshot = new TeamDefinition.Snapshot(flow.snapshot.revision(), team, flow.snapshot.repository(), flow.snapshot.assets());
+        return verifier.rehearseQa(task, flow, "verification", team.nodes().get("verification"), OperationContract.rehearsal(team, "verification"));
+    }
     void verifyNow() throws Exception { flow.independentEvidence = verifier.verify(new Task("42", "c", "t", "u", "mail"), flow); }
     void comparisonPlan() throws Exception {
         String planId = flow.snapshot.definition().nodes().entrySet().stream()
@@ -62,6 +106,25 @@ class IndependentVerifierTest {
         when(workspace.compareFiles("42", flow.comparisonBase, head, List.of("README.md")))
                 .thenReturn(List.of(new WorkspaceManager.FileIdentity("README.md", "100644 blob abc", "100644 blob abc")));
     }
+    @Test void deploymentTargetDoesNotRunLocalE2eOrOfferItAsDeploymentEvidence() throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var tree = mapper.valueToTree(flow.snapshot.definition());
+        var project = (com.fasterxml.jackson.databind.node.ObjectNode) tree.path("project");
+        project.putObject("browserE2e").put("directory", ".");
+        project.putObject("serviceTarget").put("name", "authorized-test-target");
+        BrowserE2e.expand(tree);
+        flow.snapshot = new TeamDefinition.Snapshot("sandbox-priority", mapper.treeToValue(tree, TeamDefinition.class),
+                flow.snapshot.repository(), flow.snapshot.assets());
+        verifyNow();
+        assertThat(calls).contains(List.of("npm", "test"));
+        assertThat(calls).doesNotContain(List.of("npm", "run", "test:e2e"),
+                List.of("npm", "exec", "--", "playwright", "install", "--only-shell", "chromium"));
+        assertThat(verifier.blockingReason(flow, head)).isNull();
+        assertThat(SandboxE2e.publicationReason(flow, head)).contains("缺少 sandbox-e2e");
+        // 舊本機收據無法冒充新配置下的部署驗收。
+        verify(workspace, never()).readCommittedText(eq("42"), eq(head), anyString(), anyInt());
+    }
+
     /** project.browserE2e：專案未就緒時不追加；HEAD 有 playwright.config 與 test:e2e 時追加，發布前核對用同一個判定。 */
     @Test void browserE2eCommandsRunOnlyOnceTheProjectIsReady() throws Exception {
         var mapper = new com.fasterxml.jackson.databind.ObjectMapper();

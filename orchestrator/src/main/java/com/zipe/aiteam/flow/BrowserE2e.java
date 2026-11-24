@@ -224,6 +224,28 @@ public final class BrowserE2e {
                 scopes == null ? null : List.copyOf(scopes), spec.qaOnlyPaths());
     }
 
+    /** 有部署目標時不在獨立 clone 重跑本機 E2E；建置與單元測試保留。 */
+    static Verification effective(TeamDefinition team, Verification spec, boolean ready) {
+        if (!SandboxE2e.preferred(team)) return effective(spec, policy(team), ready);
+        if (spec == null) return null;
+        var localCommands = new ArrayList<List<String>>();
+        if (policy(team) != null) localCommands.addAll(verificationCommands(policy(team)));
+        if (team.project().operations() != null)
+            for (String id : List.of(OP_E2E, OP_BROWSERS)) {
+                Operation operation = team.project().operations().get(id);
+                if (operation != null) localCommands.add(operation.argv());
+            }
+        var commands = new ArrayList<List<String>>();
+        var scopes = spec.commandScopes() == null ? null : new ArrayList<List<String>>();
+        for (int i = 0; i < spec.commands().size(); i++) {
+            if (localCommands.contains(spec.commands().get(i))) continue;
+            commands.add(spec.commands().get(i));
+            if (scopes != null) scopes.add(spec.commandScopes().get(i));
+        }
+        return new Verification(List.copyOf(commands), spec.timeoutSeconds(), spec.docOnlyPaths(),
+                scopes == null ? null : List.copyOf(scopes), spec.qaOnlyPaths());
+    }
+
     /** 獨立驗證本輪是否實際執行了 test:e2e（略過或重用都不算）。 */
     static boolean ran(List<VerificationPlan.Decision> decisions, BrowserE2ePolicy policy) {
         if (decisions == null || policy == null) return false;
@@ -300,7 +322,8 @@ public final class BrowserE2e {
     /** 提出詢問的條件：設定開啟 offer、專案未就緒，而且本任務不是安裝任務本身。 */
     static boolean offerEnabled(FlowRun flow, boolean ready) {
         BrowserE2ePolicy policy = policy(flow);
-        return policy != null && policy.offers() && !ready && flow.browserE2eSetup == null;
+        return policy != null && !SandboxE2e.preferred(flow.snapshot.definition())
+                && policy.offers() && !ready && flow.browserE2eSetup == null;
     }
 
     public static String extendSchema(String schema) throws Exception {

@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
@@ -109,6 +110,10 @@ public class BaselineVerifier {
         java.util.Set<String> tools = new LinkedHashSet<>(List.of("git"));
         if (spec != null && spec.commands() != null)
             for (List<String> argv : spec.commands()) if (!argv.isEmpty()) tools.add(argv.getFirst());
+        return toolchain(tools, path, javaHome);
+    }
+
+    static String toolchain(Collection<String> tools, String path, String javaHome) {
         StringBuilder out = new StringBuilder();
         for (String tool : tools) out.append(tool).append('=').append(describe(resolve(tool, path))).append('\n');
         out.append("JAVA_HOME=").append(javaHome == null ? "-" : describe(Path.of(javaHome).resolve("bin").resolve("java")));

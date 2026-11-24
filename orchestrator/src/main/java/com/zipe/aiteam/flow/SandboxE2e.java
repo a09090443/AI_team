@@ -2,7 +2,11 @@ package com.zipe.aiteam.flow;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.zipe.aiteam.workspace.WorkspaceManager;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -20,14 +24,44 @@ final class SandboxE2e {
         return team.project().operations() == null ? null : team.project().operations().get(OPERATION);
     }
 
+    /** 已授權的服務目標優先；缺 Runner 或部署故障均不代表沒有沙箱。 */
+    static boolean preferred(TeamDefinition team) {
+        var project = team.project();
+        return project.serviceTarget() != null && (project.browserE2e() != null || operation(team) != null
+                || project.operations() != null && project.operations().containsKey(BrowserE2e.OP_E2E));
+    }
+
+    private static String configurationReason(TeamDefinition team) {
+        return preferred(team) && operation(team) == null
+                ? "已有授權部署目標，E2E 必須驗收沙箱系統；缺少 sandbox-e2e 操作與部署後 QA 路線，不能改用本機測試放行" : null;
+    }
+
     static boolean isQa(TeamDefinition team, String node) {
         Operation operation = operation(team);
-        return operation != null && operation.nodes().contains(node);
+        return operation != null && node != null && operation.nodes().contains(node);
     }
 
     static List<String> deployments(TeamDefinition team, String qa) {
         return team.nodes().entrySet().stream().filter(e -> ServiceDelivery.postDevelopment(e.getValue())
                 && qa.equals(e.getValue().next())).map(java.util.Map.Entry::getKey).toList();
+    }
+
+    static void requireDeploymentPin(FlowRun flow, Node node, WorkspaceManager workspaces, String task) throws Exception {
+        var team = flow.snapshot.definition();
+        if (!ServiceDelivery.postDevelopment(node) || !isQa(team, node.next())) return;
+        Operation runner = operation(team);
+        String script = runner.argv().get(3);
+        try {
+            String head = workspaces.headSha(task);
+            String content = workspaces.readCommittedText(task, head, script, 1_048_576);
+            String hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(content.getBytes(StandardCharsets.UTF_8)));
+            if (!hash.equals(runner.scriptSha256())) throw new IllegalStateException("已提交腳本的 SHA-256 不符");
+            OperationContract.scriptPin(OPERATION, runner, workspaces.pathFor(task));
+        } catch (WorkspaceManager.WorkspaceException | IllegalStateException | java.io.IOException e) {
+            throw new IllegalStateException("部署前無法核對沙箱 Runner：" + script
+                    + "；請審閱已提交的 Runner 並核對任務快照的 SHA-256。尚未執行部署。", e);
+        }
     }
 
     static void validate(TeamDefinition team) {
@@ -68,7 +102,14 @@ final class SandboxE2e {
     }
 
     static String planReason(FlowRun flow, JsonNode plan) {
-        if (operation(flow.snapshot.definition()) == null) return null;
+        var team = flow.snapshot.definition();
+        String configuration = configurationReason(team);
+        if (configuration != null) return configuration;
+        if (operation(team) == null) return null;
+        for (JsonNode scenario : plan.path("scenarios"))
+            for (JsonNode id : scenario.path("operation_ids"))
+                if (BrowserE2e.OP_E2E.equals(id.asText()))
+                    return "已有授權部署目標，E2E 情境須引用 sandbox-e2e，不能以本機 e2e 代替沙箱驗收";
         for (JsonNode scenario : plan.path("scenarios"))
             for (JsonNode id : scenario.path("operation_ids")) if (OPERATION.equals(id.asText())) return null;
         return "測試計畫必須包含使用 sandbox-e2e 的真實沙箱驗收情境";
@@ -106,6 +147,14 @@ final class SandboxE2e {
                     + "交後續 QA 驗證的 REPAIR 問題可如實留 OPEN；部署本身成功時回 COMPLETED。"
                     + "後續 QA 尚未執行寫在摘要及 issue_checks，不列為部署本身的 uncertainties；"
                     + "部署或健康檢查確有未核實事項仍須 BLOCKED，不得填 PASS。";
+        if (preferred(team) && (node.gate() == Gate.TEST_PLAN || node.gate() == Gate.VERIFICATION)) {
+            String configuration = configurationReason(team);
+            return "\nE2E 環境（系統查得）：已有授權部署目標 " + team.project().serviceTarget().name()
+                    + "，優先使用沙箱系統。先部署本次 commit，再由 QA 使用 sandbox-e2e 測試真實前後端；"
+                    + "本機預覽、Mock API 與本機獨立驗證收據不能取代沙箱驗收。沙箱故障或版本不符時交既有部署／分流路線修復，不得降成本機通過。"
+                    + (configuration == null ? "計畫至少包含一個 sandbox-e2e 情境，列測試資料、預期及反例。"
+                    : "配置缺口：" + configuration + "；回報缺口，由既有配置維護流程補齊，不自行新增目標或擴權。");
+        }
         if (operation(team) == null) return "";
         if (node.gate() == Gate.TEST_PLAN)
             return "\n計畫須在實作前定義至少一個 sandbox-e2e 情境，列真實前後端的測試資料、操作、預期及反例。授權沙箱先部署後才由 QA 執行。";
@@ -147,6 +196,8 @@ final class SandboxE2e {
 
     static String attest(FlowRun flow, JsonNode report, Path home, String task, String head) {
         var team = flow.snapshot.definition();
+        String configuration = configurationReason(team);
+        if (configuration != null) return configuration;
         if (!isQa(team, flow.node)) return null;
         var output = (ObjectNode) report;
         output.remove(EVIDENCE);
@@ -166,6 +217,8 @@ final class SandboxE2e {
     }
 
     static String publicationReason(FlowRun flow, String head) {
+        String configuration = configurationReason(flow.snapshot.definition());
+        if (configuration != null) return configuration;
         Operation operation = operation(flow.snapshot.definition());
         if (operation == null) return null;
         String qa = operation.nodes().getFirst();

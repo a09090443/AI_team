@@ -5,12 +5,16 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.file.*;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 class ServiceDeliveryTest {
     final ObjectMapper mapper = new ObjectMapper();
 
     @Test void sandboxQaRequiresARealNonemptyRunForTheCurrentDeployment(@org.junit.jupiter.api.io.TempDir Path home) throws Exception {
         FlowRun flow = flow(true);
+        Path runner = Files.createDirectories(home.resolve("qa")).resolve("sandbox-e2e.sh");
+        String runnerText = "#!/bin/bash\nexit 0\n";
+        Files.writeString(runner, runnerText);
         ObjectNode definition = mapper.valueToTree(flow.snapshot.definition());
         ObjectNode project = (ObjectNode) definition.path("project");
         project.put("requirePlanApproval", true);
@@ -23,7 +27,7 @@ class ServiceDeliveryTest {
         operations.set("sandbox-e2e", mapper.readTree("""
                 {"nodes":["verification"],"directory":".","argv":["python3","/opt/skills/service-build/scripts/client.py","exec","qa/sandbox-e2e.sh"],
                  "writes":["ai-team-sandbox"],"scriptSha256":"%s"}
-                """.formatted("d".repeat(64))));
+                """.formatted(IndependentVerifier.hash(runner))));
         ObjectNode nodes = (ObjectNode) definition.path("nodes");
         for (String id : java.util.List.of("service", "deploy")) {
             var paths = ((ObjectNode) nodes.path(id)).withArray("writablePaths");
@@ -36,12 +40,28 @@ class ServiceDeliveryTest {
         TeamDefinition team = mapper.treeToValue(definition, TeamDefinition.class);
         TeamCatalog.validate(team);
         flow.snapshot = new TeamDefinition.Snapshot("sandbox", team, "/repo", java.util.Map.of());
+        var workspace = mock(com.zipe.aiteam.workspace.WorkspaceManager.class);
+        String deploymentHead = "a".repeat(40);
+        when(workspace.pathFor("42")).thenReturn(home);
+        when(workspace.headSha("42")).thenReturn(deploymentHead);
+        when(workspace.readCommittedText("42", deploymentHead, "qa/sandbox-e2e.sh", 1_048_576))
+                .thenReturn("old committed runner\n", runnerText, runnerText);
+        assertThatThrownBy(() -> SandboxE2e.requireDeploymentPin(flow, team.nodes().get("deploy"), workspace, "42"))
+                .hasMessageContaining("尚未執行部署");
+        SandboxE2e.requireDeploymentPin(flow, team.nodes().get("deploy"), workspace, "42");
+        Files.writeString(runner, "uncommitted change\n");
+        assertThatThrownBy(() -> SandboxE2e.requireDeploymentPin(flow, team.nodes().get("deploy"), workspace, "42"))
+                .hasMessageContaining("尚未執行部署");
         flow.acceptanceOwner = "qa-owner";
         flow.baselineRevision = "baseline";
         var plan = mapper.readTree("""
                 {"scenarios":[{"id":"browser","requirement_ids":["R1"],"operation_ids":["sandbox-e2e"]}]}
                 """);
         flow.receipts.put("plan", plan);
+        assertThat(SandboxE2e.planReason(flow, plan)).isNull();
+        assertThat(SandboxE2e.planReason(flow, mapper.readTree("""
+                {"scenarios":[{"operation_ids":["sandbox-e2e"]},{"operation_ids":["e2e"]}]}
+                """))).contains("不能以本機 e2e 代替");
         var issue = (ObjectNode) mapper.readTree("{\"scope\":\"REPAIR\",\"requirement_ids\":[\"R1\"]}");
         assertThat(SandboxE2e.verifiesAfterDeploy(flow, "deploy", issue)).isFalse();
         flow.planApprovals.put("plan", PlanApproval.approve(flow, "plan", Traceability.digest(plan), "qa-owner"));

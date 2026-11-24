@@ -19,6 +19,10 @@ public final class IssueTracker {
             每階段把新發現逐項寫入 issue_updates：id 為穩定唯一代號，description 描述問題，
             evidence 寫具體檔案／操作證據，scope 為 REPAIR（目標內）、DECISION（需要產品或新權限決策）、
             EXCLUDED（確實不在使用者目標內）、OBSERVATION（僅限唯讀請求）；reason 說明範圍依據。
+            單一角色缺少操作或寫入權限，不等於整個團隊需要新權限。既定需求內的測試、證據或工具契約缺口，
+            先以 REPAIR 交配置中的分流確認其他角色能否在既有授權內處理；不得因自己不能做就登記 DECISION。
+            只有確認需要產品取捨、擴大授權或新增權限時才用 DECISION，evidence 列出已核對的限制與路線。
+            分流仍不得自行把已登記的 DECISION 改成 REPAIR；須沿既有負責人回覆與需求階段確認程序。
             REPAIR 用 requirement_ids 連結既有需求（intake 可建立對應需求；service 路線可留空）。
             同一問題沿用 ID，不得換名掩蓋、遺漏、擅自降為範圍外或把難驗證當成排除理由。
             更新既有問題時 description 必須逐字沿用系統清單的原文；處理進度與負責人的決定寫在 evidence／reason，
@@ -179,14 +183,25 @@ public final class IssueTracker {
     /**
      * 系統路線：待決問題只有需求階段能依負責人的回覆結案，但不是每個節點都配置了通往需求節點的路線。
      * #1057 分流（只能交 service／implementation／human）照系統修正提示填需求節點，卻因「未配置的 route」整個停下。
-     * 只在負責人已於本任務回覆、回報 route 正是需求節點 ID、節點本身沒有同名路線時放行，回傳要前往的節點；
+     * 負責人已於本任務回覆時，接受配置中通往需求節點的路線，或未配置的需求節點 ID；回傳要前往的節點。
      * 需求節點仍要自己確認才結案，不因此取得其他權限。其餘情況回 null，照配置路線檢查。
      */
     static String systemRequirementsRoute(FlowRun flow, Node node, String route) {
         String requirements = FlowEngine.requirementsNode(flow);
-        if (requirements == null || !requirements.equals(route) || node.gate() == Gate.REQUIREMENTS
-                || (node.routes() != null && node.routes().containsKey(route))) return null;
+        if (requirements == null || node == null || node.gate() == Gate.REQUIREMENTS) return null;
+        String target = node.routes() != null && node.routes().containsKey(route) ? node.routes().get(route) : route;
+        if (!requirements.equals(target)) return null;
         return ownerReplyAwaitsRequirements(flow) ? requirements : null;
+    }
+
+    /** 舊版把已回覆的決策確認停成需求變更；只認已保存且通往同一需求節點的回報，不靠停止訊息文字判斷。 */
+    static boolean pendingDecisionConfirmation(FlowRun flow) {
+        if (flow.changeTarget == null || flow.baselineRevision == null || flow.changeAuthorized || flow.issueScopeChangeAuthorized)
+            return false;
+        Node node = flow.snapshot.definition().nodes().get(flow.node);
+        JsonNode report = flow.receipts.get(flow.node);
+        return node != null && report != null && flow.changeTarget.equals(
+                systemRequirementsRoute(flow, node, report.path("route").asText("")));
     }
 
     /** Validate transactionally. Invalid reports cannot erase or partially replace the ledger. */

@@ -29,6 +29,62 @@ class BrowserE2eTest {
     static List<String> texts(JsonNode array) { return mapper().convertValue(array, List.class); }
     static ObjectMapper mapper() { return new ObjectMapper(); }
 
+    @Test void deployedEnvironmentTakesPriorityAcrossDifferentProjectTypes() throws Exception {
+        for (String name : List.of("node-web", "gradle-fullstack")) {
+            ObjectNode tree = team(name);
+            ObjectNode project = (ObjectNode) tree.path("project");
+            project.putObject("browserE2e").put("directory", ".");
+            project.putObject("serviceTarget").put("name", "authorized-test-target");
+            BrowserE2e.expand(tree);
+            TeamDefinition definition = mapper.treeToValue(tree, TeamDefinition.class);
+            Verification spec = new Verification(List.of(List.of("npm", "test"), List.of("npm", "run", "test:e2e")),
+                    600, List.of("docs/**"), List.of(List.of("src/**"), List.of("e2e/**")), List.of("assets/**"));
+            assertThat(SandboxE2e.preferred(definition)).isTrue();
+            var effective = BrowserE2e.effective(definition, spec, true);
+            assertThat(effective.commands()).containsExactly(List.of("npm", "test"));
+            assertThat(effective.commandScopes()).containsExactly(List.of("src/**"));
+            assertThat(effective.docOnlyPaths()).containsExactly("docs/**");
+            assertThat(effective.qaOnlyPaths()).containsExactly("assets/**");
+
+            FlowRun flow = new FlowRun();
+            flow.snapshot = new Snapshot("revision", definition, "/repo", Map.of());
+            var plan = mapper.readTree("{\"scenarios\":[{\"operation_ids\":[\"e2e\"]}]}");
+            assertThat(SandboxE2e.planReason(flow, plan)).contains("缺少 sandbox-e2e", "不能改用本機");
+            assertThat(SandboxE2e.publicationReason(flow, "a".repeat(40))).contains("缺少 sandbox-e2e");
+            flow.node = "approval";
+            assertThat(FlowGates.publicationReason(flow, "a".repeat(40))).contains("缺少 sandbox-e2e");
+            assertThat(BrowserE2e.offerEnabled(flow, false)).isFalse();
+            assertThat(SandboxE2e.notice(flow, definition.nodes().get("plan")))
+                    .contains("authorized-test-target", "不得降成本機通過", "配置缺口");
+
+            project.putNull("serviceTarget");
+            definition = mapper.treeToValue(tree, TeamDefinition.class);
+            assertThat(SandboxE2e.preferred(definition)).isFalse();
+            assertThat(BrowserE2e.effective(definition, spec, true).commands())
+                    .contains(List.of("npm", "run", "test:e2e"));
+            flow.snapshot = new Snapshot("local", definition, "/repo", Map.of());
+            assertThat(SandboxE2e.planReason(flow, plan)).isNull();
+            assertThat(SandboxE2e.publicationReason(flow, "a".repeat(40))).isNull();
+        }
+    }
+
+    @Test void handwrittenLocalE2eAlsoCannotReplaceAConfiguredDeploymentTarget() throws Exception {
+        ObjectNode tree = team("node-web");
+        ObjectNode project = (ObjectNode) tree.path("project");
+        project.putObject("serviceTarget").put("name", "authorized-test-target");
+        ((ObjectNode) project.path("operations")).set("e2e", mapper.readTree("""
+                {"nodes":["verification"],"directory":".","argv":["npm","run","e2e:ci"],"writes":[]}
+                """));
+        TeamDefinition definition = mapper.treeToValue(tree, TeamDefinition.class);
+        assertThat(SandboxE2e.preferred(definition)).isTrue();
+        var spec = new Verification(List.of(List.of("npm", "run", "build"), List.of("npm", "run", "e2e:ci")), 600);
+        assertThat(BrowserE2e.effective(definition, spec, false).commands()).containsExactly(List.of("npm", "run", "build"));
+        ((ObjectNode) project.path("operations")).remove("e2e");
+        definition = mapper.treeToValue(tree, TeamDefinition.class);
+        assertThat(SandboxE2e.preferred(definition)).isFalse();
+        assertThat(BrowserE2e.effective(definition, spec, false)).isSameAs(spec);
+    }
+
     @Test void oneLineExpandsIntoFixedOperationsThatPassTheNormalValidation() throws Exception {
         ObjectNode tree = team("node-web");
         ((ObjectNode) tree.path("project")).putObject("browserE2e").put("directory", ".");

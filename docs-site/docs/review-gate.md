@@ -69,6 +69,7 @@ ReviewGate 的硬性條件不變。規則是配置資產，只套用到新任務
 
 - 只限驗收負責人；任務是配置式流程，狀態 `AWAIT_PR_APPROVAL`（等同按核准）、`AWAIT_HUMAN`，或負責人結案的 `ABORTED`
   （audit 有 `OWNER_CLOSE`、工作區有保留）。結案任務檢查沒過時維持結案，不會變成等人的任務；一般「中止任務」的 `ABORTED` 不接受。
+- PR 核准前回報的問題若仍待原流程處理，`開 PR` 會被拒絕。已由負責人結案的任務也受此限制，且結案後原流程不會自行續跑或發出新的核准卡。
 - 其他證據照舊：用發布核准節點同一套 `FlowGates.publicationReason` 試算，驗收、需求基準、commit 一致性都必須有效；工作區要乾淨。
 - **唯一可放行的閘門失敗**（`ReviewGate.waivable`）：審查 `VERIFIED`、把握度 HIGH／MEDIUM、APPROVE／COMMENT、沒有 blockers、
   有 checked，沒有 HIGH，而且不標準的等級只屬於提醒類（`INFO`、`INFORMATIONAL`、`NOTE`、`NIT`、`NONE`，不分大小寫）。

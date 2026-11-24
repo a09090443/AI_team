@@ -6,6 +6,8 @@ description: 分層責任、任務生命週期、流程節點、任務狀態與�
 
 # 系統全貌
 
+已回覆的待決問題交需求階段確認時，已配置的需求路線與未配置的需求節點 ID 都由 `IssueTracker.systemRequirementsRoute` 判定；確認模式沿用原需求基準。舊版誤停的任務由原負責人續跑時，另核對保存的回報與回覆，不能藉此核准需求變更。
+
 效率機制：`FlowEngine` 對測試計畫的延後／情境重複提供一次原節點自修；受保護路徑改派以相關契約指紋與 Git 物件內容核對後沿用。
 `teams/scripts/verify-gradle-jars.py` 提供配置式 Gradle 範例建置與 plain JAR 檢查，可由固定操作及系統獨立驗證使用。
 
@@ -42,8 +44,10 @@ FlowEngine 的新任務承接、續跑、發布及角色請求均保留這個身
 開啟提案時審查報告多一欄 `skill_proposal`，PR 開出後 `FlowEngine.openSkillProposal` 另開獨立任務，照正常流程與 PR 真人核准處理。
 詳見[專案 skill 索引與提案](/docs/configurable-team#專案-skill-索引與提案)。
 設定了 `project.browserE2e` 的團隊，`TeamCatalog.load` 以 `BrowserE2e.expand` 展開固定操作；`IndependentVerifier.effectiveSpec`
-在 HEAD 已有 Playwright 設定時追加 E2E 指令；測試計畫未就緒時可填 `browser_e2e_offer`，`FlowEngine.offerBrowserE2e` 貼詢問按鈕，
+只有沒有授權部署目標時，才在 HEAD 已有 Playwright 設定時追加本機 E2E 指令；測試計畫未就緒時可填 `browser_e2e_offer`，`FlowEngine.offerBrowserE2e` 貼詢問按鈕，
 負責人按下由 `enableBrowserE2e` 經 `openSystemTask` 另開安裝任務。詳見[瀏覽器 E2E 驗收](/docs/browser-e2e)。
+有授權 `serviceTarget` 時由 `SandboxE2e` 優先要求部署後真實 E2E 與同次部署收據，缺 Runner 不降成本機；獨立驗證只保留非本機 E2E 指令。
+`FlowEngine` 在這條路線啟動部署前核對已提交 Runner 與工作區檔案。QA 選用的本機固定操作由 `IndependentVerifier` 在隔離副本試跑，成功證據可按配置重用。詳見 [QA 配置試跑](/docs/baseline-verification#接入部署後-qa-時的試跑)。
 由 `SlackNotifier.uploadConfigured` 以角色身分上傳到討論串，失敗不影響流程。詳見[附件上傳到討論串](/docs/configurable-team#附件上傳到討論串2026-11-03)。
 反方向：使用者 @訊息的附檔由 `SlackListener` 經 `InboundFiles` 登錄（不連網），`FlowEngine.stageInbox` 在執行 agent 前以 `SlackNotifier.downloadFile` 下載並放進工作目錄的 `.ai-team-inbox/`（git exclude），PDF／Office 另由 `DocumentMarkdown` 轉出 `.md` 輔助版本。Linux 可讓 PDF 優先在隔離環境使用本機 `pdf2md`，失敗回退 PDFBox。詳見[接收使用者附檔](/docs/configurable-team#接收使用者附檔2026-11-06)。
 

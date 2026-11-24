@@ -18,7 +18,7 @@
 
 ## 操作契約
 
-`project.operations` 是選填物件；各操作包括 `nodes`、`directory`、`argv`、`writes`，以及選填 `scriptSha256`。
+`project.operations` 是選填物件；各操作包括 `nodes`、`directory`、`argv`、`writes`，以及選填 `scriptSha256` 和 `qaRehearsalOrder`。
 目錄與寫入需求均相對於 repo 根目錄。以下只是配置片段，節點及工具須另有宣告：
 
 ```json
@@ -46,6 +46,7 @@ Java＋文件網站與 Node 範例均已加入契約。新專案仍需管理者�
 腳本內容更新必須重新審閱並更新配置雜湊；不自動信任新版本。仍由同一外層沙箱執行，不擴大權限。
 這不改變 project.verification.commands 禁止 shell 的獨立驗證政策。
 `project.verification.commands` 也支援 `${teams}` 展開為團隊配置目錄，可指向管理者隨 teams 部署的固定驗證程式；不是模型產生的指令。
+QA 的本機固定操作可用 `qaRehearsalOrder` 指定試跑順序。試跑沿用該節點的寫入政策，正式驗收仍須跑本任務的測試計畫。見 [QA 配置試跑](baseline-verification.md#接入部署後-qa-時的試跑)。
 
 ### Gradle／Maven 範例 JAR 驗證
 

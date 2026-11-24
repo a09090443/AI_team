@@ -32,6 +32,7 @@ public final class OperationContract {
         var operations = definition.project().operations();
         if (operations == null) return; // 舊快照不自動補權限。
         TeamCatalog.require(operations.size() <= 30, "操作契約數量超過上限");
+        Map<String, Set<Integer>> rehearsalOrders = new HashMap<>();
         operations.forEach((id, op) -> {
             TeamCatalog.require(id.matches("[a-z][a-z0-9_-]*") && op != null, "無效操作 ID");
             TeamCatalog.require(!INSPECT_CONTENT.equals(id), "操作 ID " + INSPECT_CONTENT + " 為系統保留的內容檢視，不能宣告成指令");
@@ -54,6 +55,16 @@ public final class OperationContract {
             for (String nodeId : op.nodes()) {
                 Node node = definition.nodes().get(nodeId);
                 TeamCatalog.require(node != null && node.kind() == Kind.AGENT, "操作引用不存在的 agent 節點：" + id);
+                if (op.qaRehearsalOrder() != null) {
+                    int order = op.qaRehearsalOrder();
+                    TeamCatalog.require(definition.version() >= 2 && node.gate() == Gate.VERIFICATION && node.workspace()
+                                    && node.scope() == Scope.LIMITED && order >= 1 && order <= 8
+                                    && !SandboxE2e.OPERATION.equals(id)
+                                    && op.argv().stream().noneMatch(arg -> arg.endsWith("/service-build/scripts/client.py")),
+                            "QA 試跑只允許限寫驗收節點的本機操作，順序須為 1–8：" + id);
+                    TeamCatalog.require(rehearsalOrders.computeIfAbsent(nodeId, ignored -> new HashSet<>()).add(order),
+                            "同一 QA 節點的試跑順序不可重複：" + id);
+                }
                 TeamCatalog.require(node.scope() != Scope.READ_ONLY || op.writes().isEmpty(), "唯讀節點不能宣告寫入操作：" + id);
                 if (node.scope() == Scope.LIMITED) for (String path : op.writes()) {
                     TeamCatalog.require(PathRules.allows(node.writablePaths(), path + "/")
@@ -61,6 +72,11 @@ public final class OperationContract {
                 }
             }
         });
+    }
+    static List<Map.Entry<String, Operation>> rehearsal(TeamDefinition team, String node) {
+        return forNode(team, node).entrySet().stream()
+                .filter(entry -> entry.getValue().qaRehearsalOrder() != null)
+                .sorted(Comparator.comparingInt(entry -> entry.getValue().qaRehearsalOrder())).toList();
     }
     static boolean pinnedScript(Operation op) {
         return op.scriptSha256() != null && op.scriptSha256().matches("[0-9a-f]{64}")
@@ -71,17 +87,19 @@ public final class OperationContract {
     static List<Path> scriptPins(TeamDefinition definition, String node, Path cwd) throws Exception {
         List<Path> pins = new ArrayList<>();
         for (var entry : forNode(definition, node).entrySet()) if (entry.getValue().scriptSha256() != null) {
-            Operation op = entry.getValue();
-            boolean sandboxE2e = SandboxE2e.OPERATION.equals(entry.getKey());
-            if (!sandboxE2e && !pinnedScript(op)) throw new IllegalStateException("未核准的腳本操作");
-            String relative = sandboxE2e ? op.argv().get(3) : op.argv().get(1);
-            Path script = resolve(resolve(cwd, op.directory()), relative);
-            if (!Files.isRegularFile(script, LinkOption.NOFOLLOW_LINKS)
-                    || !IndependentVerifier.hash(script).equals(op.scriptSha256()))
-                throw new IllegalStateException("腳本內容與核准版本不符，禁止執行：" + script);
-            pins.add(script);
+            pins.add(scriptPin(entry.getKey(), entry.getValue(), cwd));
         }
         return pins;
+    }
+    static Path scriptPin(String id, Operation op, Path cwd) throws Exception {
+        boolean sandboxE2e = SandboxE2e.OPERATION.equals(id);
+        if (!sandboxE2e && !pinnedScript(op)) throw new IllegalStateException("未核准的腳本操作");
+        String relative = sandboxE2e ? op.argv().get(3) : op.argv().get(1);
+        Path script = resolve(resolve(cwd, op.directory()), relative);
+        if (!Files.isRegularFile(script, LinkOption.NOFOLLOW_LINKS)
+                || !IndependentVerifier.hash(script).equals(op.scriptSha256()))
+            throw new IllegalStateException("腳本內容與核准版本不符，禁止執行：" + script);
+        return script;
     }
     static void relative(String value) {
         TeamCatalog.require(value != null && (value.equals(".") || value.matches("[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*"))

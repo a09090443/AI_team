@@ -120,6 +120,13 @@ public class TaskStore {
         return jdbc.update("UPDATE task SET state=?,updated_at=? WHERE id=? AND state=?", to.name(), Instant.now().toString(), id, from.name()) == 1;
     }
 
+    public boolean reopenOwnerClosed(String id, Instant closedAt, Instant reopenedAt) {
+        return jdbc.update("""
+                UPDATE task SET state='AWAIT_HUMAN',updated_at=?
+                WHERE id=? AND state='ABORTED' AND updated_at=?
+                """, reopenedAt.toString(), id, closedAt.toString()) == 1;
+    }
+
     /** SQLite 原子狀態轉換，連按／重送只有一次可排入佇列。 */
     public boolean claimContinuation(String taskId) {
         return jdbc.update("UPDATE task SET state='RESUME_QUEUED',updated_at=? "

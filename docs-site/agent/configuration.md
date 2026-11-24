@@ -212,6 +212,10 @@ bash deploy/bootstrap/check-source.sh
 claude-code 角色要有 `Bash(npm --prefix <directory> *)` 之類的權限；快取目錄由系統在派工前建立。專案有 `playwright.config.*` 與 `test:e2e` script 才生效；
 `offer` 開啟且未就緒時，測試計畫可詢問負責人是否另開安裝任務。詳見[瀏覽器 E2E 驗收](/docs/browser-e2e)。
 
+E2E 預設依授權環境選擇：已有 `serviceTarget` 時使用 `sandbox-e2e` 驗收部署後的真實系統，停止本機安裝詢問，
+獨立驗證不追加本機 E2E，並排除與本機 E2E 操作相同的指令；沒有部署目標才沿用上述本機路線。
+手寫 `e2e` 操作同樣適用。沙箱故障、版本不符或缺少已釘選 Runner 不會降成本機；操作未配置時計畫與發布拒絕放行。
+
 ## 服務建置與指定腳本
 
 `project.serviceTarget` 指定管理者核准的服務目標名稱及檢查操作 ID（至少 start、health）；null 時不能啟動 service runtime，intake 也會被告知不要選 service 路線。三份內附範例都帶沙箱版 service 節點，`serviceTarget` 預設 null（關閉），實例填入即啟用（[內附範例](/docs/configurable-team#內附範例與實例-overlay)）。
@@ -219,6 +223,8 @@ claude-code 角色要有 `Bash(npm --prefix <directory> *)` 之類的權限；�
 操作 `argv` 與角色 `tools` 中的 `${teams}` 在載入時展開成配置所在的 teams 目錄（反斜線轉成斜線），只在這兩處展開；快照存展開後的路徑。
 `Gate.SERVICE` 限 LIMITED 工作區，成功直接 end，不套用開發 QA／PR 閘門；完整欄位與證據限制見 [服務建置](/docs/service-delivery)。
 `project.operations.*.scriptSha256` 支援固定的 bash 相對腳本與 `sandbox-e2e` Runner，內容必須吻合且執行時唯讀。見 [跨專案契約](/docs/cross-project-execution)與[沙箱 E2E](/docs/browser-e2e#使用已部署的沙箱驗收)。
+
+`project.operations.*.qaRehearsalOrder` 可選填，設為 1–8 的整數，且同一 QA 節點內不得重複。只適用 v2 有工作區、限寫的 `VERIFICATION` 節點與本機固定操作。`sandbox-e2e` 和遠端服務執行器不能加入。需要共用於實作及 QA 的操作可另外宣告 QA 專用的操作 ID。見 [QA 配置試跑](/docs/baseline-verification#接入部署後-qa-時的試跑)。
 
 `project.jsonAdditionsComparison: true` 啟用 v2 的內建 `compare-json-additions`，預設關閉。可透過既有配置更新套用至舊任務，
 仍需重訂含此操作的測試計畫。見 [QA 情境流程](/docs/qa-scenario-workflow#允許新增-json-陣列項目)。

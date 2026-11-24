@@ -279,6 +279,8 @@ public class IndependentVerifier {
     TeamDefinition.Verification effectiveSpec(FlowRun flow, String taskId, String head) {
         var spec = flow.snapshot.definition().project().verification();
         var policy = BrowserE2e.policy(flow.snapshot.definition());
+        if (SandboxE2e.preferred(flow.snapshot.definition()))
+            return BrowserE2e.effective(flow.snapshot.definition(), spec, false);
         if (spec == null || policy == null || taskId == null || !taskId.matches("[0-9]+") || head == null) return spec;
         boolean ready = BrowserE2e.ready(policy, path -> {
             try { return workspaces.readCommittedText(taskId, head, path, 1_000_000); }
@@ -477,8 +479,98 @@ public class IndependentVerifier {
     void execute(List<String> argv, Path cwd, Path home, SandboxPolicy policy, Path log, long deadline) throws Exception {
         execute(null, argv, cwd, home, policy, log, deadline);
     }
+
+    /** 配置就緒證據。與正式 QA／發布收據分開，成功後依相關配置與工具重用。 */
+    Path rehearseQa(Task task, FlowRun flow, String qaId, TeamDefinition.Node qa,
+                    List<Map.Entry<String, TeamDefinition.Operation>> operations) throws Exception {
+        sandbox.requireReadyForCodeChanges();
+        var team = flow.snapshot.definition();
+        var role = team.roles().get(qa.role());
+        var mapper = new ObjectMapper();
+        var inputs = mapper.createObjectNode().put("contract", 1).put("repository", flow.snapshot.repository())
+                .put("node", qaId).put("role", qa.role()).put("runtime", role.runtime().toString())
+                .put("loopback", qa.localTestNetwork());
+        inputs.set("tools", mapper.valueToTree(role.tools()));
+        inputs.set("writes", mapper.valueToTree(qa.writablePaths()));
+        inputs.set("protected", mapper.valueToTree(team.project().protectedPaths()));
+        inputs.set("caches", mapper.valueToTree(team.project().cachePaths()));
+        inputs.set("operations", mapper.valueToTree(operations));
+        var tools = new TreeSet<>(team.project().requiredTools());
+        tools.add("git");
+        var scripts = inputs.putObject("managedScripts");
+        for (var entry : operations) for (String arg : entry.getValue().argv()) {
+            if (arg.startsWith("/") && arg.contains("/scripts/") && Files.isRegularFile(Path.of(arg)))
+                scripts.put(arg, hash(Path.of(arg)));
+        }
+        inputs.put("toolchain", BaselineVerifier.toolchain(tools, System.getenv("PATH"), System.getenv("JAVA_HOME")));
+        Path root = props.homePath().resolve("qa-rehearsal").resolve(Traceability.digest(inputs)).toAbsolutePath().normalize();
+        Path success = root.resolve("passed.json");
+        if (Files.isRegularFile(success, LinkOption.NOFOLLOW_LINKS)) return null;
+        String head = workspaces.headSha(task.id());
+        Files.createDirectories(root);
+        VerificationScenes.requireSpace(root);
+        Path run = Files.createTempDirectory(root, "run-");
+        Path scratch = Files.createDirectory(run.resolve("work"));
+        Path home = Files.createDirectory(scratch.resolve("home"));
+        Path repo = scratch.resolve("repo");
+        long deadline = System.nanoTime() + TimeUnit.MINUTES.toNanos(5);
+        var setup = new SandboxPolicy(List.of(scratch), List.of(), 2048, 200, 256);
+        try {
+            execute(task.id(), List.of("git", "-c", "core.hooksPath=/dev/null", "clone", "--no-local",
+                    "--no-checkout", "--", workspaces.pathFor(task.id()).toAbsolutePath().toString(), repo.toString()),
+                    scratch, home, setup, run.resolve("clone.log"), deadline, true, List.of());
+            execute(task.id(), List.of("git", "-c", "core.hooksPath=/dev/null", "checkout", "--detach", head),
+                    repo, home, setup, run.resolve("checkout.log"), deadline, true, List.of());
+            var writable = new ArrayList<>(PathRules.writableRoots(repo, qa.writablePaths()));
+            writable.add(home);
+            var environment = new ArrayList<String>();
+            for (String cache : Objects.requireNonNullElse(team.project().cachePaths(), List.<String>of())) {
+                ConfiguredExecutor.validateCache(cache);
+                Path path = OperationContract.resolve(props.userHome(), cache);
+                if (!Files.isDirectory(path)) throw new IllegalStateException("QA 試跑缺少配置的快取：" + cache);
+                writable.add(path);
+                if (".npm".equals(cache)) environment.add("npm_config_cache=" + path);
+            }
+            var selectedOutputs = new HashSet<String>();
+            operations.forEach(entry -> selectedOutputs.addAll(entry.getValue().writes()));
+            var pins = new ArrayList<>(ConfiguredExecutor.protectedPins(repo, team.project().protectedPaths(),
+                    Set.copyOf(workspaces.untrackedOutputDirs(repo, selectedOutputs))));
+            for (var entry : operations) if (entry.getValue().scriptSha256() != null)
+                pins.add(OperationContract.scriptPin(entry.getKey(), entry.getValue(), repo));
+            pins.add(repo.resolve(".git"));
+            var policy = new SandboxPolicy(writable, pins, 4096, 400, 512, qa.localTestNetwork());
+            var results = mapper.createArrayNode();
+            for (var entry : operations) {
+                var op = entry.getValue();
+                Path log = run.resolve(entry.getKey() + ".log");
+                try {
+                    execute(task.id(), op.argv(), OperationContract.resolve(repo, op.directory()),
+                            home, policy, log, deadline, true, environment);
+                } catch (Exception e) {
+                    throw new IllegalStateException("QA 配置試跑失敗：" + entry.getKey()
+                            + "。請依證據修正固定操作或環境。紀錄：" + log, e);
+                }
+                results.addObject().put("operation", entry.getKey()).put("exitCode", 0)
+                        .put("log", log.toString()).put("sha256", hash(log));
+            }
+            var receipt = mapper.createObjectNode().put("head", head).put("at", Instant.now().toString());
+            receipt.set("results", results);
+            Path pending = run.resolve("passed.json");
+            mapper.writeValue(pending.toFile(), receipt);
+            Files.move(pending, success, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            return success;
+        } finally {
+            VerificationScenes.deleteTree(scratch);
+        }
+    }
+
     /** unit 名帶任務編號，Slack 的「中斷這一輪」才能只停這個任務的驗證（見 TaskUnits）。 */
     void execute(String taskId, List<String> argv, Path cwd, Path home, SandboxPolicy policy, Path log, long deadline) throws Exception {
+        execute(taskId, argv, cwd, home, policy, log, deadline, false, List.of());
+    }
+
+    void execute(String taskId, List<String> argv, Path cwd, Path home, SandboxPolicy policy, Path log,
+                         long deadline, boolean offline, List<String> environment) throws Exception {
         long seconds = Math.max(1, TimeUnit.NANOSECONDS.toSeconds(deadline - System.nanoTime()));
         if (System.nanoTime() >= deadline) throw new VerificationTimeout(argv, log.getParent());
         String unit = props.unitPrefix() + "check-" + (taskId == null ? "" : taskId + "-") + UUID.randomUUID();
@@ -487,11 +579,16 @@ public class IndependentVerifier {
         // JVM 的 user.home 不會隨 HOME 改變；否則 Maven 仍讀寫真實帳號的 .m2。
         isolated.add("JAVA_TOOL_OPTIONS=-Duser.home=\"" + home.toString().replace("\\", "\\\\").replace("\"", "\\\"") + "\"");
         String java = System.getenv("JAVA_HOME"); if (java != null) isolated.add("JAVA_HOME=" + java);
-        isolated.addAll(cacheEnvironment(props.homePath().resolve("verification-cache").toAbsolutePath().normalize(), policy));
+        if (!offline) isolated.addAll(cacheEnvironment(props.homePath().resolve("verification-cache").toAbsolutePath().normalize(), policy));
+        isolated.addAll(environment);
         isolated.addAll(argv);
         List<String> command = new ArrayList<>(sandbox.wrap(unit, policy, cwd, isolated));
         int delimiter = command.indexOf("--");
         command.addAll(delimiter, List.of("-p", "RuntimeMaxSec=" + seconds, "-p", "KillMode=control-group"));
+        if (offline) {
+            command.addAll(delimiter, List.of("-p", "PrivateNetwork=yes"));
+            if (!policy.localTestNetwork()) command.addAll(delimiter, List.of("-p", "RestrictAddressFamilies=AF_UNIX"));
+        }
         ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true).redirectOutput(log.toFile());
         sanitize(builder);
         Process process = com.zipe.aiteam.sandbox.ArgumentListTooLong.start(builder);

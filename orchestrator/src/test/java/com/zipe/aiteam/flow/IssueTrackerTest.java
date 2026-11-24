@@ -344,7 +344,8 @@ class IssueTrackerTest {
         assertThat(IssueTracker.systemRequirementsRoute(flow, triage, requirements)).isEqualTo(requirements);
         assertThat(IssueTracker.systemRequirementsRoute(flow, triage, "service")).isNull();
         assertThat(IssueTracker.systemRequirementsRoute(flow, node(Gate.REQUIREMENTS), requirements)).isNull();
-        // 有配置通往需求節點的路線時提示填該鍵，系統路線不介入。
+        // 已配置路線也須進入相同的決策確認模式，不能重新要求需求變更核准。
+        assertThat(IssueTracker.systemRequirementsRoute(flow, withRoute, "confirm")).isEqualTo(requirements);
         assertThat(IssueTracker.requirementsRoute(flow, withRoute)).isEqualTo("confirm");
         assertThat(IssueTracker.requirementsRoute(flow, triage)).isEqualTo(requirements);
         String reason = IssueTracker.DECISION_NEEDS_REQUIREMENTS + "I1";
@@ -354,6 +355,37 @@ class IssueTrackerTest {
         r = report(); r.withArray("issue_updates").add(issue("I1", "REPAIR"));
         assertThat(IssueTracker.ingest(flow, node(Gate.REQUIREMENTS), r, "42")).isNull();
         assertThat(IssueTracker.systemRequirementsRoute(flow, triage, requirements)).isNull();
+    }
+
+    @Test void decisionConfirmationHonorsConfiguredTargetsAndRequiresAnExistingReply() {
+        String requirements = FlowEngine.requirementsNode(flow);
+        Node triage = routed(node(Gate.REPORT), Map.of("confirm", requirements, requirements, "human"));
+        ObjectNode r = report(); r.withArray("issue_updates").add(issue("I1", "DECISION"));
+        assertThat(IssueTracker.ingest(flow, node(Gate.REQUIREMENTS), r, "42")).isNull();
+        assertThat(IssueTracker.systemRequirementsRoute(flow, triage, "confirm")).isNull();
+        flow.supplements++;
+        assertThat(IssueTracker.systemRequirementsRoute(flow, triage, "confirm")).isEqualTo(requirements);
+        assertThat(IssueTracker.systemRequirementsRoute(flow, triage, requirements)).isNull();
+        assertThat(IssueTracker.systemRequirementsRoute(flow, triage, "human")).isNull();
+        assertThat(IssueTracker.systemRequirementsRoute(flow, node(Gate.REQUIREMENTS), requirements)).isNull();
+    }
+
+    @Test void stoppedDecisionRecoveryRequiresMatchingSavedRouteAndPreservesChangeApproval() {
+        discover(1);
+        flow.issueInventory.put("I2", issue("I2", "DECISION").put("decision_supplements", 0));
+        flow.node = flow.snapshot.definition().nodes().entrySet().stream()
+                .filter(e -> e.getValue().gate() == Gate.REPORT).findFirst().orElseThrow().getKey();
+        String requirements = FlowEngine.requirementsNode(flow);
+        flow.changeTarget = requirements; flow.baselineRevision = "baseline";
+        flow.receipts.put(flow.node, json.createObjectNode().put("route", requirements));
+        assertThat(IssueTracker.pendingDecisionConfirmation(flow)).isFalse();
+        flow.supplements++;
+        assertThat(IssueTracker.pendingDecisionConfirmation(flow)).isTrue();
+        flow.receipts.put(flow.node, json.createObjectNode().put("route", "human"));
+        assertThat(IssueTracker.pendingDecisionConfirmation(flow)).isFalse();
+        flow.receipts.put(flow.node, json.createObjectNode().put("route", requirements));
+        flow.changeAuthorized = true;
+        assertThat(IssueTracker.pendingDecisionConfirmation(flow)).isFalse();
     }
 
     /** #1035：原任務的計數是 2，新任務從 0 起算，負責人要回覆到第三次才放行。 */

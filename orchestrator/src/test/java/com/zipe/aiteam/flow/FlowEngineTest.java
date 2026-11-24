@@ -15,6 +15,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import org.springframework.core.io.ClassPathResource;
 import java.nio.file.*;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -462,6 +464,47 @@ class FlowEngineTest {
         verify(slack).post(any(), eq("c"), eq("t"), contains("只有停下等人時才能結案"));
         assertThat(store.find(task.id()).orElseThrow().state()).isEqualTo(Task.State.WAITING_QUOTA);
         verify(audit, never()).record(any(), any(), eq(AuditLog.ACTION_OWNER_CLOSE), any());
+    }
+
+    @Test void ownerCanUndoRecentCloseWithoutResumingOrClearingPrFeedback() {
+        task.state(Task.State.AWAIT_HUMAN);
+        store.save(task);
+        FlowRun flow = store.flow(task.id()).orElseThrow();
+        flow.systemRetries.put(FlowEngine.PR_FEEDBACK_PENDING, 1);
+        store.saveFlow(task.id(), flow);
+        List<Runnable> jobs = new ArrayList<>();
+        when(audit.latestOwnerClose("42", "u")).thenAnswer(call -> store.updatedAt("42"));
+
+        engine.resume(task, HumanOptions.CLOSE_COMMAND, "u", jobs::add);
+        verify(slack).post(any(), eq("c"), eq("t"), contains("前撤銷結案"), anyList());
+        String button = HumanOptions.REOPEN_COMMAND + " " + store.updatedAt("42").orElseThrow();
+        engine.resume(task, button, "someone-else", jobs::add);
+        engine.resume(task, HumanOptions.REOPEN_COMMAND + " 2020-01-01T00:00:00Z", "u", jobs::add);
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.ABORTED);
+
+        engine.resume(store.find("42").orElseThrow(), button, "u", jobs::add);
+        engine.resume(task, button, "u", jobs::add);
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.AWAIT_HUMAN);
+        assertThat(store.flow("42").orElseThrow().systemRetries).containsEntry(FlowEngine.PR_FEEDBACK_PENDING, 1);
+        assertThat(jobs).isEmpty();
+        verify(audit).record("42", "u", AuditLog.ACTION_RECOVERY, "撤銷負責人結案");
+        verifyNoInteractions(publisher);
+    }
+
+    @Test void ownerCannotUndoExpiredClose() {
+        task.state(Task.State.ABORTED);
+        store.save(task);
+        Instant expired = Instant.now().minus(6, ChronoUnit.HOURS);
+        var ds = new org.sqlite.SQLiteDataSource();
+        ds.setUrl("jdbc:sqlite:" + tmp.resolve("db"));
+        new JdbcTemplate(ds).update("UPDATE task SET updated_at=? WHERE id=?", expired.toString(), "42");
+        when(audit.latestOwnerClose("42", "u")).thenReturn(Optional.of(expired));
+
+        List<Runnable> jobs = new ArrayList<>();
+        engine.resume(task, HumanOptions.REOPEN_COMMAND, "u", jobs::add);
+        verify(slack).post(any(), eq("c"), eq("t"), contains("已超過 5 小時"));
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.ABORTED);
+        assertThat(jobs).isEmpty();
     }
 
     @Test void ownerCanMoveAStoppedTaskToANewTaskWithTheLatestRulesEvenBeforeItIsExhausted() throws Exception {
@@ -1732,7 +1775,8 @@ class FlowEngineTest {
                     if (node.gate() == TeamDefinition.Gate.REQUIREMENTS && intakes > 1)
                         ((ObjectNode) tracked.path("requirements").get(0)).put("description", "改寫過的需求");
                     if (flow.node.equals("service_triage")) {
-                        tracked.put("route", "intake");
+                        tracked.put("route", flow.snapshot.definition().nodes().get("service_triage").routes().containsKey("confirm")
+                                ? "confirm" : "intake");
                         tracked.withArray("issue_updates").addObject().put("id", "I9").put("description", "problem 9").put("scope", "DECISION")
                                 .put("evidence", "負責人已回覆結案").put("reason", "交需求階段確認").putArray("requirement_ids").add("R1");
                     }
@@ -2237,9 +2281,17 @@ class FlowEngineTest {
         assertThat(calls).containsExactly("intake:coordinator", "service:builder", "service_triage:coordinator", "service:builder");
     }
     /** #1058：負責人已回覆待決問題，分流沒有通往需求的路線；系統交需求節點確認，不再要求核准需求變更，也不改需求基準。 */
-    @Test void ownerReplyIsConfirmedByRequirementsWithoutAnotherApprovalAndKeepsTheBaseline() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void ownerReplyIsConfirmedByRequirementsWithoutAnotherApprovalAndKeepsTheBaseline(boolean configuredRoute) throws Exception {
         enableService(true); enableIssueTracking();
         var seeded = store.flow("42").orElseThrow();
+        if (configuredRoute) {
+            ObjectNode definition = mapper.valueToTree(seeded.snapshot.definition());
+            ((ObjectNode) definition.path("nodes").path("service_triage").path("routes")).put("confirm", "intake");
+            seeded.snapshot = new TeamDefinition.Snapshot("configured-confirm", mapper.treeToValue(definition, TeamDefinition.class),
+                    seeded.snapshot.repository(), seeded.snapshot.assets());
+        }
         ObjectNode pending = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode()
                 .put("id", "I9").put("description", "problem 9").put("scope", "DECISION").put("evidence", "file:9")
                 .put("reason", "待負責人決定").put("source_task", "42").put("source_node", "intake").put("decision_supplements", 0);
@@ -2256,6 +2308,30 @@ class FlowEngineTest {
         assertThat(flow.receipts.get("intake").path("requirements").get(0).path("description").asText()).isNotEqualTo("改寫過的需求");
         assertThat(flow.systemRetries).doesNotContainKey("intake" + IssueTracker.DECISION_CONFIRM);
         verify(audit).record(eq("42"), eq(AuditLog.ACTOR_SYSTEM), eq(AuditLog.ACTION_STATE), contains("沿用原需求基準"));
+    }
+
+    @Test void ownerCanResumeAnOldDecisionConfirmationStopWithoutApprovingRequirementChanges() throws Exception {
+        ownerReplyIsConfirmedByRequirementsWithoutAnotherApprovalAndKeepsTheBaseline(true);
+        var stopped = store.flow("42").orElseThrow();
+        String baseline = stopped.baselineRevision;
+        stopped.node = "service_triage"; stopped.changeTarget = "intake";
+        ((ObjectNode) stopped.issueInventory.get("I9")).put("scope", "DECISION").put("decision_supplements", 0);
+        stopped.receipts.put("service_triage", mapper.createObjectNode().put("route", "confirm"));
+        store.saveFlow("42", stopped);
+        Task waiting = store.find("42").orElseThrow(); waiting.state(Task.State.AWAIT_HUMAN); store.save(waiting);
+        List<Runnable> jobs = new ArrayList<>();
+        engine.resume(waiting, "續跑", "other-user", jobs::add);
+        assertThat(jobs).isEmpty();
+        engine.resume(waiting, "續跑", "u", jobs::add);
+        assertThat(jobs).hasSize(1);
+        var queued = store.flow("42").orElseThrow();
+        assertThat(queued.changeTarget).isNull();
+        assertThat(queued.changeAuthorized).isFalse();
+        assertThat(queued.issueScopeChangeAuthorized).isFalse();
+        assertThat(queued.systemRetries).containsKey("intake" + IssueTracker.DECISION_CONFIRM);
+        jobs.getFirst().run();
+        assertThat(store.flow("42").orElseThrow().baselineRevision).isEqualTo(baseline);
+        assertThat(store.find("42").orElseThrow().state()).isEqualTo(Task.State.COMPLETED);
     }
     @Test void triageAskingForHumanDecisionStillStops() throws Exception {
         enableService(true); mode = "serviceTriageBlockedHuman"; engine.run(task);

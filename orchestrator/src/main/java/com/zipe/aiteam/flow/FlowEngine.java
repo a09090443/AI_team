@@ -13,6 +13,8 @@ import org.springframework.stereotype.Component;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 import java.util.function.Consumer;
 import static com.zipe.aiteam.flow.TeamDefinition.*;
@@ -20,6 +22,7 @@ import static com.zipe.aiteam.flow.TeamDefinition.*;
 /** 配置式流程引擎。由既有中央 worker 呼叫，不另起可繞過排程的執行緒。 */
 @Component
 public class FlowEngine {
+    private static final Duration OWNER_CLOSE_UNDO_WINDOW = Duration.ofHours(5);
     private final TeamCatalog catalog;
     private final AiTeamProperties props;
     private final TaskStore store;
@@ -585,6 +588,20 @@ public class FlowEngine {
                     countedNode = null;
                 }
                 if (node.workspace()) requireWorkspace(task, flow);
+                if (!flow.dialogue && node.gate() == Gate.SERVICE)
+                    SandboxE2e.requireDeploymentPin(flow, node, workspaces, task.id());
+                String rehearsalNode = node.gate() == Gate.VERIFICATION ? flow.node
+                        : ServiceDelivery.postDevelopment(node) ? node.next() : null;
+                if (!flow.dialogue && rehearsalNode != null) {
+                    var operations = OperationContract.rehearsal(flow.snapshot.definition(), rehearsalNode);
+                    if (!operations.isEmpty()) {
+                        Node qa = AgentDispatch.effective(flow, rehearsalNode);
+                        executor.validateQaRehearsal(flow, qa, operations);
+                        Path receipt = verifier.rehearseQa(task, flow, rehearsalNode, qa, operations);
+                        if (receipt != null) audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_STATE,
+                                "QA 配置試跑通過：" + receipt + "；正式驗收仍須取得本任務收據");
+                    }
+                }
                 state(task, Task.State.STAGE_RUNNING, "任務 #" + task.id() + " 節點 " + flow.node + "／角色 " + node.role() + " 處理中");
                 if ((node.gate() == Gate.VERIFICATION || node.gate() == Gate.REVIEW)
                         && flow.snapshot.definition().version() >= 2) {
@@ -908,7 +925,7 @@ public class FlowEngine {
                                 + "確認並結案待決問題；需求內容沿用現有基準，本次回報的需求不會被採用。請依回覆把待決問題的 scope "
                                 + "改成 REPAIR（目標內已處理或要處理）或 EXCLUDED（負責人決定不做），route 交回原本的下游。");
                         audit.record(task.id(), AuditLog.ACTOR_SYSTEM, AuditLog.ACTION_RECOVERY, "節點 " + flow.node
-                                + " 沒有通往需求階段的路線；負責人已回覆待決問題，系統交需求節點 " + next + " 確認後再派工");
+                                + "：負責人已回覆待決問題，系統交需求節點 " + next + " 確認後再派工（沿用原需求基準）");
                     } else if (!route.isBlank()) {
                         if (node.routes() == null || !node.routes().containsKey(route)) throw new IllegalStateException("報告選擇未配置的 route，拒絕派工：" + route);
                         next = node.routes().get(route);
@@ -2118,10 +2135,43 @@ public class FlowEngine {
         audit.record(task.id(), user, AuditLog.ACTION_OWNER_CLOSE,
                 "負責人結案（工作區保留）" + (choice.isBlank() ? "" : "：" + Diagnostics.clip(choice, 600)));
         audit.stateChange(task, from, task.state(), user);
-        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(),
-                "✅ 任務 #" + task.id() + " 已由 <@" + user + "> 結案，不會再派送任何節點。"
-                        + "工作區保留" + (flow.branch == null ? "" : "（分支 `" + flow.branch + "`）")
-                        + "，PR 與合併請在系統外處理；之後要清理工作區請告訴管理者。");
+        postOwnerClosed(task, flow);
+    }
+
+    private void postOwnerClosed(Task task, FlowRun flow) {
+        String text = "任務 #" + task.id() + " 已由 <@" + flow.acceptanceOwner + "> 結案。工作區保留。";
+        Instant closedAt = store.updatedAt(task.id()).orElse(null);
+        Instant deadline = closedAt == null ? null : closedAt.plus(OWNER_CLOSE_UNDO_WINDOW);
+        if (deadline != null && Instant.now().isBefore(deadline)
+                && audit.latestOwnerClose(task.id(), flow.acceptanceOwner).filter(at -> !at.isBefore(closedAt)).isPresent()) {
+            String timestamp = "<!date^" + deadline.getEpochSecond() + "^{date_num} {time_secs}|" + deadline + ">";
+            text += "驗收負責人可在 " + timestamp + " 前撤銷結案。";
+            if (slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), text,
+                    HumanGate.single(task.id(), text, HumanOptions.REOPEN_COMMAND,
+                            HumanOptions.REOPEN_COMMAND + " " + closedAt)) != null) return;
+            text += " 請送出 `補充 #" + task.id() + " " + HumanOptions.REOPEN_COMMAND + "`。";
+        }
+        slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), text);
+    }
+
+    private void reopenOwnerClosed(Task task, FlowRun flow, String user, String token) {
+        Instant closedAt = store.updatedAt(task.id()).orElse(null);
+        Instant now = Instant.now();
+        String reason = !user.equals(flow.acceptanceOwner) ? "只有驗收負責人可以撤銷結案。"
+                : task.state() != Task.State.ABORTED || flow.successor != null || closedAt == null
+                        || audit.latestOwnerClose(task.id(), user).filter(at -> !at.isBefore(closedAt)).isEmpty()
+                        ? "目前沒有可撤銷的負責人結案。"
+                : !token.isEmpty() && !token.equals(closedAt.toString()) ? "這張撤銷結案卡已失效。"
+                : !now.isBefore(closedAt.plus(OWNER_CLOSE_UNDO_WINDOW)) ? "已超過 5 小時的撤銷期限。" : null;
+        if (reason != null) {
+            slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), reason);
+            return;
+        }
+        if (!store.reopenOwnerClosed(task.id(), closedAt, now)) return;
+        task.state(Task.State.AWAIT_HUMAN);
+        audit.record(task.id(), user, AuditLog.ACTION_RECOVERY, "撤銷負責人結案");
+        audit.stateChange(task, Task.State.ABORTED, task.state(), user);
+        postHumanOptions(task, flow, "已撤銷任務 #" + task.id() + " 的結案，回到人工確認。", true);
     }
 
     private void requireWorkspace(Task task, FlowRun flow) {
@@ -2165,6 +2215,15 @@ public class FlowEngine {
         if (requested.equals(HumanOptions.PUBLISH_COMMAND)) {
             FlowRun current = store.flow(task.id()).orElse(null);
             if (current != null) { ownerPublish(task, current, user, enqueue); return; }
+        }
+        if (requested.equals(HumanOptions.REOPEN_COMMAND) || requested.startsWith(HumanOptions.REOPEN_COMMAND + " ")) {
+            FlowRun current = store.flow(task.id()).orElseThrow();
+            reopenOwnerClosed(task, current, user, requested.substring(HumanOptions.REOPEN_COMMAND.length()).trim());
+            return;
+        }
+        if (requested.equals(HumanOptions.STATUS_COMMAND) && task.state() == Task.State.ABORTED && closedByOwner(task)) {
+            postOwnerClosed(task, store.flow(task.id()).orElseThrow());
+            return;
         }
         Task.State from = task.state();
         if (from != Task.State.AWAIT_HUMAN && from != Task.State.WAITING_QUOTA) {
@@ -2406,7 +2465,9 @@ public class FlowEngine {
             } catch (IllegalArgumentException e) { slack.post(Identity.SYSTEM, task.slackChannel(), task.slackThreadTs(), e.getMessage()); }
             return;
         }
-        if (flow.changeTarget != null && (!user.equals(flow.acceptanceOwner) || feedback == null
+        boolean confirmPendingDecision = user.equals(flow.acceptanceOwner) && from == Task.State.AWAIT_HUMAN
+                && (feedback == null || !feedback.startsWith("核准需求變更 ")) && IssueTracker.pendingDecisionConfirmation(flow);
+        if (flow.changeTarget != null && !confirmPendingDecision && (!user.equals(flow.acceptanceOwner) || feedback == null
                 || !feedback.startsWith("核准需求變更 ") || feedback.substring("核准需求變更 ".length()).isBlank())) {
             postHumanOptions(task, flow, HumanOptions.exhausted(flow)
                     ? "任務 #" + task.id() + " 剛才送出的內容沒有生效。"
@@ -2432,9 +2493,16 @@ public class FlowEngine {
             audit.record(task.id(), user, AuditLog.ACTION_STATE, "依真人修改意見重訂測試計畫，原計畫及重試次數保留於歷史；需重新核准。");
         }
         if (flow.changeTarget != null) {
-            flow.node = flow.changeTarget; flow.changeTarget = null; flow.changeAuthorized = true;
-            flow.issueScopeChangeAuthorized = true; flow.activeNode = null;
-            audit.record(task.id(), user, AuditLog.ACTION_STATE, "核准需求變更，原基準=" + flow.baselineRevision + "；內容=" + feedback);
+            flow.node = flow.changeTarget; flow.changeTarget = null; flow.activeNode = null;
+            if (confirmPendingDecision) {
+                flow.systemRetries.put(flow.node + IssueTracker.DECISION_CONFIRM, 1);
+                flow.context = FlowContext.append(flow.context, "系統：負責人已在本任務回覆待決問題，本次續跑只交需求階段依既有回覆確認問題範圍；"
+                        + "沿用原需求基準，不採用改寫的需求。依回覆更新待決項後交回下游，仍不得擴大權限或略過驗收。");
+                audit.record(task.id(), user, AuditLog.ACTION_RECOVERY, "恢復已回覆的待決問題確認，沿用原需求基準=" + flow.baselineRevision);
+            } else {
+                flow.changeAuthorized = true; flow.issueScopeChangeAuthorized = true;
+                audit.record(task.id(), user, AuditLog.ACTION_STATE, "核准需求變更，原基準=" + flow.baselineRevision + "；內容=" + feedback);
+            }
         }
         flow.context = FlowContext.append(flow.context, "使用者 " + user + " 補充：" + Objects.toString(feedback, "額度恢復，續跑原階段"));
         // 真人給了新資訊，一定算成新的輸入，否則節點會因為「輸入相同」而拒絕重跑。

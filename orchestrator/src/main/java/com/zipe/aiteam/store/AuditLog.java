@@ -7,6 +7,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.Optional;
 
 /**
  * 稽核紀錄。同時寫入資料庫與應用程式 log。
@@ -73,6 +74,13 @@ public class AuditLog {
         Integer n = jdbc.queryForObject("SELECT COUNT(*) FROM audit_log WHERE task_id=? AND action=?",
                 Integer.class, taskId, action);
         return n != null && n > 0;
+    }
+
+    public Optional<Instant> latestOwnerClose(String taskId, String owner) {
+        return jdbc.query("""
+                SELECT at FROM audit_log WHERE task_id=? AND action=? AND actor=? ORDER BY id DESC LIMIT 1
+                """, (rs, row) -> Instant.parse(rs.getString(1)), taskId, ACTION_OWNER_CLOSE, owner)
+                .stream().findFirst();
     }
 
     /** 狀態轉換是最常查的事件，給它一個專用入口確保格式一致。 */

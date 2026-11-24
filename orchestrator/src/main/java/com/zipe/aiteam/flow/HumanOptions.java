@@ -365,6 +365,7 @@ public final class HumanOptions {
     static final String CHANGE_NOTICE = "（按下即由你核准這項需求變更，只限需求負責人；系統回到需求階段重訂基準，下游依新基準重跑。）";
     /** 負責人結案：任務中止但保留工作區；後面接所選的問題與選項，只作紀錄。 */
     public static final String CLOSE_COMMAND = "負責人結案";
+    public static final String REOPEN_COMMAND = "撤銷結案";
     static final String CLOSE_NOTICE = "（系統直接結案：任務中止、不再派送任何節點，工作區保留供你確認；"
             + "PR 與合併由你在系統外處理。）";
     static final String SUCCESSOR_NOTICE = "（系統直接開新任務、以最新配置接著做；需求、測試計畫與 PR 仍要重新核准。）";

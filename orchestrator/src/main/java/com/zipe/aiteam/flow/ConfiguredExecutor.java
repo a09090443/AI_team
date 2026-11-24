@@ -88,6 +88,13 @@ public class ConfiguredExecutor {
                 throw new IllegalArgumentException("所選角色缺少必要操作 " + entry.getKey() + " 的工具權限：" + assignment.role());
         }
     }
+    void validateQaRehearsal(FlowRun flow, Node qa, List<Map.Entry<String, Operation>> operations) {
+        Role role = flow.snapshot.definition().roles().get(qa.role());
+        AgentRuntime runtime = runtimes.require(role.runtime());
+        for (var entry : operations)
+            if (!runtime.permitsCommand(role.tools(), entry.getValue().argv()))
+                throw new IllegalStateException("QA 試跑操作未授權給 " + qa.role() + "：" + entry.getKey());
+    }
     public AgentRuntime.RuntimeResult execute(Task task, FlowRun flow, Node node) throws Exception {
         sandbox.requireReadyForCodeChanges();
         Role role = flow.snapshot.definition().roles().get(node.role());
@@ -210,7 +217,8 @@ public class ConfiguredExecutor {
         if (!flow.dialogue && node.gate() == Gate.TEST_PLAN)
             context.append("\n本階段是訂定測試計畫：plan_revision 由系統在計畫完成後依計畫內容計算，")
                     .append("不是本階段的輸入，不得因為沒有收到 plan_revision 而回報受阻。");
-        if (browserE2eStage) context.append(BrowserE2e.planNotice(browserE2e, browserE2eReady));
+        if (browserE2eStage && !SandboxE2e.preferred(flow.snapshot.definition()))
+            context.append(BrowserE2e.planNotice(browserE2e, browserE2eReady));
         context.append("\n系統固定需求基準 baseline_revision：").append(flow.baselineRevision)
                 .append("\n真人需求／驗收負責人：").append(flow.acceptanceOwner)
                 .append("\n系統獨立驗證收據（不是模型自陳）：").append(receiptView(flow, node))

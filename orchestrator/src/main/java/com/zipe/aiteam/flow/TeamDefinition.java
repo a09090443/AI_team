@@ -143,7 +143,11 @@ public record TeamDefinition(int version, String id, Project project, Map<String
         public boolean offers() { return offer == null || offer; }
     }
     /** 管理者宣告各節點的必要操作；不接受模型新增權限。writes 相對於 repository 根目錄。 */
-    public record Operation(List<String> nodes, String directory, List<String> argv, List<String> writes, String scriptSha256) {
+    public record Operation(List<String> nodes, String directory, List<String> argv, List<String> writes, String scriptSha256,
+                            @JsonInclude(JsonInclude.Include.NON_NULL) Integer qaRehearsalOrder) {
+        public Operation(List<String> nodes, String directory, List<String> argv, List<String> writes, String scriptSha256) {
+            this(nodes, directory, argv, writes, scriptSha256, null);
+        }
         public Operation(List<String> nodes, String directory, List<String> argv, List<String> writes) {
             this(nodes, directory, argv, writes, null);
         }
