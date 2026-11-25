@@ -529,3 +529,9 @@ channelCommandRouting），寫在 flow_run 的 snapshot.definition；舊快照�
 同日再新增 `pullRequestSyncRounds`（int，缺欄位為 0）與 `pullRequestSyncAutoPush`（boolean，缺欄位為 false），同樣一律帶鍵。
 自主恢復的次數放在既有 `FlowRun.systemRetries`（Map<String,Integer>），鍵為 `autonomy-timeout:<節點>:<HEAD:未提交指紋>`、
 `autonomy-timeout-total`、`autonomy-timeout-extended:<節點>`、`autonomy-verify:<commit>`；沒有新增 FlowRun 欄位或資料表。
+
+## 2026-11-24：Operation.qaRehearsalOrder
+
+`TeamDefinition.Operation` 新增選填整數 `qaRehearsalOrder`（1–8），保存在 `flow_run.snapshot` 的 definition 內；值為 null 時不序列化。
+舊快照缺欄位解析為 null，不觸發 QA 配置試跑。試跑證據寫在 `<安裝目錄>/qa-rehearsal/<輸入摘要>/passed.json`，不進資料庫。
+撤銷負責人結案（`TaskStore.reopenOwnerClosed`）沿用 `task.state`／`updated_at` 欄位與 `audit_log` 的 `OWNER_CLOSE`，沒有新增欄位。
