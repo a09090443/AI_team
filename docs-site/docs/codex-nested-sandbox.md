@@ -31,7 +31,7 @@ bwrap: Can't mkdir .../task-<id>/.agents: Read-only file system
   本機 socket 與文件副本建置見 [本機測試能力](local-test-capabilities.md)。
 - 若在新機又看到上述 bwrap 錯誤，代表跑的是舊版或掛載條件不同，必須記錄為阻擋並查明，**不可用放寬沙箱的方式繞過**。
 - `codex sandbox` 與 `codex exec` 的參數不對稱，升級 Codex CLI 後要依 [Codex CLI 參數契約](codex-cli-argument-contract.md) 重驗。
-  此流程於 0.153.4 首次實測，0.156.1、0.166.0 升級時重驗。換版後若出現新的 `Can't mkdir …/<名稱>`，
+  此流程於 0.153.4 首次實測，0.156.1、0.166.0、0.172.0 升級時重驗（0.172.0 沒有新增掛載點）。換版後若出現新的 `Can't mkdir …/<名稱>`，
   確認是 Codex 新增的 metadata 掛載點後加進 `MOUNT_POINTS`，不要放寬外層沙箱。
 - 既有 Git worktree 的 `.git` 檔案可通過 metadata 檢查，但端對端只驗證過獨立 clone。
 

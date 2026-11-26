@@ -139,12 +139,12 @@ case ":$PATH:" in *":$HOME/.local/node/bin:"*) ;; *) export PATH="$HOME/.local/n
 
 ## 3. CLI 與登入
 
-目前實測版本是 Claude Code 2.1.317、Codex CLI 0.166.0（2026-11-04 由 2.1.282／0.156.1 升級並重驗契約；Codex 0.166.0 起內層沙箱多要 `.aws` 掛載點，需搭配同日之後的 orchestrator）。先確認 registry 有該版本；若無，停止並重新驗證可用版本的契約，不靜默換 latest。
+目前實測版本是 Claude Code 2.1.332、Codex CLI 0.172.0（2026-11-26 由 2.1.317／0.166.0 升級：Codex 契約測試與新舊版結果相同，Claude 用到的旗標逐一實測可解析；2026-11-04 曾由 2.1.282／0.156.1 升級並重驗契約；Codex 0.166.0 起內層沙箱多要 `.aws` 掛載點，需搭配同日之後的 orchestrator）。先確認 registry 有該版本；若無，停止並重新驗證可用版本的契約，不靜默換 latest。
 
 ```bash
 export MAKEFLAGS=-j1 JOBS=1
 unset npm_config_jobs
-npm install --global --prefix "$HOME/.local/node" @anthropic-ai/claude-code@2.1.317 @openai/codex@0.166.0
+npm install --global --prefix "$HOME/.local/node" @anthropic-ai/claude-code@2.1.332 @openai/codex@0.172.0
 claude --version
 codex --version
 ```
@@ -184,7 +184,7 @@ Codex 有四個實測過的前置條件會讓 QA 整段跑不起來，換 CLI �
 :::
 
 ```bash
-npm install --global --prefix "$HOME/.local/node" opencode-ai@1.19.5
+npm install --global --prefix "$HOME/.local/node" opencode-ai@1.19.6
 opencode --version
 opencode providers        # 別名 auth；本人操作，不要輸出 auth.json
 ```
@@ -208,7 +208,7 @@ opencode providers        # 別名 auth；本人操作，不要輸出 auth.json
 
 :::warning[opencode 驗證狀態]
 
-**目前的驗證狀態**：旗標、事件流及 Linux 狀態目錄位置已在 opencode 1.18.19 實測，1.19.5 重新核對旗標與事件流結構一致；
+**目前的驗證狀態**：旗標、事件流及 Linux 狀態目錄位置已在 opencode 1.18.19 實測，1.19.5 重新核對旗標與事件流結構一致，1.19.6 只重新核對旗標；
 2026-11-04 已有 **VM 沙箱下唯讀角色對話的真實 Slack 端對端紀錄**；這不代表寫入工作區的正式階段、
 需求／測試計畫／審查等較大 schema 或提權釘選已驗證。這些用途完成驗證前，不要把正式流程角色切成 opencode。
 
